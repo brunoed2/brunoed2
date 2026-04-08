@@ -94,7 +94,7 @@ app.get('/api/ml/callback', async (req, res) => {
   try {
     // Troca o "code" por tokens de acesso
     const resp = await axios.post(
-      'https://api.mercadolivre.com/oauth/token',
+      'https://api.mercadolibre.com/oauth/token',
       new URLSearchParams({
         grant_type:    'authorization_code',
         client_id:     data.client_id,
@@ -123,7 +123,7 @@ app.get('/api/ml/callback', async (req, res) => {
 // Tenta renovar o token com o refresh_token salvo
 async function refreshToken(data) {
   const resp = await axios.post(
-    'https://api.mercadolivre.com/oauth/token',
+    'https://api.mercadolibre.com/oauth/token',
     new URLSearchParams({
       grant_type:    'refresh_token',
       client_id:     data.client_id,
@@ -144,7 +144,7 @@ app.get('/api/ml/status', async (req, res) => {
   if (!data.access_token) return res.json({ connected: false });
 
   try {
-    const resp = await axios.get('https://api.mercadolivre.com/users/me', {
+    const resp = await axios.get('https://api.mercadolibre.com/users/me', {
       headers: { Authorization: `Bearer ${data.access_token}` },
     });
     res.json({ connected: true, nickname: resp.data.nickname });
@@ -159,7 +159,7 @@ app.get('/api/ml/store', async (req, res) => {
   if (!data.access_token) return res.json({ error: 'Não conectado' });
 
   const fetchStore = async (token) => {
-    const resp = await axios.get('https://api.mercadolivre.com/users/me', {
+    const resp = await axios.get('https://api.mercadolibre.com/users/me', {
       headers: { Authorization: `Bearer ${token}` },
     });
     return resp.data;
