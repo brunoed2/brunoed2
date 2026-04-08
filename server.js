@@ -15,6 +15,8 @@ const PORT = process.env.PORT || 3000;
 const DATA_FILE = path.join(__dirname, 'data.json');
 
 // ── Middleware ────────────────────────────────────────────────
+// Necessário para ler o protocolo correto (https) atrás do proxy do Railway
+app.set('trust proxy', 1);
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
