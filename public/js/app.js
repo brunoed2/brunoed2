@@ -34,9 +34,10 @@ navBtns.forEach(btn => {
     const erros = {
       sem_client_id:  'Client ID não configurado. Salve as credenciais antes.',
       auth_cancelado: 'Autorização cancelada pelo usuário.',
-      auth_falhou:    'Falha na autenticação. Verifique Client ID e Secret.',
+      auth_falhou:    'Falha na autenticação.',
     };
-    mostrarMsg('msg-config', '❌ ' + (erros[params.get('error')] || 'Erro desconhecido.'), 'erro');
+    const detalhe = params.get('detalhe') ? ' Detalhe: ' + params.get('detalhe') : '';
+    mostrarMsg('msg-config', '❌ ' + (erros[params.get('error')] || 'Erro desconhecido.') + detalhe, 'erro');
   }
 
   // Limpa os parâmetros da URL sem recarregar a página

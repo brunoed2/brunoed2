@@ -112,8 +112,9 @@ app.get('/api/ml/callback', async (req, res) => {
 
     res.redirect('/app.html?tab=config&connected=true');
   } catch (err) {
-    console.error('Erro no callback OAuth:', err.response?.data || err.message);
-    res.redirect('/app.html?tab=config&error=auth_falhou');
+    const detalhe = JSON.stringify(err.response?.data || err.message);
+    console.error('Erro no callback OAuth:', detalhe);
+    res.redirect(`/app.html?tab=config&error=auth_falhou&detalhe=${encodeURIComponent(detalhe)}`);
   }
 });
 
