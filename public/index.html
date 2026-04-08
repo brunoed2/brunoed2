@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Acesso</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #f5f5f5;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 2px 16px rgba(0,0,0,.08);
+      padding: 40px 36px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+      min-width: 280px;
+    }
+    .lock { font-size: 32px; margin-bottom: 4px; }
+    h2 { font-size: 18px; color: #111; font-weight: 600; }
+    input {
+      padding: 11px 16px;
+      font-size: 20px;
+      border: 1.5px solid #ddd;
+      border-radius: 8px;
+      text-align: center;
+      letter-spacing: 6px;
+      outline: none;
+      width: 100%;
+      transition: border-color .2s;
+    }
+    input:focus { border-color: #555; }
+    button {
+      width: 100%;
+      padding: 12px;
+      font-size: 15px;
+      background: #111;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 500;
+      transition: background .2s;
+    }
+    button:hover { background: #333; }
+    .erro { color: #c0392b; font-size: 13px; display: none; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="lock">🔒</div>
+    <h2>Área Restrita</h2>
+    <input type="password" id="codigo" placeholder="••••••" maxlength="10" autofocus>
+    <button onclick="verificar()">Entrar</button>
+    <span class="erro" id="erro">Código incorreto.</span>
+  </div>
+
+  <script>
+    // Se já autenticado nesta sessão, redireciona direto para o app
+    if (sessionStorage.getItem('auth') === '1') {
+      location.href = '/app.html';
+    }
+
+    document.getElementById('codigo').addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') verificar();
+    });
+
+    function verificar() {
+      var val = document.getElementById('codigo').value;
+      if (val === '199412') {
+        sessionStorage.setItem('auth', '1');
+        location.href = '/app.html';
+      } else {
+        document.getElementById('erro').style.display = 'block';
+        document.getElementById('codigo').value = '';
+        document.getElementById('codigo').focus();
+      }
+    }
+  </script>
+</body>
+</html>

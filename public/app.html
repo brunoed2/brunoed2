@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Painel</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+  <!-- Verifica autenticação antes de mostrar o app -->
+  <script>
+    if (sessionStorage.getItem('auth') !== '1') {
+      location.href = '/';
+    }
+  </script>
+
+  <div class="layout">
+
+    <!-- Sidebar / Menu lateral -->
+    <aside class="sidebar">
+      <div class="sidebar-logo">Painel</div>
+      <nav>
+        <button class="nav-btn active" data-tab="config">⚙️ Configurações</button>
+        <button class="nav-btn" data-tab="loja">🏪 Loja</button>
+        <button class="nav-btn" data-tab="futuro">🚀 Futuro</button>
+      </nav>
+      <div class="sidebar-footer">
+        <button class="btn-sair" onclick="sair()">Sair</button>
+      </div>
+    </aside>
+
+    <!-- Conteúdo principal -->
+    <main class="content">
+
+      <!-- ── Aba: Configurações ── -->
+      <section id="tab-config" class="tab active">
+        <h1>Configurações</h1>
+        <p class="subtitle">Integre sua conta do Mercado Livre para sincronizar dados da loja.</p>
+
+        <!-- Status da conexão -->
+        <div class="status-bar" id="status-bar">
+          <span class="dot" id="status-dot"></span>
+          <span id="status-text">Verificando conexão...</span>
+        </div>
+
+        <!-- Formulário de credenciais -->
+        <div class="card">
+          <h2>Credenciais da API</h2>
+          <p class="card-desc">
+            Obtenha suas credenciais em
+            <a href="https://developers.mercadolivre.com.br/pt_br/api-docs-en" target="_blank">developers.mercadolivre.com.br</a>.
+          </p>
+
+          <form id="form-config" onsubmit="salvarConfig(event)">
+            <div class="field">
+              <label>Client ID</label>
+              <input type="text" id="client_id" placeholder="Ex: 1234567890" autocomplete="off">
+            </div>
+            <div class="field">
+              <label>Client Secret</label>
+              <input type="password" id="client_secret" placeholder="Seu client secret" autocomplete="off">
+            </div>
+            <div class="field">
+              <label>Access Token <span class="opcional">(opcional — preenchido automaticamente via OAuth)</span></label>
+              <input type="password" id="access_token" placeholder="APP_USR-..." autocomplete="off">
+            </div>
+            <div class="field">
+              <label>Refresh Token <span class="opcional">(opcional)</span></label>
+              <input type="password" id="refresh_token" placeholder="TG-..." autocomplete="off">
+            </div>
+
+            <div class="btn-row">
+              <button type="submit" class="btn-primary">💾 Salvar</button>
+              <button type="button" class="btn-secondary" onclick="conectarOAuth()">🔗 Conectar via OAuth</button>
+            </div>
+          </form>
+
+          <div class="msg" id="msg-config"></div>
+        </div>
+
+        <!-- Instruções -->
+        <div class="card card-info">
+          <h2>Como conectar</h2>
+          <ol>
+            <li>Crie um app em <strong>developers.mercadolivre.com.br</strong></li>
+            <li>Copie o <strong>Client ID</strong> e <strong>Client Secret</strong></li>
+            <li>Preencha os campos acima e clique em <strong>Salvar</strong></li>
+            <li>Clique em <strong>Conectar via OAuth</strong> para autorizar automaticamente</li>
+            <li>O Access Token e Refresh Token serão salvos automaticamente</li>
+          </ol>
+          <p class="obs">⚠️ Configure a URL de retorno (Redirect URI) no seu app ML como:<br>
+            <code id="callback-url"></code>
+          </p>
+        </div>
+      </section>
+
+      <!-- ── Aba: Loja ── -->
+      <section id="tab-loja" class="tab">
+        <h1>Loja</h1>
+        <p class="subtitle">Informações da sua loja no Mercado Livre.</p>
+
+        <div class="card" id="card-loja">
+          <div class="loading" id="loja-loading">Carregando...</div>
+          <div id="loja-info" style="display:none">
+            <div class="loja-nome" id="loja-nome">—</div>
+            <div class="loja-detalhe">ID: <span id="loja-id">—</span></div>
+            <div class="loja-detalhe">País: <span id="loja-pais">—</span></div>
+          </div>
+          <div class="erro-loja" id="loja-erro" style="display:none"></div>
+        </div>
+      </section>
+
+      <!-- ── Aba: Futuro ── -->
+      <section id="tab-futuro" class="tab">
+        <h1>Futuro</h1>
+        <p class="subtitle">O que vem por aí.</p>
+
+        <div class="card futuro-card">
+          <div class="futuro-icon">🚧</div>
+          <h2>Funcionalidades em desenvolvimento</h2>
+          <p>Esta área será utilizada para novas funcionalidades em breve.</p>
+          <ul>
+            <li>Gestão de anúncios</li>
+            <li>Relatórios de vendas</li>
+            <li>Controle de estoque</li>
+            <li>Automações</li>
+          </ul>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <script src="/js/app.js"></script>
+</body>
+</html>
