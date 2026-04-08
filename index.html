@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Acesso</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #fff;
+      font-family: sans-serif;
+    }
+    #login {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+    }
+    input {
+      padding: 10px 16px;
+      font-size: 18px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      text-align: center;
+      letter-spacing: 4px;
+      outline: none;
+      width: 180px;
+    }
+    input:focus { border-color: #888; }
+    button {
+      padding: 10px 28px;
+      font-size: 15px;
+      background: #222;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    button:hover { background: #444; }
+    #erro {
+      color: #c00;
+      font-size: 13px;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="login">
+    <input type="password" id="codigo" placeholder="••••••" maxlength="10" autofocus>
+    <button onclick="verificar()">Entrar</button>
+    <span id="erro">Código incorreto.</span>
+  </div>
+
+  <script>
+    document.getElementById('codigo').addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') verificar();
+    });
+
+    function verificar() {
+      var val = document.getElementById('codigo').value;
+      if (val === '199412') {
+        document.body.innerHTML = '';
+        document.body.style.background = '#fff';
+      } else {
+        document.getElementById('erro').style.display = 'block';
+        document.getElementById('codigo').value = '';
+        document.getElementById('codigo').focus();
+      }
+    }
+  </script>
+</body>
+</html>
