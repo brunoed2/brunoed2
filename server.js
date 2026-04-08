@@ -61,6 +61,12 @@ app.post('/api/config', (req, res) => {
 
 // ── Rotas OAuth Mercado Livre ─────────────────────────────────
 
+// GET /api/ml/debug — mostra a URL de callback gerada (remover após resolver)
+app.get('/api/ml/debug', (req, res) => {
+  const callback = `${req.protocol}://${req.get('host')}/api/ml/callback`;
+  res.json({ callback_url: callback, protocol: req.protocol, host: req.get('host') });
+});
+
 // GET /api/ml/auth — redireciona o usuário para a tela de autorização do ML
 app.get('/api/ml/auth', (req, res) => {
   const data = loadData();
