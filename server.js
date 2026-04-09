@@ -698,23 +698,46 @@ app.put('/api/ml/estoque/:mlb', async (req, res) => {
     return res.status(400).json({ error: 'Quantidade inválida' });
   }
 
+  const mlb     = req.params.mlb;
+  const headers = { Authorization: `Bearer ${c.access_token}`, 'Content-Type': 'application/json' };
+
   try {
-    await axios.put(
-      `https://api.mercadolibre.com/items/${req.params.mlb}`,
-      { available_quantity: quantidade },
-      {
-        headers: {
-          Authorization: `Bearer ${c.access_token}`,
-          'Content-Type': 'application/json',
+    // Busca o item para saber se tem variações
+    const itemResp = await axios.get(`https://api.mercadolibre.com/items/${mlb}`, {
+      params:  { attributes: 'id,variations' },
+      headers,
+      timeout: 10000,
+    });
+
+    const variations = itemResp.data.variations || [];
+
+    if (variations.length > 0) {
+      // Atualiza cada variação com a mesma quantidade
+      await axios.put(
+        `https://api.mercadolibre.com/items/${mlb}`,
+        {
+          variations: variations.map(v => ({
+            id:                 v.id,
+            available_quantity: quantidade,
+          })),
         },
-        timeout: 10000,
-      }
-    );
+        { headers, timeout: 10000 }
+      );
+    } else {
+      // Item simples — atualiza diretamente
+      await axios.put(
+        `https://api.mercadolibre.com/items/${mlb}`,
+        { available_quantity: quantidade },
+        { headers, timeout: 10000 }
+      );
+    }
+
     res.json({ ok: true });
   } catch (err) {
-    console.error('Erro ao atualizar estoque:', err.response?.data || err.message);
-    const msg = err.response?.data?.message || err.response?.data?.error || 'Erro ao atualizar';
-    res.status(400).json({ error: msg });
+    const mlErr = err.response?.data;
+    console.error('Erro ao atualizar estoque:', mlErr || err.message);
+    const msg = mlErr?.message || mlErr?.error || mlErr?.cause?.[0]?.message || 'Erro ao atualizar no Mercado Livre';
+    res.status(400).json({ error: msg, detalhe: JSON.stringify(mlErr) });
   }
 });
 

@@ -183,22 +183,35 @@ async function atualizarEstoque(mlb, btn) {
     if (result.error) {
       btn.textContent = '✗';
       btn.classList.add('btn-confirmar-erro');
+      btn.title = result.error;
+      setTimeout(() => {
+        btn.textContent = '✓';
+        btn.classList.remove('btn-confirmar-erro');
+        btn.title    = '';
+        btn.disabled = false;
+      }, 3000);
     } else {
       btn.textContent = '✓';
       btn.classList.add('btn-confirmar-ok');
       const item = todosItens.find(i => i.mlb === mlb);
       if (item) item.estoque = novaQtd;
+      input.defaultValue = novaQtd;
+      setTimeout(() => {
+        btn.classList.remove('btn-confirmar-ok');
+        btn.disabled = false;
+      }, 2000);
     }
-  } catch {
+  } catch (e) {
     btn.textContent = '✗';
     btn.classList.add('btn-confirmar-erro');
+    btn.title = e.message;
+    setTimeout(() => {
+      btn.textContent = '✓';
+      btn.classList.remove('btn-confirmar-erro');
+      btn.title    = '';
+      btn.disabled = false;
+    }, 3000);
   }
-
-  setTimeout(() => {
-    btn.textContent = '✓';
-    btn.classList.remove('btn-confirmar-ok', 'btn-confirmar-erro');
-    btn.disabled = false;
-  }, 2000);
 }
 
 function renderizarTabela() {
