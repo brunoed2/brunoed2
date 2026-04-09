@@ -693,6 +693,51 @@ app.get('/api/ml/ads-roas', async (req, res) => {
   }
 });
 
+// DEBUG — explora API de Ads
+app.get('/api/ml/debug-ads', async (req, res) => {
+  const data = loadData();
+  const num  = data.conta_ativa;
+  const c    = data.contas[num];
+  if (!c || !c.access_token) return res.json({ error: 'Não conectado' });
+
+  const headers = { Authorization: `Bearer ${c.access_token}` };
+  const result  = {};
+
+  const tryGet = async (label, url, params = {}) => {
+    try {
+      const r = await axios.get(url, { headers, params, timeout: 10000 });
+      result[label] = { status: r.status, data: r.data };
+    } catch (e) {
+      result[label] = { status: e.response?.status, error: e.response?.data || e.message };
+    }
+  };
+
+  await tryGet('advertisers_by_user',      'https://api.mercadolibre.com/advertising/advertisers', { user_id: c.user_id });
+  await tryGet('advertisers_direct',       `https://api.mercadolibre.com/advertising/advertisers/${c.user_id}`);
+  await tryGet('product_ads_root',         'https://api.mercadolibre.com/advertising/product_ads');
+  await tryGet('product_ads_by_user',      'https://api.mercadolibre.com/advertising/product_ads', { user_id: c.user_id, limit: 5 });
+  await tryGet('campaigns_by_user',        'https://api.mercadolibre.com/advertising/campaigns',   { user_id: c.user_id, limit: 5 });
+
+  // Se achou advertiser_id, tenta endpoints com ele
+  const advData = result['advertisers_by_user']?.data;
+  const advId   = advData?.results?.[0]?.id || advData?.[0]?.id || advData?.id;
+  if (advId) {
+    result['_advertiser_id_encontrado'] = advId;
+    await tryGet('campaigns_via_adv',     `https://api.mercadolibre.com/advertising/advertisers/${advId}/campaigns`, { limit: 5 });
+    await tryGet('product_ads_via_adv',   `https://api.mercadolibre.com/advertising/advertisers/${advId}/product_ads`, { limit: 5 });
+
+    const campData = result['campaigns_via_adv']?.data;
+    const campId   = campData?.results?.[0]?.id || campData?.[0]?.id;
+    if (campId) {
+      result['_campaign_id_encontrado'] = campId;
+      await tryGet('ads_via_campaign',   `https://api.mercadolibre.com/advertising/advertisers/${advId}/campaigns/${campId}/product_ads`, { limit: 3 });
+      await tryGet('ads_metrics',        `https://api.mercadolibre.com/advertising/advertisers/${advId}/campaigns/${campId}/product_ads`, { limit: 3, date_range_begin: '2026-03-01', date_range_end: '2026-04-09' });
+    }
+  }
+
+  res.json(result);
+});
+
 // DEBUG — testa POST e variações para gerar etiqueta
 app.get('/api/ml/debug-label/:shipment_id', async (req, res) => {
   const data   = loadData();
