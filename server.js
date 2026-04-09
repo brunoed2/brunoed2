@@ -347,6 +347,57 @@ app.get('/api/ml/estoque', async (req, res) => {
   }
 });
 
+// GET /api/ml/vendas30dias — unidades vendidas por item nos últimos 30 dias
+// Retorna objeto { "MLB123": 10, "MLB456": 3, ... }
+app.get('/api/ml/vendas30dias', async (req, res) => {
+  let data = loadData();
+  if (!data.access_token) return res.json({ error: 'Não conectado' });
+  if (!data.user_id)      return res.json({ error: 'user_id não encontrado' });
+
+  // Data de 30 dias atrás em ISO 8601
+  const from = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+  const vendasPorItem = {};
+  let offset = 0;
+  const limit = 50;
+
+  try {
+    // Pagina todas as ordens pagas dos últimos 30 dias
+    while (true) {
+      const resp = await axios.get('https://api.mercadolibre.com/orders/search', {
+        params: {
+          seller:                    data.user_id,
+          'order.status':            'paid',
+          'order.date_created.from': from,
+          sort:                      'date_desc',
+          offset,
+          limit,
+        },
+        headers: { Authorization: `Bearer ${data.access_token}` },
+      });
+
+      const orders = resp.data.results || [];
+
+      for (const order of orders) {
+        for (const oi of (order.order_items || [])) {
+          const id  = oi.item.id;
+          const qty = oi.quantity || 1;
+          vendasPorItem[id] = (vendasPorItem[id] || 0) + qty;
+        }
+      }
+
+      if (orders.length < limit) break;
+      offset += limit;
+      if (offset >= 5000) break; // segurança para catálogos muito grandes
+    }
+
+    res.json(vendasPorItem);
+  } catch (err) {
+    console.error('Erro ao buscar vendas:', err.response?.data || err.message);
+    res.json({ error: 'Erro ao buscar vendas.' });
+  }
+});
+
 // ── Inicia o servidor ─────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`Servidor rodando em http://localhost:${PORT}`);

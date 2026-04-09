@@ -209,6 +209,7 @@ function renderizarTabela() {
   itens.forEach(item => {
     const bDeposito = BADGE_DEPOSITO[item.deposito] || 'badge-outro';
     const bStatus   = BADGE_STATUS[item.status]     || 'badge-outro';
+    const duracao   = calcularDuracao(item.estoque, item.vendas30d);
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td class="td-sku">${item.sku}</td>
@@ -217,6 +218,8 @@ function renderizarTabela() {
       <td><span class="badge-deposito ${bDeposito}">${item.depositoLabel}</span></td>
       <td><span class="badge-deposito ${bStatus}">${STATUS_LABEL[item.status] || item.status}</span></td>
       <td class="col-num ${item.estoque === 0 ? 'estoque-zero' : ''}">${item.estoque}</td>
+      <td class="col-num">${item.vendas30d || '—'}</td>
+      <td class="col-num ${duracao.classe}">${duracao.texto}</td>
     `;
     tbody.appendChild(tr);
   });
@@ -226,6 +229,17 @@ function renderizarTabela() {
   document.getElementById('estoque-total').textContent =
     `${itens.length} de ${todosItens.length} anúncios` +
     (filtroAtivo ? ' (filtro ativo)' : '');
+}
+
+// Calcula classe de cor e texto da duração do estoque
+function calcularDuracao(estoque, vendas30d) {
+  if (estoque === 0)   return { texto: 'Zerado',  classe: 'duracao-zerado' };
+  if (!vendas30d)      return { texto: '∞',        classe: 'duracao-infinito' };
+  const dias = Math.round(estoque / (vendas30d / 30));
+  let classe = 'duracao-ok';
+  if (dias <= 15)      classe = 'duracao-critico';
+  else if (dias <= 30) classe = 'duracao-alerta';
+  return { texto: `${dias}d`, classe };
 }
 
 async function carregarEstoque(reiniciar = false) {
@@ -243,16 +257,27 @@ async function carregarEstoque(reiniciar = false) {
   erroEl.style.display  = 'none';
 
   try {
-    const data = await apiFetch('/api/ml/estoque');
+    // Busca estoque e vendas em paralelo
+    const [estoqueData, vendasData] = await Promise.all([
+      apiFetch('/api/ml/estoque'),
+      apiFetch('/api/ml/vendas30dias'),
+    ]);
+
     loading.style.display = 'none';
 
-    if (data.error) {
-      erroEl.textContent   = data.error;
+    if (estoqueData.error) {
+      erroEl.textContent   = estoqueData.error;
       erroEl.style.display = 'block';
       return;
     }
 
-    todosItens = data.items;
+    // Mescla vendas nos itens
+    const vendas = vendasData.error ? {} : vendasData;
+    todosItens = estoqueData.items.map(item => ({
+      ...item,
+      vendas30d: vendas[item.mlb] || 0,
+    }));
+
     renderizarTabela();
   } catch {
     loading.style.display = 'none';

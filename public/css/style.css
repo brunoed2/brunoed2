@@ -498,7 +498,13 @@ code {
 .td-mlb  { font-family: monospace; font-size: 13px; color: #2563eb; }
 .td-titulo { max-width: 340px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-.estoque-zero { color: #dc2626; }
+.estoque-zero      { color: #dc2626; }
+
+.duracao-ok        { color: #15803d; font-weight: 600; }
+.duracao-alerta    { color: #b45309; font-weight: 600; }
+.duracao-critico   { color: #dc2626; font-weight: 600; }
+.duracao-zerado    { color: #dc2626; font-weight: 600; }
+.duracao-infinito  { color: #aaa; }
 
 .paginacao {
   padding: 16px 20px;
