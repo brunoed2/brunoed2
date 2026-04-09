@@ -94,6 +94,7 @@ function initFromEnvVars() {
     changed = true;
   }
 
+  // Formato novo: ML_CLIENT_ID_1, ML_CLIENT_ID_2, etc.
   for (const num of ['1', '2']) {
     const c = data.contas[num] || {};
     const map = {
@@ -110,6 +111,22 @@ function initFromEnvVars() {
       }
     }
     data.contas[num] = c;
+  }
+
+  // Formato antigo (pré-multi-conta): ML_CLIENT_ID, ML_ACCESS_TOKEN, etc. → conta 1
+  const oldMap = {
+    client_id:     'ML_CLIENT_ID',
+    client_secret: 'ML_CLIENT_SECRET',
+    access_token:  'ML_ACCESS_TOKEN',
+    refresh_token: 'ML_REFRESH_TOKEN',
+    user_id:       'ML_USER_ID',
+  };
+  const c1 = data.contas['1'];
+  for (const [key, envKey] of Object.entries(oldMap)) {
+    if (!c1[key] && process.env[envKey]) {
+      c1[key] = process.env[envKey];
+      changed = true;
+    }
   }
 
   if (changed) fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
@@ -182,6 +199,11 @@ app.get('/api/ml/callback', async (req, res) => {
   const num      = state || data.conta_ativa;
   const c        = data.contas[num] || {};
   const callback = `${req.protocol}://${req.get('host')}/api/ml/callback`;
+
+  if (!c.client_secret) {
+    return res.redirect('/app.html?tab=config&error=auth_falhou&detalhe=' +
+      encodeURIComponent('Client Secret não encontrado. Salve as credenciais antes de conectar.'));
+  }
 
   try {
     const resp = await axios.post(
