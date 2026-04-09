@@ -214,7 +214,8 @@ app.get('/api/ml/auth', (req, res) => {
     + `?response_type=code`
     + `&client_id=${c.client_id}`
     + `&redirect_uri=${encodeURIComponent(callback)}`
-    + `&state=${num}`;
+    + `&state=${num}`
+    + `&scope=offline_access+read_orders+write_orders+read_shipping+write_shipping`;
   res.redirect(url);
 });
 
