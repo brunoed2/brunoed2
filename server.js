@@ -460,10 +460,8 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
       offset += limit;
     }
 
-    // Filtra ordens que têm shipment e não são Full (Full não precisa de etiqueta)
-    const comShipment = todasOrdens.filter(o =>
-      o.shipping && o.shipping.id && o.shipping.logistic_type !== 'fulfillment'
-    );
+    // Filtra ordens que têm shipment
+    const comShipment = todasOrdens.filter(o => o.shipping && o.shipping.id);
 
     // Busca detalhes dos shipments em paralelo (lotes de 10)
     const resultado = [];
@@ -497,7 +495,7 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
     };
 
     const vendas = resultado
-      .filter(({ shipment }) => shipment && LABEL_STATUSES.has(shipment.status))
+      .filter(({ shipment }) => shipment && LABEL_STATUSES.has(shipment.status) && shipment.logistic_type !== 'fulfillment')
       .map(({ order, shipment }) => ({
         orderId:    order.id,
         data:       order.date_created,
