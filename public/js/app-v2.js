@@ -162,6 +162,51 @@ async function carregarLoja() {
 
 let todosItens = [];
 let filtros    = { deposito: 'todos', status: 'todos' };
+let sortState  = { campo: null, direcao: 'asc' };
+
+// Retorna dias numérico para ordenação (Infinity = sem vendas, -1 = zerado)
+function diasEstoqueNum(estoque, vendas30d) {
+  if (estoque === 0 || estoque === '—') return -1;
+  if (!vendas30d) return Infinity;
+  return Math.round(estoque / (vendas30d / 30));
+}
+
+function sortarItens(itens) {
+  if (!sortState.campo) return itens;
+  return [...itens].sort((a, b) => {
+    let va, vb;
+    if (sortState.campo === 'diasEstoque') {
+      va = diasEstoqueNum(a.estoque, a.vendas30d);
+      vb = diasEstoqueNum(b.estoque, b.vendas30d);
+    } else {
+      va = a[sortState.campo];
+      vb = b[sortState.campo];
+    }
+    // Nulos/undefined vão sempre para o final
+    if (va == null || va === '—') return 1;
+    if (vb == null || vb === '—') return -1;
+    // Numérico
+    if (typeof va === 'number' && typeof vb === 'number') {
+      return sortState.direcao === 'asc' ? va - vb : vb - va;
+    }
+    // Texto
+    const cmp = String(va).localeCompare(String(vb), 'pt-BR', { numeric: true });
+    return sortState.direcao === 'asc' ? cmp : -cmp;
+  });
+}
+
+function atualizarIconesSort() {
+  document.querySelectorAll('.th-sort').forEach(th => {
+    const icon = th.querySelector('.sort-icon');
+    if (th.dataset.sort === sortState.campo) {
+      icon.textContent = sortState.direcao === 'asc' ? ' ▲' : ' ▼';
+      th.classList.add('th-ativo');
+    } else {
+      icon.textContent = '';
+      th.classList.remove('th-ativo');
+    }
+  });
+}
 
 const BADGE_DEPOSITO = {
   fulfillment:   'badge-full',
@@ -181,6 +226,19 @@ const STATUS_LABEL = {
   closed: 'Encerrado',
 };
 
+// Configura clique nos cabeçalhos para ordenar
+document.querySelectorAll('.th-sort').forEach(th => {
+  th.addEventListener('click', () => {
+    if (sortState.campo === th.dataset.sort) {
+      sortState.direcao = sortState.direcao === 'asc' ? 'desc' : 'asc';
+    } else {
+      sortState.campo   = th.dataset.sort;
+      sortState.direcao = 'asc';
+    }
+    renderizarTabela();
+  });
+});
+
 // Configura botões de filtro
 document.querySelectorAll('.filtro-btn').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -196,12 +254,16 @@ document.querySelectorAll('.filtro-btn').forEach(btn => {
 
 function renderizarTabela() {
   let itens = todosItens;
+  // Filtros
   if (filtros.deposito === 'proprio') {
     itens = itens.filter(i => i.deposito === 'self_service' || i.deposito === 'xd_drop_off');
   } else if (filtros.deposito !== 'todos') {
     itens = itens.filter(i => i.deposito === filtros.deposito);
   }
   if (filtros.status !== 'todos') itens = itens.filter(i => i.status === filtros.status);
+  // Ordenação
+  itens = sortarItens(itens);
+  atualizarIconesSort();
 
   const tbody = document.getElementById('tabela-estoque-body');
   tbody.innerHTML = '';

@@ -479,7 +479,18 @@ code {
   text-transform: uppercase;
   letter-spacing: .5px;
   border-bottom: 1px solid #eee;
+  white-space: nowrap;
 }
+
+.th-sort {
+  cursor: pointer;
+  user-select: none;
+}
+
+.th-sort:hover { color: #444; }
+.th-ativo { color: #111; }
+
+.sort-icon { font-size: 10px; }
 
 .tabela td {
   padding: 13px 16px;
