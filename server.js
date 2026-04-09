@@ -604,11 +604,15 @@ app.get('/api/ml/debug-label/:shipment_id', async (req, res) => {
   const tok  = c.access_token;
   const base = `https://api.mercadolibre.com/shipments/${sid}/labels`;
 
+  // Busca o seller_id da conta
+  let sellerId = c.user_id;
+
   const tentativas = [
-    { url: `${base}?response_type=pdf&access_token=${tok}` },
-    { url: `${base}?response_type=zpl2&access_token=${tok}` },
-    { url: `${base}?response_type=pdf2&access_token=${tok}` },
-    { url: `${base}?access_token=${tok}` },
+    { url: `${base}?response_type=pdf&caller.id=${sellerId}&access_token=${tok}` },
+    { url: `${base}?response_type=zpl2&caller.id=${sellerId}&access_token=${tok}` },
+    { url: `${base}?caller.id=${sellerId}&access_token=${tok}` },
+    { url: `https://api.mercadolibre.com/shipment-labels/${sid}?access_token=${tok}` },
+    { url: `https://api.mercadolibre.com/packs/${sid}/print?caller.id=${sellerId}&access_token=${tok}` },
   ];
 
   const resultados = [];
