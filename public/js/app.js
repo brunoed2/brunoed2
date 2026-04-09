@@ -196,8 +196,12 @@ document.querySelectorAll('.filtro-btn').forEach(btn => {
 
 function renderizarTabela() {
   let itens = todosItens;
-  if (filtros.deposito !== 'todos') itens = itens.filter(i => i.deposito === filtros.deposito);
-  if (filtros.status   !== 'todos') itens = itens.filter(i => i.status   === filtros.status);
+  if (filtros.deposito === 'proprio') {
+    itens = itens.filter(i => i.deposito === 'self_service' || i.deposito === 'xd_drop_off');
+  } else if (filtros.deposito !== 'todos') {
+    itens = itens.filter(i => i.deposito === filtros.deposito);
+  }
+  if (filtros.status !== 'todos') itens = itens.filter(i => i.status === filtros.status);
 
   const tbody = document.getElementById('tabela-estoque-body');
   tbody.innerHTML = '';

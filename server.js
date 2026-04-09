@@ -285,7 +285,7 @@ app.get('/api/ml/estoque', async (req, res) => {
     fulfillment:   'Full',
     self_service:  'Próprio',
     cross_docking: 'Flex',
-    xd_drop_off:   'Drop-off',
+    xd_drop_off:   'Próprio',   // drop-off usa estoque do vendedor
   };
 
   try {
