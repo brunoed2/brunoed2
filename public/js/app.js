@@ -160,12 +160,59 @@ async function carregarLoja() {
 
 // ── Estoque ───────────────────────────────────────────────────
 
-let estoqueOffset = 0;
-let estoqueTotal  = 0;
+let estoqueOffset  = 0;
+let estoqueTotal   = 0;
+let todosItens     = [];   // cache de todos os itens carregados
+let filtroDeposito = 'todos';
+
+// Mapeamento de tipo → classe CSS do badge
+const BADGE_CLASS = {
+  fulfillment:   'badge-full',
+  self_service:  'badge-proprio',
+  cross_docking: 'badge-flex',
+};
+
+// Configura os botões de filtro
+document.querySelectorAll('.filtro-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.filtro-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    filtroDeposito = btn.dataset.deposito;
+    renderizarTabela();
+  });
+});
+
+function renderizarTabela() {
+  const itens = filtroDeposito === 'todos'
+    ? todosItens
+    : todosItens.filter(i => i.deposito === filtroDeposito);
+
+  const tbody = document.getElementById('tabela-estoque-body');
+  tbody.innerHTML = '';
+
+  itens.forEach(item => {
+    const badgeClass = BADGE_CLASS[item.deposito] || 'badge-outro';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="td-sku">${item.sku}</td>
+      <td class="td-titulo" title="${item.titulo}">${item.titulo}</td>
+      <td class="td-mlb">${item.mlb}</td>
+      <td><span class="badge-deposito ${badgeClass}">${item.depositoLabel}</span></td>
+      <td class="col-num ${item.estoque === 0 ? 'estoque-zero' : ''}">${item.estoque}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  document.getElementById('tabela-estoque').style.display = itens.length ? 'table' : 'none';
+  document.getElementById('estoque-total').textContent =
+    `${itens.length} de ${estoqueTotal} anúncios` +
+    (filtroDeposito !== 'todos' ? ` (filtro ativo)` : '');
+}
 
 async function carregarEstoque(reiniciar = false) {
   if (reiniciar) {
     estoqueOffset = 0;
+    todosItens    = [];
     document.getElementById('tabela-estoque-body').innerHTML = '';
     document.getElementById('tabela-estoque').style.display = 'none';
     document.getElementById('estoque-paginacao').style.display = 'none';
@@ -190,25 +237,11 @@ async function carregarEstoque(reiniciar = false) {
       return;
     }
 
-    estoqueTotal = data.total;
+    estoqueTotal   = data.total;
     estoqueOffset += data.items.length;
+    todosItens.push(...data.items);
 
-    // Preenche a tabela
-    const tbody = document.getElementById('tabela-estoque-body');
-    data.items.forEach(item => {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td class="td-sku">${item.sku}</td>
-        <td class="td-titulo" title="${item.titulo}">${item.titulo}</td>
-        <td class="td-mlb">${item.mlb}</td>
-        <td class="col-num ${item.estoque === 0 ? 'estoque-zero' : ''}">${item.estoque}</td>
-      `;
-      tbody.appendChild(tr);
-    });
-
-    document.getElementById('tabela-estoque').style.display = 'table';
-    document.getElementById('estoque-total').textContent =
-      `${estoqueOffset} de ${estoqueTotal} anúncios`;
+    renderizarTabela();
 
     // Mostra botão "carregar mais" se ainda há itens
     const paginacao = document.getElementById('estoque-paginacao');

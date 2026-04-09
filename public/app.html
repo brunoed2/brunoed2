@@ -119,6 +119,14 @@
 
         <div id="estoque-erro" class="estoque-erro" style="display:none"></div>
 
+        <div class="filtros-bar">
+          <label class="filtro-label">Depósito:</label>
+          <button class="filtro-btn active" data-deposito="todos">Todos</button>
+          <button class="filtro-btn" data-deposito="fulfillment">Full</button>
+          <button class="filtro-btn" data-deposito="self_service">Próprio</button>
+          <button class="filtro-btn" data-deposito="cross_docking">Flex</button>
+        </div>
+
         <div class="tabela-container">
           <div class="tabela-topo">
             <span id="estoque-total"></span>
@@ -133,6 +141,7 @@
                 <th>SKU</th>
                 <th>Título</th>
                 <th>MLB</th>
+                <th>Depósito</th>
                 <th class="col-num">Estoque</th>
               </tr>
             </thead>

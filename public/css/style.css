@@ -379,6 +379,54 @@ code {
 
 /* ── Aba Estoque ────────────────────────────────────────────── */
 
+.filtros-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.filtro-label {
+  font-size: 13px;
+  color: #666;
+  font-weight: 500;
+}
+
+.filtro-btn {
+  padding: 6px 16px;
+  border: 1.5px solid #ddd;
+  border-radius: 20px;
+  background: #fff;
+  font-size: 13px;
+  cursor: pointer;
+  font-family: inherit;
+  color: #555;
+  transition: all .15s;
+}
+
+.filtro-btn:hover { border-color: #999; color: #111; }
+
+.filtro-btn.active {
+  background: #111;
+  border-color: #111;
+  color: #fff;
+  font-weight: 500;
+}
+
+.badge-deposito {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.badge-full       { background: #dbeafe; color: #1d4ed8; }
+.badge-proprio    { background: #dcfce7; color: #15803d; }
+.badge-flex       { background: #fef9c3; color: #854d0e; }
+.badge-outro      { background: #f3f4f6; color: #555; }
+
 .estoque-erro {
   color: #dc2626;
   font-size: 14px;

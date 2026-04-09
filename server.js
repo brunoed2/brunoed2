@@ -291,21 +291,48 @@ app.get('/api/ml/estoque', async (req, res) => {
       const resp = await axios.get('https://api.mercadolibre.com/items', {
         params: {
           ids:        chunk.join(','),
-          attributes: 'id,title,seller_custom_field,available_quantity',
+          // inclui variations e shipping para extrair SKU e tipo de depósito
+          attributes: 'id,title,seller_custom_field,available_quantity,variations,shipping',
         },
         headers: { Authorization: `Bearer ${data.access_token}` },
       });
       detalhes.push(...resp.data);
     }
 
+    // Extrai SKU tentando seller_custom_field, depois variações
+    function extrairSku(body) {
+      if (body.seller_custom_field) return body.seller_custom_field;
+      if (body.variations && body.variations.length > 0) {
+        for (const v of body.variations) {
+          if (v.seller_custom_field) return v.seller_custom_field;
+          const attr = (v.attributes || []).find(a => a.id === 'SELLER_SKU');
+          if (attr && attr.value_name) return attr.value_name;
+        }
+      }
+      return '—';
+    }
+
+    // Mapeia tipo logístico para rótulo legível
+    const DEPOSITO_LABEL = {
+      fulfillment:    'Full',
+      self_service:   'Próprio',
+      cross_docking:  'Flex',
+      xd_drop_off:    'Drop-off',
+    };
+
     const items = detalhes
       .filter(r => r.code === 200)
-      .map(r => ({
-        mlb:     r.body.id,
-        titulo:  r.body.title,
-        sku:     r.body.seller_custom_field || '—',
-        estoque: r.body.available_quantity ?? '—',
-      }));
+      .map(r => {
+        const logisticType = r.body.shipping?.logistic_type || 'self_service';
+        return {
+          mlb:      r.body.id,
+          titulo:   r.body.title,
+          sku:      extrairSku(r.body),
+          estoque:  r.body.available_quantity ?? 0,
+          deposito: logisticType,
+          depositoLabel: DEPOSITO_LABEL[logisticType] || logisticType,
+        };
+      });
 
     res.json({ items, total });
   } catch (err) {
