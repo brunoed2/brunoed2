@@ -687,6 +687,37 @@ app.get('/api/ml/etiqueta/:shipment_id', (req, res) => {
   res.redirect(url);
 });
 
+app.put('/api/ml/estoque/:mlb', async (req, res) => {
+  const data = loadData();
+  const num  = data.conta_ativa;
+  const c    = data.contas[num];
+  if (!c || !c.access_token) return res.status(401).json({ error: 'Não conectado' });
+
+  const { quantidade } = req.body;
+  if (typeof quantidade !== 'number' || !Number.isInteger(quantidade) || quantidade < 0) {
+    return res.status(400).json({ error: 'Quantidade inválida' });
+  }
+
+  try {
+    await axios.put(
+      `https://api.mercadolibre.com/items/${req.params.mlb}`,
+      { available_quantity: quantidade },
+      {
+        headers: {
+          Authorization: `Bearer ${c.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        timeout: 10000,
+      }
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Erro ao atualizar estoque:', err.response?.data || err.message);
+    const msg = err.response?.data?.message || err.response?.data?.error || 'Erro ao atualizar';
+    res.status(400).json({ error: msg });
+  }
+});
+
 // ── Inicia o servidor ─────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`Servidor rodando em http://localhost:${PORT}`);

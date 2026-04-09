@@ -286,6 +286,44 @@ document.querySelectorAll('.filtro-btn').forEach(btn => {
   });
 });
 
+function isProprio(deposito) {
+  return deposito === 'self_service' || deposito === 'xd_drop_off';
+}
+
+async function atualizarEstoque(mlb, btn) {
+  const input  = btn.previousElementSibling;
+  const novaQtd = parseInt(input.value, 10);
+  if (isNaN(novaQtd) || novaQtd < 0) return;
+
+  btn.disabled    = true;
+  btn.textContent = '...';
+
+  try {
+    const result = await apiFetch(`/api/ml/estoque/${mlb}`, {
+      method: 'PUT',
+      body:   JSON.stringify({ quantidade: novaQtd }),
+    });
+    if (result.error) {
+      btn.textContent = '✗';
+      btn.classList.add('btn-confirmar-erro');
+    } else {
+      btn.textContent = '✓';
+      btn.classList.add('btn-confirmar-ok');
+      const item = todosItens.find(i => i.mlb === mlb);
+      if (item) item.estoque = novaQtd;
+    }
+  } catch {
+    btn.textContent = '✗';
+    btn.classList.add('btn-confirmar-erro');
+  }
+
+  setTimeout(() => {
+    btn.textContent = '✓';
+    btn.classList.remove('btn-confirmar-ok', 'btn-confirmar-erro');
+    btn.disabled = false;
+  }, 2000);
+}
+
 function renderizarTabela() {
   let itens = todosItens;
   if (filtros.deposito === 'proprio') {
@@ -312,7 +350,10 @@ function renderizarTabela() {
       <td class="td-mlb">${item.mlb}</td>
       <td><span class="badge-deposito ${bDeposito}">${item.depositoLabel}</span></td>
       <td><span class="badge-deposito ${bStatus}">${STATUS_LABEL[item.status] || item.status}</span></td>
-      <td class="col-num ${item.estoque === 0 ? 'estoque-zero' : ''}">${item.estoque}</td>
+      ${isProprio(item.deposito)
+        ? `<td class="col-num"><div class="estoque-edit-wrap"><input type="number" class="estoque-input" value="${item.estoque}" min="0"><button class="btn-confirmar-estoque" onclick="atualizarEstoque('${item.mlb}', this)">✓</button></div></td>`
+        : `<td class="col-num ${item.estoque === 0 ? 'estoque-zero' : ''}">${item.estoque}</td>`
+      }
       <td class="col-num">${item.vendas30d === null ? '...' : (item.vendas30d || '—')}</td>
       <td class="col-num ${duracao.classe}">${item.vendas30d === null ? '...' : duracao.texto}</td>
       <td class="col-num ${diasPausado !== null ? 'pausado-dias' : ''}">${diasPausado !== null ? diasPausado + 'd' : ''}</td>

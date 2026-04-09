@@ -562,6 +562,54 @@ code {
   border-top: 1px solid #f0f0f0;
 }
 
+/* ── Edição inline de estoque ────────────────────────────────── */
+
+.estoque-edit-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.estoque-input {
+  width: 64px;
+  padding: 4px 6px;
+  border: 1.5px solid #ddd;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: right;
+  font-family: inherit;
+  outline: none;
+  transition: border-color .15s;
+  -moz-appearance: textfield;
+}
+
+.estoque-input::-webkit-outer-spin-button,
+.estoque-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+}
+
+.estoque-input:focus { border-color: #111; }
+
+.btn-confirmar-estoque {
+  padding: 4px 8px;
+  background: #111;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background .15s, color .15s;
+  min-width: 28px;
+}
+
+.btn-confirmar-estoque:hover    { background: #333; }
+.btn-confirmar-estoque:disabled { opacity: .6; cursor: default; }
+.btn-confirmar-ok               { background: #16a34a !important; }
+.btn-confirmar-erro             { background: #dc2626 !important; }
+
 /* ── Botão de etiqueta ──────────────────────────────────────── */
 
 .btn-etiqueta {
