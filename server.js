@@ -318,7 +318,7 @@ app.get('/api/ml/estoque', async (req, res) => {
       const resp  = await axios.get('https://api.mercadolibre.com/items', {
         params: {
           ids:        chunk.join(','),
-          attributes: 'id,title,seller_custom_field,available_quantity,variations,shipping,attributes,status',
+          attributes: 'id,title,seller_custom_field,available_quantity,variations,shipping,attributes,status,last_updated',
         },
         headers: { Authorization: `Bearer ${data.access_token}` },
       });
@@ -335,6 +335,7 @@ app.get('/api/ml/estoque', async (req, res) => {
           sku:           extrairSku(r.body),
           estoque:       r.body.available_quantity ?? 0,
           status:        r.body.status,
+          lastUpdated:   r.body.last_updated || null,
           deposito:      logisticType,
           depositoLabel: DEPOSITO_LABEL[logisticType] || logisticType,
         };

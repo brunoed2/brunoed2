@@ -512,6 +512,8 @@ code {
 
 .estoque-zero      { color: #dc2626; }
 
+.pausado-dias      { color: #b45309; font-weight: 600; }
+
 .duracao-ok        { color: #15803d; font-weight: 600; }
 .duracao-alerta    { color: #b45309; font-weight: 600; }
 .duracao-critico   { color: #dc2626; font-weight: 600; }
