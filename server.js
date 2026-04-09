@@ -595,13 +595,65 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
 });
 
 
+// DEBUG — testa POST e variações para gerar etiqueta
+app.get('/api/ml/debug-label/:shipment_id', async (req, res) => {
+  const data   = loadData();
+  const num    = req.query.conta || data.conta_ativa;
+  const c      = data.contas[num] || {};
+  const sid    = req.params.shipment_id;
+  const tok    = c.access_token;
+  const auth   = { Authorization: `Bearer ${tok}` };
+  const result = {};
+
+  // Tenta POST em /shipments/{id}/labels
+  for (const body of [
+    { shipment_ids: [parseInt(sid)], response_type: 'pdf' },
+    { response_type: 'pdf' },
+    {},
+  ]) {
+    try {
+      const r = await axios.post(
+        `https://api.mercadolibre.com/shipments/${sid}/labels`,
+        body, { headers: { ...auth, 'Content-Type': 'application/json' }, timeout: 8000 }
+      );
+      result[`POST_${JSON.stringify(body)}`] = { status: r.status, data: typeof r.data === 'string' ? r.data.slice(0, 300) : r.data };
+    } catch (e) {
+      result[`POST_${JSON.stringify(body)}`] = { status: e.response?.status, error: JSON.stringify(e.response?.data || e.message).slice(0, 200) };
+    }
+  }
+
+  // Tenta POST em /shipments/labels (batch)
+  try {
+    const r = await axios.post(
+      `https://api.mercadolibre.com/shipments/labels`,
+      { shipment_ids: [parseInt(sid)], response_type: 'pdf' },
+      { headers: { ...auth, 'Content-Type': 'application/json' }, timeout: 8000 }
+    );
+    result['POST_batch'] = { status: r.status, data: typeof r.data === 'string' ? r.data.slice(0, 300) : r.data };
+  } catch (e) {
+    result['POST_batch'] = { status: e.response?.status, error: JSON.stringify(e.response?.data || e.message).slice(0, 200) };
+  }
+
+  // Tenta GET com Accept: application/pdf
+  try {
+    const r = await axios.get(
+      `https://api.mercadolibre.com/shipments/${sid}/labels`,
+      { headers: { ...auth, Accept: 'application/pdf' }, responseType: 'arraybuffer', timeout: 8000 }
+    );
+    result['GET_accept_pdf'] = { status: r.status, bytes: r.data.byteLength, contentType: r.headers['content-type'] };
+  } catch (e) {
+    result['GET_accept_pdf'] = { status: e.response?.status, error: e.response?.data ? Buffer.from(e.response.data).toString('utf8').slice(0, 200) : e.message };
+  }
+
+  res.json(result);
+});
+
 app.get('/api/ml/etiqueta/:shipment_id', (req, res) => {
   const data  = loadData();
   const num   = req.query.conta || data.conta_ativa;
   const c     = data.contas[num] || {};
   if (!c.access_token) return res.status(401).json({ error: 'Não conectado' });
 
-  // Redireciona direto para a URL da ML com o token — forma mais confiável para labels
   const url = `https://api.mercadolibre.com/shipments/${req.params.shipment_id}/labels`
     + `?response_type=pdf&access_token=${encodeURIComponent(c.access_token)}`;
   res.redirect(url);
