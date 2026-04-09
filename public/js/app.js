@@ -24,7 +24,7 @@ navBtns.forEach(btn => {
 // Suporte a ?tab=xxx na URL (usado após redirect do OAuth)
 (function () {
   const params = new URLSearchParams(location.search);
-  const tab    = params.get('tab') || 'config';
+  const tab    = params.get('tab') || 'loja';
   abrirAba(tab);
 
   // Exibe mensagem de retorno do OAuth
