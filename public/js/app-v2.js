@@ -16,6 +16,7 @@ function abrirAba(nome) {
   tabs.forEach(t => t.classList.toggle('active', t.id === `tab-${nome}`));
   if (nome === 'loja')    carregarLoja();
   if (nome === 'estoque') carregarEstoque(true);
+  if (nome === 'ads')     carregarAds();
   if (nome === 'config')  carregarConfig(contaConfigurando);
 }
 
@@ -546,6 +547,113 @@ async function carregarEstoque(reiniciar = false) {
     console.error('Vendas:', err.message);
     todosItens = todosItens.map(item => ({ ...item, vendas30d: 0 }));
     renderizarTabela();
+  }
+}
+
+// ── Ads ───────────────────────────────────────────────────────
+
+let todosAdsItens  = [];
+let sortAds        = { campo: null, direcao: 'asc' };
+
+document.querySelectorAll('.th-sort-ads').forEach(th => {
+  th.addEventListener('click', () => {
+    if (sortAds.campo === th.dataset.sortAds) {
+      sortAds.direcao = sortAds.direcao === 'asc' ? 'desc' : 'asc';
+    } else {
+      sortAds.campo   = th.dataset.sortAds;
+      sortAds.direcao = 'asc';
+    }
+    renderizarAds();
+  });
+});
+
+function renderizarAds() {
+  let itens = [...todosAdsItens];
+  if (sortAds.campo) {
+    itens.sort((a, b) => {
+      let va = a[sortAds.campo], vb = b[sortAds.campo];
+      if (va == null) return 1;
+      if (vb == null) return -1;
+      if (typeof va === 'number' && typeof vb === 'number') {
+        return sortAds.direcao === 'asc' ? va - vb : vb - va;
+      }
+      const cmp = String(va).localeCompare(String(vb), 'pt-BR', { numeric: true });
+      return sortAds.direcao === 'asc' ? cmp : -cmp;
+    });
+  }
+
+  // Atualiza ícones de sort
+  document.querySelectorAll('.th-sort-ads').forEach(th => {
+    const icon = th.querySelector('.sort-icon');
+    if (th.dataset.sortAds === sortAds.campo) {
+      icon.textContent = sortAds.direcao === 'asc' ? ' ▲' : ' ▼';
+      th.classList.add('th-ativo');
+    } else {
+      icon.textContent = '';
+      th.classList.remove('th-ativo');
+    }
+  });
+
+  const tbody = document.getElementById('tabela-ads-body');
+  tbody.innerHTML = '';
+
+  const fmtBRL  = v => v != null ? `R$ ${v.toFixed(2).replace('.', ',')}` : '—';
+  const fmtRoas = v => v != null ? v.toFixed(2) : '—';
+
+  itens.forEach(item => {
+    const roasClass = item.roasEntregando != null && item.targetRoas != null
+      ? (item.roasEntregando >= item.targetRoas ? 'roas-ok' : 'roas-abaixo')
+      : '';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="td-sku">${item.sku}</td>
+      <td class="td-titulo" title="${item.titulo}">${item.titulo}</td>
+      <td class="td-campanha">${item.campanha}</td>
+      <td class="col-num">${fmtRoas(item.targetRoas)}</td>
+      <td class="col-num ${roasClass}">${fmtRoas(item.roasEntregando)}</td>
+      <td class="col-num">${fmtBRL(item.custoPorUnidade)}</td>
+      <td class="col-num">${fmtBRL(item.spend)}</td>
+      <td class="col-num">${item.units || '—'}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  document.getElementById('tabela-ads').style.display = itens.length ? 'table' : 'none';
+  document.getElementById('ads-total').textContent = `${itens.length} produto${itens.length !== 1 ? 's' : ''} com ads ativos (últimos 30 dias)`;
+}
+
+async function carregarAds() {
+  const loading = document.getElementById('ads-loading');
+  const erroEl  = document.getElementById('ads-erro');
+  const tabela  = document.getElementById('tabela-ads');
+
+  loading.style.display = 'block';
+  erroEl.style.display  = 'none';
+  tabela.style.display  = 'none';
+  document.getElementById('ads-total').textContent   = '';
+  document.getElementById('tabela-ads-body').innerHTML = '';
+
+  try {
+    const data = await apiFetch('/api/ml/ads-roas');
+    loading.style.display = 'none';
+
+    if (data.error) {
+      erroEl.textContent   = data.error + (data.detalhe ? ` — ${data.detalhe}` : '');
+      erroEl.style.display = 'block';
+      return;
+    }
+
+    if (data.aviso) {
+      erroEl.textContent   = data.aviso;
+      erroEl.style.display = 'block';
+    }
+
+    todosAdsItens = data.itens || [];
+    renderizarAds();
+  } catch {
+    loading.style.display = 'none';
+    erroEl.textContent   = 'Erro ao carregar dados de ads.';
+    erroEl.style.display = 'block';
   }
 }
 

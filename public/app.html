@@ -27,6 +27,7 @@
       <nav>
         <button class="nav-btn active" data-tab="loja">🏪 Loja</button>
         <button class="nav-btn" data-tab="estoque">📦 Estoque</button>
+        <button class="nav-btn" data-tab="ads">📊 Ads</button>
         <button class="nav-btn" data-tab="config">⚙️ Configurações</button>
       </nav>
       <div class="sidebar-footer">
@@ -36,6 +37,39 @@
 
     <!-- Conteúdo principal -->
     <main class="content">
+
+      <!-- ── Aba: Ads ── -->
+      <section id="tab-ads" class="tab">
+        <h1>Ads</h1>
+        <p class="subtitle">ROAS objetivo, ROAS entregando e custo por unidade vendida nos últimos 30 dias.</p>
+
+        <div id="ads-erro" class="estoque-erro" style="display:none"></div>
+
+        <div class="tabela-container">
+          <div class="tabela-topo">
+            <span id="ads-total"></span>
+            <button class="btn-secondary" onclick="carregarAds()" id="btn-atualizar-ads">↻ Atualizar</button>
+          </div>
+
+          <div id="ads-loading" class="loading" style="display:none">Carregando dados de ads (pode levar alguns segundos)...</div>
+
+          <table class="tabela" id="tabela-ads" style="display:none">
+            <thead>
+              <tr>
+                <th class="th-sort-ads" data-sort-ads="sku">SKU <span class="sort-icon"></span></th>
+                <th class="th-sort-ads" data-sort-ads="titulo">Título <span class="sort-icon"></span></th>
+                <th class="th-sort-ads" data-sort-ads="campanha">Campanha <span class="sort-icon"></span></th>
+                <th class="th-sort-ads col-num" data-sort-ads="targetRoas">ROAS Objetivo <span class="sort-icon"></span></th>
+                <th class="th-sort-ads col-num" data-sort-ads="roasEntregando">ROAS Entregando <span class="sort-icon"></span></th>
+                <th class="th-sort-ads col-num" data-sort-ads="custoPorUnidade">Custo/Unid. <span class="sort-icon"></span></th>
+                <th class="th-sort-ads col-num" data-sort-ads="spend">Gasto <span class="sort-icon"></span></th>
+                <th class="th-sort-ads col-num" data-sort-ads="units">Unid. Vendidas <span class="sort-icon"></span></th>
+              </tr>
+            </thead>
+            <tbody id="tabela-ads-body"></tbody>
+          </table>
+        </div>
+      </section>
 
       <!-- ── Aba: Configurações ── -->
       <section id="tab-config" class="tab">

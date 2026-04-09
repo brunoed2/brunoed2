@@ -215,7 +215,7 @@ app.get('/api/ml/auth', (req, res) => {
     + `&client_id=${c.client_id}`
     + `&redirect_uri=${encodeURIComponent(callback)}`
     + `&state=${num}`
-    + `&scope=offline_access+read_listings+write_listings+read_orders+write_orders+read_shipping+write_shipping`;
+    + `&scope=offline_access+read_listings+write_listings+read_orders+write_orders+read_shipping+write_shipping+read_product_ads`;
   res.redirect(url);
 });
 
@@ -599,6 +599,109 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
   }
 });
 
+
+app.get('/api/ml/ads-roas', async (req, res) => {
+  const data = loadData();
+  const num  = data.conta_ativa;
+  const c    = data.contas[num];
+  if (!c || !c.access_token) return res.json({ error: 'Não conectado' });
+  if (!c.client_id)          return res.json({ error: 'Client ID não configurado' });
+
+  const headers   = { Authorization: `Bearer ${c.access_token}`, 'Content-Type': 'application/json' };
+  const today     = new Date();
+  const dateBegin = new Date(today - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+  const dateEnd   = today.toISOString().split('T')[0];
+
+  try {
+    // 1. Lista campanhas ativas
+    const campResp = await axios.get('https://api.mercadolibre.com/advertising/product_ads/campaigns', {
+      params:  { app_id: c.client_id, user_id: c.user_id, status: 'active', limit: 100 },
+      headers,
+      timeout: 12000,
+    });
+    const campaigns = campResp.data.results || campResp.data || [];
+    if (!campaigns.length) return res.json({ itens: [], aviso: 'Nenhuma campanha ativa encontrada.' });
+
+    // Mapa campanha id → target_roas
+    const campMap = {};
+    for (const camp of campaigns) {
+      campMap[String(camp.id)] = {
+        nome:       camp.name || camp.id,
+        targetRoas: camp.bidding_strategy?.target_roas ?? null,
+      };
+    }
+
+    // 2. Cria relatório assíncrono por item (últimos 30 dias)
+    const reportResp = await axios.post(
+      'https://api.mercadolibre.com/advertising/product_ads/reports',
+      {
+        type:       'PRODUCTS',
+        date_range: { begin: dateBegin, end: dateEnd },
+        columns:    ['campaign_id', 'campaign_name', 'item_id', 'item_name',
+                     'sku', 'spend', 'revenue', 'sold_quantity', 'clicks', 'impressions'],
+      },
+      { headers, timeout: 12000 }
+    );
+
+    const reportId = reportResp.data.id || reportResp.data.report_id;
+    if (!reportId) return res.json({ error: 'Falha ao criar relatório de ads.', detalhe: JSON.stringify(reportResp.data) });
+
+    // 3. Aguarda relatório ficar pronto (até 60s)
+    let rows = null;
+    for (let i = 0; i < 20; i++) {
+      await new Promise(r => setTimeout(r, 3000));
+      const statusResp = await axios.get(
+        `https://api.mercadolibre.com/advertising/product_ads/reports/${reportId}`,
+        { headers, timeout: 10000 }
+      );
+      const st = (statusResp.data.status || '').toUpperCase();
+      if (st === 'DONE' || st === 'SUCCESS' || st === 'COMPLETED') {
+        if (statusResp.data.download_url) {
+          const dl = await axios.get(statusResp.data.download_url, { headers, timeout: 20000 });
+          rows = Array.isArray(dl.data) ? dl.data : (dl.data.results || []);
+        } else {
+          rows = statusResp.data.results || [];
+        }
+        break;
+      }
+      if (st === 'FAILED' || st === 'ERROR') break;
+    }
+
+    if (!rows) return res.json({ error: 'Timeout ao aguardar relatório. Tente novamente.' });
+
+    // 4. Monta resposta por item
+    const itens = rows
+      .filter(r => (r.spend || 0) > 0)
+      .map(r => {
+        const campInfo        = campMap[String(r.campaign_id)] || {};
+        const spend           = Number(r.spend)         || 0;
+        const revenue         = Number(r.revenue)       || 0;
+        const units           = Number(r.sold_quantity) || 0;
+        const roasEntregando  = spend > 0 ? revenue / spend    : null;
+        const custoPorUnidade = units > 0 ? spend  / units     : null;
+        return {
+          campanha:       r.campaign_name || campInfo.nome || r.campaign_id,
+          mlb:            r.item_id    || '—',
+          titulo:         r.item_name  || '—',
+          sku:            r.sku        || '—',
+          targetRoas:     campInfo.targetRoas,
+          roasEntregando,
+          custoPorUnidade,
+          spend,
+          revenue,
+          units,
+          clicks:         Number(r.clicks)      || 0,
+          impressions:    Number(r.impressions)  || 0,
+        };
+      });
+
+    res.json({ itens });
+  } catch (err) {
+    console.error('Erro ads-roas:', err.response?.data || err.message);
+    const d = err.response?.data;
+    res.json({ error: d?.message || d?.error || 'Erro ao buscar dados de ads.', detalhe: JSON.stringify(d) });
+  }
+});
 
 // DEBUG — testa POST e variações para gerar etiqueta
 app.get('/api/ml/debug-label/:shipment_id', async (req, res) => {

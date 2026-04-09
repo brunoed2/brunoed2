@@ -574,6 +574,17 @@ code {
 .duracao-zerado    { color: #dc2626; font-weight: 600; }
 .duracao-infinito  { color: #aaa; }
 
+.td-campanha { font-size: 13px; color: #555; max-width: 180px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.roas-ok     { color: #15803d; font-weight: 700; }
+.roas-abaixo { color: #dc2626; font-weight: 700; }
+
+.th-sort-ads {
+  cursor: pointer;
+  user-select: none;
+}
+.th-sort-ads:hover { color: #444; }
+
 .paginacao {
   padding: 16px 20px;
   text-align: center;
