@@ -634,15 +634,43 @@ app.get('/api/ml/debug-label/:shipment_id', async (req, res) => {
     result['POST_batch'] = { status: e.response?.status, error: JSON.stringify(e.response?.data || e.message).slice(0, 200) };
   }
 
-  // Tenta GET com Accept: application/pdf
+  // Tenta GET com x-caller-id no header
   try {
     const r = await axios.get(
-      `https://api.mercadolibre.com/shipments/${sid}/labels`,
-      { headers: { ...auth, Accept: 'application/pdf' }, responseType: 'arraybuffer', timeout: 8000 }
+      `https://api.mercadolibre.com/shipments/${sid}/labels?response_type=pdf`,
+      { headers: { ...auth, 'x-caller-id': c.user_id }, responseType: 'arraybuffer', timeout: 8000 }
     );
-    result['GET_accept_pdf'] = { status: r.status, bytes: r.data.byteLength, contentType: r.headers['content-type'] };
+    result['GET_xcallerid'] = { status: r.status, bytes: r.data.byteLength, contentType: r.headers['content-type'] };
   } catch (e) {
-    result['GET_accept_pdf'] = { status: e.response?.status, error: e.response?.data ? Buffer.from(e.response.data).toString('utf8').slice(0, 200) : e.message };
+    result['GET_xcallerid'] = { status: e.response?.status, error: e.response?.data ? Buffer.from(e.response.data).toString('utf8').slice(0, 200) : e.message };
+  }
+
+  // Tenta GET via endpoint de orders
+  if (req.query.order_id) {
+    try {
+      const r = await axios.get(
+        `https://api.mercadolibre.com/orders/${req.query.order_id}/shipments/${sid}/labels?response_type=pdf`,
+        { headers: auth, responseType: 'arraybuffer', timeout: 8000 }
+      );
+      result['GET_via_order'] = { status: r.status, bytes: r.data.byteLength, contentType: r.headers['content-type'] };
+    } catch (e) {
+      result['GET_via_order'] = { status: e.response?.status, error: e.response?.data ? Buffer.from(e.response.data).toString('utf8').slice(0, 200) : e.message };
+    }
+  }
+
+  // Tenta GET no snapshot_id do packing
+  if (req.query.snapshot_id) {
+    for (const url of [
+      `https://api.mercadolibre.com/shipments/labels/snapshot/${req.query.snapshot_id}?response_type=pdf`,
+      `https://api.mercadolibre.com/packs/labels/snapshot/${req.query.snapshot_id}?response_type=pdf`,
+    ]) {
+      try {
+        const r = await axios.get(url, { headers: auth, responseType: 'arraybuffer', timeout: 8000 });
+        result[`GET_snapshot_${url.split('/')[5]}`] = { status: r.status, bytes: r.data.byteLength };
+      } catch (e) {
+        result[`GET_snapshot_${url.split('/')[5]}`] = { status: e.response?.status, error: e.response?.data ? Buffer.from(e.response.data).toString('utf8').slice(0, 200) : e.message };
+      }
+    }
   }
 
   res.json(result);
