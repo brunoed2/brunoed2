@@ -712,16 +712,26 @@ app.get('/api/ml/debug-ads', async (req, res) => {
     }
   };
 
-  // Variações do caminho de advertisers
-  await tryGet('v1_advertisers',           'https://api.mercadolibre.com/advertising/v1/advertisers', { user_id: c.user_id });
-  await tryGet('users_advertising',        `https://api.mercadolibre.com/users/${c.user_id}/advertising`);
-  await tryGet('users_campaigns',          `https://api.mercadolibre.com/users/${c.user_id}/advertising/product_ads/campaigns`);
-  await tryGet('users_product_ads',        `https://api.mercadolibre.com/users/${c.user_id}/advertising/product_ads`);
-  await tryGet('pads_campaigns',           `https://api.mercadolibre.com/pads/campaigns`, { user_id: c.user_id });
-  await tryGet('pads_user_campaigns',      `https://api.mercadolibre.com/pads/${c.user_id}/campaigns`);
-  await tryGet('ads_campaigns',            `https://api.mercadolibre.com/ads/campaigns`, { user_id: c.user_id });
-  await tryGet('product_ads_campaigns',    `https://api.mercadolibre.com/product_ads/campaigns`, { user_id: c.user_id });
-  await tryGet('advertising_v2',           `https://api.mercadolibre.com/advertising/advertisers`, { seller_id: c.user_id });
+  // O endpoint /advertising/advertisers exige product_id — busca o primeiro item do usuário
+  let primeiroMlb = req.query.mlb;
+  if (!primeiroMlb && c.user_id) {
+    try {
+      const itemsResp = await axios.get(`https://api.mercadolibre.com/users/${c.user_id}/items/search`, {
+        params: { status: 'active', limit: 1 }, headers, timeout: 8000,
+      });
+      primeiroMlb = itemsResp.data.results?.[0];
+    } catch {}
+  }
+
+  result['_mlb_usado'] = primeiroMlb || 'nenhum';
+
+  if (primeiroMlb) {
+    await tryGet('advertisers_com_product_id',  'https://api.mercadolibre.com/advertising/advertisers', { product_id: primeiroMlb });
+    await tryGet('advertisers_com_item_id',     'https://api.mercadolibre.com/advertising/advertisers', { item_id: primeiroMlb });
+    await tryGet('product_ads_com_product_id',  'https://api.mercadolibre.com/advertising/product_ads', { product_id: primeiroMlb });
+    await tryGet('product_ads_com_item_id',     'https://api.mercadolibre.com/advertising/product_ads', { item_id: primeiroMlb });
+    await tryGet('product_ads_mlb_direto',      `https://api.mercadolibre.com/advertising/product_ads/${primeiroMlb}`);
+  }
 
   res.json(result);
 });
