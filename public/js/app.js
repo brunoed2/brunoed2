@@ -218,8 +218,8 @@ function renderizarTabela() {
       <td><span class="badge-deposito ${bDeposito}">${item.depositoLabel}</span></td>
       <td><span class="badge-deposito ${bStatus}">${STATUS_LABEL[item.status] || item.status}</span></td>
       <td class="col-num ${item.estoque === 0 ? 'estoque-zero' : ''}">${item.estoque}</td>
-      <td class="col-num">${item.vendas30d || '—'}</td>
-      <td class="col-num ${duracao.classe}">${duracao.texto}</td>
+      <td class="col-num">${item.vendas30d === null ? '...' : (item.vendas30d || '—')}</td>
+      <td class="col-num ${duracao.classe}">${item.vendas30d === null ? '...' : duracao.texto}</td>
     `;
     tbody.appendChild(tr);
   });
@@ -256,13 +256,10 @@ async function carregarEstoque(reiniciar = false) {
   loading.style.display = 'block';
   erroEl.style.display  = 'none';
 
+  // 1. Carrega estoque primeiro — aparece rápido
+  let estoqueData;
   try {
-    // Busca estoque e vendas em paralelo
-    const [estoqueData, vendasData] = await Promise.all([
-      apiFetch('/api/ml/estoque'),
-      apiFetch('/api/ml/vendas30dias'),
-    ]);
-
+    estoqueData = await apiFetch('/api/ml/estoque');
     loading.style.display = 'none';
 
     if (estoqueData.error) {
@@ -271,18 +268,31 @@ async function carregarEstoque(reiniciar = false) {
       return;
     }
 
-    // Mescla vendas nos itens
+    todosItens = estoqueData.items.map(item => ({ ...item, vendas30d: null }));
+    renderizarTabela();
+  } catch {
+    loading.style.display = 'none';
+    erroEl.textContent   = 'Erro ao carregar estoque.';
+    erroEl.style.display = 'block';
+    return;
+  }
+
+  // 2. Carrega vendas em segundo plano — atualiza tabela quando chegar
+  document.getElementById('estoque-total').textContent += '  (carregando vendas...)';
+  try {
+    const vendasData = await apiFetch('/api/ml/vendas30dias');
     const vendas = vendasData.error ? {} : vendasData;
-    todosItens = estoqueData.items.map(item => ({
+
+    todosItens = todosItens.map(item => ({
       ...item,
       vendas30d: vendas[item.mlb] || 0,
     }));
 
     renderizarTabela();
   } catch {
-    loading.style.display = 'none';
-    erroEl.textContent   = 'Erro ao conectar com o servidor.';
-    erroEl.style.display = 'block';
+    // Vendas falhou — mantém tabela sem essa coluna
+    todosItens = todosItens.map(item => ({ ...item, vendas30d: 0 }));
+    renderizarTabela();
   }
 }
 
