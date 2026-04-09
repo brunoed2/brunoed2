@@ -305,6 +305,7 @@ async function carregarVendas() {
       tr.innerHTML = `
         <td style="white-space:nowrap">${dataFmt}</td>
         <td>${v.comprador}</td>
+        <td class="td-sku">${v.skus || '—'}</td>
         <td class="td-titulo" title="${v.itens}">${v.itens}</td>
         <td><span class="badge-deposito ${bStatus}">${v.statusLabel}</span></td>
         <td><a class="btn-etiqueta" href="/api/ml/etiqueta/${v.shipmentId}" target="_blank">${v.acaoLabel}</a></td>

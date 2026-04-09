@@ -567,16 +567,23 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
         LABEL_SUBSTATUSES.has(shipment.substatus) &&
         !isFull(shipment)
       )
-      .map(({ order, shipment }) => ({
-        orderId:     order.id,
-        data:        order.date_created,
-        comprador:   order.buyer?.nickname || '—',
-        itens:       (order.order_items || []).map(i => `${i.quantity}x ${i.item.title}`).join(' | '),
-        shipmentId:  shipment.id,
-        status:      shipment.status,
-        statusLabel: STATUS_PT[shipment.status] || shipment.status,
-        acaoLabel:   SUBSTATUS_LABEL[shipment.substatus] || 'Baixar',
-      }));
+      .map(({ order, shipment }) => {
+        const itens = (order.order_items || []).map(i => ({
+          titulo: `${i.quantity}x ${i.item.title}`,
+          sku:    i.item.seller_custom_field || '—',
+        }));
+        return {
+          orderId:     order.id,
+          data:        order.date_created,
+          comprador:   order.buyer?.nickname || '—',
+          itens:       itens.map(i => i.titulo).join(' | '),
+          skus:        itens.map(i => i.sku).join(' | '),
+          shipmentId:  shipment.id,
+          status:      shipment.status,
+          statusLabel: STATUS_PT[shipment.status] || shipment.status,
+          acaoLabel:   SUBSTATUS_LABEL[shipment.substatus] || 'Baixar',
+        };
+      });
 
     res.json({ vendas });
   } catch (err) {
@@ -596,16 +603,20 @@ app.get('/api/ml/etiqueta/:shipment_id', async (req, res) => {
       {
         params:       { response_type: 'pdf' },
         headers:      { Authorization: `Bearer ${c.access_token}` },
-        responseType: 'stream',
-        timeout:      15000,
+        responseType: 'arraybuffer',
+        timeout:      20000,
       }
     );
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="etiqueta-${req.params.shipment_id}.pdf"`);
-    resp.data.pipe(res);
+    const contentType = resp.headers['content-type'] || 'application/pdf';
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', `inline; filename="etiqueta-${req.params.shipment_id}.pdf"`);
+    res.send(Buffer.from(resp.data));
   } catch (err) {
-    console.error('Erro ao baixar etiqueta:', err.response?.data || err.message);
-    res.status(500).json({ error: 'Erro ao baixar etiqueta.' });
+    const errData = err.response?.data
+      ? Buffer.from(err.response.data).toString('utf8')
+      : err.message;
+    console.error('Erro ao baixar etiqueta:', errData);
+    res.status(500).json({ error: 'Erro ao baixar etiqueta.', detalhe: errData });
   }
 });
 
