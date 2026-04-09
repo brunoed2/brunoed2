@@ -262,79 +262,85 @@ app.get('/api/ml/estoque', async (req, res) => {
     }
   }
 
-  const offset = parseInt(req.query.offset) || 0;
-  const limit  = 50;
+  const limit = 50;
+
+  // Extrai SKU em todas as fontes possíveis da API ML
+  function extrairSku(body) {
+    if (body.seller_custom_field) return body.seller_custom_field;
+    // Atributos no nível do item
+    const attrItem = (body.attributes || []).find(a => a.id === 'SELLER_SKU');
+    if (attrItem && attrItem.value_name) return attrItem.value_name;
+    // Variações
+    if (body.variations && body.variations.length > 0) {
+      for (const v of body.variations) {
+        if (v.seller_custom_field) return v.seller_custom_field;
+        const attrVar = (v.attributes || []).find(a => a.id === 'SELLER_SKU');
+        if (attrVar && attrVar.value_name) return attrVar.value_name;
+      }
+    }
+    return '—';
+  }
+
+  const DEPOSITO_LABEL = {
+    fulfillment:   'Full',
+    self_service:  'Próprio',
+    cross_docking: 'Flex',
+    xd_drop_off:   'Drop-off',
+  };
 
   try {
-    // 1. Busca IDs dos anúncios ativos
-    const searchResp = await axios.get(
-      `https://api.mercadolibre.com/users/${data.user_id}/items/search`,
-      {
-        params: { status: 'active', offset, limit },
-        headers: { Authorization: `Bearer ${data.access_token}` },
+    // 1. Coleta todos os IDs de todos os status e páginas
+    const todosIds = [];
+    for (const status of ['active', 'paused', 'closed']) {
+      let offset = 0;
+      while (true) {
+        const searchResp = await axios.get(
+          `https://api.mercadolibre.com/users/${data.user_id}/items/search`,
+          {
+            params: { status, offset, limit },
+            headers: { Authorization: `Bearer ${data.access_token}` },
+          }
+        );
+        const ids = searchResp.data.results || [];
+        todosIds.push(...ids);
+        if (ids.length < limit) break;  // última página
+        offset += limit;
+        if (offset >= 1000) break;      // limite da API ML
       }
-    );
-
-    const total  = searchResp.data.paging.total;
-    const ids    = searchResp.data.results;
-
-    if (!ids.length) return res.json({ items: [], total: 0 });
-
-    // 2. Busca detalhes em lote (até 20 por chamada — limite da API ML)
-    const chunks = [];
-    for (let i = 0; i < ids.length; i += 20) {
-      chunks.push(ids.slice(i, i + 20));
     }
 
+    if (!todosIds.length) return res.json({ items: [], total: 0 });
+
+    // 2. Busca detalhes em lote de 20 (limite da API ML)
     const detalhes = [];
-    for (const chunk of chunks) {
-      const resp = await axios.get('https://api.mercadolibre.com/items', {
+    for (let i = 0; i < todosIds.length; i += 20) {
+      const chunk = todosIds.slice(i, i + 20);
+      const resp  = await axios.get('https://api.mercadolibre.com/items', {
         params: {
           ids:        chunk.join(','),
-          // inclui variations e shipping para extrair SKU e tipo de depósito
-          attributes: 'id,title,seller_custom_field,available_quantity,variations,shipping',
+          attributes: 'id,title,seller_custom_field,available_quantity,variations,shipping,attributes,status',
         },
         headers: { Authorization: `Bearer ${data.access_token}` },
       });
       detalhes.push(...resp.data);
     }
 
-    // Extrai SKU tentando seller_custom_field, depois variações
-    function extrairSku(body) {
-      if (body.seller_custom_field) return body.seller_custom_field;
-      if (body.variations && body.variations.length > 0) {
-        for (const v of body.variations) {
-          if (v.seller_custom_field) return v.seller_custom_field;
-          const attr = (v.attributes || []).find(a => a.id === 'SELLER_SKU');
-          if (attr && attr.value_name) return attr.value_name;
-        }
-      }
-      return '—';
-    }
-
-    // Mapeia tipo logístico para rótulo legível
-    const DEPOSITO_LABEL = {
-      fulfillment:    'Full',
-      self_service:   'Próprio',
-      cross_docking:  'Flex',
-      xd_drop_off:    'Drop-off',
-    };
-
     const items = detalhes
       .filter(r => r.code === 200)
       .map(r => {
         const logisticType = r.body.shipping?.logistic_type || 'self_service';
         return {
-          mlb:      r.body.id,
-          titulo:   r.body.title,
-          sku:      extrairSku(r.body),
-          estoque:  r.body.available_quantity ?? 0,
-          deposito: logisticType,
+          mlb:           r.body.id,
+          titulo:        r.body.title,
+          sku:           extrairSku(r.body),
+          estoque:       r.body.available_quantity ?? 0,
+          status:        r.body.status,
+          deposito:      logisticType,
           depositoLabel: DEPOSITO_LABEL[logisticType] || logisticType,
         };
       });
 
-    res.json({ items, total });
+    res.json({ items, total: items.length });
   } catch (err) {
     console.error('Erro ao buscar estoque:', err.response?.data || err.message);
     res.json({ error: 'Erro ao buscar anúncios. Tente novamente.' });

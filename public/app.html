@@ -121,10 +121,18 @@
 
         <div class="filtros-bar">
           <label class="filtro-label">Depósito:</label>
-          <button class="filtro-btn active" data-deposito="todos">Todos</button>
-          <button class="filtro-btn" data-deposito="fulfillment">Full</button>
-          <button class="filtro-btn" data-deposito="self_service">Próprio</button>
-          <button class="filtro-btn" data-deposito="cross_docking">Flex</button>
+          <button class="filtro-btn active" data-filtro="deposito" data-valor="todos">Todos</button>
+          <button class="filtro-btn" data-filtro="deposito" data-valor="fulfillment">Full</button>
+          <button class="filtro-btn" data-filtro="deposito" data-valor="self_service">Próprio</button>
+          <button class="filtro-btn" data-filtro="deposito" data-valor="cross_docking">Flex</button>
+
+          <span class="filtro-sep">|</span>
+
+          <label class="filtro-label">Status:</label>
+          <button class="filtro-btn active" data-filtro="status" data-valor="todos">Todos</button>
+          <button class="filtro-btn" data-filtro="status" data-valor="active">Ativos</button>
+          <button class="filtro-btn" data-filtro="status" data-valor="paused">Pausados</button>
+          <button class="filtro-btn" data-filtro="status" data-valor="closed">Encerrados</button>
         </div>
 
         <div class="tabela-container">
@@ -142,15 +150,13 @@
                 <th>Título</th>
                 <th>MLB</th>
                 <th>Depósito</th>
+                <th>Status</th>
                 <th class="col-num">Estoque</th>
               </tr>
             </thead>
             <tbody id="tabela-estoque-body"></tbody>
           </table>
 
-          <div id="estoque-paginacao" class="paginacao" style="display:none">
-            <button class="btn-secondary" id="btn-mais" onclick="carregarMais()">Carregar mais</button>
-          </div>
         </div>
       </section>
 

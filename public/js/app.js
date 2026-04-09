@@ -160,75 +160,86 @@ async function carregarLoja() {
 
 // ── Estoque ───────────────────────────────────────────────────
 
-let estoqueOffset  = 0;
-let estoqueTotal   = 0;
-let todosItens     = [];   // cache de todos os itens carregados
-let filtroDeposito = 'todos';
+let todosItens = [];
+let filtros    = { deposito: 'todos', status: 'todos' };
 
-// Mapeamento de tipo → classe CSS do badge
-const BADGE_CLASS = {
+const BADGE_DEPOSITO = {
   fulfillment:   'badge-full',
   self_service:  'badge-proprio',
   cross_docking: 'badge-flex',
 };
 
-// Configura os botões de filtro
+const BADGE_STATUS = {
+  active: 'badge-ativo',
+  paused: 'badge-pausado',
+  closed: 'badge-encerrado',
+};
+
+const STATUS_LABEL = {
+  active: 'Ativo',
+  paused: 'Pausado',
+  closed: 'Encerrado',
+};
+
+// Configura botões de filtro
 document.querySelectorAll('.filtro-btn').forEach(btn => {
   btn.addEventListener('click', () => {
-    document.querySelectorAll('.filtro-btn').forEach(b => b.classList.remove('active'));
+    const grupo = btn.dataset.filtro;
+    // Desmarca apenas os do mesmo grupo
+    document.querySelectorAll(`.filtro-btn[data-filtro="${grupo}"]`)
+      .forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
-    filtroDeposito = btn.dataset.deposito;
+    filtros[grupo] = btn.dataset.valor;
     renderizarTabela();
   });
 });
 
 function renderizarTabela() {
-  const itens = filtroDeposito === 'todos'
-    ? todosItens
-    : todosItens.filter(i => i.deposito === filtroDeposito);
+  let itens = todosItens;
+  if (filtros.deposito !== 'todos') itens = itens.filter(i => i.deposito === filtros.deposito);
+  if (filtros.status   !== 'todos') itens = itens.filter(i => i.status   === filtros.status);
 
   const tbody = document.getElementById('tabela-estoque-body');
   tbody.innerHTML = '';
 
   itens.forEach(item => {
-    const badgeClass = BADGE_CLASS[item.deposito] || 'badge-outro';
+    const bDeposito = BADGE_DEPOSITO[item.deposito] || 'badge-outro';
+    const bStatus   = BADGE_STATUS[item.status]     || 'badge-outro';
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td class="td-sku">${item.sku}</td>
       <td class="td-titulo" title="${item.titulo}">${item.titulo}</td>
       <td class="td-mlb">${item.mlb}</td>
-      <td><span class="badge-deposito ${badgeClass}">${item.depositoLabel}</span></td>
+      <td><span class="badge-deposito ${bDeposito}">${item.depositoLabel}</span></td>
+      <td><span class="badge-deposito ${bStatus}">${STATUS_LABEL[item.status] || item.status}</span></td>
       <td class="col-num ${item.estoque === 0 ? 'estoque-zero' : ''}">${item.estoque}</td>
     `;
     tbody.appendChild(tr);
   });
 
   document.getElementById('tabela-estoque').style.display = itens.length ? 'table' : 'none';
+  const filtroAtivo = filtros.deposito !== 'todos' || filtros.status !== 'todos';
   document.getElementById('estoque-total').textContent =
-    `${itens.length} de ${estoqueTotal} anúncios` +
-    (filtroDeposito !== 'todos' ? ` (filtro ativo)` : '');
+    `${itens.length} de ${todosItens.length} anúncios` +
+    (filtroAtivo ? ' (filtro ativo)' : '');
 }
 
 async function carregarEstoque(reiniciar = false) {
   if (reiniciar) {
-    estoqueOffset = 0;
-    todosItens    = [];
+    todosItens = [];
     document.getElementById('tabela-estoque-body').innerHTML = '';
-    document.getElementById('tabela-estoque').style.display = 'none';
-    document.getElementById('estoque-paginacao').style.display = 'none';
-    document.getElementById('estoque-total').textContent = '';
+    document.getElementById('tabela-estoque').style.display  = 'none';
+    document.getElementById('estoque-total').textContent     = '';
   }
 
   const loading = document.getElementById('estoque-loading');
   const erroEl  = document.getElementById('estoque-erro');
-  const btnMais = document.getElementById('btn-mais');
 
   loading.style.display = 'block';
   erroEl.style.display  = 'none';
-  if (btnMais) btnMais.disabled = true;
 
   try {
-    const data = await apiFetch(`/api/ml/estoque?offset=${estoqueOffset}`);
+    const data = await apiFetch('/api/ml/estoque');
     loading.style.display = 'none';
 
     if (data.error) {
@@ -237,29 +248,13 @@ async function carregarEstoque(reiniciar = false) {
       return;
     }
 
-    estoqueTotal   = data.total;
-    estoqueOffset += data.items.length;
-    todosItens.push(...data.items);
-
+    todosItens = data.items;
     renderizarTabela();
-
-    // Mostra botão "carregar mais" se ainda há itens
-    const paginacao = document.getElementById('estoque-paginacao');
-    if (estoqueOffset < estoqueTotal) {
-      paginacao.style.display = 'block';
-      if (btnMais) btnMais.disabled = false;
-    } else {
-      paginacao.style.display = 'none';
-    }
   } catch {
     loading.style.display = 'none';
     erroEl.textContent   = 'Erro ao conectar com o servidor.';
     erroEl.style.display = 'block';
   }
-}
-
-function carregarMais() {
-  carregarEstoque(false);
 }
 
 // ── Sair ─────────────────────────────────────────────────────

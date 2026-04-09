@@ -407,6 +407,12 @@ code {
 
 .filtro-btn:hover { border-color: #999; color: #111; }
 
+.filtro-sep {
+  color: #ddd;
+  font-size: 18px;
+  margin: 0 4px;
+}
+
 .filtro-btn.active {
   background: #111;
   border-color: #111;
@@ -422,10 +428,13 @@ code {
   font-weight: 500;
 }
 
-.badge-full       { background: #dbeafe; color: #1d4ed8; }
-.badge-proprio    { background: #dcfce7; color: #15803d; }
-.badge-flex       { background: #fef9c3; color: #854d0e; }
-.badge-outro      { background: #f3f4f6; color: #555; }
+.badge-full        { background: #dbeafe; color: #1d4ed8; }
+.badge-proprio     { background: #dcfce7; color: #15803d; }
+.badge-flex        { background: #fef9c3; color: #854d0e; }
+.badge-outro       { background: #f3f4f6; color: #555; }
+.badge-ativo       { background: #dcfce7; color: #15803d; }
+.badge-pausado     { background: #fef9c3; color: #854d0e; }
+.badge-encerrado   { background: #fee2e2; color: #991b1b; }
 
 .estoque-erro {
   color: #dc2626;
