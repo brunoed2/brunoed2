@@ -134,6 +134,28 @@ function initFromEnvVars() {
 
 initFromEnvVars();
 
+// Busca nickname das contas conectadas que ainda não têm o campo salvo
+async function fetchMissingNicknames() {
+  const data = loadData();
+  let changed = false;
+  for (const num of ['1', '2']) {
+    const c = data.contas[num];
+    if (c && c.access_token && !c.nickname) {
+      try {
+        const resp = await axios.get('https://api.mercadolibre.com/users/me', {
+          headers: { Authorization: `Bearer ${c.access_token}` },
+          timeout: 8000,
+        });
+        c.nickname = resp.data.nickname;
+        changed = true;
+      } catch {}
+    }
+  }
+  if (changed) fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+}
+
+fetchMissingNicknames();
+
 // ── Rotas: conta ativa ────────────────────────────────────────
 
 app.get('/api/conta/ativa', (req, res) => {
