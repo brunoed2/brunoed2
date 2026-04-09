@@ -431,6 +431,11 @@ app.get('/api/ml/estoque', async (req, res) => {
           pausadoDesde:  status === 'paused' ? (pauseDates[mlb] || agora) : null,
           deposito:      logisticType,
           depositoLabel: DEPOSITO_LABEL[logisticType] || logisticType,
+          variacoes:     (r.body.variations || []).map(v => ({
+            id:     v.id,
+            nome:   (v.attribute_combinations || []).map(a => a.value_name).join(' / ') || `Var. ${v.id}`,
+            estoque: v.available_quantity ?? 0,
+          })),
         };
       });
 
@@ -693,7 +698,7 @@ app.put('/api/ml/estoque/:mlb', async (req, res) => {
   const c    = data.contas[num];
   if (!c || !c.access_token) return res.status(401).json({ error: 'Não conectado' });
 
-  const { quantidade } = req.body;
+  const { quantidade, variacao_id } = req.body;
   if (typeof quantidade !== 'number' || !Number.isInteger(quantidade) || quantidade < 0) {
     return res.status(400).json({ error: 'Quantidade inválida' });
   }
@@ -702,34 +707,34 @@ app.put('/api/ml/estoque/:mlb', async (req, res) => {
   const headers = { Authorization: `Bearer ${c.access_token}`, 'Content-Type': 'application/json' };
 
   try {
-    // Busca o item para saber se tem variações
-    const itemResp = await axios.get(`https://api.mercadolibre.com/items/${mlb}`, {
-      params:  { attributes: 'id,variations' },
-      headers,
-      timeout: 10000,
-    });
-
-    const variations = itemResp.data.variations || [];
-
-    if (variations.length > 0) {
-      // Atualiza cada variação com a mesma quantidade
+    if (variacao_id) {
+      // Atualiza apenas esta variação específica
       await axios.put(
         `https://api.mercadolibre.com/items/${mlb}`,
-        {
-          variations: variations.map(v => ({
-            id:                 v.id,
-            available_quantity: quantidade,
-          })),
-        },
+        { variations: [{ id: Number(variacao_id), available_quantity: quantidade }] },
         { headers, timeout: 10000 }
       );
     } else {
-      // Item simples — atualiza diretamente
-      await axios.put(
-        `https://api.mercadolibre.com/items/${mlb}`,
-        { available_quantity: quantidade },
-        { headers, timeout: 10000 }
-      );
+      // Busca o item para saber se tem variações
+      const itemResp = await axios.get(`https://api.mercadolibre.com/items/${mlb}`, {
+        params:  { attributes: 'id,variations' },
+        headers,
+        timeout: 10000,
+      });
+      const variations = itemResp.data.variations || [];
+      if (variations.length > 0) {
+        await axios.put(
+          `https://api.mercadolibre.com/items/${mlb}`,
+          { variations: variations.map(v => ({ id: v.id, available_quantity: quantidade })) },
+          { headers, timeout: 10000 }
+        );
+      } else {
+        await axios.put(
+          `https://api.mercadolibre.com/items/${mlb}`,
+          { available_quantity: quantidade },
+          { headers, timeout: 10000 }
+        );
+      }
     }
 
     res.json({ ok: true });

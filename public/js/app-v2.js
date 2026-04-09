@@ -194,7 +194,8 @@ async function carregarLoja() {
 
 let todosItens = [];
 let filtros    = { deposito: 'todos', status: 'todos' };
-let sortState  = { campo: null, direcao: 'asc' };
+let sortState    = { campo: null, direcao: 'asc' };
+let expandedMLBs = new Set();
 
 function calcularDiasPausado(status, pausadoDesde) {
   if (status !== 'paused' || !pausadoDesde) return null;
@@ -286,6 +287,74 @@ document.querySelectorAll('.filtro-btn').forEach(btn => {
   });
 });
 
+function toggleVariacoes(mlb) {
+  if (expandedMLBs.has(mlb)) {
+    expandedMLBs.delete(mlb);
+  } else {
+    expandedMLBs.add(mlb);
+  }
+  const aberto = expandedMLBs.has(mlb);
+  document.querySelectorAll(`.variacao-row-${mlb}`).forEach(row => {
+    row.style.display = aberto ? '' : 'none';
+  });
+  const btn = document.getElementById(`btn-expandir-${mlb}`);
+  if (btn) btn.textContent = aberto ? '▲' : '▼';
+}
+
+async function atualizarEstoqueVariacao(mlb, variacaoId, btn) {
+  const input   = btn.previousElementSibling;
+  const novaQtd = parseInt(input.value, 10);
+  if (isNaN(novaQtd) || novaQtd < 0) return;
+
+  btn.disabled    = true;
+  btn.textContent = '...';
+
+  try {
+    const result = await apiFetch(`/api/ml/estoque/${mlb}`, {
+      method: 'PUT',
+      body:   JSON.stringify({ quantidade: novaQtd, variacao_id: variacaoId }),
+    });
+    if (result.error) {
+      btn.textContent = '✗';
+      btn.classList.add('btn-confirmar-erro');
+      btn.title = result.error;
+      setTimeout(() => {
+        btn.textContent = '✓';
+        btn.classList.remove('btn-confirmar-erro');
+        btn.title = '';
+        btn.disabled = false;
+      }, 3000);
+    } else {
+      btn.textContent = '✓';
+      btn.classList.add('btn-confirmar-ok');
+      input.defaultValue = novaQtd;
+      const item = todosItens.find(i => i.mlb === mlb);
+      if (item && item.variacoes) {
+        const v = item.variacoes.find(v => v.id === variacaoId);
+        if (v) v.estoque = novaQtd;
+        const total = item.variacoes.reduce((s, v) => s + v.estoque, 0);
+        item.estoque = total;
+        const totalEl = document.getElementById(`estoque-total-${mlb}`);
+        if (totalEl) totalEl.textContent = total;
+      }
+      setTimeout(() => {
+        btn.classList.remove('btn-confirmar-ok');
+        btn.disabled = false;
+      }, 2000);
+    }
+  } catch (e) {
+    btn.textContent = '✗';
+    btn.classList.add('btn-confirmar-erro');
+    btn.title = e.message;
+    setTimeout(() => {
+      btn.textContent = '✓';
+      btn.classList.remove('btn-confirmar-erro');
+      btn.title = '';
+      btn.disabled = false;
+    }, 3000);
+  }
+}
+
 function isProprio(deposito) {
   return deposito === 'self_service' || deposito === 'xd_drop_off';
 }
@@ -356,10 +425,22 @@ function renderizarTabela() {
   tbody.innerHTML = '';
 
   itens.forEach(item => {
-    const bDeposito   = BADGE_DEPOSITO[item.deposito] || 'badge-outro';
-    const bStatus     = BADGE_STATUS[item.status]     || 'badge-outro';
-    const duracao     = calcularDuracao(item.estoque, item.vendas30d);
-    const diasPausado = calcularDiasPausado(item.status, item.pausadoDesde);
+    const bDeposito    = BADGE_DEPOSITO[item.deposito] || 'badge-outro';
+    const bStatus      = BADGE_STATUS[item.status]     || 'badge-outro';
+    const duracao      = calcularDuracao(item.estoque, item.vendas30d);
+    const diasPausado  = calcularDiasPausado(item.status, item.pausadoDesde);
+    const temVariacoes = isProprio(item.deposito) && item.variacoes && item.variacoes.length > 0;
+
+    let estoqueCell;
+    if (temVariacoes) {
+      const aberto = expandedMLBs.has(item.mlb);
+      estoqueCell = `<td class="col-num"><div class="estoque-edit-wrap"><span id="estoque-total-${item.mlb}" class="${item.estoque === 0 ? 'estoque-zero' : ''}">${item.estoque}</span><button id="btn-expandir-${item.mlb}" class="btn-expandir-var" onclick="toggleVariacoes('${item.mlb}')">${aberto ? '▲' : '▼'}</button></div></td>`;
+    } else if (isProprio(item.deposito)) {
+      estoqueCell = `<td class="col-num"><div class="estoque-edit-wrap"><input type="number" class="estoque-input" value="${item.estoque}" min="0"><button class="btn-confirmar-estoque" onclick="atualizarEstoque('${item.mlb}', this)">✓</button></div></td>`;
+    } else {
+      estoqueCell = `<td class="col-num ${item.estoque === 0 ? 'estoque-zero' : ''}">${item.estoque}</td>`;
+    }
+
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td class="td-sku">${item.sku}</td>
@@ -367,15 +448,33 @@ function renderizarTabela() {
       <td class="td-mlb">${item.mlb}</td>
       <td><span class="badge-deposito ${bDeposito}">${item.depositoLabel}</span></td>
       <td><span class="badge-deposito ${bStatus}">${STATUS_LABEL[item.status] || item.status}</span></td>
-      ${isProprio(item.deposito)
-        ? `<td class="col-num"><div class="estoque-edit-wrap"><input type="number" class="estoque-input" value="${item.estoque}" min="0"><button class="btn-confirmar-estoque" onclick="atualizarEstoque('${item.mlb}', this)">✓</button></div></td>`
-        : `<td class="col-num ${item.estoque === 0 ? 'estoque-zero' : ''}">${item.estoque}</td>`
-      }
+      ${estoqueCell}
       <td class="col-num">${item.vendas30d === null ? '...' : (item.vendas30d || '—')}</td>
       <td class="col-num ${duracao.classe}">${item.vendas30d === null ? '...' : duracao.texto}</td>
       <td class="col-num ${diasPausado !== null ? 'pausado-dias' : ''}">${diasPausado !== null ? diasPausado + 'd' : ''}</td>
     `;
     tbody.appendChild(tr);
+
+    if (temVariacoes) {
+      const aberto = expandedMLBs.has(item.mlb);
+      item.variacoes.forEach(v => {
+        const trVar = document.createElement('tr');
+        trVar.className = `variacao-row variacao-row-${item.mlb}`;
+        trVar.style.display = aberto ? '' : 'none';
+        trVar.innerHTML = `
+          <td colspan="2" class="variacao-indent"></td>
+          <td colspan="3" class="variacao-nome">↳ ${v.nome}</td>
+          <td class="col-num">
+            <div class="estoque-edit-wrap">
+              <input type="number" class="estoque-input" value="${v.estoque}" min="0">
+              <button class="btn-confirmar-estoque" onclick="atualizarEstoqueVariacao('${item.mlb}', ${v.id}, this)">✓</button>
+            </div>
+          </td>
+          <td colspan="3"></td>
+        `;
+        tbody.appendChild(trVar);
+      });
+    }
   });
 
   document.getElementById('tabela-estoque').style.display = itens.length ? 'table' : 'none';

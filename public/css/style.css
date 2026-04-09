@@ -610,6 +610,33 @@ code {
 
 .estoque-input:focus { border-color: #111; }
 
+.btn-expandir-var {
+  padding: 2px 7px;
+  background: #f0f0f0;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  font-size: 10px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background .15s;
+  margin-left: 4px;
+  line-height: 1.4;
+}
+
+.btn-expandir-var:hover { background: #e0e0e0; }
+
+.variacao-row td {
+  background: #f8fafc;
+  padding: 7px 16px;
+  border-bottom: 1px solid #eef0f3;
+}
+
+.variacao-nome {
+  font-size: 13px;
+  color: #555;
+  padding-left: 40px !important;
+}
+
 .btn-confirmar-estoque {
   padding: 4px 8px;
   background: #111;
