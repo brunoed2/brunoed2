@@ -593,17 +593,37 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
   }
 });
 
-// DEBUG — retorna o objeto completo do shipment para inspeção
-app.get('/api/ml/debug-shipment/:shipment_id', async (req, res) => {
+// DEBUG — retorna o objeto completo do pedido + tenta diferentes URLs de etiqueta
+app.get('/api/ml/debug-order/:order_id', async (req, res) => {
   const data = loadData();
-  const c    = contaAtiva(data);
+  const num  = req.query.conta || data.conta_ativa;
+  const c    = data.contas[num] || {};
   if (!c.access_token) return res.status(401).json({ error: 'Não conectado' });
   try {
-    const resp = await axios.get(
-      `https://api.mercadolibre.com/shipments/${req.params.shipment_id}`,
+    const order = await axios.get(
+      `https://api.mercadolibre.com/orders/${req.params.order_id}`,
       { headers: { Authorization: `Bearer ${c.access_token}` } }
     );
-    res.json(resp.data);
+    const shipping = order.data.shipping || {};
+    const shipId   = shipping.id;
+
+    // Tenta buscar o shipment diretamente
+    let shipmentData = null;
+    try {
+      const s = await axios.get(
+        `https://api.mercadolibre.com/shipments/${shipId}`,
+        { headers: { Authorization: `Bearer ${c.access_token}` } }
+      );
+      shipmentData = s.data;
+    } catch (e) {
+      shipmentData = { error: e.response?.data || e.message };
+    }
+
+    res.json({
+      order_id:       order.data.id,
+      shipping_field: shipping,
+      shipment:       shipmentData,
+    });
   } catch (err) {
     res.status(500).json(err.response?.data || err.message);
   }
