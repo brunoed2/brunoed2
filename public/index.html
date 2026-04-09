@@ -74,6 +74,9 @@
       if (val === '199412') {
         sessionStorage.setItem('auth', '1');
         location.href = '/app.html';
+      } else if (val === '1224') {
+        sessionStorage.setItem('auth', '2');
+        location.href = '/painel2.html';
       } else {
         document.getElementById('erro').style.display = 'block';
         document.getElementById('codigo').value = '';
