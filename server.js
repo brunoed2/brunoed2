@@ -428,6 +428,119 @@ app.get('/api/ml/vendas30dias', async (req, res) => {
   }
 });
 
+// GET /api/ml/vendas-etiquetas — vendas pagas com etiqueta disponível para baixar
+app.get('/api/ml/vendas-etiquetas', async (req, res) => {
+  let data = loadData();
+  if (!data.access_token) return res.json({ error: 'Não conectado' });
+  if (!data.user_id)      return res.json({ error: 'user_id não encontrado' });
+
+  // Statuses onde a etiqueta existe e pode ser baixada/rebaixada
+  const LABEL_STATUSES = new Set(['handling', 'ready_to_ship', 'shipped']);
+
+  try {
+    // Busca ordens pagas recentes (até 200)
+    const todasOrdens = [];
+    let offset = 0;
+    const limit = 50;
+    while (true) {
+      const resp = await axios.get('https://api.mercadolibre.com/orders/search', {
+        params: {
+          seller:         data.user_id,
+          'order.status': 'paid',
+          sort:           'date_desc',
+          offset,
+          limit,
+        },
+        headers: { Authorization: `Bearer ${data.access_token}` },
+        timeout: 15000,
+      });
+      const orders = resp.data.results || [];
+      todasOrdens.push(...orders);
+      if (orders.length < limit || todasOrdens.length >= 200) break;
+      offset += limit;
+    }
+
+    // Filtra ordens que têm shipment e não são Full (Full não precisa de etiqueta)
+    const comShipment = todasOrdens.filter(o =>
+      o.shipping && o.shipping.id && o.shipping.logistic_type !== 'fulfillment'
+    );
+
+    // Busca detalhes dos shipments em paralelo (lotes de 10)
+    const resultado = [];
+    for (let i = 0; i < comShipment.length; i += 10) {
+      const lote = comShipment.slice(i, i + 10);
+      const detalhes = await Promise.all(
+        lote.map(async (order) => {
+          try {
+            const r = await axios.get(
+              `https://api.mercadolibre.com/shipments/${order.shipping.id}`,
+              { headers: { Authorization: `Bearer ${data.access_token}` }, timeout: 8000 }
+            );
+            return { order, shipment: r.data };
+          } catch {
+            return { order, shipment: null };
+          }
+        })
+      );
+      resultado.push(...detalhes);
+    }
+
+    const SUBSTATUS_LABEL = {
+      ready_to_print: 'Baixar',
+      printed:        'Baixar novamente',
+    };
+
+    const STATUS_PT = {
+      handling:      'Preparando',
+      ready_to_ship: 'Aguardando coleta',
+      shipped:       'Enviado',
+    };
+
+    const vendas = resultado
+      .filter(({ shipment }) => shipment && LABEL_STATUSES.has(shipment.status))
+      .map(({ order, shipment }) => ({
+        orderId:    order.id,
+        data:       order.date_created,
+        comprador:  order.buyer?.nickname || '—',
+        itens:      (order.order_items || []).map(i => `${i.quantity}x ${i.item.title}`).join(' | '),
+        total:      order.total_amount,
+        shipmentId: shipment.id,
+        status:     shipment.status,
+        statusLabel: STATUS_PT[shipment.status] || shipment.status,
+        acaoLabel:  SUBSTATUS_LABEL[shipment.substatus] || (shipment.status === 'shipped' ? 'Baixar novamente' : 'Baixar'),
+      }));
+
+    res.json({ vendas });
+  } catch (err) {
+    console.error('Erro ao buscar vendas com etiqueta:', err.response?.data || err.message);
+    res.json({ error: 'Erro ao buscar vendas.' });
+  }
+});
+
+// GET /api/ml/etiqueta/:shipment_id — proxy para download do PDF da etiqueta
+app.get('/api/ml/etiqueta/:shipment_id', async (req, res) => {
+  const data = loadData();
+  if (!data.access_token) return res.status(401).json({ error: 'Não conectado' });
+
+  try {
+    const resp = await axios.get(
+      `https://api.mercadolibre.com/shipments/${req.params.shipment_id}/labels`,
+      {
+        params:       { response_type: 'pdf' },
+        headers:      { Authorization: `Bearer ${data.access_token}` },
+        responseType: 'stream',
+        timeout:      15000,
+      }
+    );
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="etiqueta-${req.params.shipment_id}.pdf"`);
+    resp.data.pipe(res);
+  } catch (err) {
+    console.error('Erro ao baixar etiqueta:', err.response?.data || err.message);
+    res.status(500).json({ error: 'Erro ao baixar etiqueta.' });
+  }
+});
+
 // ── Inicia o servidor ─────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`Servidor rodando em http://localhost:${PORT}`);

@@ -2,6 +2,22 @@
 // painel2.js — Lógica do Painel 2
 // ============================================================
 
+// ── Navegação entre abas ──────────────────────────────────────
+
+const navBtns = document.querySelectorAll('.nav-btn');
+const tabs    = document.querySelectorAll('.tab');
+
+function abrirAba(nome) {
+  navBtns.forEach(b => b.classList.toggle('active', b.dataset.tab === nome));
+  tabs.forEach(t => t.classList.toggle('active', t.id === `tab-${nome}`));
+  if (nome === 'estoque') carregarEstoque(true);
+  if (nome === 'vendas')  carregarVendas();
+}
+
+navBtns.forEach(btn => {
+  btn.addEventListener('click', () => abrirAba(btn.dataset.tab));
+});
+
 // ── Helpers ───────────────────────────────────────────────────
 
 async function apiFetch(url, opts = {}) {
@@ -211,6 +227,69 @@ async function carregarEstoque(reiniciar = false) {
     console.error('Vendas:', err.message);
     todosItens = todosItens.map(item => ({ ...item, vendas30d: 0 }));
     renderizarTabela();
+  }
+}
+
+// ── Vendas com etiqueta ───────────────────────────────────────
+
+const BADGE_VENDA_STATUS = {
+  handling:      'badge-pausado',
+  ready_to_ship: 'badge-ativo',
+  shipped:       'badge-encerrado',
+};
+
+async function carregarVendas() {
+  const loading = document.getElementById('vendas-loading');
+  const erroEl  = document.getElementById('vendas-erro');
+  const totalEl = document.getElementById('vendas-total');
+  const tabela  = document.getElementById('tabela-vendas');
+  const tbody   = document.getElementById('tabela-vendas-body');
+
+  loading.style.display = 'block';
+  erroEl.style.display  = 'none';
+  tabela.style.display  = 'none';
+  totalEl.textContent   = '';
+  tbody.innerHTML       = '';
+
+  try {
+    const data = await apiFetch('/api/ml/vendas-etiquetas');
+    loading.style.display = 'none';
+
+    if (data.error) {
+      erroEl.textContent   = data.error;
+      erroEl.style.display = 'block';
+      return;
+    }
+
+    const vendas = data.vendas || [];
+    totalEl.textContent = `${vendas.length} venda${vendas.length !== 1 ? 's' : ''} com etiqueta disponível`;
+
+    if (!vendas.length) return;
+
+    vendas.forEach(v => {
+      const bStatus = BADGE_VENDA_STATUS[v.status] || 'badge-outro';
+      const dataFmt = new Date(v.data).toLocaleString('pt-BR', {
+        day: '2-digit', month: '2-digit', year: 'numeric',
+        hour: '2-digit', minute: '2-digit',
+      });
+      const totalFmt = `R$ ${Number(v.total).toFixed(2).replace('.', ',')}`;
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td style="white-space:nowrap">${dataFmt}</td>
+        <td>${v.comprador}</td>
+        <td class="td-titulo" title="${v.itens}">${v.itens}</td>
+        <td class="col-num">${totalFmt}</td>
+        <td><span class="badge-deposito ${bStatus}">${v.statusLabel}</span></td>
+        <td><a class="btn-etiqueta" href="/api/ml/etiqueta/${v.shipmentId}" target="_blank">${v.acaoLabel}</a></td>
+      `;
+      tbody.appendChild(tr);
+    });
+
+    tabela.style.display = 'table';
+  } catch {
+    loading.style.display = 'none';
+    erroEl.textContent   = 'Erro ao carregar vendas.';
+    erroEl.style.display = 'block';
   }
 }
 

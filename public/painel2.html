@@ -20,6 +20,7 @@
       <div class="sidebar-logo">Painel</div>
       <nav>
         <button class="nav-btn active" data-tab="estoque">📦 Estoque</button>
+        <button class="nav-btn" data-tab="vendas">🏷️ Vendas</button>
       </nav>
       <div class="sidebar-footer">
         <button class="btn-sair" onclick="sair()">Sair</button>
@@ -75,6 +76,37 @@
             <tbody id="tabela-estoque-body"></tbody>
           </table>
 
+        </div>
+      </section>
+
+      <!-- ── Aba: Vendas ── -->
+      <section id="tab-vendas" class="tab">
+        <h1>Vendas</h1>
+        <p class="subtitle">Vendas com etiqueta de envio disponível para baixar.</p>
+
+        <div id="vendas-erro" class="estoque-erro" style="display:none"></div>
+
+        <div class="tabela-container">
+          <div class="tabela-topo">
+            <span id="vendas-total"></span>
+            <button class="btn-secondary" onclick="carregarVendas()" id="btn-atualizar-vendas">↻ Atualizar</button>
+          </div>
+
+          <div id="vendas-loading" class="loading" style="display:none">Carregando vendas...</div>
+
+          <table class="tabela" id="tabela-vendas" style="display:none">
+            <thead>
+              <tr>
+                <th>Data</th>
+                <th>Comprador</th>
+                <th>Itens</th>
+                <th class="col-num">Total</th>
+                <th>Status</th>
+                <th>Etiqueta</th>
+              </tr>
+            </thead>
+            <tbody id="tabela-vendas-body"></tbody>
+          </table>
         </div>
       </section>
 
