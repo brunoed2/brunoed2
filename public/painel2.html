@@ -3,8 +3,84 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Painel</title>
+  <title>Painel 2</title>
+  <link rel="stylesheet" href="/css/style.css?v=6">
 </head>
 <body>
+
+  <script>
+    if (sessionStorage.getItem('auth') !== '2') {
+      location.href = '/';
+    }
+  </script>
+
+  <div class="layout">
+
+    <aside class="sidebar">
+      <div class="sidebar-logo">Painel</div>
+      <nav>
+        <button class="nav-btn active" data-tab="estoque">📦 Estoque</button>
+      </nav>
+      <div class="sidebar-footer">
+        <button class="btn-sair" onclick="sair()">Sair</button>
+      </div>
+    </aside>
+
+    <main class="content">
+
+      <!-- ── Aba: Estoque ── -->
+      <section id="tab-estoque" class="tab active">
+        <h1>Estoque</h1>
+        <p class="subtitle">Anúncios ativos com SKU, título, MLB e quantidade em estoque.</p>
+
+        <div id="estoque-erro" class="estoque-erro" style="display:none"></div>
+
+        <div class="filtros-bar">
+          <label class="filtro-label">Depósito:</label>
+          <button class="filtro-btn active" data-filtro="deposito" data-valor="todos">Todos</button>
+          <button class="filtro-btn" data-filtro="deposito" data-valor="fulfillment">Full</button>
+          <button class="filtro-btn" data-filtro="deposito" data-valor="proprio">Próprio</button>
+
+          <span class="filtro-sep">|</span>
+
+          <label class="filtro-label">Status:</label>
+          <button class="filtro-btn active" data-filtro="status" data-valor="todos">Todos</button>
+          <button class="filtro-btn" data-filtro="status" data-valor="active">Ativos</button>
+          <button class="filtro-btn" data-filtro="status" data-valor="paused">Pausados</button>
+          <button class="filtro-btn" data-filtro="status" data-valor="closed">Encerrados</button>
+        </div>
+
+        <div class="tabela-container">
+          <div class="tabela-topo">
+            <span id="estoque-total"></span>
+            <button class="btn-secondary" onclick="carregarEstoque(true)" id="btn-atualizar">↻ Atualizar</button>
+          </div>
+
+          <div id="estoque-loading" class="loading" style="display:none">Carregando anúncios...</div>
+
+          <table class="tabela" id="tabela-estoque" style="display:none">
+            <thead>
+              <tr>
+                <th class="th-sort" data-sort="sku">SKU <span class="sort-icon"></span></th>
+                <th class="th-sort" data-sort="titulo">Título <span class="sort-icon"></span></th>
+                <th class="th-sort" data-sort="mlb">MLB <span class="sort-icon"></span></th>
+                <th class="th-sort" data-sort="depositoLabel">Depósito <span class="sort-icon"></span></th>
+                <th class="th-sort" data-sort="status">Status <span class="sort-icon"></span></th>
+                <th class="th-sort col-num" data-sort="estoque">Estoque <span class="sort-icon"></span></th>
+                <th class="th-sort col-num" data-sort="vendas30d">Vendas 30d <span class="sort-icon"></span></th>
+                <th class="th-sort col-num" data-sort="diasEstoque">Duração <span class="sort-icon"></span></th>
+                <th class="th-sort col-num" data-sort="diasPausado">Pausado há <span class="sort-icon"></span></th>
+              </tr>
+            </thead>
+            <tbody id="tabela-estoque-body"></tbody>
+          </table>
+
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <script src="/js/painel2.js"></script>
 </body>
 </html>
