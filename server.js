@@ -593,39 +593,6 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
   }
 });
 
-// DEBUG — testa variações do endpoint de label para um shipment
-app.get('/api/ml/debug-label/:shipment_id', async (req, res) => {
-  const data = loadData();
-  const num  = req.query.conta || data.conta_ativa;
-  const c    = data.contas[num] || {};
-  if (!c.access_token) return res.status(401).json({ error: 'Não conectado' });
-
-  const sid  = req.params.shipment_id;
-  const tok  = c.access_token;
-  const base = `https://api.mercadolibre.com/shipments/${sid}/labels`;
-
-  // Busca o seller_id da conta
-  let sellerId = c.user_id;
-
-  const tentativas = [
-    { url: `${base}?response_type=pdf&caller.id=${sellerId}&access_token=${tok}` },
-    { url: `${base}?response_type=zpl2&caller.id=${sellerId}&access_token=${tok}` },
-    { url: `${base}?caller.id=${sellerId}&access_token=${tok}` },
-    { url: `https://api.mercadolibre.com/shipment-labels/${sid}?access_token=${tok}` },
-    { url: `https://api.mercadolibre.com/packs/${sid}/print?caller.id=${sellerId}&access_token=${tok}` },
-  ];
-
-  const resultados = [];
-  for (const t of tentativas) {
-    try {
-      const r = await axios.get(t.url, { responseType: 'arraybuffer', timeout: 8000, maxRedirects: 5 });
-      resultados.push({ url: t.url.replace(tok, 'TOKEN'), status: r.status, contentType: r.headers['content-type'], bytes: r.data.byteLength });
-    } catch (e) {
-      resultados.push({ url: t.url.replace(tok, 'TOKEN'), status: e.response?.status, error: e.response?.data ? Buffer.from(e.response.data).toString('utf8').slice(0, 200) : e.message });
-    }
-  }
-  res.json(resultados);
-});
 
 app.get('/api/ml/etiqueta/:shipment_id', (req, res) => {
   const data  = loadData();
