@@ -184,6 +184,76 @@ app.get('/api/ml/store', async (req, res) => {
   }
 });
 
+// GET /api/ml/estoque — lista anúncios com SKU, título, MLB e estoque
+app.get('/api/ml/estoque', async (req, res) => {
+  let data = loadData();
+  if (!data.access_token) return res.json({ error: 'Não conectado' });
+
+  // Busca o user_id se não estiver salvo
+  if (!data.user_id) {
+    try {
+      const me = await axios.get('https://api.mercadolibre.com/users/me', {
+        headers: { Authorization: `Bearer ${data.access_token}` },
+      });
+      data.user_id = me.data.id;
+      saveData(data);
+    } catch {
+      return res.json({ error: 'Não foi possível identificar o usuário.' });
+    }
+  }
+
+  const offset = parseInt(req.query.offset) || 0;
+  const limit  = 50;
+
+  try {
+    // 1. Busca IDs dos anúncios ativos
+    const searchResp = await axios.get(
+      `https://api.mercadolibre.com/users/${data.user_id}/items/search`,
+      {
+        params: { status: 'active', offset, limit },
+        headers: { Authorization: `Bearer ${data.access_token}` },
+      }
+    );
+
+    const total  = searchResp.data.paging.total;
+    const ids    = searchResp.data.results;
+
+    if (!ids.length) return res.json({ items: [], total: 0 });
+
+    // 2. Busca detalhes em lote (até 20 por chamada — limite da API ML)
+    const chunks = [];
+    for (let i = 0; i < ids.length; i += 20) {
+      chunks.push(ids.slice(i, i + 20));
+    }
+
+    const detalhes = [];
+    for (const chunk of chunks) {
+      const resp = await axios.get('https://api.mercadolibre.com/items', {
+        params: {
+          ids:        chunk.join(','),
+          attributes: 'id,title,seller_custom_field,available_quantity',
+        },
+        headers: { Authorization: `Bearer ${data.access_token}` },
+      });
+      detalhes.push(...resp.data);
+    }
+
+    const items = detalhes
+      .filter(r => r.code === 200)
+      .map(r => ({
+        mlb:     r.body.id,
+        titulo:  r.body.title,
+        sku:     r.body.seller_custom_field || '—',
+        estoque: r.body.available_quantity ?? '—',
+      }));
+
+    res.json({ items, total });
+  } catch (err) {
+    console.error('Erro ao buscar estoque:', err.response?.data || err.message);
+    res.json({ error: 'Erro ao buscar anúncios. Tente novamente.' });
+  }
+});
+
 // ── Inicia o servidor ─────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`Servidor rodando em http://localhost:${PORT}`);

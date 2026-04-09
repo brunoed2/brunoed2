@@ -23,6 +23,7 @@
       <nav>
         <button class="nav-btn active" data-tab="config">⚙️ Configurações</button>
         <button class="nav-btn" data-tab="loja">🏪 Loja</button>
+        <button class="nav-btn" data-tab="estoque">📦 Estoque</button>
         <button class="nav-btn" data-tab="futuro">🚀 Futuro</button>
       </nav>
       <div class="sidebar-footer">
@@ -108,6 +109,39 @@
             <div class="loja-detalhe">País: <span id="loja-pais">—</span></div>
           </div>
           <div class="erro-loja" id="loja-erro" style="display:none"></div>
+        </div>
+      </section>
+
+      <!-- ── Aba: Estoque ── -->
+      <section id="tab-estoque" class="tab">
+        <h1>Estoque</h1>
+        <p class="subtitle">Anúncios ativos com SKU, título, MLB e quantidade em estoque.</p>
+
+        <div id="estoque-erro" class="estoque-erro" style="display:none"></div>
+
+        <div class="tabela-container">
+          <div class="tabela-topo">
+            <span id="estoque-total"></span>
+            <button class="btn-secondary" onclick="carregarEstoque(true)" id="btn-atualizar">↻ Atualizar</button>
+          </div>
+
+          <div id="estoque-loading" class="loading" style="display:none">Carregando anúncios...</div>
+
+          <table class="tabela" id="tabela-estoque" style="display:none">
+            <thead>
+              <tr>
+                <th>SKU</th>
+                <th>Título</th>
+                <th>MLB</th>
+                <th class="col-num">Estoque</th>
+              </tr>
+            </thead>
+            <tbody id="tabela-estoque-body"></tbody>
+          </table>
+
+          <div id="estoque-paginacao" class="paginacao" style="display:none">
+            <button class="btn-secondary" id="btn-mais" onclick="carregarMais()">Carregar mais</button>
+          </div>
         </div>
       </section>
 

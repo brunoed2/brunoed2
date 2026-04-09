@@ -14,6 +14,7 @@ function abrirAba(nome) {
   tabs.forEach(t => t.classList.toggle('active', t.id === `tab-${nome}`));
   // Carrega dados da aba quando aberta
   if (nome === 'loja') carregarLoja();
+  if (nome === 'estoque') carregarEstoque(true);
 }
 
 navBtns.forEach(btn => {
@@ -155,6 +156,77 @@ async function carregarLoja() {
     erroEl.textContent   = 'Erro ao conectar com o servidor.';
     erroEl.style.display = 'block';
   }
+}
+
+// ── Estoque ───────────────────────────────────────────────────
+
+let estoqueOffset = 0;
+let estoqueTotal  = 0;
+
+async function carregarEstoque(reiniciar = false) {
+  if (reiniciar) {
+    estoqueOffset = 0;
+    document.getElementById('tabela-estoque-body').innerHTML = '';
+    document.getElementById('tabela-estoque').style.display = 'none';
+    document.getElementById('estoque-paginacao').style.display = 'none';
+    document.getElementById('estoque-total').textContent = '';
+  }
+
+  const loading = document.getElementById('estoque-loading');
+  const erroEl  = document.getElementById('estoque-erro');
+  const btnMais = document.getElementById('btn-mais');
+
+  loading.style.display = 'block';
+  erroEl.style.display  = 'none';
+  if (btnMais) btnMais.disabled = true;
+
+  try {
+    const data = await apiFetch(`/api/ml/estoque?offset=${estoqueOffset}`);
+    loading.style.display = 'none';
+
+    if (data.error) {
+      erroEl.textContent   = data.error;
+      erroEl.style.display = 'block';
+      return;
+    }
+
+    estoqueTotal = data.total;
+    estoqueOffset += data.items.length;
+
+    // Preenche a tabela
+    const tbody = document.getElementById('tabela-estoque-body');
+    data.items.forEach(item => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td class="td-sku">${item.sku}</td>
+        <td class="td-titulo" title="${item.titulo}">${item.titulo}</td>
+        <td class="td-mlb">${item.mlb}</td>
+        <td class="col-num ${item.estoque === 0 ? 'estoque-zero' : ''}">${item.estoque}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+
+    document.getElementById('tabela-estoque').style.display = 'table';
+    document.getElementById('estoque-total').textContent =
+      `${estoqueOffset} de ${estoqueTotal} anúncios`;
+
+    // Mostra botão "carregar mais" se ainda há itens
+    const paginacao = document.getElementById('estoque-paginacao');
+    if (estoqueOffset < estoqueTotal) {
+      paginacao.style.display = 'block';
+      if (btnMais) btnMais.disabled = false;
+    } else {
+      paginacao.style.display = 'none';
+    }
+  } catch {
+    loading.style.display = 'none';
+    erroEl.textContent   = 'Erro ao conectar com o servidor.';
+    erroEl.style.display = 'block';
+  }
+}
+
+function carregarMais() {
+  carregarEstoque(false);
 }
 
 // ── Sair ─────────────────────────────────────────────────────
