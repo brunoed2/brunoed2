@@ -593,40 +593,34 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
   }
 });
 
-// DEBUG — retorna o objeto completo do pedido + tenta diferentes URLs de etiqueta
-app.get('/api/ml/debug-order/:order_id', async (req, res) => {
+// DEBUG — testa variações do endpoint de label para um shipment
+app.get('/api/ml/debug-label/:shipment_id', async (req, res) => {
   const data = loadData();
   const num  = req.query.conta || data.conta_ativa;
   const c    = data.contas[num] || {};
   if (!c.access_token) return res.status(401).json({ error: 'Não conectado' });
-  try {
-    const order = await axios.get(
-      `https://api.mercadolibre.com/orders/${req.params.order_id}`,
-      { headers: { Authorization: `Bearer ${c.access_token}` } }
-    );
-    const shipping = order.data.shipping || {};
-    const shipId   = shipping.id;
 
-    // Tenta buscar o shipment diretamente
-    let shipmentData = null;
+  const sid  = req.params.shipment_id;
+  const tok  = c.access_token;
+  const base = `https://api.mercadolibre.com/shipments/${sid}/labels`;
+
+  const tentativas = [
+    { url: `${base}?response_type=pdf&access_token=${tok}` },
+    { url: `${base}?response_type=zpl2&access_token=${tok}` },
+    { url: `${base}?response_type=pdf2&access_token=${tok}` },
+    { url: `${base}?access_token=${tok}` },
+  ];
+
+  const resultados = [];
+  for (const t of tentativas) {
     try {
-      const s = await axios.get(
-        `https://api.mercadolibre.com/shipments/${shipId}`,
-        { headers: { Authorization: `Bearer ${c.access_token}` } }
-      );
-      shipmentData = s.data;
+      const r = await axios.get(t.url, { responseType: 'arraybuffer', timeout: 8000, maxRedirects: 5 });
+      resultados.push({ url: t.url.replace(tok, 'TOKEN'), status: r.status, contentType: r.headers['content-type'], bytes: r.data.byteLength });
     } catch (e) {
-      shipmentData = { error: e.response?.data || e.message };
+      resultados.push({ url: t.url.replace(tok, 'TOKEN'), status: e.response?.status, error: e.response?.data ? Buffer.from(e.response.data).toString('utf8').slice(0, 200) : e.message });
     }
-
-    res.json({
-      order_id:       order.data.id,
-      shipping_field: shipping,
-      shipment:       shipmentData,
-    });
-  } catch (err) {
-    res.status(500).json(err.response?.data || err.message);
   }
+  res.json(resultados);
 });
 
 app.get('/api/ml/etiqueta/:shipment_id', (req, res) => {
