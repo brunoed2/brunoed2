@@ -639,73 +639,51 @@ app.get('/api/ml/ads-roas', async (req, res) => {
       };
     }
 
-    // 3. Cria relatório assíncrono por item (últimos 30 dias)
-    const reportResp = await axios.post(
-      `https://api.mercadolibre.com/advertising/advertisers/${advertiserId}/product_ads/reports`,
-      {
-        type:       'PRODUCTS',
-        date_range: { begin: dateBegin, end: dateEnd },
-        columns:    ['campaign_id', 'campaign_name', 'item_id', 'item_name',
-                     'sku', 'spend', 'revenue', 'sold_quantity', 'clicks', 'impressions'],
-      },
-      { headers, timeout: 12000 }
-    );
+    // 3. Para cada campanha, busca os product ads e métricas
+    const itens = [];
 
-    const reportId = reportResp.data.id || reportResp.data.report_id;
-    if (!reportId) return res.json({ error: 'Falha ao criar relatório de ads.', detalhe: JSON.stringify(reportResp.data) });
+    for (const camp of campaigns) {
+      const campInfo = campMap[String(camp.id)];
 
-    // 4. Aguarda relatório ficar pronto (até 60s)
-    let rows = null;
-    for (let i = 0; i < 20; i++) {
-      await new Promise(r => setTimeout(r, 3000));
-      const statusResp = await axios.get(
-        `https://api.mercadolibre.com/advertising/advertisers/${advertiserId}/product_ads/reports/${reportId}`,
-        { headers, timeout: 10000 }
-      );
-      const st = (statusResp.data.status || '').toUpperCase();
-      if (st === 'DONE' || st === 'SUCCESS' || st === 'COMPLETED') {
-        if (statusResp.data.download_url) {
-          const dl = await axios.get(statusResp.data.download_url, { headers, timeout: 20000 });
-          rows = Array.isArray(dl.data) ? dl.data : (dl.data.results || []);
-        } else {
-          rows = statusResp.data.results || [];
-        }
-        break;
-      }
-      if (st === 'FAILED' || st === 'ERROR') {
-        return res.json({ error: 'Relatório falhou no servidor do ML. Tente novamente.' });
-      }
-    }
+      // Busca ads da campanha com métricas do período
+      let adsResp;
+      try {
+        adsResp = await axios.get(
+          `https://api.mercadolibre.com/advertising/advertisers/${advertiserId}/campaigns/${camp.id}/product_ads`,
+          {
+            params:  { date_range_begin: dateBegin, date_range_end: dateEnd, limit: 200 },
+            headers,
+            timeout: 12000,
+          }
+        );
+      } catch { continue; }
 
-    if (!rows) return res.json({ error: 'Timeout ao aguardar relatório. Tente novamente em alguns segundos.' });
-
-    if (!rows.length) return res.json({ itens: [], aviso: 'Nenhum dado de ads encontrado nos últimos 30 dias.' });
-
-    // 5. Monta resposta por item
-    const itens = rows
-      .filter(r => (r.spend || 0) > 0)
-      .map(r => {
-        const campInfo        = campMap[String(r.campaign_id)] || {};
-        const spend           = Number(r.spend)         || 0;
-        const revenue         = Number(r.revenue)       || 0;
-        const units           = Number(r.sold_quantity) || 0;
+      const ads = adsResp.data.results || adsResp.data || [];
+      for (const ad of ads) {
+        const spend           = Number(ad.spend || ad.total_cost || 0);
+        const revenue         = Number(ad.revenue || ad.total_revenue || 0);
+        const units           = Number(ad.sold_quantity || ad.units_sold || 0);
+        if (spend === 0) continue;
         const roasEntregando  = spend > 0 ? revenue / spend : null;
         const custoPorUnidade = units > 0 ? spend  / units  : null;
-        return {
-          campanha:       r.campaign_name || campInfo.nome || r.campaign_id,
-          mlb:            r.item_id    || '—',
-          titulo:         r.item_name  || '—',
-          sku:            r.sku        || '—',
+        itens.push({
+          campanha:       campInfo.nome,
+          mlb:            ad.item_id  || ad.product_id || '—',
+          titulo:         ad.item_title || ad.title    || '—',
+          sku:            ad.seller_custom_field || ad.sku || '—',
           targetRoas:     campInfo.targetRoas,
           roasEntregando,
           custoPorUnidade,
           spend,
           revenue,
           units,
-          clicks:         Number(r.clicks)     || 0,
-          impressions:    Number(r.impressions) || 0,
-        };
-      });
+          clicks:      Number(ad.clicks      || 0),
+          impressions: Number(ad.impressions || 0),
+        });
+      }
+    }
+
+    if (!itens.length) return res.json({ itens: [], aviso: 'Nenhum dado de ads com gasto encontrado nos últimos 30 dias.' });
 
     res.json({ itens });
   } catch (err) {
