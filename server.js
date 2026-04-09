@@ -36,7 +36,67 @@ function loadData() {
 
 function saveData(data) {
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+  // Persiste no Railway como variáveis de ambiente (não bloqueia)
+  syncRailwayEnvVars(data).catch(() => {});
 }
+
+// ── Persistência via Railway Environment Variables ────────────
+// Railway apaga o data.json a cada deploy. Usamos env vars como
+// armazenamento permanente. Requer a variável RAILWAY_TOKEN configurada.
+
+async function syncRailwayEnvVars(data) {
+  const token = process.env.RAILWAY_TOKEN;
+  if (!token) return; // sem token, ignora silenciosamente
+
+  const projectId     = process.env.RAILWAY_PROJECT_ID;
+  const environmentId = process.env.RAILWAY_ENVIRONMENT_ID;
+  const serviceId     = process.env.RAILWAY_SERVICE_ID;
+  if (!projectId || !environmentId || !serviceId) return;
+
+  const variables = {};
+  if (data.client_id)     variables.ML_CLIENT_ID     = data.client_id;
+  if (data.client_secret) variables.ML_CLIENT_SECRET = data.client_secret;
+  if (data.access_token)  variables.ML_ACCESS_TOKEN  = data.access_token;
+  if (data.refresh_token) variables.ML_REFRESH_TOKEN = data.refresh_token;
+  if (data.user_id)       variables.ML_USER_ID       = String(data.user_id);
+
+  await axios.post(
+    'https://backboard.railway.app/graphql/v2',
+    {
+      query: `
+        mutation Upsert($input: VariableCollectionUpsertInput!) {
+          variableCollectionUpsert(input: $input)
+        }
+      `,
+      variables: {
+        input: { projectId, environmentId, serviceId, variables },
+      },
+    },
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+}
+
+// Ao iniciar, restaura dados das env vars se data.json estiver vazio
+function initFromEnvVars() {
+  const data = loadData();
+  let changed = false;
+  const map = {
+    client_id:     'ML_CLIENT_ID',
+    client_secret: 'ML_CLIENT_SECRET',
+    access_token:  'ML_ACCESS_TOKEN',
+    refresh_token: 'ML_REFRESH_TOKEN',
+    user_id:       'ML_USER_ID',
+  };
+  for (const [key, envKey] of Object.entries(map)) {
+    if (!data[key] && process.env[envKey]) {
+      data[key] = process.env[envKey];
+      changed = true;
+    }
+  }
+  if (changed) fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+}
+
+initFromEnvVars();
 
 // ── Rotas de configuração ─────────────────────────────────────
 
