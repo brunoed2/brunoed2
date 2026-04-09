@@ -108,7 +108,8 @@ body {
   margin-left: 220px;
   flex: 1;
   padding: 40px 48px;
-  max-width: 900px;
+  max-width: 1400px;
+  width: 100%;
 }
 
 /* ── Abas ───────────────────────────────────────────────────── */

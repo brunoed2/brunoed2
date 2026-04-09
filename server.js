@@ -374,9 +374,11 @@ app.get('/api/ml/vendas30dias', async (req, res) => {
           limit,
         },
         headers: { Authorization: `Bearer ${data.access_token}` },
+        timeout: 10000, // 10s por chamada
       });
 
       const orders = resp.data.results || [];
+      const total  = resp.data.paging?.total || 0;
 
       for (const order of orders) {
         for (const oi of (order.order_items || [])) {
@@ -388,7 +390,7 @@ app.get('/api/ml/vendas30dias', async (req, res) => {
 
       if (orders.length < limit) break;
       offset += limit;
-      if (offset >= 5000) break; // segurança para catálogos muito grandes
+      if (offset >= total || offset >= 2000) break;
     }
 
     res.json(vendasPorItem);

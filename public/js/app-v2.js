@@ -277,20 +277,23 @@ async function carregarEstoque(reiniciar = false) {
     return;
   }
 
-  // 2. Carrega vendas em segundo plano — atualiza tabela quando chegar
+  // 2. Carrega vendas em segundo plano com timeout de 40s
   document.getElementById('estoque-total').textContent += '  (carregando vendas...)';
   try {
-    const vendasData = await apiFetch('/api/ml/vendas30dias');
-    const vendas = vendasData.error ? {} : vendasData;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 40000);
+    const resp = await fetch('/api/ml/vendas30dias', { signal: controller.signal });
+    clearTimeout(timer);
+    const vendasData = await resp.json();
+    const vendas = (vendasData && !vendasData.error) ? vendasData : {};
 
     todosItens = todosItens.map(item => ({
       ...item,
       vendas30d: vendas[item.mlb] || 0,
     }));
-
     renderizarTabela();
-  } catch {
-    // Vendas falhou — mantém tabela sem essa coluna
+  } catch (err) {
+    console.error('Vendas:', err.message);
     todosItens = todosItens.map(item => ({ ...item, vendas30d: 0 }));
     renderizarTabela();
   }
