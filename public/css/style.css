@@ -79,6 +79,42 @@ body {
   font-weight: 500;
 }
 
+/* ── Seletor de conta ───────────────────────────────────────── */
+
+.conta-seletor {
+  display: flex;
+  gap: 6px;
+  padding: 0 12px 16px;
+  border-bottom: 1px solid #2a2a2a;
+  margin-bottom: 8px;
+}
+
+.conta-btn {
+  flex: 1;
+  background: #1e1e1e;
+  border: 1px solid #333;
+  color: #888;
+  padding: 7px 4px;
+  border-radius: 7px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all .15s;
+  font-family: inherit;
+  text-align: center;
+}
+
+.conta-btn:hover {
+  border-color: #555;
+  color: #ccc;
+}
+
+.conta-btn.active {
+  background: #2a2a2a;
+  border-color: #555;
+  color: #fff;
+  font-weight: 600;
+}
+
 .sidebar-footer {
   padding: 0 12px;
 }

@@ -1,6 +1,10 @@
 // ============================================================
-// app.js — Lógica do frontend do painel
+// app-v2.js — Lógica do frontend do painel principal
 // ============================================================
+
+// ── Estado ────────────────────────────────────────────────────
+
+let contaConfigurando = '1'; // conta sendo editada na aba config
 
 // ── Navegação entre abas ──────────────────────────────────────
 
@@ -8,28 +12,25 @@ const navBtns = document.querySelectorAll('.nav-btn');
 const tabs    = document.querySelectorAll('.tab');
 
 function abrirAba(nome) {
-  // Atualiza botões do menu
   navBtns.forEach(b => b.classList.toggle('active', b.dataset.tab === nome));
-  // Mostra a aba correta
   tabs.forEach(t => t.classList.toggle('active', t.id === `tab-${nome}`));
-  // Carrega dados da aba quando aberta
-  if (nome === 'loja') carregarLoja();
+  if (nome === 'loja')    carregarLoja();
   if (nome === 'estoque') carregarEstoque(true);
+  if (nome === 'config')  carregarConfig(contaConfigurando);
 }
 
 navBtns.forEach(btn => {
   btn.addEventListener('click', () => abrirAba(btn.dataset.tab));
 });
 
-// Suporte a ?tab=xxx na URL (usado após redirect do OAuth)
 (function () {
   const params = new URLSearchParams(location.search);
   const tab    = params.get('tab') || 'loja';
   abrirAba(tab);
 
-  // Exibe mensagem de retorno do OAuth
   if (params.get('connected') === 'true') {
-    mostrarMsg('msg-config', '✅ Conectado com sucesso ao Mercado Livre!', 'ok');
+    const conta = params.get('conta') || '1';
+    mostrarMsg('msg-config', `✅ Conta ${conta} conectada com sucesso ao Mercado Livre!`, 'ok');
   }
   if (params.get('error')) {
     const erros = {
@@ -41,7 +42,6 @@ navBtns.forEach(btn => {
     mostrarMsg('msg-config', '❌ ' + (erros[params.get('error')] || 'Erro desconhecido.') + detalhe, 'erro');
   }
 
-  // Limpa os parâmetros da URL sem recarregar a página
   history.replaceState({}, '', '/app.html');
 })();
 
@@ -62,6 +62,34 @@ async function apiFetch(url, opts = {}) {
   return resp.json();
 }
 
+// ── Troca de conta ────────────────────────────────────────────
+
+async function trocarConta(num) {
+  await apiFetch('/api/conta/ativa', {
+    method: 'POST',
+    body:   JSON.stringify({ conta: num }),
+  });
+  // Atualiza visual do seletor
+  document.querySelectorAll('.conta-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.conta === num);
+  });
+  // Recarrega dados da aba atual
+  const abaAtiva = document.querySelector('.tab.active')?.id?.replace('tab-', '');
+  if (abaAtiva === 'loja')    carregarLoja();
+  if (abaAtiva === 'estoque') carregarEstoque(true);
+  atualizarStatus();
+}
+
+// Inicializa seletor de conta com o estado do servidor
+async function inicializarSeletorConta() {
+  try {
+    const data = await apiFetch('/api/conta/ativa');
+    document.querySelectorAll('.conta-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.conta === data.conta_ativa);
+    });
+  } catch {}
+}
+
 // ── Status de conexão ─────────────────────────────────────────
 
 async function atualizarStatus() {
@@ -69,12 +97,11 @@ async function atualizarStatus() {
     const data = await apiFetch('/api/ml/status');
     const dot  = document.getElementById('status-dot');
     const txt  = document.getElementById('status-text');
-
     if (data.connected) {
-      dot.className  = 'dot conectado';
+      dot.className   = 'dot conectado';
       txt.textContent = `Conectado${data.nickname ? ` como ${data.nickname}` : ''}`;
     } else {
-      dot.className  = 'dot desconectado';
+      dot.className   = 'dot desconectado';
       txt.textContent = 'Desconectado';
     }
   } catch {
@@ -84,45 +111,48 @@ async function atualizarStatus() {
 
 // ── Configurações ─────────────────────────────────────────────
 
-// Preenche a URL de callback nas instruções
-document.getElementById('callback-url').textContent =
-  `${location.origin}/api/ml/callback`;
+document.getElementById('callback-url').textContent = `${location.origin}/api/ml/callback`;
 
-// Carrega os dados salvos no formulário ao abrir a página
-async function carregarConfig() {
+function abrirConfigConta(num) {
+  contaConfigurando = num;
+  document.getElementById('cfg-titulo').textContent = `Credenciais — Conta ${num}`;
+  document.getElementById('cfg-tab-1').className = num === '1' ? 'btn-primary' : 'btn-secondary';
+  document.getElementById('cfg-tab-2').className = num === '2' ? 'btn-primary' : 'btn-secondary';
+  carregarConfig(num);
+}
+
+async function carregarConfig(num) {
   try {
-    const data = await apiFetch('/api/config');
-    if (data.client_id)    document.getElementById('client_id').value    = data.client_id;
-    if (data.access_token) document.getElementById('access_token').value = data.access_token;
-    if (data.refresh_token) document.getElementById('refresh_token').value = data.refresh_token;
-    // client_secret não é retornado pelo servidor por segurança
-  } catch { /* silencioso */ }
+    const data = await apiFetch(`/api/config?conta=${num}`);
+    document.getElementById('client_id').value     = data.client_id    || '';
+    document.getElementById('access_token').value  = data.access_token || '';
+    document.getElementById('refresh_token').value = data.refresh_token || '';
+    document.getElementById('client_secret').value = '';
+  } catch {}
 }
 
 async function salvarConfig(event) {
   event.preventDefault();
   const payload = {
+    conta:         contaConfigurando,
     client_id:     document.getElementById('client_id').value.trim(),
     client_secret: document.getElementById('client_secret').value.trim(),
     access_token:  document.getElementById('access_token').value.trim(),
     refresh_token: document.getElementById('refresh_token').value.trim(),
   };
-
-  // Remove campos vazios para não sobrescrever dados já salvos
   Object.keys(payload).forEach(k => { if (!payload[k]) delete payload[k]; });
 
   try {
     await apiFetch('/api/config', { method: 'POST', body: JSON.stringify(payload) });
-    mostrarMsg('msg-config', '✅ Configurações salvas com sucesso.', 'ok');
+    mostrarMsg('msg-config', `✅ Conta ${contaConfigurando} salva com sucesso.`, 'ok');
     atualizarStatus();
   } catch {
     mostrarMsg('msg-config', '❌ Erro ao salvar. Tente novamente.', 'erro');
   }
 }
 
-// Redireciona para o fluxo OAuth do Mercado Livre
 function conectarOAuth() {
-  location.href = '/api/ml/auth';
+  location.href = `/api/ml/auth?conta=${contaConfigurando}`;
 }
 
 // ── Loja ──────────────────────────────────────────────────────
@@ -138,7 +168,6 @@ async function carregarLoja() {
 
   try {
     const data = await apiFetch('/api/ml/store');
-
     loading.style.display = 'none';
 
     if (data.error) {
@@ -147,9 +176,9 @@ async function carregarLoja() {
       return;
     }
 
-    document.getElementById('loja-nome').textContent = data.name  || '—';
-    document.getElementById('loja-id').textContent   = data.id    || '—';
-    document.getElementById('loja-pais').textContent = data.country || '—';
+    document.getElementById('loja-nome').textContent  = data.name    || '—';
+    document.getElementById('loja-id').textContent    = data.id      || '—';
+    document.getElementById('loja-pais').textContent  = data.country || '—';
     info.style.display = 'block';
   } catch {
     loading.style.display = 'none';
@@ -164,14 +193,12 @@ let todosItens = [];
 let filtros    = { deposito: 'todos', status: 'todos' };
 let sortState  = { campo: null, direcao: 'asc' };
 
-// Dias que o anúncio está pausado (baseado na data que detectamos a pausa)
 function calcularDiasPausado(status, pausadoDesde) {
   if (status !== 'paused' || !pausadoDesde) return null;
   const ms = Date.now() - new Date(pausadoDesde).getTime();
   return Math.max(0, Math.floor(ms / (1000 * 60 * 60 * 24)));
 }
 
-// Retorna dias numérico para ordenação (Infinity = sem vendas, -1 = zerado)
 function diasEstoqueNum(estoque, vendas30d) {
   if (estoque === 0 || estoque === '—') return -1;
   if (!vendas30d) return Infinity;
@@ -192,14 +219,11 @@ function sortarItens(itens) {
       va = a[sortState.campo];
       vb = b[sortState.campo];
     }
-    // Nulos/undefined vão sempre para o final
     if (va == null || va === '—') return 1;
     if (vb == null || vb === '—') return -1;
-    // Numérico
     if (typeof va === 'number' && typeof vb === 'number') {
       return sortState.direcao === 'asc' ? va - vb : vb - va;
     }
-    // Texto
     const cmp = String(va).localeCompare(String(vb), 'pt-BR', { numeric: true });
     return sortState.direcao === 'asc' ? cmp : -cmp;
   });
@@ -236,7 +260,6 @@ const STATUS_LABEL = {
   closed: 'Encerrado',
 };
 
-// Configura clique nos cabeçalhos para ordenar
 document.querySelectorAll('.th-sort').forEach(th => {
   th.addEventListener('click', () => {
     if (sortState.campo === th.dataset.sort) {
@@ -249,11 +272,9 @@ document.querySelectorAll('.th-sort').forEach(th => {
   });
 });
 
-// Configura botões de filtro
 document.querySelectorAll('.filtro-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     const grupo = btn.dataset.filtro;
-    // Desmarca apenas os do mesmo grupo
     document.querySelectorAll(`.filtro-btn[data-filtro="${grupo}"]`)
       .forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
@@ -264,14 +285,12 @@ document.querySelectorAll('.filtro-btn').forEach(btn => {
 
 function renderizarTabela() {
   let itens = todosItens;
-  // Filtros
   if (filtros.deposito === 'proprio') {
     itens = itens.filter(i => i.deposito === 'self_service' || i.deposito === 'xd_drop_off');
   } else if (filtros.deposito !== 'todos') {
     itens = itens.filter(i => i.deposito === filtros.deposito);
   }
   if (filtros.status !== 'todos') itens = itens.filter(i => i.status === filtros.status);
-  // Ordenação
   itens = sortarItens(itens);
   atualizarIconesSort();
 
@@ -305,7 +324,6 @@ function renderizarTabela() {
     (filtroAtivo ? ' (filtro ativo)' : '');
 }
 
-// Calcula classe de cor e texto da duração do estoque
 function calcularDuracao(estoque, vendas30d) {
   if (estoque === 0)   return { texto: 'Zerado',  classe: 'duracao-zerado' };
   if (!vendas30d)      return { texto: '∞',        classe: 'duracao-infinito' };
@@ -330,7 +348,6 @@ async function carregarEstoque(reiniciar = false) {
   loading.style.display = 'block';
   erroEl.style.display  = 'none';
 
-  // 1. Carrega estoque primeiro — aparece rápido
   let estoqueData;
   try {
     estoqueData = await apiFetch('/api/ml/estoque');
@@ -351,7 +368,6 @@ async function carregarEstoque(reiniciar = false) {
     return;
   }
 
-  // 2. Carrega vendas em segundo plano com timeout de 40s
   document.getElementById('estoque-total').textContent += '  (carregando vendas...)';
   try {
     const controller = new AbortController();
@@ -373,7 +389,7 @@ async function carregarEstoque(reiniciar = false) {
   }
 }
 
-// ── Sair ─────────────────────────────────────────────────────
+// ── Sair ──────────────────────────────────────────────────────
 
 function sair() {
   sessionStorage.removeItem('auth');
@@ -382,7 +398,7 @@ function sair() {
 
 // ── Inicialização ─────────────────────────────────────────────
 
-carregarConfig();
+inicializarSeletorConta();
+carregarConfig('1');
 atualizarStatus();
-// Atualiza status a cada 60 segundos
 setInterval(atualizarStatus, 60_000);

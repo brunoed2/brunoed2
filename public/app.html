@@ -20,6 +20,10 @@
     <!-- Sidebar / Menu lateral -->
     <aside class="sidebar">
       <div class="sidebar-logo">Painel</div>
+      <div class="conta-seletor">
+        <button class="conta-btn active" data-conta="1" onclick="trocarConta('1')">Conta 1</button>
+        <button class="conta-btn" data-conta="2" onclick="trocarConta('2')">Conta 2</button>
+      </div>
       <nav>
         <button class="nav-btn active" data-tab="loja">🏪 Loja</button>
         <button class="nav-btn" data-tab="estoque">📦 Estoque</button>
@@ -36,7 +40,7 @@
       <!-- ── Aba: Configurações ── -->
       <section id="tab-config" class="tab">
         <h1>Configurações</h1>
-        <p class="subtitle">Integre sua conta do Mercado Livre para sincronizar dados da loja.</p>
+        <p class="subtitle">Gerencie as credenciais das duas contas do Mercado Livre.</p>
 
         <!-- Status da conexão -->
         <div class="status-bar" id="status-bar">
@@ -44,9 +48,15 @@
           <span id="status-text">Verificando conexão...</span>
         </div>
 
+        <!-- Seletor de qual conta configurar -->
+        <div style="display:flex;gap:10px;margin-bottom:20px">
+          <button class="btn-primary" id="cfg-tab-1" onclick="abrirConfigConta('1')" style="flex:1">Conta 1</button>
+          <button class="btn-secondary" id="cfg-tab-2" onclick="abrirConfigConta('2')" style="flex:1">Conta 2</button>
+        </div>
+
         <!-- Formulário de credenciais -->
         <div class="card">
-          <h2>Credenciais da API</h2>
+          <h2 id="cfg-titulo">Credenciais — Conta 1</h2>
           <p class="card-desc">
             Obtenha suas credenciais em
             <a href="https://developers.mercadolivre.com.br/pt_br/api-docs-en" target="_blank">developers.mercadolivre.com.br</a>.
@@ -85,9 +95,8 @@
           <ol>
             <li>Crie um app em <strong>developers.mercadolivre.com.br</strong></li>
             <li>Copie o <strong>Client ID</strong> e <strong>Client Secret</strong></li>
-            <li>Preencha os campos acima e clique em <strong>Salvar</strong></li>
+            <li>Selecione a conta acima, preencha os campos e clique em <strong>Salvar</strong></li>
             <li>Clique em <strong>Conectar via OAuth</strong> para autorizar automaticamente</li>
-            <li>O Access Token e Refresh Token serão salvos automaticamente</li>
           </ol>
           <p class="obs">⚠️ Configure a URL de retorno (Redirect URI) no seu app ML como:<br>
             <code id="callback-url"></code>

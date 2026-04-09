@@ -18,6 +18,32 @@ navBtns.forEach(btn => {
   btn.addEventListener('click', () => abrirAba(btn.dataset.tab));
 });
 
+// ── Troca de conta ────────────────────────────────────────────
+
+async function trocarConta(num) {
+  await fetch('/api/conta/ativa', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ conta: num }),
+  });
+  document.querySelectorAll('.conta-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.conta === num);
+  });
+  // Recarrega a aba atual
+  const abaAtiva = document.querySelector('.tab.active')?.id?.replace('tab-', '');
+  if (abaAtiva === 'estoque') carregarEstoque(true);
+  if (abaAtiva === 'vendas')  carregarVendas();
+}
+
+async function inicializarSeletorConta() {
+  try {
+    const resp = await apiFetch('/api/conta/ativa');
+    document.querySelectorAll('.conta-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.conta === resp.conta_ativa);
+    });
+  } catch {}
+}
+
 // ── Helpers ───────────────────────────────────────────────────
 
 async function apiFetch(url, opts = {}) {
@@ -300,4 +326,5 @@ function sair() {
 
 // ── Inicialização ─────────────────────────────────────────────
 
+inicializarSeletorConta();
 carregarEstoque(true);
