@@ -489,7 +489,12 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
       offset += limit;
     }
 
-    const comShipment = todasOrdens.filter(o => o.shipping && o.shipping.id);
+    // Filtra ordens com shipment, excluindo Full já no nível da ordem quando possível
+    const comShipment = todasOrdens.filter(o =>
+      o.shipping && o.shipping.id &&
+      o.shipping.logistic_type !== 'fulfillment' &&
+      o.shipping.mode !== 'fulfillment'
+    );
 
     const resultado = [];
     for (let i = 0; i < comShipment.length; i += 10) {
@@ -513,11 +518,17 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
     const SUBSTATUS_LABEL = { ready_to_print: 'Baixar', printed: 'Baixar novamente' };
     const STATUS_PT = { handling: 'Preparando', ready_to_ship: 'Aguardando coleta' };
 
+    const isFull = (s) => s && (
+      s.logistic_type === 'fulfillment' ||
+      s.logistic_type === 'fulfillment_reverse' ||
+      (s.logistic_type || '').includes('fulfillment')
+    );
+
     const vendas = resultado
       .filter(({ shipment }) =>
         shipment &&
         LABEL_STATUSES.has(shipment.status) &&
-        shipment.logistic_type !== 'fulfillment'
+        !isFull(shipment)
       )
       .map(({ order, shipment }) => ({
         orderId:     order.id,
