@@ -605,7 +605,7 @@ app.get('/api/ml/ads-roas', async (req, res) => {
   const num  = data.conta_ativa;
   const c    = data.contas[num];
   if (!c || !c.access_token) return res.json({ error: 'Não conectado' });
-  if (!c.client_id)          return res.json({ error: 'Client ID não configurado' });
+  if (!c.user_id)            return res.json({ error: 'user_id não encontrado. Reconecte a conta.' });
 
   const headers   = { Authorization: `Bearer ${c.access_token}`, 'Content-Type': 'application/json' };
   const today     = new Date();
@@ -613,14 +613,22 @@ app.get('/api/ml/ads-roas', async (req, res) => {
   const dateEnd   = today.toISOString().split('T')[0];
 
   try {
-    // 1. Lista campanhas ativas
-    const campResp = await axios.get('https://api.mercadolibre.com/advertising/product_ads/campaigns', {
-      params:  { app_id: c.client_id, user_id: c.user_id, status: 'active', limit: 100 },
+    // 1. Busca o advertiser_id do usuário
+    const advResp = await axios.get('https://api.mercadolibre.com/advertising/advertisers', {
+      params:  { user_id: c.user_id },
       headers,
       timeout: 12000,
     });
+    const advertiser = (advResp.data.results || advResp.data)?.[0] || advResp.data;
+    const advertiserId = advertiser?.id || advertiser?.advertiser_id;
+    if (!advertiserId) return res.json({ error: 'Advertiser ID não encontrado.', detalhe: JSON.stringify(advResp.data) });
+
+    // 2. Lista campanhas do advertiser
+    const campResp = await axios.get(
+      `https://api.mercadolibre.com/advertising/advertisers/${advertiserId}/campaigns`,
+      { params: { status: 'active', limit: 100 }, headers, timeout: 12000 }
+    );
     const campaigns = campResp.data.results || campResp.data || [];
-    if (!campaigns.length) return res.json({ itens: [], aviso: 'Nenhuma campanha ativa encontrada.' });
 
     // Mapa campanha id → target_roas
     const campMap = {};
@@ -631,9 +639,9 @@ app.get('/api/ml/ads-roas', async (req, res) => {
       };
     }
 
-    // 2. Cria relatório assíncrono por item (últimos 30 dias)
+    // 3. Cria relatório assíncrono por item (últimos 30 dias)
     const reportResp = await axios.post(
-      'https://api.mercadolibre.com/advertising/product_ads/reports',
+      `https://api.mercadolibre.com/advertising/advertisers/${advertiserId}/product_ads/reports`,
       {
         type:       'PRODUCTS',
         date_range: { begin: dateBegin, end: dateEnd },
@@ -646,12 +654,12 @@ app.get('/api/ml/ads-roas', async (req, res) => {
     const reportId = reportResp.data.id || reportResp.data.report_id;
     if (!reportId) return res.json({ error: 'Falha ao criar relatório de ads.', detalhe: JSON.stringify(reportResp.data) });
 
-    // 3. Aguarda relatório ficar pronto (até 60s)
+    // 4. Aguarda relatório ficar pronto (até 60s)
     let rows = null;
     for (let i = 0; i < 20; i++) {
       await new Promise(r => setTimeout(r, 3000));
       const statusResp = await axios.get(
-        `https://api.mercadolibre.com/advertising/product_ads/reports/${reportId}`,
+        `https://api.mercadolibre.com/advertising/advertisers/${advertiserId}/product_ads/reports/${reportId}`,
         { headers, timeout: 10000 }
       );
       const st = (statusResp.data.status || '').toUpperCase();
@@ -664,12 +672,16 @@ app.get('/api/ml/ads-roas', async (req, res) => {
         }
         break;
       }
-      if (st === 'FAILED' || st === 'ERROR') break;
+      if (st === 'FAILED' || st === 'ERROR') {
+        return res.json({ error: 'Relatório falhou no servidor do ML. Tente novamente.' });
+      }
     }
 
-    if (!rows) return res.json({ error: 'Timeout ao aguardar relatório. Tente novamente.' });
+    if (!rows) return res.json({ error: 'Timeout ao aguardar relatório. Tente novamente em alguns segundos.' });
 
-    // 4. Monta resposta por item
+    if (!rows.length) return res.json({ itens: [], aviso: 'Nenhum dado de ads encontrado nos últimos 30 dias.' });
+
+    // 5. Monta resposta por item
     const itens = rows
       .filter(r => (r.spend || 0) > 0)
       .map(r => {
@@ -677,8 +689,8 @@ app.get('/api/ml/ads-roas', async (req, res) => {
         const spend           = Number(r.spend)         || 0;
         const revenue         = Number(r.revenue)       || 0;
         const units           = Number(r.sold_quantity) || 0;
-        const roasEntregando  = spend > 0 ? revenue / spend    : null;
-        const custoPorUnidade = units > 0 ? spend  / units     : null;
+        const roasEntregando  = spend > 0 ? revenue / spend : null;
+        const custoPorUnidade = units > 0 ? spend  / units  : null;
         return {
           campanha:       r.campaign_name || campInfo.nome || r.campaign_id,
           mlb:            r.item_id    || '—',
@@ -690,8 +702,8 @@ app.get('/api/ml/ads-roas', async (req, res) => {
           spend,
           revenue,
           units,
-          clicks:         Number(r.clicks)      || 0,
-          impressions:    Number(r.impressions)  || 0,
+          clicks:         Number(r.clicks)     || 0,
+          impressions:    Number(r.impressions) || 0,
         };
       });
 
