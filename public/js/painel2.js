@@ -37,9 +37,12 @@ async function trocarConta(num) {
 
 async function inicializarSeletorConta() {
   try {
-    const resp = await apiFetch('/api/conta/ativa');
+    const data = await apiFetch('/api/conta/ativa');
     document.querySelectorAll('.conta-btn').forEach(b => {
-      b.classList.toggle('active', b.dataset.conta === resp.conta_ativa);
+      const num      = b.dataset.conta;
+      const nickname = data.contas?.[num]?.nickname;
+      if (nickname) b.textContent = nickname;
+      b.classList.toggle('active', num === data.conta_ativa);
     });
   } catch {}
 }

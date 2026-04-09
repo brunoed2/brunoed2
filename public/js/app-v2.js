@@ -85,7 +85,10 @@ async function inicializarSeletorConta() {
   try {
     const data = await apiFetch('/api/conta/ativa');
     document.querySelectorAll('.conta-btn').forEach(b => {
-      b.classList.toggle('active', b.dataset.conta === data.conta_ativa);
+      const num      = b.dataset.conta;
+      const nickname = data.contas?.[num]?.nickname;
+      if (nickname) b.textContent = nickname;
+      b.classList.toggle('active', num === data.conta_ativa);
     });
   } catch {}
 }

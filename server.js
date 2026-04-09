@@ -138,8 +138,13 @@ initFromEnvVars();
 
 app.get('/api/conta/ativa', (req, res) => {
   const data = loadData();
-  const c = contaAtiva(data);
-  res.json({ conta_ativa: data.conta_ativa, nickname: c.nickname || null });
+  res.json({
+    conta_ativa: data.conta_ativa,
+    contas: {
+      '1': { nickname: data.contas['1']?.nickname || null },
+      '2': { nickname: data.contas['2']?.nickname || null },
+    },
+  });
 });
 
 app.post('/api/conta/ativa', (req, res) => {
@@ -220,6 +225,13 @@ app.get('/api/ml/callback', async (req, res) => {
     c.access_token  = resp.data.access_token;
     c.refresh_token = resp.data.refresh_token;
     c.user_id       = resp.data.user_id;
+    // Busca o nickname para exibir no seletor de conta
+    try {
+      const me = await axios.get('https://api.mercadolibre.com/users/me', {
+        headers: { Authorization: `Bearer ${c.access_token}` },
+      });
+      c.nickname = me.data.nickname;
+    } catch {}
     data.contas[num] = c;
     saveData(data);
     res.redirect(`/app.html?tab=config&connected=true&conta=${num}`);
@@ -465,7 +477,9 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
   if (!c.access_token) return res.json({ error: 'Não conectado' });
   if (!c.user_id)      return res.json({ error: 'user_id não encontrado' });
 
-  const LABEL_STATUSES = new Set(['handling', 'ready_to_ship']);
+  const LABEL_STATUSES   = new Set(['handling', 'ready_to_ship']);
+  // Substatuses onde a etiqueta está de fato gerada e disponível para baixar
+  const LABEL_SUBSTATUSES = new Set(['ready_to_print', 'printed']);
 
   try {
     const todasOrdens = [];
@@ -528,6 +542,7 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
       .filter(({ shipment }) =>
         shipment &&
         LABEL_STATUSES.has(shipment.status) &&
+        LABEL_SUBSTATUSES.has(shipment.substatus) &&
         !isFull(shipment)
       )
       .map(({ order, shipment }) => ({
