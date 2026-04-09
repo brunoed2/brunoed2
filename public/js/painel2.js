@@ -308,7 +308,7 @@ async function carregarVendas() {
         <td class="td-sku">${v.skus || '—'}</td>
         <td class="td-titulo" title="${v.itens}">${v.itens}</td>
         <td><span class="badge-deposito ${bStatus}">${v.statusLabel}</span></td>
-        <td><a class="btn-etiqueta" href="/api/ml/etiqueta/${v.shipmentId}" target="_blank">${v.acaoLabel}</a></td>
+        <td><a class="btn-etiqueta" href="/api/ml/etiqueta/${v.shipmentId}?conta=${v.conta}" target="_blank">${v.acaoLabel}</a></td>
       `;
       tbody.appendChild(tr);
     });

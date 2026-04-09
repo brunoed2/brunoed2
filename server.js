@@ -579,6 +579,7 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
           itens:       itens.map(i => i.titulo).join(' | '),
           skus:        itens.map(i => i.sku).join(' | '),
           shipmentId:  shipment.id,
+          conta:       data.conta_ativa,
           status:      shipment.status,
           statusLabel: STATUS_PT[shipment.status] || shipment.status,
           acaoLabel:   SUBSTATUS_LABEL[shipment.substatus] || 'Baixar',
@@ -609,8 +610,9 @@ app.get('/api/ml/debug-shipment/:shipment_id', async (req, res) => {
 });
 
 app.get('/api/ml/etiqueta/:shipment_id', (req, res) => {
-  const data = loadData();
-  const c    = contaAtiva(data);
+  const data  = loadData();
+  const num   = req.query.conta || data.conta_ativa;
+  const c     = data.contas[num] || {};
   if (!c.access_token) return res.status(401).json({ error: 'Não conectado' });
 
   // Redireciona direto para a URL da ML com o token — forma mais confiável para labels
