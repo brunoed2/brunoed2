@@ -272,13 +272,11 @@ async function carregarVendas() {
         day: '2-digit', month: '2-digit', year: 'numeric',
         hour: '2-digit', minute: '2-digit',
       });
-      const totalFmt = `R$ ${Number(v.total).toFixed(2).replace('.', ',')}`;
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td style="white-space:nowrap">${dataFmt}</td>
         <td>${v.comprador}</td>
         <td class="td-titulo" title="${v.itens}">${v.itens}</td>
-        <td class="col-num">${totalFmt}</td>
         <td><span class="badge-deposito ${bStatus}">${v.statusLabel}</span></td>
         <td><a class="btn-etiqueta" href="/api/ml/etiqueta/${v.shipmentId}" target="_blank">${v.acaoLabel}</a></td>
       `;

@@ -435,7 +435,7 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
   if (!data.user_id)      return res.json({ error: 'user_id não encontrado' });
 
   // Statuses onde a etiqueta existe e pode ser baixada/rebaixada
-  const LABEL_STATUSES = new Set(['handling', 'ready_to_ship', 'shipped']);
+  const LABEL_STATUSES = new Set(['handling', 'ready_to_ship']);
 
   try {
     // Busca ordens pagas recentes (até 200)
