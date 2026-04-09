@@ -712,28 +712,16 @@ app.get('/api/ml/debug-ads', async (req, res) => {
     }
   };
 
-  await tryGet('advertisers_by_user',      'https://api.mercadolibre.com/advertising/advertisers', { user_id: c.user_id });
-  await tryGet('advertisers_direct',       `https://api.mercadolibre.com/advertising/advertisers/${c.user_id}`);
-  await tryGet('product_ads_root',         'https://api.mercadolibre.com/advertising/product_ads');
-  await tryGet('product_ads_by_user',      'https://api.mercadolibre.com/advertising/product_ads', { user_id: c.user_id, limit: 5 });
-  await tryGet('campaigns_by_user',        'https://api.mercadolibre.com/advertising/campaigns',   { user_id: c.user_id, limit: 5 });
-
-  // Se achou advertiser_id, tenta endpoints com ele
-  const advData = result['advertisers_by_user']?.data;
-  const advId   = advData?.results?.[0]?.id || advData?.[0]?.id || advData?.id;
-  if (advId) {
-    result['_advertiser_id_encontrado'] = advId;
-    await tryGet('campaigns_via_adv',     `https://api.mercadolibre.com/advertising/advertisers/${advId}/campaigns`, { limit: 5 });
-    await tryGet('product_ads_via_adv',   `https://api.mercadolibre.com/advertising/advertisers/${advId}/product_ads`, { limit: 5 });
-
-    const campData = result['campaigns_via_adv']?.data;
-    const campId   = campData?.results?.[0]?.id || campData?.[0]?.id;
-    if (campId) {
-      result['_campaign_id_encontrado'] = campId;
-      await tryGet('ads_via_campaign',   `https://api.mercadolibre.com/advertising/advertisers/${advId}/campaigns/${campId}/product_ads`, { limit: 3 });
-      await tryGet('ads_metrics',        `https://api.mercadolibre.com/advertising/advertisers/${advId}/campaigns/${campId}/product_ads`, { limit: 3, date_range_begin: '2026-03-01', date_range_end: '2026-04-09' });
-    }
-  }
+  // Variações do caminho de advertisers
+  await tryGet('v1_advertisers',           'https://api.mercadolibre.com/advertising/v1/advertisers', { user_id: c.user_id });
+  await tryGet('users_advertising',        `https://api.mercadolibre.com/users/${c.user_id}/advertising`);
+  await tryGet('users_campaigns',          `https://api.mercadolibre.com/users/${c.user_id}/advertising/product_ads/campaigns`);
+  await tryGet('users_product_ads',        `https://api.mercadolibre.com/users/${c.user_id}/advertising/product_ads`);
+  await tryGet('pads_campaigns',           `https://api.mercadolibre.com/pads/campaigns`, { user_id: c.user_id });
+  await tryGet('pads_user_campaigns',      `https://api.mercadolibre.com/pads/${c.user_id}/campaigns`);
+  await tryGet('ads_campaigns',            `https://api.mercadolibre.com/ads/campaigns`, { user_id: c.user_id });
+  await tryGet('product_ads_campaigns',    `https://api.mercadolibre.com/product_ads/campaigns`, { user_id: c.user_id });
+  await tryGet('advertising_v2',           `https://api.mercadolibre.com/advertising/advertisers`, { seller_id: c.user_id });
 
   res.json(result);
 });
