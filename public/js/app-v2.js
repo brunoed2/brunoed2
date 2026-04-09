@@ -164,10 +164,10 @@ let todosItens = [];
 let filtros    = { deposito: 'todos', status: 'todos' };
 let sortState  = { campo: null, direcao: 'asc' };
 
-// Dias que o anúncio está pausado (baseado em last_updated)
-function calcularDiasPausado(status, lastUpdated) {
-  if (status !== 'paused' || !lastUpdated) return null;
-  const ms = Date.now() - new Date(lastUpdated).getTime();
+// Dias que o anúncio está pausado (baseado na data que detectamos a pausa)
+function calcularDiasPausado(status, pausadoDesde) {
+  if (status !== 'paused' || !pausadoDesde) return null;
+  const ms = Date.now() - new Date(pausadoDesde).getTime();
   return Math.max(0, Math.floor(ms / (1000 * 60 * 60 * 24)));
 }
 
@@ -186,8 +186,8 @@ function sortarItens(itens) {
       va = diasEstoqueNum(a.estoque, a.vendas30d);
       vb = diasEstoqueNum(b.estoque, b.vendas30d);
     } else if (sortState.campo === 'diasPausado') {
-      va = calcularDiasPausado(a.status, a.lastUpdated) ?? -1;
-      vb = calcularDiasPausado(b.status, b.lastUpdated) ?? -1;
+      va = calcularDiasPausado(a.status, a.pausadoDesde) ?? -1;
+      vb = calcularDiasPausado(b.status, b.pausadoDesde) ?? -1;
     } else {
       va = a[sortState.campo];
       vb = b[sortState.campo];
@@ -282,7 +282,7 @@ function renderizarTabela() {
     const bDeposito   = BADGE_DEPOSITO[item.deposito] || 'badge-outro';
     const bStatus     = BADGE_STATUS[item.status]     || 'badge-outro';
     const duracao     = calcularDuracao(item.estoque, item.vendas30d);
-    const diasPausado = calcularDiasPausado(item.status, item.lastUpdated);
+    const diasPausado = calcularDiasPausado(item.status, item.pausadoDesde);
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td class="td-sku">${item.sku}</td>

@@ -325,21 +325,48 @@ app.get('/api/ml/estoque', async (req, res) => {
       detalhes.push(...resp.data);
     }
 
+    // Carrega datas de pausa detectadas anteriormente
+    const pauseDates = data.pause_dates || {};
+    const agora      = new Date().toISOString();
+    let pauseChanged = false;
+
     const items = detalhes
       .filter(r => r.code === 200)
       .map(r => {
         const logisticType = r.body.shipping?.logistic_type || 'self_service';
+        const mlb          = r.body.id;
+        const status       = r.body.status;
+
+        // Rastreia quando cada anúncio entrou em pausa
+        if (status === 'paused') {
+          if (!pauseDates[mlb]) {
+            pauseDates[mlb] = agora;  // primeira vez que detectamos como pausado
+            pauseChanged = true;
+          }
+        } else {
+          if (pauseDates[mlb]) {
+            delete pauseDates[mlb];   // voltou a ativo/encerrado — remove
+            pauseChanged = true;
+          }
+        }
+
         return {
-          mlb:           r.body.id,
+          mlb,
           titulo:        r.body.title,
           sku:           extrairSku(r.body),
           estoque:       r.body.available_quantity ?? 0,
-          status:        r.body.status,
-          lastUpdated:   r.body.last_updated || null,
+          status,
+          pausadoDesde:  status === 'paused' ? (pauseDates[mlb] || agora) : null,
           deposito:      logisticType,
           depositoLabel: DEPOSITO_LABEL[logisticType] || logisticType,
         };
       });
+
+    // Persiste as datas de pausa se algo mudou
+    if (pauseChanged) {
+      data.pause_dates = pauseDates;
+      saveData(data);
+    }
 
     res.json({ items, total: items.length });
   } catch (err) {
