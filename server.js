@@ -726,11 +726,29 @@ app.get('/api/ml/debug-ads', async (req, res) => {
   result['_mlb_usado'] = primeiroMlb || 'nenhum';
 
   if (primeiroMlb) {
-    await tryGet('advertisers_com_product_id',  'https://api.mercadolibre.com/advertising/advertisers', { product_id: primeiroMlb });
-    await tryGet('advertisers_com_item_id',     'https://api.mercadolibre.com/advertising/advertisers', { item_id: primeiroMlb });
-    await tryGet('product_ads_com_product_id',  'https://api.mercadolibre.com/advertising/product_ads', { product_id: primeiroMlb });
-    await tryGet('product_ads_com_item_id',     'https://api.mercadolibre.com/advertising/product_ads', { item_id: primeiroMlb });
-    await tryGet('product_ads_mlb_direto',      `https://api.mercadolibre.com/advertising/product_ads/${primeiroMlb}`);
+    // Tenta sem prefixo MLB (só o número)
+    const mlbNum = String(primeiroMlb).replace(/^MLB/i, '');
+    result['_mlb_numero'] = mlbNum;
+
+    await tryGet('advertisers_num',             'https://api.mercadolibre.com/advertising/advertisers',  { product_id: mlbNum });
+    await tryGet('advertisers_num_user',        'https://api.mercadolibre.com/advertising/advertisers',  { product_id: mlbNum, user_id: c.user_id });
+    await tryGet('product_ads_num',             'https://api.mercadolibre.com/advertising/product_ads',  { product_id: mlbNum });
+    await tryGet('product_ads_num_user',        'https://api.mercadolibre.com/advertising/product_ads',  { product_id: mlbNum, user_id: c.user_id });
+    await tryGet('product_ads_num_direto',      `https://api.mercadolibre.com/advertising/product_ads/${mlbNum}`);
+    await tryGet('advertising_root',            'https://api.mercadolibre.com/advertising',              { product_id: mlbNum });
+
+    // Busca o catalog_product_id interno do item
+    try {
+      const itemR = await axios.get(`https://api.mercadolibre.com/items/${primeiroMlb}`, {
+        params: { attributes: 'id,catalog_product_id,parent_item_id' }, headers, timeout: 8000,
+      });
+      const catId = itemR.data.catalog_product_id || itemR.data.parent_item_id;
+      result['_catalog_product_id'] = catId || 'nenhum';
+      if (catId) {
+        await tryGet('advertisers_catalog',     'https://api.mercadolibre.com/advertising/advertisers',  { product_id: catId });
+        await tryGet('product_ads_catalog',     'https://api.mercadolibre.com/advertising/product_ads',  { product_id: catId });
+      }
+    } catch {}
   }
 
   res.json(result);
