@@ -216,6 +216,10 @@ async function atualizarEstoque(mlb, btn) {
 
 function renderizarTabela() {
   let itens = todosItens;
+  const skuFiltro = (document.getElementById('filtro-sku')?.value || '').trim().toLowerCase();
+  if (skuFiltro) {
+    itens = itens.filter(i => String(i.sku).toLowerCase().includes(skuFiltro));
+  }
   if (filtros.deposito === 'proprio') {
     itens = itens.filter(i => i.deposito === 'self_service' || i.deposito === 'xd_drop_off');
   } else if (filtros.deposito !== 'todos') {

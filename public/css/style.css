@@ -430,6 +430,24 @@ code {
   font-weight: 500;
 }
 
+.filtro-sku-input {
+  padding: 6px 12px;
+  border: 1.5px solid #ddd;
+  border-radius: 20px;
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  width: 160px;
+  transition: border-color .15s, width .2s;
+  background: #fff;
+  color: #333;
+}
+
+.filtro-sku-input:focus {
+  border-color: #111;
+  width: 220px;
+}
+
 .filtro-btn {
   padding: 6px 16px;
   border: 1.5px solid #ddd;

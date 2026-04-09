@@ -128,6 +128,8 @@
         <div id="estoque-erro" class="estoque-erro" style="display:none"></div>
 
         <div class="filtros-bar">
+          <input type="text" id="filtro-sku" class="filtro-sku-input" placeholder="Filtrar por SKU..." oninput="renderizarTabela()">
+          <span class="filtro-sep">|</span>
           <label class="filtro-label">Depósito:</label>
           <button class="filtro-btn active" data-filtro="deposito" data-valor="todos">Todos</button>
           <button class="filtro-btn" data-filtro="deposito" data-valor="fulfillment">Full</button>
