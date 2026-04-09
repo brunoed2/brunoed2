@@ -592,32 +592,15 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
   }
 });
 
-app.get('/api/ml/etiqueta/:shipment_id', async (req, res) => {
+app.get('/api/ml/etiqueta/:shipment_id', (req, res) => {
   const data = loadData();
   const c    = contaAtiva(data);
   if (!c.access_token) return res.status(401).json({ error: 'Não conectado' });
 
-  try {
-    const resp = await axios.get(
-      `https://api.mercadolibre.com/shipments/${req.params.shipment_id}/labels`,
-      {
-        params:       { response_type: 'pdf' },
-        headers:      { Authorization: `Bearer ${c.access_token}` },
-        responseType: 'arraybuffer',
-        timeout:      20000,
-      }
-    );
-    const contentType = resp.headers['content-type'] || 'application/pdf';
-    res.setHeader('Content-Type', contentType);
-    res.setHeader('Content-Disposition', `inline; filename="etiqueta-${req.params.shipment_id}.pdf"`);
-    res.send(Buffer.from(resp.data));
-  } catch (err) {
-    const errData = err.response?.data
-      ? Buffer.from(err.response.data).toString('utf8')
-      : err.message;
-    console.error('Erro ao baixar etiqueta:', errData);
-    res.status(500).json({ error: 'Erro ao baixar etiqueta.', detalhe: errData });
-  }
+  // Redireciona direto para a URL da ML com o token — forma mais confiável para labels
+  const url = `https://api.mercadolibre.com/shipments/${req.params.shipment_id}/labels`
+    + `?response_type=pdf&access_token=${encodeURIComponent(c.access_token)}`;
+  res.redirect(url);
 });
 
 // ── Inicia o servidor ─────────────────────────────────────────
