@@ -592,6 +592,22 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
   }
 });
 
+// DEBUG — retorna o objeto completo do shipment para inspeção
+app.get('/api/ml/debug-shipment/:shipment_id', async (req, res) => {
+  const data = loadData();
+  const c    = contaAtiva(data);
+  if (!c.access_token) return res.status(401).json({ error: 'Não conectado' });
+  try {
+    const resp = await axios.get(
+      `https://api.mercadolibre.com/shipments/${req.params.shipment_id}`,
+      { headers: { Authorization: `Bearer ${c.access_token}` } }
+    );
+    res.json(resp.data);
+  } catch (err) {
+    res.status(500).json(err.response?.data || err.message);
+  }
+});
+
 app.get('/api/ml/etiqueta/:shipment_id', (req, res) => {
   const data = loadData();
   const c    = contaAtiva(data);
