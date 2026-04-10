@@ -707,11 +707,21 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
         });
       }
     }
-    const atendidas = new Set((c.atendidas || []).map(String));
-    const vendas = [...porShipment.values()].map(v => ({
-      ...v,
-      atendida: atendidas.has(String(v.shipmentId)),
-    }));
+    // Pedidos atendidos ficam salvos com dados completos — não dependem da API
+    const atendidasMap = new Map((c.atendidas_dados || []).map(v => [String(v.shipmentId), v]));
+
+    // Pendentes: da API, excluindo os já atendidos
+    const pendentes = [...porShipment.values()]
+      .filter(v => !atendidasMap.has(String(v.shipmentId)))
+      .map(v => ({ ...v, atendida: false }));
+
+    // Atualiza os dados salvos dos atendidos com info mais recente se ainda estiver na API
+    atendidasMap.forEach((salvo, sid) => {
+      if (porShipment.has(sid)) atendidasMap.set(sid, { ...porShipment.get(sid), atendida: true });
+    });
+
+    const atendidas = [...atendidasMap.values()].map(v => ({ ...v, atendida: true }));
+    const vendas = [...pendentes, ...atendidas];
 
     res.json({ vendas });
   } catch (err) {
@@ -721,14 +731,16 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
 });
 
 app.post('/api/vendas/atendida', (req, res) => {
-  const { shipmentId } = req.body;
+  const { shipmentId, venda } = req.body;
   if (!shipmentId) return res.json({ error: 'shipmentId obrigatório' });
   const data = loadData();
   const num  = data.conta_ativa;
   const c    = data.contas[num];
   if (!c) return res.json({ error: 'Conta não encontrada' });
-  if (!c.atendidas) c.atendidas = [];
-  if (!c.atendidas.includes(String(shipmentId))) c.atendidas.push(String(shipmentId));
+  if (!c.atendidas_dados) c.atendidas_dados = [];
+  // Remove se já existia e re-insere com dados atualizados
+  c.atendidas_dados = c.atendidas_dados.filter(v => String(v.shipmentId) !== String(shipmentId));
+  if (venda) c.atendidas_dados.push({ ...venda, atendida: true, atendidaEm: new Date().toISOString() });
   saveData(data);
   res.json({ ok: true });
 });
@@ -740,7 +752,7 @@ app.delete('/api/vendas/atendida', (req, res) => {
   const num  = data.conta_ativa;
   const c    = data.contas[num];
   if (!c) return res.json({ error: 'Conta não encontrada' });
-  c.atendidas = (c.atendidas || []).filter(id => id !== String(shipmentId));
+  c.atendidas_dados = (c.atendidas_dados || []).filter(v => String(v.shipmentId) !== String(shipmentId));
   saveData(data);
   res.json({ ok: true });
 });

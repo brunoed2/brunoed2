@@ -418,6 +418,8 @@ async function carregarEstoque(reiniciar = false) {
 
 // ── Vendas com etiqueta ───────────────────────────────────────
 
+const vendaCache = {}; // shipmentId → dados completos da venda
+
 const BADGE_VENDA_STATUS = {
   handling:      'badge-pausado',
   ready_to_ship: 'badge-ativo',
@@ -502,6 +504,7 @@ async function carregarVendas() {
     if (!vendas.length) { tabela.style.display = 'none'; atualizarBotaoSelecionadas(); return; }
 
     vendas.forEach(v => {
+      vendaCache[String(v.shipmentId)] = v; // guarda para uso no botão atender
       const bStatus  = BADGE_VENDA_STATUS[v.status] || 'badge-outro';
       const itens = v.itensLista || [];
       const item0 = itens[0] || {};
@@ -523,7 +526,7 @@ async function carregarVendas() {
         <td class="td-titulo" title="${item0.titulo || ''}">${item0.titulo || '—'}</td>
         <td><span class="badge-deposito ${bStatus}">${v.statusLabel}</span></td>
         <td><a class="btn-etiqueta" href="/api/ml/etiqueta/${v.shipmentId}?conta=${v.conta}" target="_blank">${v.acaoLabel}</a></td>
-        <td><button class="btn-atender" onclick="marcarAtendido('${v.shipmentId}', this)" title="Marcar como atendido">✔</button></td>
+        <td><button class="btn-atender" onclick="marcarAtendido('${v.shipmentId}', this, vendaCache['${v.shipmentId}'])" title="Marcar como atendido">✔</button></td>
       `;
       tbody.appendChild(tr);
 
@@ -561,13 +564,14 @@ async function carregarVendas() {
 
 // ── Atendidos ─────────────────────────────────────────────────
 
-async function marcarAtendido(shipmentId, btn) {
+async function marcarAtendido(shipmentId, btn, venda) {
   btn.disabled = true;
   try {
     await apiFetch('/api/vendas/atendida', {
       method: 'POST',
-      body:   JSON.stringify({ shipmentId }),
+      body:   JSON.stringify({ shipmentId, venda: venda || null }),
     });
+    abrirMiniAba('atendidos');
     carregarVendas();
   } catch {
     btn.disabled = false;
@@ -578,9 +582,10 @@ async function desatenderPedido(shipmentId, btn) {
   btn.disabled = true;
   try {
     await apiFetch('/api/vendas/atendida', {
-      method:  'DELETE',
-      body:    JSON.stringify({ shipmentId }),
+      method: 'DELETE',
+      body:   JSON.stringify({ shipmentId }),
     });
+    abrirMiniAba('pendentes');
     carregarVendas();
   } catch {
     btn.disabled = false;
