@@ -497,41 +497,49 @@ async function carregarVendas() {
         hour: '2-digit', minute: '2-digit',
       });
       const itens = v.itensLista || [];
-      const n     = itens.length || 1;
-      const multi = n > 1;
+      const item0 = itens[0] || {};
+      const multi = itens.length > 1;
 
-      itens.forEach((item, idx) => {
-        const tr      = document.createElement('tr');
+      // Linha principal do pedido (mostra primeiro item)
+      const tr = document.createElement('tr');
+      if (multi) tr.classList.add('venda-multi-header');
+      const imgHtml0 = item0.thumbnail
+        ? `<img src="${item0.thumbnail}" class="venda-thumb" loading="lazy">`
+        : `<div class="venda-thumb-vazio"></div>`;
+      tr.innerHTML = `
+        <td><input type="checkbox" class="check-venda" data-shipment-id="${v.shipmentId}" data-conta="${v.conta}" onchange="atualizarBotaoSelecionadas()"></td>
+        <td class="td-thumb">${imgHtml0}</td>
+        <td style="white-space:nowrap">${dataFmt}</td>
+        <td>${v.comprador}</td>
+        <td class="col-num venda-qtd">${item0.quantidade ?? ''}</td>
+        <td class="td-sku">${item0.sku || '—'}</td>
+        <td class="td-titulo" title="${item0.titulo || ''}">${item0.titulo || '—'}</td>
+        <td><span class="badge-deposito ${bStatus}">${v.statusLabel}</span></td>
+        <td><a class="btn-etiqueta" href="/api/ml/etiqueta/${v.shipmentId}?conta=${v.conta}" target="_blank">${v.acaoLabel}</a></td>
+      `;
+      tbody.appendChild(tr);
+
+      // Sub-linhas para os demais itens do mesmo pedido
+      for (let i = 1; i < itens.length; i++) {
+        const item   = itens[i];
+        const isLast = i === itens.length - 1;
+        const trSub  = document.createElement('tr');
+        trSub.classList.add('venda-sub-item');
+        if (isLast) trSub.classList.add('venda-sub-last');
         const imgHtml = item.thumbnail
           ? `<img src="${item.thumbnail}" class="venda-thumb" loading="lazy">`
           : `<div class="venda-thumb-vazio"></div>`;
-
-        if (multi) tr.classList.add(idx === n - 1 ? 'venda-multi-last' : 'venda-multi-inner');
-
-        if (idx === 0) {
-          // Primeira linha: colunas compartilhadas com rowspan
-          tr.innerHTML = `
-            <td rowspan="${n}" class="td-venda-rowspan"><input type="checkbox" class="check-venda" data-shipment-id="${v.shipmentId}" data-conta="${v.conta}" onchange="atualizarBotaoSelecionadas()"></td>
-            <td class="td-thumb">${imgHtml}</td>
-            <td rowspan="${n}" class="td-venda-rowspan" style="white-space:nowrap">${dataFmt}</td>
-            <td rowspan="${n}" class="td-venda-rowspan">${v.comprador}</td>
-            <td class="col-num">${item.quantidade}</td>
-            <td class="td-sku">${item.sku}</td>
-            <td class="td-titulo" title="${item.titulo}">${item.titulo}</td>
-            <td rowspan="${n}" class="td-venda-rowspan"><span class="badge-deposito ${bStatus}">${v.statusLabel}</span></td>
-            <td rowspan="${n}" class="td-venda-rowspan"><a class="btn-etiqueta" href="/api/ml/etiqueta/${v.shipmentId}?conta=${v.conta}" target="_blank">${v.acaoLabel}</a></td>
-          `;
-        } else {
-          // Linhas extras: só as colunas do produto
-          tr.innerHTML = `
-            <td class="td-thumb">${imgHtml}</td>
-            <td class="col-num">${item.quantidade}</td>
-            <td class="td-sku">${item.sku}</td>
-            <td class="td-titulo" title="${item.titulo}">${item.titulo}</td>
-          `;
-        }
-        tbody.appendChild(tr);
-      });
+        trSub.innerHTML = `
+          <td class="venda-sub-indent"></td>
+          <td class="td-thumb">${imgHtml}</td>
+          <td colspan="2" class="venda-sub-mais">+ mesmo pedido</td>
+          <td class="col-num venda-qtd">${item.quantidade ?? ''}</td>
+          <td class="td-sku">${item.sku || '—'}</td>
+          <td class="td-titulo" title="${item.titulo || ''}">${item.titulo || '—'}</td>
+          <td colspan="2"></td>
+        `;
+        tbody.appendChild(trSub);
+      }
     });
     atualizarBotaoSelecionadas();
 
