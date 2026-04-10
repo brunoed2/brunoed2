@@ -497,8 +497,12 @@ async function carregarVendas() {
         hour: '2-digit', minute: '2-digit',
       });
       const tr = document.createElement('tr');
+      const imgHtml = v.thumbnail
+        ? `<img src="${v.thumbnail}" class="venda-thumb" loading="lazy">`
+        : `<div class="venda-thumb-vazio"></div>`;
       tr.innerHTML = `
         <td><input type="checkbox" class="check-venda" data-shipment-id="${v.shipmentId}" data-conta="${v.conta}" onchange="atualizarBotaoSelecionadas()"></td>
+        <td class="td-thumb">${imgHtml}</td>
         <td style="white-space:nowrap">${dataFmt}</td>
         <td>${v.comprador}</td>
         <td class="td-sku">${v.skus || '—'}</td>

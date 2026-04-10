@@ -575,8 +575,9 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
       )
       .map(({ order, shipment }) => {
         const itens = (order.order_items || []).map(i => ({
-          titulo: `${i.quantity}x ${i.item.title}`,
-          sku:    i.item.seller_custom_field || '—',
+          titulo:    `${i.quantity}x ${i.item.title}`,
+          sku:       i.item.seller_custom_field || '—',
+          thumbnail: i.item.thumbnail || null,
         }));
         return {
           orderId:     order.id,
@@ -584,6 +585,7 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
           comprador:   order.buyer?.nickname || '—',
           itens:       itens.map(i => i.titulo).join(' | '),
           skus:        itens.map(i => i.sku).join(' | '),
+          thumbnail:   itens[0]?.thumbnail || null,
           shipmentId:  shipment.id,
           conta:       data.conta_ativa,
           status:      shipment.status,
