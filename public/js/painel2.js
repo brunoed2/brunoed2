@@ -491,26 +491,47 @@ async function carregarVendas() {
     if (!vendas.length) return;
 
     vendas.forEach(v => {
-      const bStatus = BADGE_VENDA_STATUS[v.status] || 'badge-outro';
-      const dataFmt = new Date(v.data).toLocaleString('pt-BR', {
+      const bStatus  = BADGE_VENDA_STATUS[v.status] || 'badge-outro';
+      const dataFmt  = new Date(v.data).toLocaleString('pt-BR', {
         day: '2-digit', month: '2-digit', year: 'numeric',
         hour: '2-digit', minute: '2-digit',
       });
-      const tr = document.createElement('tr');
-      const imgHtml = v.thumbnail
-        ? `<img src="${v.thumbnail}" class="venda-thumb" loading="lazy">`
-        : `<div class="venda-thumb-vazio"></div>`;
-      tr.innerHTML = `
-        <td><input type="checkbox" class="check-venda" data-shipment-id="${v.shipmentId}" data-conta="${v.conta}" onchange="atualizarBotaoSelecionadas()"></td>
-        <td class="td-thumb">${imgHtml}</td>
-        <td style="white-space:nowrap">${dataFmt}</td>
-        <td>${v.comprador}</td>
-        <td class="td-sku">${v.skus || '—'}</td>
-        <td class="td-titulo" title="${v.itens}">${v.itens}</td>
-        <td><span class="badge-deposito ${bStatus}">${v.statusLabel}</span></td>
-        <td><a class="btn-etiqueta" href="/api/ml/etiqueta/${v.shipmentId}?conta=${v.conta}" target="_blank">${v.acaoLabel}</a></td>
-      `;
-      tbody.appendChild(tr);
+      const itens = v.itensLista || [];
+      const n     = itens.length || 1;
+      const multi = n > 1;
+
+      itens.forEach((item, idx) => {
+        const tr      = document.createElement('tr');
+        const imgHtml = item.thumbnail
+          ? `<img src="${item.thumbnail}" class="venda-thumb" loading="lazy">`
+          : `<div class="venda-thumb-vazio"></div>`;
+
+        if (multi) tr.classList.add(idx === n - 1 ? 'venda-multi-last' : 'venda-multi-inner');
+
+        if (idx === 0) {
+          // Primeira linha: colunas compartilhadas com rowspan
+          tr.innerHTML = `
+            <td rowspan="${n}" class="td-venda-rowspan"><input type="checkbox" class="check-venda" data-shipment-id="${v.shipmentId}" data-conta="${v.conta}" onchange="atualizarBotaoSelecionadas()"></td>
+            <td class="td-thumb">${imgHtml}</td>
+            <td rowspan="${n}" class="td-venda-rowspan" style="white-space:nowrap">${dataFmt}</td>
+            <td rowspan="${n}" class="td-venda-rowspan">${v.comprador}</td>
+            <td class="col-num">${item.quantidade}</td>
+            <td class="td-sku">${item.sku}</td>
+            <td class="td-titulo" title="${item.titulo}">${item.titulo}</td>
+            <td rowspan="${n}" class="td-venda-rowspan"><span class="badge-deposito ${bStatus}">${v.statusLabel}</span></td>
+            <td rowspan="${n}" class="td-venda-rowspan"><a class="btn-etiqueta" href="/api/ml/etiqueta/${v.shipmentId}?conta=${v.conta}" target="_blank">${v.acaoLabel}</a></td>
+          `;
+        } else {
+          // Linhas extras: só as colunas do produto
+          tr.innerHTML = `
+            <td class="td-thumb">${imgHtml}</td>
+            <td class="col-num">${item.quantidade}</td>
+            <td class="td-sku">${item.sku}</td>
+            <td class="td-titulo" title="${item.titulo}">${item.titulo}</td>
+          `;
+        }
+        tbody.appendChild(tr);
+      });
     });
     atualizarBotaoSelecionadas();
 

@@ -678,21 +678,20 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
     }
 
     const vendas = filtradas.map(({ order, shipment }) => {
-      const itens = (order.order_items || []).map(i => {
+      const itensLista = (order.order_items || []).map(i => {
         const extra = itemMap[i.item.id] || {};
         return {
-          titulo:    `${i.quantity}x ${i.item.title}`,
-          sku:       extra.sku || '—',
-          thumbnail: extra.thumbnail || null,
+          titulo:     i.item.title,
+          sku:        extra.sku || '—',
+          thumbnail:  extra.thumbnail || null,
+          quantidade: i.quantity || 1,
         };
       });
       return {
         orderId:     order.id,
         data:        order.date_created,
         comprador:   order.buyer?.nickname || '—',
-        itens:       itens.map(i => i.titulo).join(' | '),
-        skus:        itens.map(i => i.sku).filter(s => s !== '—').join(' | ') || '—',
-        thumbnail:   itens[0]?.thumbnail || null,
+        itensLista,
         shipmentId:  shipment.id,
         conta:       data.conta_ativa,
         status:      shipment.status,

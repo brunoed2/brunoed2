@@ -694,6 +694,17 @@ code {
   accent-color: #111;
 }
 
+/* ── Linhas agrupadas de pedidos com múltiplos itens ─────────── */
+
+.td-venda-rowspan { vertical-align: middle; }
+
+.venda-multi-inner td {
+  border-bottom: 1px solid #f0f2f5 !important;
+  background: #f8fafc;
+}
+
+.venda-multi-last td { background: #f8fafc; }
+
 /* ── Botão de etiqueta ──────────────────────────────────────── */
 
 .btn-etiqueta {
