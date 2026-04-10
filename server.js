@@ -684,25 +684,28 @@ app.get('/api/ml/ads-roas', async (req, res) => {
 
     if (!campIds.length) return res.json({ itens: [], aviso: 'Nenhuma campanha ativa encontrada.' });
 
-    // 3. Busca detalhes e métricas de cada campanha em paralelo
+    // 3. Busca detalhes, métricas e ads de cada campanha em paralelo
     const campResults = await Promise.all(campIds.map(async (campId) => {
       try {
-        const [detResp, metResp] = await Promise.all([
+        const [detResp, metResp, adsResp] = await Promise.all([
           axios.get(`https://api.mercadolibre.com/advertising/product_ads/campaigns/${campId}`, { headers, timeout: 10000 }),
           axios.get(`https://api.mercadolibre.com/advertising/product_ads/campaigns/${campId}/metrics`, {
             params: { date_from: dateBegin, date_to: today }, headers, timeout: 10000,
           }),
+          axios.get('https://api.mercadolibre.com/advertising/product_ads/ads/search', {
+            params: { seller_id: c.user_id, campaign_id: campId, limit: 100 }, headers, timeout: 10000,
+          }),
         ]);
-        return { campId, det: detResp.data, met: metResp.data };
+        return { campId, det: detResp.data, met: metResp.data, ads: adsResp.data.results || [] };
       } catch { return null; }
     }));
 
     // 4. Monta tabela — uma linha por campanha
     const itens = campResults
       .filter(r => r && r.met?.cost > 0)
-      .map(({ campId, det, met }) => {
-        const adsDestaCamp = todosAds.filter(a => a.campaign_id === campId);
-        // Deduplica por item ID (não por título, que pode ser igual em variações)
+      .map(({ campId, det, met, ads }) => {
+        // Usa ads buscados diretamente por campaign_id (mais completo)
+        const adsDestaCamp = ads.length > 0 ? ads : todosAds.filter(a => a.campaign_id === campId);
         const vistos = new Set();
         const titulos = adsDestaCamp
           .filter(a => { if (vistos.has(a.id)) return false; vistos.add(a.id); return true; })
