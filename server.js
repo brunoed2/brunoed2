@@ -659,83 +659,74 @@ app.get('/api/ml/ads-roas', async (req, res) => {
   if (!c || !c.access_token) return res.json({ error: 'Não conectado' });
   if (!c.user_id)            return res.json({ error: 'user_id não encontrado. Reconecte a conta.' });
 
-  const headers   = { Authorization: `Bearer ${c.access_token}`, 'Content-Type': 'application/json' };
-  const today     = new Date();
-  const dateBegin = new Date(today - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-  const dateEnd   = today.toISOString().split('T')[0];
+  const headers   = { Authorization: `Bearer ${c.access_token}` };
+  const today     = new Date().toISOString().split('T')[0];
+  const dateBegin = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
   try {
-    // 1. Busca o advertiser_id do usuário
-    const advResp = await axios.get('https://api.mercadolibre.com/advertising/advertisers', {
-      params:  { user_id: c.user_id },
-      headers,
-      timeout: 12000,
-    });
-    const advertiser = (advResp.data.results || advResp.data)?.[0] || advResp.data;
-    const advertiserId = advertiser?.id || advertiser?.advertiser_id;
-    if (!advertiserId) return res.json({ error: 'Advertiser ID não encontrado.', detalhe: JSON.stringify(advResp.data) });
-
-    // 2. Lista campanhas do advertiser
-    const campResp = await axios.get(
-      `https://api.mercadolibre.com/advertising/advertisers/${advertiserId}/campaigns`,
-      { params: { status: 'active', limit: 100 }, headers, timeout: 12000 }
-    );
-    const campaigns = campResp.data.results || campResp.data || [];
-
-    // Mapa campanha id → target_roas
-    const campMap = {};
-    for (const camp of campaigns) {
-      campMap[String(camp.id)] = {
-        nome:       camp.name || camp.id,
-        targetRoas: camp.bidding_strategy?.target_roas ?? null,
-      };
+    // 1. Busca todos os ads do seller (paginado)
+    const todosAds = [];
+    let lastItemId = null;
+    while (true) {
+      const params = { seller_id: c.user_id, limit: 50 };
+      if (lastItemId) params.offset = lastItemId;
+      const r = await axios.get('https://api.mercadolibre.com/advertising/product_ads/ads/search', {
+        params, headers, timeout: 12000,
+      });
+      const results = r.data.results || [];
+      todosAds.push(...results);
+      if (results.length < 50 || todosAds.length >= 500) break;
+      lastItemId = r.data.paging?.last_item_id;
+      if (!lastItemId) break;
     }
 
-    // 3. Para cada campanha, busca os product ads e métricas
-    const itens = [];
+    // 2. Coleta campaign_ids únicos (com campaign_id > 0)
+    const campIds = [...new Set(
+      todosAds.filter(a => a.campaign_id > 0).map(a => a.campaign_id)
+    )];
 
-    for (const camp of campaigns) {
-      const campInfo = campMap[String(camp.id)];
+    if (!campIds.length) return res.json({ itens: [], aviso: 'Nenhuma campanha ativa encontrada.' });
 
-      // Busca ads da campanha com métricas do período
-      let adsResp;
+    // 3. Busca detalhes e métricas de cada campanha em paralelo
+    const campResults = await Promise.all(campIds.map(async (campId) => {
       try {
-        adsResp = await axios.get(
-          `https://api.mercadolibre.com/advertising/advertisers/${advertiserId}/campaigns/${camp.id}/product_ads`,
-          {
-            params:  { date_range_begin: dateBegin, date_range_end: dateEnd, limit: 200 },
-            headers,
-            timeout: 12000,
-          }
-        );
-      } catch { continue; }
+        const [detResp, metResp] = await Promise.all([
+          axios.get(`https://api.mercadolibre.com/advertising/product_ads/campaigns/${campId}`, { headers, timeout: 10000 }),
+          axios.get(`https://api.mercadolibre.com/advertising/product_ads/campaigns/${campId}/metrics`, {
+            params: { date_from: dateBegin, date_to: today }, headers, timeout: 10000,
+          }),
+        ]);
+        return { campId, det: detResp.data, met: metResp.data };
+      } catch { return null; }
+    }));
 
-      const ads = adsResp.data.results || adsResp.data || [];
-      for (const ad of ads) {
-        const spend           = Number(ad.spend || ad.total_cost || 0);
-        const revenue         = Number(ad.revenue || ad.total_revenue || 0);
-        const units           = Number(ad.sold_quantity || ad.units_sold || 0);
-        if (spend === 0) continue;
-        const roasEntregando  = spend > 0 ? revenue / spend : null;
-        const custoPorUnidade = units > 0 ? spend  / units  : null;
-        itens.push({
-          campanha:       campInfo.nome,
-          mlb:            ad.item_id  || ad.product_id || '—',
-          titulo:         ad.item_title || ad.title    || '—',
-          sku:            ad.seller_custom_field || ad.sku || '—',
-          targetRoas:     campInfo.targetRoas,
+    // 4. Monta tabela — uma linha por campanha
+    const itens = campResults
+      .filter(r => r && r.met?.cost > 0)
+      .map(({ campId, det, met }) => {
+        const adsDestaCamp = todosAds.filter(a => a.campaign_id === campId);
+        const titulos      = [...new Set(adsDestaCamp.map(a => a.title))].slice(0, 3).join(' | ');
+        const cost            = Number(met.cost)         || 0;
+        const revenue         = Number(met.amount_total) || 0;
+        const units           = Number(met.sold_quantity_total) || Number(met.sold_items_quantity_total) || 0;
+        const roasEntregando  = cost > 0 ? revenue / cost : null;
+        const custoPorUnidade = units > 0 ? cost / units  : null;
+        return {
+          campanha:       det.name || String(campId),
+          targetRoas:     det.roas_target  ?? null,
+          acosTarget:     det.acos_target  ?? null,
           roasEntregando,
           custoPorUnidade,
-          spend,
+          cost,
           revenue,
           units,
-          clicks:      Number(ad.clicks      || 0),
-          impressions: Number(ad.impressions || 0),
-        });
-      }
-    }
-
-    if (!itens.length) return res.json({ itens: [], aviso: 'Nenhum dado de ads com gasto encontrado nos últimos 30 dias.' });
+          clicks:         Number(met.clicks)     || 0,
+          impressions:    Number(met.impressions) || 0,
+          tacos:          Number(met.tacos)       || 0,
+          titulos,
+          qtdAnuncios:    adsDestaCamp.length,
+        };
+      });
 
     res.json({ itens });
   } catch (err) {

@@ -599,6 +599,7 @@ function renderizarAds() {
 
   const fmtBRL  = v => v != null ? `R$ ${v.toFixed(2).replace('.', ',')}` : '—';
   const fmtRoas = v => v != null ? v.toFixed(2) : '—';
+  const fmtPct  = v => v != null ? `${v.toFixed(2)}%` : '—';
 
   itens.forEach(item => {
     const roasClass = item.roasEntregando != null && item.targetRoas != null
@@ -606,14 +607,14 @@ function renderizarAds() {
       : '';
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td class="td-sku">${item.sku}</td>
-      <td class="td-titulo" title="${item.titulo}">${item.titulo}</td>
-      <td class="td-campanha">${item.campanha}</td>
+      <td class="td-campanha" title="${item.campanha}">${item.campanha}</td>
+      <td class="td-titulo" title="${item.titulos}">${item.titulos}</td>
       <td class="col-num">${fmtRoas(item.targetRoas)}</td>
       <td class="col-num ${roasClass}">${fmtRoas(item.roasEntregando)}</td>
       <td class="col-num">${fmtBRL(item.custoPorUnidade)}</td>
-      <td class="col-num">${fmtBRL(item.spend)}</td>
+      <td class="col-num">${fmtBRL(item.cost)}</td>
       <td class="col-num">${item.units || '—'}</td>
+      <td class="col-num">${fmtPct(item.tacos)}</td>
     `;
     tbody.appendChild(tr);
   });
