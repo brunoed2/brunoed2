@@ -807,19 +807,27 @@ app.get('/api/ml/debug-ads', async (req, res) => {
     result['_ad_ids_encontrados'] = 'erro: ' + e.message;
   }
 
-  // Testa métricas
+  const campId = 356092603; // campaign_id real encontrado
+
+  // Métricas por campanha
+  await tryGet('camp_metrics',           `https://api.mercadolibre.com/advertising/product_ads/campaigns/${campId}/metrics`, { date_from: dateBegin, date_to: today });
+  await tryGet('camp_metrics_agg',       `https://api.mercadolibre.com/advertising/product_ads/campaigns/${campId}/metrics`, { date_from: dateBegin, date_to: today, aggregation: 'total' });
+
+  // Métricas pelo seller direto
+  await tryGet('seller_metrics',         'https://api.mercadolibre.com/advertising/product_ads/metrics', { seller_id: c.user_id, date_from: dateBegin, date_to: today });
+
+  // Métricas de ads com item_id em vez de ids
   if (adIds.length) {
-    await tryGet('metrics_ids',          'https://api.mercadolibre.com/advertising/product_ads/ads/metrics', { ids: adIds.join(','), date_from: dateBegin, date_to: today });
-    await tryGet('metrics_id_singular',  'https://api.mercadolibre.com/advertising/product_ads/ads/metrics', { id: adIds[0], date_from: dateBegin, date_to: today });
-    await tryGet('metrics_com_agg',      'https://api.mercadolibre.com/advertising/product_ads/ads/metrics', { ids: adIds.join(','), date_from: dateBegin, date_to: today, aggregation: 'total' });
+    await tryGet('metrics_item_id',      'https://api.mercadolibre.com/advertising/product_ads/ads/metrics', { item_id: adIds[0], date_from: dateBegin, date_to: today });
+    await tryGet('metrics_campaign_id',  'https://api.mercadolibre.com/advertising/product_ads/ads/metrics', { campaign_id: campId, date_from: dateBegin, date_to: today });
+    // Tenta sem prefixo MLB
+    const numId = adIds[0].replace('MLB', '');
+    await tryGet('metrics_num_id',       'https://api.mercadolibre.com/advertising/product_ads/ads/metrics', { ids: numId, date_from: dateBegin, date_to: today });
   }
 
-  // Testa campanhas com seller_id como número
-  await tryGet('campaigns_search_num',   'https://api.mercadolibre.com/advertising/product_ads/campaigns/search', { seller_id: Number(c.user_id), limit: 5 });
-
-  // Tenta campaign direta por ID (usando um campaign_id dos ads)
-  const campId = 356092603;
-  await tryGet('campaign_by_id',         `https://api.mercadolibre.com/advertising/product_ads/campaigns/${campId}`);
+  // Métricas direto no campaign search com advertiser_id=156629 (encontrado na resposta anterior)
+  await tryGet('camp_by_advertiser',     'https://api.mercadolibre.com/advertising/product_ads/campaigns/search', { advertiser_id: 156629, limit: 5 });
+  await tryGet('camp_metrics_adv',       `https://api.mercadolibre.com/advertising/advertisers/156629/campaigns/${campId}/metrics`, { date_from: dateBegin, date_to: today });
 
   res.json(result);
 });
