@@ -554,6 +554,21 @@ async function carregarEstoque(reiniciar = false) {
 
 let todosAdsItens  = [];
 let sortAds        = { campo: null, direcao: 'asc' };
+let expandedCamps  = new Set();
+
+function toggleCampanha(campId) {
+  if (expandedCamps.has(campId)) {
+    expandedCamps.delete(campId);
+  } else {
+    expandedCamps.add(campId);
+  }
+  const aberto = expandedCamps.has(campId);
+  document.querySelectorAll(`.camp-row-${campId}`).forEach(row => {
+    row.style.display = aberto ? '' : 'none';
+  });
+  const btn = document.getElementById(`btn-camp-${campId}`);
+  if (btn) btn.textContent = aberto ? '▲' : '▼';
+}
 
 document.querySelectorAll('.th-sort-ads').forEach(th => {
   th.addEventListener('click', () => {
@@ -604,14 +619,28 @@ function renderizarAds() {
     let roasClass = '';
     if (item.roasEntregando != null && item.targetRoas != null) {
       const diff = (item.roasEntregando - item.targetRoas) / item.targetRoas;
-      if (diff < -0.05)      roasClass = 'roas-abaixo';   // vermelho: mais de 5% abaixo
-      else if (diff > 0.05)  roasClass = 'roas-acima';    // azul: mais de 5% acima
-      else                   roasClass = 'roas-ok';        // verde: dentro de ±5%
+      if (diff < -0.05)      roasClass = 'roas-abaixo';
+      else if (diff > 0.05)  roasClass = 'roas-acima';
+      else                   roasClass = 'roas-ok';
     }
+
+    const campId      = item.campId || item.campanha;
+    const temMultiplos = item.adsLista && item.adsLista.length > 1;
+    const aberto      = expandedCamps.has(campId);
+
+    // Coluna "Anúncios": se tem múltiplos, mostra contagem + botão expandir
+    let anunciosCell;
+    if (temMultiplos) {
+      anunciosCell = `<td class="td-titulo"><div class="estoque-edit-wrap" style="justify-content:flex-start;gap:6px"><button id="btn-camp-${campId}" class="btn-expandir-var" onclick="toggleCampanha('${campId}')">${aberto ? '▲' : '▼'}</button><span>${item.qtdAnuncios} anúncios</span></div></td>`;
+    } else {
+      const titulo = (item.adsLista && item.adsLista[0]?.title) || item.titulos || '—';
+      anunciosCell = `<td class="td-titulo" title="${titulo}">${titulo}</td>`;
+    }
+
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td class="td-campanha" title="${item.campanha}">${item.campanha}</td>
-      <td class="td-titulo" title="${item.titulos}">${item.titulos}</td>
+      ${anunciosCell}
       <td class="col-num">${fmtRoas(item.targetRoas)}</td>
       <td class="col-num ${roasClass}">${fmtRoas(item.roasEntregando)}</td>
       <td class="col-num">${fmtBRL(item.custoPorUnidade)}</td>
@@ -619,6 +648,20 @@ function renderizarAds() {
       <td class="col-num">${item.units || '—'}</td>
     `;
     tbody.appendChild(tr);
+
+    // Sub-linhas para cada anúncio (só quando tem múltiplos)
+    if (temMultiplos) {
+      item.adsLista.forEach(ad => {
+        const trAd = document.createElement('tr');
+        trAd.className = `camp-row camp-row-${campId}`;
+        trAd.style.display = aberto ? '' : 'none';
+        trAd.innerHTML = `
+          <td class="variacao-indent"></td>
+          <td colspan="6" class="variacao-nome">↳ ${ad.title}</td>
+        `;
+        tbody.appendChild(trAd);
+      });
+    }
   });
 
   document.getElementById('tabela-ads').style.display = itens.length ? 'table' : 'none';

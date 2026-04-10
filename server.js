@@ -716,7 +716,13 @@ app.get('/api/ml/ads-roas', async (req, res) => {
         const units           = Number(met.sold_quantity_total) || Number(met.sold_items_quantity_total) || 0;
         const roasEntregando  = cost > 0 ? revenue / cost : null;
         const custoPorUnidade = units > 0 ? cost / units  : null;
+        const adsListaDedup = [];
+        const vistosLista = new Set();
+        adsDestaCamp.forEach(a => {
+          if (!vistosLista.has(a.id)) { vistosLista.add(a.id); adsListaDedup.push({ id: a.id, title: a.title || '—' }); }
+        });
         return {
+          campId:         String(campId),
           campanha:       det.name || String(campId),
           targetRoas:     det.roas_target  ?? null,
           acosTarget:     det.acos_target  ?? null,
@@ -729,7 +735,8 @@ app.get('/api/ml/ads-roas', async (req, res) => {
           impressions:    Number(met.impressions) || 0,
           tacos:          Number(met.tacos)       || 0,
           titulos,
-          qtdAnuncios:    adsDestaCamp.length,
+          qtdAnuncios:    adsListaDedup.length,
+          adsLista:       adsListaDedup,
         };
       });
 
