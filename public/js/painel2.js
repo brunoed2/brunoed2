@@ -10,6 +10,7 @@ const tabs    = document.querySelectorAll('.tab');
 function abrirAba(nome) {
   navBtns.forEach(b => b.classList.toggle('active', b.dataset.tab === nome));
   tabs.forEach(t => t.classList.toggle('active', t.id === `tab-${nome}`));
+  if (trocandoConta) return; // aguarda trocarConta disparar o reload
   if (nome === 'estoque') carregarEstoque(true);
   if (nome === 'vendas')  carregarVendas();
 }
