@@ -687,16 +687,15 @@ app.get('/api/ml/ads-roas', async (req, res) => {
     // 3. Busca detalhes, métricas e ads de cada campanha em paralelo
     const campResults = await Promise.all(campIds.map(async (campId) => {
       try {
-        const [detResp, metResp, adsResp] = await Promise.all([
+        const [detResp, metResp] = await Promise.all([
           axios.get(`https://api.mercadolibre.com/advertising/product_ads/campaigns/${campId}`, { headers, timeout: 10000 }),
           axios.get(`https://api.mercadolibre.com/advertising/product_ads/campaigns/${campId}/metrics`, {
             params: { date_from: dateBegin, date_to: today }, headers, timeout: 10000,
           }),
-          axios.get('https://api.mercadolibre.com/advertising/product_ads/ads/search', {
-            params: { seller_id: c.user_id, campaign_id: campId, limit: 100 }, headers, timeout: 10000,
-          }),
         ]);
-        return { campId, det: detResp.data, met: metResp.data, ads: adsResp.data.results || [] };
+        // Filtra os ads desta campanha a partir da lista completa (o filtro campaign_id da API não funciona)
+        const adsDestaCamp = todosAds.filter(a => a.campaign_id === campId);
+        return { campId, det: detResp.data, met: metResp.data, ads: adsDestaCamp };
       } catch { return null; }
     }));
 
@@ -704,8 +703,7 @@ app.get('/api/ml/ads-roas', async (req, res) => {
     const itens = campResults
       .filter(r => r && r.met?.cost > 0)
       .map(({ campId, det, met, ads }) => {
-        // Usa ads buscados diretamente por campaign_id (mais completo)
-        const adsDestaCamp = ads.length > 0 ? ads : todosAds.filter(a => a.campaign_id === campId);
+        const adsDestaCamp = ads;
         const vistos = new Set();
         const titulos = adsDestaCamp
           .filter(a => { if (vistos.has(a.id)) return false; vistos.add(a.id); return true; })
