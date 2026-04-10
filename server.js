@@ -702,7 +702,12 @@ app.get('/api/ml/ads-roas', async (req, res) => {
       .filter(r => r && r.met?.cost > 0)
       .map(({ campId, det, met }) => {
         const adsDestaCamp = todosAds.filter(a => a.campaign_id === campId);
-        const titulos      = [...new Set(adsDestaCamp.map(a => a.title))].slice(0, 3).join(' | ');
+        // Deduplica por item ID (não por título, que pode ser igual em variações)
+        const vistos = new Set();
+        const titulos = adsDestaCamp
+          .filter(a => { if (vistos.has(a.id)) return false; vistos.add(a.id); return true; })
+          .map(a => a.title)
+          .join(' | ');
         const cost            = Number(met.cost)         || 0;
         const revenue         = Number(met.amount_total) || 0;
         const units           = Number(met.sold_quantity_total) || Number(met.sold_items_quantity_total) || 0;
