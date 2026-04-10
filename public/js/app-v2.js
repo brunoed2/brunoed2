@@ -65,20 +65,35 @@ async function apiFetch(url, opts = {}) {
 
 // ── Troca de conta ────────────────────────────────────────────
 
+let trocandoConta = false;
+
 async function trocarConta(num) {
-  await apiFetch('/api/conta/ativa', {
-    method: 'POST',
-    body:   JSON.stringify({ conta: num }),
-  });
-  // Atualiza visual do seletor
-  document.querySelectorAll('.conta-btn').forEach(b => {
-    b.classList.toggle('active', b.dataset.conta === num);
-  });
-  // Recarrega dados da aba atual
-  const abaAtiva = document.querySelector('.tab.active')?.id?.replace('tab-', '');
-  if (abaAtiva === 'loja')    carregarLoja();
-  if (abaAtiva === 'estoque') carregarEstoque(true);
-  atualizarStatus();
+  if (trocandoConta) return;
+  trocandoConta = true;
+
+  // Desabilita botões durante a troca
+  document.querySelectorAll('.conta-btn').forEach(b => b.disabled = true);
+
+  try {
+    await apiFetch('/api/conta/ativa', {
+      method: 'POST',
+      body:   JSON.stringify({ conta: num }),
+    });
+
+    // Atualiza visual do seletor
+    document.querySelectorAll('.conta-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.conta === num);
+    });
+
+    // Recarrega dados da aba atual só após o servidor confirmar a troca
+    const abaAtiva = document.querySelector('.tab.active')?.id?.replace('tab-', '');
+    if (abaAtiva === 'loja')    carregarLoja();
+    if (abaAtiva === 'estoque') carregarEstoque(true);
+    atualizarStatus();
+  } finally {
+    document.querySelectorAll('.conta-btn').forEach(b => b.disabled = false);
+    trocandoConta = false;
+  }
 }
 
 // Inicializa seletor de conta com o estado do servidor
