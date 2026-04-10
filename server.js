@@ -666,18 +666,15 @@ app.get('/api/ml/ads-roas', async (req, res) => {
   try {
     // 1. Busca todos os ads do seller (paginado)
     const todosAds = [];
-    let lastItemId = null;
+    let offset = 0;
     while (true) {
-      const params = { seller_id: c.user_id, limit: 50 };
-      if (lastItemId) params.offset = lastItemId;
       const r = await axios.get('https://api.mercadolibre.com/advertising/product_ads/ads/search', {
-        params, headers, timeout: 12000,
+        params: { seller_id: c.user_id, limit: 50, offset }, headers, timeout: 12000,
       });
       const results = r.data.results || [];
       todosAds.push(...results);
       if (results.length < 50 || todosAds.length >= 500) break;
-      lastItemId = r.data.paging?.last_item_id;
-      if (!lastItemId) break;
+      offset += 50;
     }
 
     // 2. Coleta campaign_ids únicos (com campaign_id > 0)
