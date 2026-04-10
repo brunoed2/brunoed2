@@ -835,15 +835,49 @@ app.get('/api/ml/debug-label/:shipment_id', async (req, res) => {
   res.json(result);
 });
 
-app.get('/api/ml/etiqueta/:shipment_id', (req, res) => {
+app.get('/api/ml/etiqueta/:shipment_id', async (req, res) => {
   const data  = loadData();
   const num   = req.query.conta || data.conta_ativa;
   const c     = data.contas[num] || {};
   if (!c.access_token) return res.status(401).json({ error: 'Não conectado' });
 
-  const url = `https://api.mercadolibre.com/shipments/${req.params.shipment_id}/labels`
-    + `?response_type=pdf&access_token=${encodeURIComponent(c.access_token)}`;
-  res.redirect(url);
+  const sid  = req.params.shipment_id;
+  const tok  = c.access_token;
+
+  // Tenta o novo endpoint /shipment_labels
+  const urls = [
+    `https://api.mercadolibre.com/shipment_labels?shipment_ids=${sid}&response_type=pdf`,
+    `https://api.mercadolibre.com/shipment_labels?shipment_ids=${sid}&response_type=zpl2`,
+    `https://api.mercadolibre.com/shipments/${sid}/labels?response_type=pdf`,
+  ];
+
+  for (const url of urls) {
+    try {
+      const resp = await axios.get(url, {
+        headers:      { Authorization: `Bearer ${tok}` },
+        responseType: 'arraybuffer',
+        timeout:      15000,
+      });
+      const ct = resp.headers['content-type'] || '';
+      if (resp.status === 200 && resp.data.byteLength > 100) {
+        res.setHeader('Content-Type', ct || 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="etiqueta-${sid}.pdf"`);
+        return res.send(Buffer.from(resp.data));
+      }
+    } catch {}
+  }
+
+  // Nenhum funcionou — retorna debug
+  const debug = {};
+  for (const url of urls) {
+    try {
+      const r = await axios.get(url, { headers: { Authorization: `Bearer ${tok}` }, timeout: 8000 });
+      debug[url] = { status: r.status, ct: r.headers['content-type'], size: JSON.stringify(r.data).length };
+    } catch (e) {
+      debug[url] = { status: e.response?.status, error: JSON.stringify(e.response?.data || e.message).slice(0, 200) };
+    }
+  }
+  res.status(404).json({ error: 'Não foi possível baixar a etiqueta.', debug });
 });
 
 app.put('/api/ml/estoque/:mlb', async (req, res) => {
