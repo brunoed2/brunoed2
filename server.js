@@ -566,33 +566,62 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
       (s.logistic_type || '').includes('fulfillment')
     );
 
-    const vendas = resultado
-      .filter(({ shipment }) =>
-        shipment &&
-        LABEL_STATUSES.has(shipment.status) &&
-        LABEL_SUBSTATUSES.has(shipment.substatus) &&
-        !isFull(shipment)
-      )
-      .map(({ order, shipment }) => {
-        const itens = (order.order_items || []).map(i => ({
-          titulo:    `${i.quantity}x ${i.item.title}`,
-          sku:       i.item.seller_custom_field || '—',
-          thumbnail: i.item.thumbnail || null,
-        }));
+    const filtradas = resultado.filter(({ shipment }) =>
+      shipment &&
+      LABEL_STATUSES.has(shipment.status) &&
+      LABEL_SUBSTATUSES.has(shipment.substatus) &&
+      !isFull(shipment)
+    );
+
+    // Coleta todos os MLBs únicos para buscar thumbnail e SKU em lote
+    const todosMLBs = [...new Set(
+      filtradas.flatMap(({ order }) => (order.order_items || []).map(i => i.item.id))
+    )];
+
+    const itemMap = {};
+    for (let i = 0; i < todosMLBs.length; i += 20) {
+      const chunk = todosMLBs.slice(i, i + 20);
+      try {
+        const r = await axios.get('https://api.mercadolibre.com/items', {
+          params:  { ids: chunk.join(','), attributes: 'id,thumbnail,seller_custom_field,pictures' },
+          headers: { Authorization: `Bearer ${c.access_token}` },
+          timeout: 10000,
+        });
+        for (const entry of r.data) {
+          if (entry.code === 200) {
+            const b = entry.body;
+            itemMap[b.id] = {
+              thumbnail:          b.pictures?.[0]?.url || b.thumbnail || null,
+              seller_custom_field: b.seller_custom_field || null,
+            };
+          }
+        }
+      } catch {}
+    }
+
+    const vendas = filtradas.map(({ order, shipment }) => {
+      const itens = (order.order_items || []).map(i => {
+        const extra = itemMap[i.item.id] || {};
         return {
-          orderId:     order.id,
-          data:        order.date_created,
-          comprador:   order.buyer?.nickname || '—',
-          itens:       itens.map(i => i.titulo).join(' | '),
-          skus:        itens.map(i => i.sku).join(' | '),
-          thumbnail:   itens[0]?.thumbnail || null,
-          shipmentId:  shipment.id,
-          conta:       data.conta_ativa,
-          status:      shipment.status,
-          statusLabel: STATUS_PT[shipment.status] || shipment.status,
-          acaoLabel:   SUBSTATUS_LABEL[shipment.substatus] || 'Baixar',
+          titulo:    `${i.quantity}x ${i.item.title}`,
+          sku:       extra.seller_custom_field || '—',
+          thumbnail: extra.thumbnail || null,
         };
       });
+      return {
+        orderId:     order.id,
+        data:        order.date_created,
+        comprador:   order.buyer?.nickname || '—',
+        itens:       itens.map(i => i.titulo).join(' | '),
+        skus:        itens.map(i => i.sku).filter(s => s !== '—').join(' | ') || '—',
+        thumbnail:   itens[0]?.thumbnail || null,
+        shipmentId:  shipment.id,
+        conta:       data.conta_ativa,
+        status:      shipment.status,
+        statusLabel: STATUS_PT[shipment.status] || shipment.status,
+        acaoLabel:   SUBSTATUS_LABEL[shipment.substatus] || 'Baixar',
+      };
+    });
 
     res.json({ vendas });
   } catch (err) {
