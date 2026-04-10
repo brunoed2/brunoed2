@@ -96,7 +96,10 @@
         <div class="tabela-container">
           <div class="tabela-topo">
             <span id="vendas-total"></span>
-            <button class="btn-secondary" onclick="carregarVendas()" id="btn-atualizar-vendas">↻ Atualizar</button>
+            <div style="display:flex;gap:8px;align-items:center">
+              <button class="btn-primary" id="btn-baixar-selecionadas" onclick="baixarSelecionadas()" style="display:none">⬇ Baixar selecionadas</button>
+              <button class="btn-secondary" onclick="carregarVendas()" id="btn-atualizar-vendas">↻ Atualizar</button>
+            </div>
           </div>
 
           <div id="vendas-loading" class="loading" style="display:none">Carregando vendas...</div>
@@ -104,6 +107,7 @@
           <table class="tabela" id="tabela-vendas" style="display:none">
             <thead>
               <tr>
+                <th><input type="checkbox" id="check-todas" onclick="toggleTodasVendas(this)"></th>
                 <th>Data</th>
                 <th>Comprador</th>
                 <th>SKU</th>

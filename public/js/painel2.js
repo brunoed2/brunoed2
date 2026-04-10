@@ -424,6 +424,44 @@ const BADGE_VENDA_STATUS = {
   shipped:       'badge-encerrado',
 };
 
+function toggleTodasVendas(master) {
+  document.querySelectorAll('.check-venda').forEach(cb => cb.checked = master.checked);
+  atualizarBotaoSelecionadas();
+}
+
+function atualizarBotaoSelecionadas() {
+  const selecionadas = document.querySelectorAll('.check-venda:checked').length;
+  const btn = document.getElementById('btn-baixar-selecionadas');
+  if (btn) {
+    btn.style.display = selecionadas > 0 ? '' : 'none';
+    btn.textContent   = `⬇ Baixar ${selecionadas} etiqueta${selecionadas !== 1 ? 's' : ''}`;
+  }
+  // Atualiza estado do checkbox "todas"
+  const total = document.querySelectorAll('.check-venda').length;
+  const master = document.getElementById('check-todas');
+  if (master) {
+    master.checked       = selecionadas === total && total > 0;
+    master.indeterminate = selecionadas > 0 && selecionadas < total;
+  }
+}
+
+function baixarSelecionadas() {
+  const checks = document.querySelectorAll('.check-venda:checked');
+  if (!checks.length) return;
+
+  // Agrupa por conta para montar as URLs corretas
+  const porConta = {};
+  checks.forEach(cb => {
+    const conta = cb.dataset.conta;
+    if (!porConta[conta]) porConta[conta] = [];
+    porConta[conta].push(cb.dataset.shipmentId);
+  });
+
+  for (const [conta, ids] of Object.entries(porConta)) {
+    window.open(`/api/ml/etiquetas?ids=${ids.join(',')}&conta=${conta}`, '_blank');
+  }
+}
+
 async function carregarVendas() {
   const loading = document.getElementById('vendas-loading');
   const erroEl  = document.getElementById('vendas-erro');
@@ -460,6 +498,7 @@ async function carregarVendas() {
       });
       const tr = document.createElement('tr');
       tr.innerHTML = `
+        <td><input type="checkbox" class="check-venda" data-shipment-id="${v.shipmentId}" data-conta="${v.conta}" onchange="atualizarBotaoSelecionadas()"></td>
         <td style="white-space:nowrap">${dataFmt}</td>
         <td>${v.comprador}</td>
         <td class="td-sku">${v.skus || '—'}</td>
@@ -469,6 +508,7 @@ async function carregarVendas() {
       `;
       tbody.appendChild(tr);
     });
+    atualizarBotaoSelecionadas();
 
     tabela.style.display = 'table';
   } catch {

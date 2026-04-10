@@ -835,6 +835,29 @@ app.get('/api/ml/debug-label/:shipment_id', async (req, res) => {
   res.json(result);
 });
 
+app.get('/api/ml/etiquetas', async (req, res) => {
+  const data = loadData();
+  const num  = req.query.conta || data.conta_ativa;
+  const c    = data.contas[num] || {};
+  if (!c.access_token) return res.status(401).json({ error: 'Não conectado' });
+
+  const ids = (req.query.ids || '').split(',').map(s => s.trim()).filter(Boolean);
+  if (!ids.length) return res.status(400).json({ error: 'Nenhum ID informado' });
+
+  const idsParam = ids.join(',');
+  try {
+    const resp = await axios.get(
+      `https://api.mercadolibre.com/shipment_labels?shipment_ids=${idsParam}&response_type=pdf`,
+      { headers: { Authorization: `Bearer ${c.access_token}` }, responseType: 'arraybuffer', timeout: 20000 }
+    );
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="etiquetas.pdf"`);
+    return res.send(Buffer.from(resp.data));
+  } catch (e) {
+    res.status(404).json({ error: 'Erro ao baixar etiquetas.', detalhe: JSON.stringify(e.response?.data || e.message) });
+  }
+});
+
 app.get('/api/ml/etiqueta/:shipment_id', async (req, res) => {
   const data  = loadData();
   const num   = req.query.conta || data.conta_ativa;

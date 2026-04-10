@@ -668,6 +668,15 @@ code {
 
 /* ── Botão de etiqueta ──────────────────────────────────────── */
 
+.check-venda, #check-todas {
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+  accent-color: #111;
+}
+
+/* ── Botão de etiqueta ──────────────────────────────────────── */
+
 .btn-etiqueta {
   display: inline-block;
   padding: 5px 12px;
