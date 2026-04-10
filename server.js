@@ -329,6 +329,22 @@ app.get('/api/ml/store', async (req, res) => {
   }
 });
 
+// ── Helper compartilhado ──────────────────────────────────────
+
+function extrairSku(body) {
+  if (body.seller_custom_field) return body.seller_custom_field;
+  const attrItem = (body.attributes || []).find(a => a.id === 'SELLER_SKU');
+  if (attrItem && attrItem.value_name) return attrItem.value_name;
+  if (body.variations && body.variations.length > 0) {
+    for (const v of body.variations) {
+      if (v.seller_custom_field) return v.seller_custom_field;
+      const attrVar = (v.attributes || []).find(a => a.id === 'SELLER_SKU');
+      if (attrVar && attrVar.value_name) return attrVar.value_name;
+    }
+  }
+  return '—';
+}
+
 app.get('/api/ml/estoque', async (req, res) => {
   const data = loadData();
   const num  = data.conta_ativa;
@@ -349,7 +365,7 @@ app.get('/api/ml/estoque', async (req, res) => {
 
   const limit = 50;
 
-  function extrairSku(body) {
+  function extrairSkuLocal(body) {
     if (body.seller_custom_field) return body.seller_custom_field;
     const attrItem = (body.attributes || []).find(a => a.id === 'SELLER_SKU');
     if (attrItem && attrItem.value_name) return attrItem.value_name;
@@ -425,7 +441,7 @@ app.get('/api/ml/estoque', async (req, res) => {
         return {
           mlb,
           titulo:        r.body.title,
-          sku:           extrairSku(r.body),
+          sku:           extrairSkuLocal(r.body),
           estoque:       r.body.available_quantity ?? 0,
           status,
           pausadoDesde:  status === 'paused' ? (pauseDates[mlb] || agora) : null,
@@ -591,8 +607,12 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
           if (entry.code === 200) {
             const b   = entry.body;
             const sku = extrairSku(b);
+            // thumbnail já é uma URL direta; pictures[0] pode precisar de request extra
+            let thumb = b.thumbnail || null;
+            // O ML retorna thumbnail em baixa resolução com "-I.jpg" — troca por "-O.jpg" para melhor qualidade
+            if (thumb) thumb = thumb.replace(/-[A-Z]\.jpg/, '-O.jpg');
             itemMap[b.id] = {
-              thumbnail: b.pictures?.[0]?.url || b.thumbnail || null,
+              thumbnail: thumb,
               sku:       sku !== '—' ? sku : null,
             };
           }
