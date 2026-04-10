@@ -245,9 +245,10 @@ app.get('/api/ml/callback', async (req, res) => {
       }),
       { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
     );
-    c.access_token  = resp.data.access_token;
-    c.refresh_token = resp.data.refresh_token;
-    c.user_id       = resp.data.user_id;
+    c.access_token    = resp.data.access_token;
+    c.refresh_token   = resp.data.refresh_token;
+    c.token_expires_at = Date.now() + ((resp.data.expires_in || 21600) - 300) * 1000;
+    c.user_id         = resp.data.user_id;
     // Busca o nickname para exibir no seletor de conta
     try {
       const me = await axios.get('https://api.mercadolibre.com/users/me', {
@@ -269,6 +270,7 @@ app.get('/api/ml/callback', async (req, res) => {
 
 async function refreshToken(data, num) {
   const c = data.contas[num];
+  if (!c.client_id || !c.client_secret || !c.refresh_token) throw new Error('Credenciais insuficientes para refresh');
   const resp = await axios.post(
     'https://api.mercadolibre.com/oauth/token',
     new URLSearchParams({
@@ -279,19 +281,74 @@ async function refreshToken(data, num) {
     }),
     { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
   );
-  c.access_token  = resp.data.access_token;
-  c.refresh_token = resp.data.refresh_token;
+  c.access_token    = resp.data.access_token;
+  c.refresh_token   = resp.data.refresh_token;
+  // expires_in vem em segundos (normalmente 21600 = 6h); guarda com 5min de margem
+  c.token_expires_at = Date.now() + ((resp.data.expires_in || 21600) - 300) * 1000;
   saveData(data);
+  console.log(`[auth] Token da conta ${num} renovado com sucesso.`);
   return c;
 }
 
+// Retorna o token válido, renovando automaticamente se necessário
+async function getToken(data, num) {
+  const c = data.contas[num];
+  if (!c || !c.access_token) throw new Error('Não conectado');
+  const expira = c.token_expires_at || 0;
+  if (Date.now() < expira) return c.access_token; // ainda válido
+  if (!c.refresh_token) throw new Error('Token expirado e sem refresh_token. Reconecte a conta.');
+  const renovado = await refreshToken(data, num);
+  return renovado.access_token;
+}
+
+// Na inicialização, tenta renovar tokens expirados de todas as contas
+(async () => {
+  try {
+    const data = loadData();
+    for (const num of ['1', '2']) {
+      const c = data.contas[num];
+      if (!c || !c.refresh_token) continue;
+      const expira = c.token_expires_at || 0;
+      if (Date.now() >= expira) {
+        try {
+          await refreshToken(data, num);
+          console.log(`[init] Token da conta ${num} renovado na inicialização.`);
+        } catch (e) {
+          console.warn(`[init] Falha ao renovar token da conta ${num}:`, e.message);
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('[init] Erro na renovação inicial de tokens:', e.message);
+  }
+})();
+
+// Renova tokens a cada 5 horas (evita expiração)
+setInterval(async () => {
+  try {
+    const data = loadData();
+    for (const num of ['1', '2']) {
+      const c = data.contas[num];
+      if (!c || !c.refresh_token) continue;
+      const expira = c.token_expires_at || 0;
+      if (Date.now() >= expira) {
+        try { await refreshToken(data, num); } catch (e) {
+          console.warn(`[refresh] Falha ao renovar conta ${num}:`, e.message);
+        }
+      }
+    }
+  } catch {}
+}, 5 * 60 * 60 * 1000);
+
 app.get('/api/ml/status', async (req, res) => {
   const data = loadData();
-  const c    = contaAtiva(data);
-  if (!c.access_token) return res.json({ connected: false });
+  const num  = data.conta_ativa;
+  const c    = data.contas[num];
+  if (!c || !c.access_token) return res.json({ connected: false });
   try {
-    const resp = await axios.get('https://api.mercadolibre.com/users/me', {
-      headers: { Authorization: `Bearer ${c.access_token}` },
+    const token = await getToken(data, num);
+    const resp  = await axios.get('https://api.mercadolibre.com/users/me', {
+      headers: { Authorization: `Bearer ${token}` },
     });
     res.json({ connected: true, nickname: resp.data.nickname });
   } catch {
