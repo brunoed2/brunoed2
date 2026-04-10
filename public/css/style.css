@@ -668,21 +668,21 @@ code {
 
 /* ── Botão de etiqueta ──────────────────────────────────────── */
 
-.td-thumb { width: 52px; padding: 6px 8px !important; }
+.td-thumb { width: 100px; padding: 6px 8px !important; }
 
 .venda-thumb {
-  width: 44px;
-  height: 44px;
+  width: 88px;
+  height: 88px;
   object-fit: cover;
-  border-radius: 6px;
+  border-radius: 8px;
   border: 1px solid #eee;
   display: block;
 }
 
 .venda-thumb-vazio {
-  width: 44px;
-  height: 44px;
-  border-radius: 6px;
+  width: 88px;
+  height: 88px;
+  border-radius: 8px;
   background: #f3f4f6;
 }
 
