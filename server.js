@@ -792,35 +792,16 @@ app.get('/api/ml/debug-ads', async (req, res) => {
     } catch {}
   }
 
-  const tryPost = async (label, url, body = {}) => {
-    try {
-      const r = await axios.post(url, body, { headers: { ...headers, 'Content-Type': 'application/json' }, timeout: 10000 });
-      result[label] = { status: r.status, data: r.data };
-    } catch (e) {
-      result[label] = { status: e.response?.status, error: e.response?.data || e.message };
-    }
-  };
+  // Endpoint correto: /advertising/product_ads/campaigns/search?seller_id=
+  await tryGet('campaigns_search',        'https://api.mercadolibre.com/advertising/product_ads/campaigns/search', { seller_id: c.user_id });
+  await tryGet('campaigns_search_limit',  'https://api.mercadolibre.com/advertising/product_ads/campaigns/search', { seller_id: c.user_id, limit: 5 });
+  await tryGet('campaigns_search_status', 'https://api.mercadolibre.com/advertising/product_ads/campaigns/search', { seller_id: c.user_id, status: 'active', limit: 5 });
 
-  // family_id como product_id no /advertising/advertisers
-  if (familyId) {
-    await tryGet('advertisers_familyid_as_productid', 'https://api.mercadolibre.com/advertising/advertisers', { product_id: familyId });
-    await tryGet('advertisers_familyid_as_productid_str', 'https://api.mercadolibre.com/advertising/advertisers', { product_id: String(familyId) });
+  // Ads dentro de uma campanha
+  if (primeiroMlb) {
+    await tryGet('ads_search_item',       'https://api.mercadolibre.com/advertising/product_ads/ads/search', { seller_id: c.user_id, item_id: primeiroMlb });
+    await tryGet('ads_search_seller',     'https://api.mercadolibre.com/advertising/product_ads/ads/search', { seller_id: c.user_id, limit: 3 });
   }
-
-  // /advertising/product_ads/campaigns aceita POST?
-  await tryPost('campaigns_post_empty',   'https://api.mercadolibre.com/advertising/product_ads/campaigns', {});
-  await tryPost('campaigns_post_user',    'https://api.mercadolibre.com/advertising/product_ads/campaigns', { user_id: c.user_id });
-  if (familyId) {
-    await tryPost('campaigns_post_family','https://api.mercadolibre.com/advertising/product_ads/campaigns', { family_id: familyId });
-  }
-
-  // Tenta GET em /advertising/product_ads/campaigns com user_id
-  await tryGet('campaigns_get_user',      'https://api.mercadolibre.com/advertising/product_ads/campaigns', { user_id: c.user_id, limit: 5 });
-  await tryGet('campaigns_get_seller',    'https://api.mercadolibre.com/advertising/product_ads/campaigns', { seller_id: c.user_id, limit: 5 });
-
-  // Tenta direto com o advertiser sendo o user_id
-  await tryGet('adv_user_campaigns',      `https://api.mercadolibre.com/advertising/advertisers/${c.user_id}/campaigns`);
-  await tryGet('adv_user_pads',           `https://api.mercadolibre.com/advertising/advertisers/${c.user_id}/product_ads`, { limit: 5 });
 
   res.json(result);
 });
