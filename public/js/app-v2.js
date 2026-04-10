@@ -599,12 +599,15 @@ function renderizarAds() {
 
   const fmtBRL  = v => v != null ? `R$ ${v.toFixed(2).replace('.', ',')}` : '—';
   const fmtRoas = v => v != null ? v.toFixed(2) : '—';
-  const fmtPct  = v => v != null ? `${v.toFixed(2)}%` : '—';
 
   itens.forEach(item => {
-    const roasClass = item.roasEntregando != null && item.targetRoas != null
-      ? (item.roasEntregando >= item.targetRoas ? 'roas-ok' : 'roas-abaixo')
-      : '';
+    let roasClass = '';
+    if (item.roasEntregando != null && item.targetRoas != null) {
+      const diff = (item.roasEntregando - item.targetRoas) / item.targetRoas;
+      if (diff < -0.05)      roasClass = 'roas-abaixo';   // vermelho: mais de 5% abaixo
+      else if (diff > 0.05)  roasClass = 'roas-acima';    // azul: mais de 5% acima
+      else                   roasClass = 'roas-ok';        // verde: dentro de ±5%
+    }
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td class="td-campanha" title="${item.campanha}">${item.campanha}</td>
@@ -614,7 +617,6 @@ function renderizarAds() {
       <td class="col-num">${fmtBRL(item.custoPorUnidade)}</td>
       <td class="col-num">${fmtBRL(item.cost)}</td>
       <td class="col-num">${item.units || '—'}</td>
-      <td class="col-num">${fmtPct(item.tacos)}</td>
     `;
     tbody.appendChild(tr);
   });
