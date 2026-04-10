@@ -116,10 +116,32 @@
                 <th>Itens</th>
                 <th>Status</th>
                 <th>Etiqueta</th>
+                <th></th>
               </tr>
             </thead>
             <tbody id="tabela-vendas-body"></tbody>
           </table>
+
+          <!-- Seção de pedidos atendidos -->
+          <div id="atendidos-header" style="display:none;margin-top:28px">
+            <div class="tabela-topo">
+              <span id="atendidos-total" style="color:#64748b;font-size:14px"></span>
+            </div>
+            <table class="tabela" id="tabela-atendidos">
+              <thead>
+                <tr>
+                  <th></th>
+                  <th>Pedido</th>
+                  <th>Comprador</th>
+                  <th class="col-num">Qtd</th>
+                  <th>SKU</th>
+                  <th>Itens</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="tabela-atendidos-body"></tbody>
+            </table>
+          </div>
         </div>
       </section>
 

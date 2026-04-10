@@ -485,10 +485,17 @@ async function carregarVendas() {
       return;
     }
 
-    const vendas = data.vendas || [];
-    totalEl.textContent = `${vendas.length} venda${vendas.length !== 1 ? 's' : ''} com etiqueta disponível`;
+    const todasVendas = data.vendas || [];
+    const vendas    = todasVendas.filter(v => !v.atendida);
+    const atendidas = todasVendas.filter(v => v.atendida);
 
-    if (!vendas.length) return;
+    totalEl.textContent = `${vendas.length} venda${vendas.length !== 1 ? 's' : ''} pendente${vendas.length !== 1 ? 's' : ''}`;
+
+    if (!vendas.length && !atendidas.length) return;
+
+    renderizarAtendidos(atendidas);
+
+    if (!vendas.length) { tabela.style.display = 'none'; atualizarBotaoSelecionadas(); return; }
 
     vendas.forEach(v => {
       const bStatus  = BADGE_VENDA_STATUS[v.status] || 'badge-outro';
@@ -512,6 +519,7 @@ async function carregarVendas() {
         <td class="td-titulo" title="${item0.titulo || ''}">${item0.titulo || '—'}</td>
         <td><span class="badge-deposito ${bStatus}">${v.statusLabel}</span></td>
         <td><a class="btn-etiqueta" href="/api/ml/etiqueta/${v.shipmentId}?conta=${v.conta}" target="_blank">${v.acaoLabel}</a></td>
+        <td><button class="btn-atender" onclick="marcarAtendido('${v.shipmentId}', this)" title="Marcar como atendido">✔</button></td>
       `;
       tbody.appendChild(tr);
 
@@ -532,7 +540,7 @@ async function carregarVendas() {
           <td class="col-num venda-qtd">${item.quantidade ?? ''}</td>
           <td class="td-sku">${item.sku || '—'}</td>
           <td class="td-titulo" title="${item.titulo || ''}">${item.titulo || '—'}</td>
-          <td colspan="2"></td>
+          <td colspan="3"></td>
         `;
         tbody.appendChild(trSub);
       }
@@ -545,6 +553,92 @@ async function carregarVendas() {
     erroEl.textContent   = 'Erro ao carregar vendas.';
     erroEl.style.display = 'block';
   }
+}
+
+// ── Atendidos ─────────────────────────────────────────────────
+
+async function marcarAtendido(shipmentId, btn) {
+  btn.disabled = true;
+  try {
+    await apiFetch('/api/vendas/atendida', {
+      method: 'POST',
+      body:   JSON.stringify({ shipmentId }),
+    });
+    carregarVendas();
+  } catch {
+    btn.disabled = false;
+  }
+}
+
+async function desatenderPedido(shipmentId, btn) {
+  btn.disabled = true;
+  try {
+    await apiFetch('/api/vendas/atendida', {
+      method:  'DELETE',
+      body:    JSON.stringify({ shipmentId }),
+    });
+    carregarVendas();
+  } catch {
+    btn.disabled = false;
+  }
+}
+
+function renderizarAtendidos(atendidas) {
+  const header = document.getElementById('atendidos-header');
+  const tbody  = document.getElementById('tabela-atendidos-body');
+  const total  = document.getElementById('atendidos-total');
+
+  tbody.innerHTML = '';
+
+  if (!atendidas.length) {
+    header.style.display = 'none';
+    return;
+  }
+
+  header.style.display = '';
+  total.textContent    = `✔ ${atendidas.length} pedido${atendidas.length !== 1 ? 's' : ''} atendido${atendidas.length !== 1 ? 's' : ''}`;
+
+  atendidas.forEach(v => {
+    const itens = v.itensLista || [];
+    const item0 = itens[0] || {};
+    const multi = itens.length > 1;
+
+    const tr = document.createElement('tr');
+    if (multi) tr.classList.add('venda-multi-header');
+    const imgHtml0 = item0.thumbnail
+      ? `<a href="${item0.permalink || '#'}" target="_blank" class="venda-thumb-link"><img src="${item0.thumbnail}" class="venda-thumb venda-thumb-sm" loading="lazy"></a>`
+      : `<div class="venda-thumb-vazio venda-thumb-sm"></div>`;
+    tr.innerHTML = `
+      <td class="td-thumb">${imgHtml0}</td>
+      <td class="td-order-id">#${v.orderId}</td>
+      <td>${v.comprador}</td>
+      <td class="col-num venda-qtd">${item0.quantidade ?? ''}</td>
+      <td class="td-sku">${item0.sku || '—'}</td>
+      <td class="td-titulo" title="${item0.titulo || ''}">${item0.titulo || '—'}</td>
+      <td><button class="btn-desatender" onclick="desatenderPedido('${v.shipmentId}', this)" title="Remover dos atendidos">↩ Devolver</button></td>
+    `;
+    tbody.appendChild(tr);
+
+    for (let i = 1; i < itens.length; i++) {
+      const item   = itens[i];
+      const isLast = i === itens.length - 1;
+      const trSub  = document.createElement('tr');
+      trSub.classList.add('venda-sub-item');
+      if (isLast) trSub.classList.add('venda-sub-last');
+      const imgHtml = item.thumbnail
+        ? `<a href="${item.permalink || '#'}" target="_blank" class="venda-thumb-link"><img src="${item.thumbnail}" class="venda-thumb venda-thumb-sm" loading="lazy"></a>`
+        : `<div class="venda-thumb-vazio venda-thumb-sm"></div>`;
+      trSub.innerHTML = `
+        <td class="td-thumb">${imgHtml}</td>
+        <td colspan="2" class="venda-sub-mais">↳ mesmo pedido</td>
+        <td class="col-num venda-qtd">${item.quantidade ?? ''}</td>
+        <td class="td-sku">${item.sku || '—'}</td>
+        <td class="td-titulo" title="${item.titulo || ''}">${item.titulo || '—'}</td>
+        <td></td>
+      `;
+      tbody.appendChild(trSub);
+    }
+  });
 }
 
 // ── Sair ──────────────────────────────────────────────────────

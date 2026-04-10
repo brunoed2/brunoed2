@@ -745,6 +745,39 @@ code {
   white-space: nowrap;
 }
 
+/* ── Botão atender ───────────────────────────────────────────── */
+
+.btn-atender {
+  background: #16a34a;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 14px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background .15s;
+}
+.btn-atender:hover    { background: #15803d; }
+.btn-atender:disabled { opacity: .5; cursor: default; }
+
+.btn-desatender {
+  background: none;
+  color: #64748b;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background .15s, color .15s;
+}
+.btn-desatender:hover    { background: #f1f5f9; color: #334155; }
+.btn-desatender:disabled { opacity: .5; cursor: default; }
+
+/* Thumbnail menor na seção de atendidos */
+.venda-thumb-sm { width: 52px !important; height: 52px !important; }
+
 /* ── Botão de etiqueta ──────────────────────────────────────── */
 
 .btn-etiqueta {

@@ -707,13 +707,42 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
         });
       }
     }
-    const vendas = [...porShipment.values()];
+    const atendidas = new Set((c.atendidas || []).map(String));
+    const vendas = [...porShipment.values()].map(v => ({
+      ...v,
+      atendida: atendidas.has(String(v.shipmentId)),
+    }));
 
     res.json({ vendas });
   } catch (err) {
     console.error('Erro ao buscar vendas com etiqueta:', err.response?.data || err.message);
     res.json({ error: 'Erro ao buscar vendas.' });
   }
+});
+
+app.post('/api/vendas/atendida', (req, res) => {
+  const { shipmentId } = req.body;
+  if (!shipmentId) return res.json({ error: 'shipmentId obrigatório' });
+  const data = loadData();
+  const num  = data.conta_ativa;
+  const c    = data.contas[num];
+  if (!c) return res.json({ error: 'Conta não encontrada' });
+  if (!c.atendidas) c.atendidas = [];
+  if (!c.atendidas.includes(String(shipmentId))) c.atendidas.push(String(shipmentId));
+  saveData(data);
+  res.json({ ok: true });
+});
+
+app.delete('/api/vendas/atendida', (req, res) => {
+  const { shipmentId } = req.body;
+  if (!shipmentId) return res.json({ error: 'shipmentId obrigatório' });
+  const data = loadData();
+  const num  = data.conta_ativa;
+  const c    = data.contas[num];
+  if (!c) return res.json({ error: 'Conta não encontrada' });
+  c.atendidas = (c.atendidas || []).filter(id => id !== String(shipmentId));
+  saveData(data);
+  res.json({ ok: true });
 });
 
 
