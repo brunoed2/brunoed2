@@ -745,6 +745,52 @@ code {
   white-space: nowrap;
 }
 
+/* ── Mini-abas de vendas ─────────────────────────────────────── */
+
+.vendas-mini-abas {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 20px;
+  border-bottom: 2px solid #e5e7eb;
+}
+
+.vendas-mini-btn {
+  background: none;
+  border: none;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -2px;
+  padding: 8px 18px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #64748b;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  transition: color .15s;
+}
+
+.vendas-mini-btn:hover { color: #1e293b; }
+
+.vendas-mini-btn.active {
+  color: #111;
+  border-bottom-color: #111;
+}
+
+.mini-badge {
+  background: #e2e8f0;
+  color: #475569;
+  border-radius: 10px;
+  padding: 1px 7px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.mini-badge-ok {
+  background: #dcfce7;
+  color: #16a34a;
+}
+
 /* ── Botão atender ───────────────────────────────────────────── */
 
 .btn-atender {

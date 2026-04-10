@@ -489,9 +489,13 @@ async function carregarVendas() {
     const vendas    = todasVendas.filter(v => !v.atendida);
     const atendidas = todasVendas.filter(v => v.atendida);
 
-    totalEl.textContent = `${vendas.length} venda${vendas.length !== 1 ? 's' : ''} pendente${vendas.length !== 1 ? 's' : ''}`;
+    // Badges das mini-abas
+    const badgePend = document.getElementById('mini-badge-pendentes');
+    const badgeAten = document.getElementById('mini-badge-atendidos');
+    if (badgePend) badgePend.textContent = vendas.length || '';
+    if (badgeAten) badgeAten.textContent = atendidas.length || '';
 
-    if (!vendas.length && !atendidas.length) return;
+    totalEl.textContent = `${vendas.length} pedido${vendas.length !== 1 ? 's' : ''} pendente${vendas.length !== 1 ? 's' : ''}`;
 
     renderizarAtendidos(atendidas);
 
@@ -583,20 +587,28 @@ async function desatenderPedido(shipmentId, btn) {
   }
 }
 
+function abrirMiniAba(nome) {
+  document.getElementById('painel-pendentes').style.display = nome === 'pendentes' ? '' : 'none';
+  document.getElementById('painel-atendidos').style.display = nome === 'atendidos' ? '' : 'none';
+  document.getElementById('mini-btn-pendentes').classList.toggle('active', nome === 'pendentes');
+  document.getElementById('mini-btn-atendidos').classList.toggle('active', nome === 'atendidos');
+}
+
 function renderizarAtendidos(atendidas) {
-  const header = document.getElementById('atendidos-header');
+  const tabela = document.getElementById('tabela-atendidos');
   const tbody  = document.getElementById('tabela-atendidos-body');
   const total  = document.getElementById('atendidos-total');
 
   tbody.innerHTML = '';
 
   if (!atendidas.length) {
-    header.style.display = 'none';
+    tabela.style.display = 'none';
+    total.textContent    = 'Nenhum pedido atendido ainda.';
     return;
   }
 
-  header.style.display = '';
-  total.textContent    = `✔ ${atendidas.length} pedido${atendidas.length !== 1 ? 's' : ''} atendido${atendidas.length !== 1 ? 's' : ''}`;
+  tabela.style.display = 'table';
+  total.textContent    = `${atendidas.length} pedido${atendidas.length !== 1 ? 's' : ''} atendido${atendidas.length !== 1 ? 's' : ''}`;
 
   atendidas.forEach(v => {
     const itens = v.itensLista || [];
