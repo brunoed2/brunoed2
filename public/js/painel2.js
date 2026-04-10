@@ -26,9 +26,10 @@ async function trocarConta(num) {
   if (trocandoConta) return;
   trocandoConta = true;
 
-  // Para o monitoramento de novos pedidos durante a troca para evitar race condition
+  // Invalida qualquer requisição em andamento da conta anterior
+  contaGen++;
   if (intervaloNotif) { clearInterval(intervaloNotif); intervaloNotif = null; }
-  shipmentsConhecidos = null; // reseta para não notificar falso positivo após a troca
+  shipmentsConhecidos = null;
 
   document.querySelectorAll('.conta-btn').forEach(b => b.disabled = true);
 
@@ -66,6 +67,10 @@ async function inicializarSeletorConta() {
     });
   } catch {}
 }
+
+// ── Geração de conta (evita sobrescrita por respostas atrasadas) ──
+
+let contaGen = 0; // incrementado a cada troca; cada load guarda sua geração
 
 // ── Helpers ───────────────────────────────────────────────────
 
@@ -382,6 +387,8 @@ function renderizarTabela() {
 }
 
 async function carregarEstoque(reiniciar = false) {
+  const gen = contaGen;
+
   if (reiniciar) {
     todosItens = [];
     document.getElementById('tabela-estoque-body').innerHTML = '';
@@ -398,6 +405,7 @@ async function carregarEstoque(reiniciar = false) {
   let estoqueData;
   try {
     estoqueData = await apiFetch('/api/ml/estoque');
+    if (contaGen !== gen) return;
     loading.style.display = 'none';
 
     if (estoqueData.error) {
@@ -409,6 +417,7 @@ async function carregarEstoque(reiniciar = false) {
     todosItens = estoqueData.items.map(item => ({ ...item, vendas30d: null }));
     renderizarTabela();
   } catch {
+    if (contaGen !== gen) return;
     loading.style.display = 'none';
     erroEl.textContent   = 'Erro ao carregar estoque.';
     erroEl.style.display = 'block';
@@ -421,6 +430,7 @@ async function carregarEstoque(reiniciar = false) {
     const timer = setTimeout(() => controller.abort(), 40000);
     const resp = await fetch('/api/ml/vendas30dias', { signal: controller.signal });
     clearTimeout(timer);
+    if (contaGen !== gen) return;
     const vendasData = await resp.json();
     const vendas = (vendasData && !vendasData.error) ? vendasData : {};
 
@@ -430,6 +440,7 @@ async function carregarEstoque(reiniciar = false) {
     }));
     renderizarTabela();
   } catch (err) {
+    if (contaGen !== gen) return;
     console.error('Vendas:', err.message);
     todosItens = todosItens.map(item => ({ ...item, vendas30d: 0 }));
     renderizarTabela();
@@ -485,6 +496,7 @@ function baixarSelecionadas() {
 }
 
 async function carregarVendas() {
+  const gen    = contaGen;
   const loading = document.getElementById('vendas-loading');
   const erroEl  = document.getElementById('vendas-erro');
   const totalEl = document.getElementById('vendas-total');
@@ -499,6 +511,7 @@ async function carregarVendas() {
 
   try {
     const data = await apiFetch('/api/ml/vendas-etiquetas');
+    if (contaGen !== gen) return;
     loading.style.display = 'none';
 
     if (data.error) {

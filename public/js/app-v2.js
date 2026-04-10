@@ -66,10 +66,12 @@ async function apiFetch(url, opts = {}) {
 // ── Troca de conta ────────────────────────────────────────────
 
 let trocandoConta = false;
+let contaGen      = 0;
 
 async function trocarConta(num) {
   if (trocandoConta) return;
   trocandoConta = true;
+  contaGen++;
 
   // Desabilita botões durante a troca
   document.querySelectorAll('.conta-btn').forEach(b => b.disabled = true);
@@ -177,6 +179,7 @@ function conectarOAuth() {
 // ── Loja ──────────────────────────────────────────────────────
 
 async function carregarLoja() {
+  const gen     = contaGen;
   const loading = document.getElementById('loja-loading');
   const info    = document.getElementById('loja-info');
   const erroEl  = document.getElementById('loja-erro');
@@ -187,6 +190,7 @@ async function carregarLoja() {
 
   try {
     const data = await apiFetch('/api/ml/store');
+    if (contaGen !== gen) return;
     loading.style.display = 'none';
 
     if (data.error) {
@@ -511,6 +515,8 @@ function calcularDuracao(estoque, vendas30d) {
 }
 
 async function carregarEstoque(reiniciar = false) {
+  const gen = contaGen;
+
   if (reiniciar) {
     todosItens = [];
     document.getElementById('tabela-estoque-body').innerHTML = '';
@@ -527,6 +533,7 @@ async function carregarEstoque(reiniciar = false) {
   let estoqueData;
   try {
     estoqueData = await apiFetch('/api/ml/estoque');
+    if (contaGen !== gen) return;
     loading.style.display = 'none';
 
     if (estoqueData.error) {
@@ -538,6 +545,7 @@ async function carregarEstoque(reiniciar = false) {
     todosItens = estoqueData.items.map(item => ({ ...item, vendas30d: null }));
     renderizarTabela();
   } catch {
+    if (contaGen !== gen) return;
     loading.style.display = 'none';
     erroEl.textContent   = 'Erro ao carregar estoque.';
     erroEl.style.display = 'block';
@@ -550,6 +558,7 @@ async function carregarEstoque(reiniciar = false) {
     const timer = setTimeout(() => controller.abort(), 40000);
     const resp = await fetch('/api/ml/vendas30dias', { signal: controller.signal });
     clearTimeout(timer);
+    if (contaGen !== gen) return;
     const vendasData = await resp.json();
     const vendas = (vendasData && !vendasData.error) ? vendasData : {};
 
@@ -559,6 +568,7 @@ async function carregarEstoque(reiniciar = false) {
     }));
     renderizarTabela();
   } catch (err) {
+    if (contaGen !== gen) return;
     console.error('Vendas:', err.message);
     todosItens = todosItens.map(item => ({ ...item, vendas30d: 0 }));
     renderizarTabela();
