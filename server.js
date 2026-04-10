@@ -656,7 +656,7 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
       const chunk = todosMLBs.slice(i, i + 20);
       try {
         const r = await axios.get('https://api.mercadolibre.com/items', {
-          params:  { ids: chunk.join(','), attributes: 'id,thumbnail,seller_custom_field,pictures,variations,attributes' },
+          params:  { ids: chunk.join(','), attributes: 'id,thumbnail,permalink,seller_custom_field,pictures,variations,attributes' },
           headers: { Authorization: `Bearer ${c.access_token}` },
           timeout: 10000,
         });
@@ -671,6 +671,7 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
             itemMap[b.id] = {
               thumbnail: thumb,
               sku:       sku !== '—' ? sku : null,
+              permalink: b.permalink || null,
             };
           }
         }
@@ -701,6 +702,7 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
           titulo:     i.item.title,
           sku:        extra.sku || '—',
           thumbnail:  extra.thumbnail || null,
+          permalink:  extra.permalink || null,
           quantidade: i.quantity || 1,
         });
       }

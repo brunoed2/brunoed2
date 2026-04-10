@@ -500,7 +500,7 @@ async function carregarVendas() {
       const tr = document.createElement('tr');
       if (multi) tr.classList.add('venda-multi-header');
       const imgHtml0 = item0.thumbnail
-        ? `<img src="${item0.thumbnail}" class="venda-thumb" loading="lazy">`
+        ? `<a href="${item0.permalink || '#'}" target="_blank" class="venda-thumb-link"><img src="${item0.thumbnail}" class="venda-thumb" loading="lazy"></a>`
         : `<div class="venda-thumb-vazio"></div>`;
       tr.innerHTML = `
         <td><input type="checkbox" class="check-venda" data-shipment-id="${v.shipmentId}" data-conta="${v.conta}" onchange="atualizarBotaoSelecionadas()"></td>
@@ -523,7 +523,7 @@ async function carregarVendas() {
         trSub.classList.add('venda-sub-item');
         if (isLast) trSub.classList.add('venda-sub-last');
         const imgHtml = item.thumbnail
-          ? `<img src="${item.thumbnail}" class="venda-thumb" loading="lazy">`
+          ? `<a href="${item.permalink || '#'}" target="_blank" class="venda-thumb-link"><img src="${item.thumbnail}" class="venda-thumb" loading="lazy"></a>`
           : `<div class="venda-thumb-vazio"></div>`;
         trSub.innerHTML = `
           <td class="venda-sub-indent"></td>
