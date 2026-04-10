@@ -576,9 +576,9 @@ code {
 
 .td-campanha { font-size: 13px; color: #555; max-width: 180px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-.roas-ok     { color: #15803d; font-weight: 700; }  /* verde: próximo do objetivo */
-.roas-abaixo { color: #dc2626; font-weight: 700; }  /* vermelho: abaixo do objetivo */
-.roas-acima  { color: #1d4ed8; font-weight: 700; }  /* azul: acima do objetivo */
+.roas-ok,    .tabela td.roas-ok    { color: #15803d !important; font-weight: 700; }
+.roas-abaixo,.tabela td.roas-abaixo{ color: #dc2626 !important; font-weight: 700; }
+.roas-acima, .tabela td.roas-acima { color: #1d4ed8 !important; font-weight: 700; }
 
 .th-sort-ads {
   cursor: pointer;
