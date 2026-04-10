@@ -499,6 +499,9 @@ async function carregarVendas() {
 
     totalEl.textContent = `${vendas.length} pedido${vendas.length !== 1 ? 's' : ''} pendente${vendas.length !== 1 ? 's' : ''}`;
 
+    // Popula cache também com atendidos (garante que "Devolver + re-atender" funciona)
+    atendidas.forEach(v => { vendaCache[String(v.shipmentId)] = v; });
+
     renderizarAtendidos(atendidas);
 
     if (!vendas.length) { tabela.style.display = 'none'; atualizarBotaoSelecionadas(); return; }

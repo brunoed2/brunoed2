@@ -738,9 +738,12 @@ app.post('/api/vendas/atendida', (req, res) => {
   const c    = data.contas[num];
   if (!c) return res.json({ error: 'Conta não encontrada' });
   if (!c.atendidas_dados) c.atendidas_dados = [];
-  // Remove se já existia e re-insere com dados atualizados
-  c.atendidas_dados = c.atendidas_dados.filter(v => String(v.shipmentId) !== String(shipmentId));
-  if (venda) c.atendidas_dados.push({ ...venda, atendida: true, atendidaEm: new Date().toISOString() });
+  const sid = String(shipmentId);
+  const existente = c.atendidas_dados.find(v => String(v.shipmentId) === sid);
+  // Se venda veio com dados usa eles; senão mantém os dados já salvos
+  const dadosFinal = venda || existente || null;
+  c.atendidas_dados = c.atendidas_dados.filter(v => String(v.shipmentId) !== sid);
+  if (dadosFinal) c.atendidas_dados.push({ ...dadosFinal, atendida: true, atendidaEm: existente?.atendidaEm || new Date().toISOString() });
   saveData(data);
   res.json({ ok: true });
 });
