@@ -792,16 +792,34 @@ app.get('/api/ml/debug-ads', async (req, res) => {
     } catch {}
   }
 
-  // Endpoint correto: /advertising/product_ads/campaigns/search?seller_id=
-  await tryGet('campaigns_search',        'https://api.mercadolibre.com/advertising/product_ads/campaigns/search', { seller_id: c.user_id });
-  await tryGet('campaigns_search_limit',  'https://api.mercadolibre.com/advertising/product_ads/campaigns/search', { seller_id: c.user_id, limit: 5 });
-  await tryGet('campaigns_search_status', 'https://api.mercadolibre.com/advertising/product_ads/campaigns/search', { seller_id: c.user_id, status: 'active', limit: 5 });
+  const today     = new Date().toISOString().split('T')[0];
+  const dateBegin = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
-  // Ads dentro de uma campanha
-  if (primeiroMlb) {
-    await tryGet('ads_search_item',       'https://api.mercadolibre.com/advertising/product_ads/ads/search', { seller_id: c.user_id, item_id: primeiroMlb });
-    await tryGet('ads_search_seller',     'https://api.mercadolibre.com/advertising/product_ads/ads/search', { seller_id: c.user_id, limit: 3 });
+  // Busca ads do seller
+  let adIds = [];
+  try {
+    const adsResp = await axios.get('https://api.mercadolibre.com/advertising/product_ads/ads/search', {
+      params: { seller_id: c.user_id, limit: 5 }, headers, timeout: 10000,
+    });
+    adIds = (adsResp.data.results || []).filter(a => a.campaign_id > 0).map(a => a.id).slice(0, 3);
+    result['_ad_ids_encontrados'] = adIds;
+  } catch (e) {
+    result['_ad_ids_encontrados'] = 'erro: ' + e.message;
   }
+
+  // Testa métricas
+  if (adIds.length) {
+    await tryGet('metrics_ids',          'https://api.mercadolibre.com/advertising/product_ads/ads/metrics', { ids: adIds.join(','), date_from: dateBegin, date_to: today });
+    await tryGet('metrics_id_singular',  'https://api.mercadolibre.com/advertising/product_ads/ads/metrics', { id: adIds[0], date_from: dateBegin, date_to: today });
+    await tryGet('metrics_com_agg',      'https://api.mercadolibre.com/advertising/product_ads/ads/metrics', { ids: adIds.join(','), date_from: dateBegin, date_to: today, aggregation: 'total' });
+  }
+
+  // Testa campanhas com seller_id como número
+  await tryGet('campaigns_search_num',   'https://api.mercadolibre.com/advertising/product_ads/campaigns/search', { seller_id: Number(c.user_id), limit: 5 });
+
+  // Tenta campaign direta por ID (usando um campaign_id dos ads)
+  const campId = 356092603;
+  await tryGet('campaign_by_id',         `https://api.mercadolibre.com/advertising/product_ads/campaigns/${campId}`);
 
   res.json(result);
 });
