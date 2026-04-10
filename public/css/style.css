@@ -725,6 +725,12 @@ code {
   font-style: italic;
 }
 
+.td-order-id {
+  font-size: 13px;
+  color: #64748b;
+  white-space: nowrap;
+}
+
 /* ── Botão de etiqueta ──────────────────────────────────────── */
 
 .btn-etiqueta {

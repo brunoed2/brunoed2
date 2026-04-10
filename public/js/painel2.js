@@ -492,10 +492,6 @@ async function carregarVendas() {
 
     vendas.forEach(v => {
       const bStatus  = BADGE_VENDA_STATUS[v.status] || 'badge-outro';
-      const dataFmt  = new Date(v.data).toLocaleString('pt-BR', {
-        day: '2-digit', month: '2-digit', year: 'numeric',
-        hour: '2-digit', minute: '2-digit',
-      });
       const itens = v.itensLista || [];
       const item0 = itens[0] || {};
       const multi = itens.length > 1;
@@ -509,7 +505,7 @@ async function carregarVendas() {
       tr.innerHTML = `
         <td><input type="checkbox" class="check-venda" data-shipment-id="${v.shipmentId}" data-conta="${v.conta}" onchange="atualizarBotaoSelecionadas()"></td>
         <td class="td-thumb">${imgHtml0}</td>
-        <td style="white-space:nowrap">${dataFmt}</td>
+        <td class="td-order-id">#${v.orderId}</td>
         <td>${v.comprador}</td>
         <td class="col-num venda-qtd">${item0.quantidade ?? ''}</td>
         <td class="td-sku">${item0.sku || '—'}</td>
@@ -532,7 +528,7 @@ async function carregarVendas() {
         trSub.innerHTML = `
           <td class="venda-sub-indent"></td>
           <td class="td-thumb">${imgHtml}</td>
-          <td colspan="2" class="venda-sub-mais">+ mesmo pedido</td>
+          <td colspan="2" class="venda-sub-mais">↳ mesmo pedido</td>
           <td class="col-num venda-qtd">${item.quantidade ?? ''}</td>
           <td class="td-sku">${item.sku || '—'}</td>
           <td class="td-titulo" title="${item.titulo || ''}">${item.titulo || '—'}</td>

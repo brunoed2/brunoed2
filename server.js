@@ -677,28 +677,35 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
       } catch {}
     }
 
-    const vendas = filtradas.map(({ order, shipment }) => {
-      const itensLista = (order.order_items || []).map(i => {
+    // Agrupa por shipmentId (um shipment pode ter múltiplas orders / itens)
+    const porShipment = new Map();
+    for (const { order, shipment } of filtradas) {
+      const sid = String(shipment.id);
+      if (!porShipment.has(sid)) {
+        porShipment.set(sid, {
+          orderId:     order.id,
+          data:        order.date_created,
+          comprador:   order.buyer?.nickname || '—',
+          shipmentId:  shipment.id,
+          conta:       data.conta_ativa,
+          status:      shipment.status,
+          statusLabel: STATUS_PT[shipment.status] || shipment.status,
+          acaoLabel:   SUBSTATUS_LABEL[shipment.substatus] || 'Baixar',
+          itensLista:  [],
+        });
+      }
+      const grupo = porShipment.get(sid);
+      for (const i of (order.order_items || [])) {
         const extra = itemMap[i.item.id] || {};
-        return {
+        grupo.itensLista.push({
           titulo:     i.item.title,
           sku:        extra.sku || '—',
           thumbnail:  extra.thumbnail || null,
           quantidade: i.quantity || 1,
-        };
-      });
-      return {
-        orderId:     order.id,
-        data:        order.date_created,
-        comprador:   order.buyer?.nickname || '—',
-        itensLista,
-        shipmentId:  shipment.id,
-        conta:       data.conta_ativa,
-        status:      shipment.status,
-        statusLabel: STATUS_PT[shipment.status] || shipment.status,
-        acaoLabel:   SUBSTATUS_LABEL[shipment.substatus] || 'Baixar',
-      };
-    });
+        });
+      }
+    }
+    const vendas = [...porShipment.values()];
 
     res.json({ vendas });
   } catch (err) {
