@@ -26,6 +26,10 @@ async function trocarConta(num) {
   if (trocandoConta) return;
   trocandoConta = true;
 
+  // Para o monitoramento de novos pedidos durante a troca para evitar race condition
+  if (intervaloNotif) { clearInterval(intervaloNotif); intervaloNotif = null; }
+  shipmentsConhecidos = null; // reseta para não notificar falso positivo após a troca
+
   document.querySelectorAll('.conta-btn').forEach(b => b.disabled = true);
 
   try {
@@ -46,6 +50,8 @@ async function trocarConta(num) {
   } finally {
     document.querySelectorAll('.conta-btn').forEach(b => b.disabled = false);
     trocandoConta = false;
+    // Reinicia o monitoramento para a nova conta
+    intervaloNotif = setInterval(verificarNovosShipments, 90_000);
   }
 }
 
