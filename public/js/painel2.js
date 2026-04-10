@@ -668,7 +668,96 @@ function sair() {
   location.href = '/';
 }
 
+// ── Notificações de novos pedidos ─────────────────────────────
+
+let shipmentsConhecidos = null; // null = primeira carga, Set após isso
+let intervaloNotif = null;
+
+async function pedirPermissaoNotificacao() {
+  if (!('Notification' in window)) return;
+  if (Notification.permission === 'default') {
+    await Notification.requestPermission();
+  }
+}
+
+function mostrarNotificacaoPedido(qtd) {
+  // Notificação nativa do navegador
+  if ('Notification' in window && Notification.permission === 'granted') {
+    const n = new Notification('Novo pedido!', {
+      body: `${qtd} novo${qtd > 1 ? 's' : ''} pedido${qtd > 1 ? 's' : ''} com etiqueta disponível.`,
+      icon: '/favicon.ico',
+      tag:  'novo-pedido',
+    });
+    setTimeout(() => n.close(), 8000);
+  }
+
+  // Pisca o título da aba
+  let original = document.title;
+  let piscando = true;
+  const intervalo = setInterval(() => {
+    document.title = piscando ? `🔔 Novo pedido! — ${original}` : original;
+    piscando = !piscando;
+  }, 1000);
+  // Para de piscar quando o usuário focar na aba
+  window.addEventListener('focus', () => {
+    clearInterval(intervalo);
+    document.title = original;
+  }, { once: true });
+
+  // Toast visual na página
+  mostrarToastPedido(qtd);
+}
+
+function mostrarToastPedido(qtd) {
+  const existing = document.getElementById('toast-novo-pedido');
+  if (existing) existing.remove();
+
+  const toast = document.createElement('div');
+  toast.id = 'toast-novo-pedido';
+  toast.className = 'toast-pedido';
+  toast.innerHTML = `🔔 <strong>${qtd} novo${qtd > 1 ? 's' : ''} pedido${qtd > 1 ? 's' : ''}!</strong> <button onclick="this.parentElement.remove();abrirAba('vendas')">Ver agora</button>`;
+  document.body.appendChild(toast);
+
+  // Remove após 15s
+  setTimeout(() => toast.remove(), 15000);
+}
+
+async function verificarNovosShipments() {
+  try {
+    const data = await apiFetch('/api/ml/vendas-etiquetas');
+    if (data.error) return;
+
+    const todasVendas = data.vendas || [];
+    const pendentes   = todasVendas.filter(v => !v.atendida);
+    const idsAtual    = new Set(pendentes.map(v => String(v.shipmentId)));
+
+    if (shipmentsConhecidos === null) {
+      // Primeira carga — apenas registra, não notifica
+      shipmentsConhecidos = idsAtual;
+      return;
+    }
+
+    const novos = [...idsAtual].filter(id => !shipmentsConhecidos.has(id));
+    if (novos.length > 0) {
+      mostrarNotificacaoPedido(novos.length);
+      // Recarrega a aba de vendas se estiver aberta
+      const abaAtiva = document.querySelector('.tab.active')?.id;
+      if (abaAtiva === 'tab-vendas') carregarVendas();
+    }
+    shipmentsConhecidos = idsAtual;
+  } catch {}
+}
+
+function iniciarMonitoramento() {
+  pedirPermissaoNotificacao();
+  // Verifica a cada 90 segundos
+  intervaloNotif = setInterval(verificarNovosShipments, 90_000);
+  // Primeira verificação após 10s (deixa a página carregar primeiro)
+  setTimeout(verificarNovosShipments, 10_000);
+}
+
 // ── Inicialização ─────────────────────────────────────────────
 
 inicializarSeletorConta();
 carregarEstoque(true);
+iniciarMonitoramento();
