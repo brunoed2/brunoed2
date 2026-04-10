@@ -471,7 +471,7 @@ app.get('/api/ml/estoque', async (req, res) => {
       const resp  = await axios.get('https://api.mercadolibre.com/items', {
         params: {
           ids:        chunk.join(','),
-          attributes: 'id,title,seller_custom_field,available_quantity,variations,shipping,attributes,status,last_updated',
+          attributes: 'id,title,permalink,seller_custom_field,available_quantity,variations,shipping,attributes,status,last_updated',
         },
         headers: { Authorization: `Bearer ${c.access_token}` },
       });
@@ -498,6 +498,7 @@ app.get('/api/ml/estoque', async (req, res) => {
         return {
           mlb,
           titulo:        r.body.title,
+          permalink:     r.body.permalink || null,
           sku:           extrairSkuLocal(r.body),
           estoque:       r.body.available_quantity ?? 0,
           status,

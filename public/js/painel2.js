@@ -321,7 +321,7 @@ function renderizarTabela() {
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td class="td-sku">${item.sku}</td>
-      <td class="td-titulo" title="${item.titulo}">${item.titulo}</td>
+      <td class="td-titulo" title="${item.titulo}">${item.permalink ? `<a class="link-anuncio" href="${item.permalink}" target="_blank">${item.titulo}</a>` : item.titulo}</td>
       <td class="td-mlb">${item.mlb}</td>
       <td><span class="badge-deposito ${bDeposito}">${item.depositoLabel}</span></td>
       <td><span class="badge-deposito ${bStatus}">${STATUS_LABEL[item.status] || item.status}</span></td>

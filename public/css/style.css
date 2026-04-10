@@ -840,6 +840,17 @@ code {
 }
 .btn-etiqueta:hover { background: #333; }
 
+/* ── Link de anúncio na tabela de estoque ───────────────────── */
+
+.link-anuncio {
+  color: inherit;
+  text-decoration: none;
+}
+.link-anuncio:hover {
+  text-decoration: underline;
+  color: #1d4ed8;
+}
+
 /* ── Toast de novo pedido ───────────────────────────────────── */
 
 .toast-pedido {
