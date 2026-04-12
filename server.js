@@ -345,15 +345,25 @@ app.get('/api/ml/status', async (req, res) => {
   const num  = req.query.conta || data.conta_ativa;
   const c    = data.contas[num];
   if (!c || !c.access_token) return res.json({ connected: false });
+
+  // Usa o nickname já salvo para resposta imediata, e tenta validar em paralelo
+  if (c.nickname) res.json({ connected: true, nickname: c.nickname });
+
   try {
-    const token = await getToken(data, num);
-    const resp  = await axios.get('https://api.mercadolibre.com/users/me', {
+    let token;
+    try { token = await getToken(data, num); } catch { token = c.access_token; }
+    const resp = await axios.get('https://api.mercadolibre.com/users/me', {
       headers: { Authorization: `Bearer ${token}` },
       timeout: 8000,
     });
-    res.json({ connected: true, nickname: resp.data.nickname });
+    // Atualiza nickname se mudou, mas só se ainda não respondeu
+    if (!res.headersSent) res.json({ connected: true, nickname: resp.data.nickname });
+    if (c.nickname !== resp.data.nickname) {
+      c.nickname = resp.data.nickname;
+      saveData(data);
+    }
   } catch {
-    res.json({ connected: false });
+    if (!res.headersSent) res.json({ connected: false });
   }
 });
 
