@@ -325,7 +325,7 @@ async function refreshToken(data, num) {
       client_secret: c.client_secret,
       refresh_token: c.refresh_token,
     }),
-    { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+    { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 15000 }
   );
   c.access_token    = resp.data.access_token;
   c.refresh_token   = resp.data.refresh_token;
@@ -436,6 +436,7 @@ app.get('/api/ml/store', async (req, res) => {
   const fetchStore = async (token) => {
     const r = await axios.get('https://api.mercadolibre.com/users/me', {
       headers: { Authorization: `Bearer ${token}` },
+      timeout: 10000,
     });
     return r.data;
   };
@@ -484,6 +485,7 @@ app.get('/api/ml/estoque', async (req, res) => {
     try {
       const me = await axios.get('https://api.mercadolibre.com/users/me', {
         headers: { Authorization: `Bearer ${c.access_token}` },
+        timeout: 10000,
       });
       c.user_id = me.data.id;
       saveData(data);
@@ -523,8 +525,9 @@ app.get('/api/ml/estoque', async (req, res) => {
         const searchResp = await axios.get(
           `https://api.mercadolibre.com/users/${c.user_id}/items/search`,
           {
-            params: { status, offset, limit },
+            params:  { status, offset, limit },
             headers: { Authorization: `Bearer ${c.access_token}` },
+            timeout: 15000,
           }
         );
         const ids = searchResp.data.results || [];
@@ -546,6 +549,7 @@ app.get('/api/ml/estoque', async (req, res) => {
           attributes: 'id,title,permalink,seller_custom_field,available_quantity,variations,shipping,attributes,status,last_updated',
         },
         headers: { Authorization: `Bearer ${c.access_token}` },
+        timeout: 15000,
       });
       detalhes.push(...resp.data);
     }

@@ -57,8 +57,11 @@ function mostrarMsg(id, texto, tipo) {
 }
 
 async function apiFetch(url, opts = {}) {
+  const timeout = opts._timeout || 30000; // default 30s
+  delete opts._timeout;
   const resp = await fetch(url, {
     headers: { 'Content-Type': 'application/json' },
+    signal: AbortSignal.timeout(timeout),
     ...opts,
   });
   return resp.json();
