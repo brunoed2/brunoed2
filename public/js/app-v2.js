@@ -2,6 +2,23 @@
 // app-v2.js — Lógica do frontend do painel principal
 // ============================================================
 
+// ── Log remoto (diagnóstico) ──────────────────────────────────
+
+function clog(msg, tipo = 'info') {
+  fetch('/api/conexao/clientlog', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ msg, tipo }),
+  }).catch(() => {});
+}
+
+window.onerror = (msg, src, line) => {
+  clog(`JS ERROR: ${msg} (${src}:${line})`, 'erro');
+};
+window.onunhandledrejection = (e) => {
+  clog(`Promise rejection: ${e.reason}`, 'erro');
+};
+
 // ── Estado ────────────────────────────────────────────────────
 
 let contaConfigurando = '1'; // conta sendo editada na aba config
@@ -14,7 +31,8 @@ const tabs    = document.querySelectorAll('.tab');
 function abrirAba(nome) {
   navBtns.forEach(b => b.classList.toggle('active', b.dataset.tab === nome));
   tabs.forEach(t => t.classList.toggle('active', t.id === `tab-${nome}`));
-  if (trocandoConta) return; // aguarda trocarConta disparar o reload
+  clog(`abrirAba(${nome}) trocandoConta=${trocandoConta} contaGen=${contaGen}`);
+  if (trocandoConta) { clog(`abrirAba bloqueado por trocandoConta`, 'warn'); return; }
   if (nome === 'loja')    carregarLoja();
   if (nome === 'estoque') carregarEstoque(true);
   if (nome === 'ads')     carregarAds();
@@ -185,6 +203,7 @@ function conectarOAuth() {
 // ── Loja ──────────────────────────────────────────────────────
 
 async function carregarLoja() {
+  clog(`carregarLoja() iniciando, gen=${contaGen}`);
   const gen     = contaGen;
   const loading = document.getElementById('loja-loading');
   const info    = document.getElementById('loja-info');
@@ -196,7 +215,8 @@ async function carregarLoja() {
 
   try {
     const data = await apiFetch('/api/ml/store');
-    if (contaGen !== gen) return;
+    clog(`carregarLoja() resposta recebida: ${JSON.stringify(data).slice(0,100)}`);
+    if (contaGen !== gen) { clog(`carregarLoja() descartado (gen mudou)`, 'warn'); return; }
     loading.style.display = 'none';
 
     if (data.error) {
@@ -521,6 +541,7 @@ function calcularDuracao(estoque, vendas30d) {
 }
 
 async function carregarEstoque(reiniciar = false) {
+  clog(`carregarEstoque(${reiniciar}) iniciando, gen=${contaGen}`);
   const gen = contaGen;
 
   if (reiniciar) {
@@ -539,7 +560,8 @@ async function carregarEstoque(reiniciar = false) {
   let estoqueData;
   try {
     estoqueData = await apiFetch('/api/ml/estoque');
-    if (contaGen !== gen) return;
+    clog(`carregarEstoque() resposta: ${JSON.stringify(estoqueData).slice(0,100)}`);
+    if (contaGen !== gen) { clog(`carregarEstoque() descartado (gen mudou)`, 'warn'); return; }
     loading.style.display = 'none';
 
     if (estoqueData.error) {
@@ -550,10 +572,11 @@ async function carregarEstoque(reiniciar = false) {
 
     todosItens = estoqueData.items.map(item => ({ ...item, vendas30d: null }));
     renderizarTabela();
-  } catch {
+  } catch (err) {
+    clog(`carregarEstoque() catch: ${err.message}`, 'erro');
     if (contaGen !== gen) return;
     loading.style.display = 'none';
-    erroEl.textContent   = 'Erro ao carregar estoque.';
+    erroEl.textContent   = `Erro ao carregar estoque: ${err.message}`;
     erroEl.style.display = 'block';
     return;
   }

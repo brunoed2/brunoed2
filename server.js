@@ -413,6 +413,13 @@ app.get('/api/conexao/stream', (req, res) => {
   req.on('close', () => sseClients.delete(res));
 });
 
+// Recebe logs do frontend (erros JS, chamadas de função, etc.)
+app.post('/api/conexao/clientlog', (req, res) => {
+  const { msg, tipo } = req.body || {};
+  if (msg) addLog(`[browser] ${msg}`, tipo || 'info');
+  res.json({ ok: true });
+});
+
 // Status de conexão da conta (sem chamada externa)
 app.get('/api/conexao/status', (req, res) => {
   const data = loadData();
