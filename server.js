@@ -244,7 +244,11 @@ app.get('/api/ml/callback', async (req, res) => {
   const data     = loadData();
   const num      = state || data.conta_ativa;
   const c        = data.contas[num] || {};
-  const callback = `${req.protocol}://${req.get('host')}/api/ml/callback`;
+  // Força HTTPS no Railway (req.protocol pode retornar 'http' atrás do proxy)
+  const proto    = req.get('x-forwarded-proto') || req.protocol;
+  const callback = `${proto}://${req.get('host')}/api/ml/callback`;
+
+  console.log(`[oauth] callback: conta=${num} redirect_uri=${callback}`);
 
   if (!c.client_secret) {
     return res.redirect('/app.html?tab=config&error=auth_falhou&detalhe=' +
@@ -261,7 +265,7 @@ app.get('/api/ml/callback', async (req, res) => {
         code,
         redirect_uri:  callback,
       }),
-      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 15000 }
     );
     c.access_token    = resp.data.access_token;
     c.refresh_token   = resp.data.refresh_token;
@@ -271,6 +275,7 @@ app.get('/api/ml/callback', async (req, res) => {
     try {
       const me = await axios.get('https://api.mercadolibre.com/users/me', {
         headers: { Authorization: `Bearer ${c.access_token}` },
+        timeout: 8000,
       });
       c.nickname = me.data.nickname;
     } catch {}
