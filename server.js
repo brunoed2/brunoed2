@@ -184,7 +184,10 @@ initFromEnvVars();
     const temToken = !!c.access_token;
     const temRefresh = !!c.refresh_token;
     const expira = c.token_expires_at || 0;
-    const expiraInfo = expira ? `expira em ${Math.round((expira - Date.now()) / 60000)} min` : 'expires_at AUSENTE';
+    const minutos = expira ? Math.round((expira - Date.now()) / 60000) : null;
+    const expiraInfo = minutos !== null
+      ? (temRefresh ? `renova automaticamente (token atual expira em ${minutos} min)` : `expira em ${minutos} min — sem refresh_token!`)
+      : 'expires_at ausente';
     addLog(`Conta ${num}: access_token=${temToken ? 'presente' : 'AUSENTE'}, refresh_token=${temRefresh ? 'presente' : 'AUSENTE'}, ${expiraInfo}`, temToken ? 'ok' : 'warn');
   }
 })();

@@ -60,7 +60,11 @@ async function verificarConexao() {
 
     if (data.connected) {
       dot.className   = 'dot conectado';
-      const expInfo   = data.tokenExpired ? ' (token expirado)' : ` (expira em ${data.expiresIn})`;
+      const expInfo   = data.tokenExpired
+        ? ' (token expirado — reconecte)'
+        : data.hasRefresh
+          ? ' ✓ renova automaticamente'
+          : ` (expira em ${data.expiresIn} — sem refresh token)`;
       txt.textContent = `Conectado${data.nickname ? ` como ${data.nickname}` : ''}${expInfo}`;
     } else {
       dot.className   = 'dot desconectado';
