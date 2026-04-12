@@ -74,6 +74,16 @@ async function verificarConexao() {
 
 // ── Salvar e iniciar OAuth ────────────────────────────────────
 
+async function cxPing() {
+  try {
+    const r = await fetch('/api/ping', { signal: AbortSignal.timeout(5000) });
+    const d = await r.json();
+    cxRenderLog({ ts: Date.now(), msg: `🏓 Ping OK — servidor respondeu em ${Date.now() - d.ts}ms`, tipo: 'ok' });
+  } catch (e) {
+    cxRenderLog({ ts: Date.now(), msg: `❌ Ping falhou: ${e.message}`, tipo: 'erro' });
+  }
+}
+
 async function cxSalvarEConectar() {
   const clientId     = document.getElementById('cx-client-id').value.trim();
   const clientSecret = document.getElementById('cx-client-secret').value.trim();

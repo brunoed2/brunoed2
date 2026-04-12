@@ -262,7 +262,10 @@
           <div class="cx-log-col">
             <div class="cx-log-header">
               <span>📋 Log ao vivo</span>
-              <button class="btn-sm" onclick="cxLimparLog()">Limpar</button>
+              <div style="display:flex;gap:6px">
+                <button class="btn-sm" onclick="cxPing()">🏓 Ping</button>
+                <button class="btn-sm" onclick="cxLimparLog()">Limpar</button>
+              </div>
             </div>
             <div id="cx-log-lista" class="cx-log-lista"></div>
           </div>
@@ -275,6 +278,6 @@
 
   <script src="/js/app-v2.js"></script>
   <script src="/js/conexao.js"></script>
-  <div id="version-badge">v105</div>
+  <div id="version-badge">v106</div>
 </body>
 </html>

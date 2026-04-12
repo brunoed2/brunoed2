@@ -440,6 +440,7 @@ app.get('/api/ml/status', (req, res) => {
 app.get('/api/ml/store', async (req, res) => {
   const data = loadData();
   let c      = contaAtiva(data);
+  addLog(`[Loja] conta_ativa=${data.conta_ativa} access_token=${c.access_token ? 'OK' : 'AUSENTE'}`, 'info');
   if (!c.access_token) return res.json({ error: 'Não conectado' });
 
   const fetchStore = async (token) => {
@@ -452,18 +453,21 @@ app.get('/api/ml/store', async (req, res) => {
 
   try {
     const user = await fetchStore(c.access_token);
+    addLog(`[Loja] ✅ OK — ${user.nickname}`, 'ok');
     res.json({ name: user.nickname, id: user.id, country: user.country_id });
-  } catch {
+  } catch (err) {
+    addLog(`[Loja] ❌ Erro ML: ${err.message}`, 'erro');
     if (c.refresh_token) {
       try {
         c = await refreshToken(data, data.conta_ativa);
         const user = await fetchStore(c.access_token);
         res.json({ name: user.nickname, id: user.id, country: user.country_id });
-      } catch {
-        res.json({ error: 'Sessão expirada. Reconecte na aba Configurações.' });
+      } catch (err2) {
+        addLog(`[Loja] ❌ Erro após refresh: ${err2.message}`, 'erro');
+        res.json({ error: 'Sessão expirada. Reconecte na aba Conexão.' });
       }
     } else {
-      res.json({ error: 'Erro ao buscar loja. Verifique a conexão.' });
+      res.json({ error: `Erro ao buscar loja: ${err.message}` });
     }
   }
 });
@@ -484,10 +488,14 @@ function extrairSku(body) {
   return '—';
 }
 
+// Ping simples para testar conectividade frontend→servidor
+app.get('/api/ping', (req, res) => res.json({ ok: true, ts: Date.now() }));
+
 app.get('/api/ml/estoque', async (req, res) => {
   const data = loadData();
   const num  = data.conta_ativa;
   let c      = data.contas[num];
+  addLog(`[Estoque] conta_ativa=${num} access_token=${c.access_token ? 'OK' : 'AUSENTE'}`, 'info');
   if (!c.access_token) return res.json({ error: 'Não conectado' });
 
   if (!c.user_id) {
