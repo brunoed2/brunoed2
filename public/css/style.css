@@ -902,7 +902,6 @@ code {
   border-radius: 8px;
   pointer-events: none;
   z-index: 9998;
-  letter-spacing: .3px;
 }
 
 /* ── Responsivo ─────────────────────────────────────────────── */

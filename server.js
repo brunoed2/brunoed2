@@ -279,7 +279,7 @@ async function refreshToken(data, num) {
       client_secret: c.client_secret,
       refresh_token: c.refresh_token,
     }),
-    { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 10000 }
+    { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
   );
   c.access_token    = resp.data.access_token;
   c.refresh_token   = resp.data.refresh_token;
@@ -340,13 +340,20 @@ setInterval(async () => {
   } catch {}
 }, 5 * 60 * 60 * 1000);
 
-app.get('/api/ml/status', (req, res) => {
+app.get('/api/ml/status', async (req, res) => {
   const data = loadData();
-  const num  = req.query.conta || data.conta_ativa;
+  const num  = data.conta_ativa;
   const c    = data.contas[num];
   if (!c || !c.access_token) return res.json({ connected: false });
-  // Responde imediatamente com o que está salvo — sem chamar o ML
-  res.json({ connected: true, nickname: c.nickname || null });
+  try {
+    const token = await getToken(data, num);
+    const resp  = await axios.get('https://api.mercadolibre.com/users/me', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    res.json({ connected: true, nickname: resp.data.nickname });
+  } catch {
+    res.json({ connected: false });
+  }
 });
 
 app.get('/api/ml/store', async (req, res) => {
