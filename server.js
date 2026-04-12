@@ -340,20 +340,12 @@ setInterval(async () => {
   } catch {}
 }, 5 * 60 * 60 * 1000);
 
-app.get('/api/ml/status', async (req, res) => {
+app.get('/api/ml/status', (req, res) => {
   const data = loadData();
   const num  = data.conta_ativa;
   const c    = data.contas[num];
   if (!c || !c.access_token) return res.json({ connected: false });
-  try {
-    const token = await getToken(data, num);
-    const resp  = await axios.get('https://api.mercadolibre.com/users/me', {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    res.json({ connected: true, nickname: resp.data.nickname });
-  } catch {
-    res.json({ connected: false });
-  }
+  res.json({ connected: true, nickname: c.nickname || null });
 });
 
 app.get('/api/ml/store', async (req, res) => {
