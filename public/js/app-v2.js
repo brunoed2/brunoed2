@@ -115,10 +115,11 @@ async function inicializarSeletorConta() {
 // ── Status de conexão ─────────────────────────────────────────
 
 async function atualizarStatus() {
+  const dot = document.getElementById('status-dot');
+  const txt = document.getElementById('status-text');
   try {
-    const data = await apiFetch('/api/ml/status');
-    const dot  = document.getElementById('status-dot');
-    const txt  = document.getElementById('status-text');
+    const resp = await fetch('/api/ml/status', { signal: AbortSignal.timeout(5000) });
+    const data = await resp.json();
     if (data.connected) {
       dot.className   = 'dot conectado';
       txt.textContent = `Conectado${data.nickname ? ` como ${data.nickname}` : ''}`;
@@ -127,7 +128,8 @@ async function atualizarStatus() {
       txt.textContent = 'Desconectado';
     }
   } catch {
-    document.getElementById('status-text').textContent = 'Sem resposta do servidor';
+    dot.className   = 'dot desconectado';
+    txt.textContent = 'Sem resposta do servidor';
   }
 }
 

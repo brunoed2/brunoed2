@@ -57,11 +57,11 @@ function contaAtiva(data) {
 
 async function syncRailwayEnvVars(data) {
   const token = process.env.RAILWAY_TOKEN;
-  if (!token) return;
+  if (!token) { console.warn('[sync] RAILWAY_TOKEN não configurado — tokens não serão persistidos entre deploys'); return; }
   const projectId     = process.env.RAILWAY_PROJECT_ID;
   const environmentId = process.env.RAILWAY_ENVIRONMENT_ID;
   const serviceId     = process.env.RAILWAY_SERVICE_ID;
-  if (!projectId || !environmentId || !serviceId) return;
+  if (!projectId || !environmentId || !serviceId) { console.warn('[sync] RAILWAY_PROJECT_ID/ENVIRONMENT_ID/SERVICE_ID ausentes'); return; }
 
   const variables = { ML_CONTA_ATIVA: data.conta_ativa || '1' };
   for (const num of ['1', '2']) {
@@ -73,16 +73,21 @@ async function syncRailwayEnvVars(data) {
     if (c.user_id)       variables[`ML_USER_ID_${num}`]       = String(c.user_id);
   }
 
-  await axios.post(
-    'https://backboard.railway.app/graphql/v2',
-    {
-      query: `mutation Upsert($input: VariableCollectionUpsertInput!) {
-        variableCollectionUpsert(input: $input)
-      }`,
-      variables: { input: { projectId, environmentId, serviceId, variables } },
-    },
-    { headers: { Authorization: `Bearer ${token}` } }
-  );
+  try {
+    await axios.post(
+      'https://backboard.railway.app/graphql/v2',
+      {
+        query: `mutation Upsert($input: VariableCollectionUpsertInput!) {
+          variableCollectionUpsert(input: $input)
+        }`,
+        variables: { input: { projectId, environmentId, serviceId, variables } },
+      },
+      { headers: { Authorization: `Bearer ${token}` }, timeout: 8000 }
+    );
+    console.log('[sync] Tokens salvos nas env vars do Railway com sucesso.');
+  } catch (e) {
+    console.error('[sync] Erro ao salvar tokens no Railway:', e.message);
+  }
 }
 
 function initFromEnvVars() {
@@ -133,6 +138,19 @@ function initFromEnvVars() {
 }
 
 initFromEnvVars();
+
+// Log de diagnóstico na inicialização
+(function logStartupState() {
+  const data = loadData();
+  const railwayOk = !!(process.env.RAILWAY_TOKEN && process.env.RAILWAY_PROJECT_ID);
+  console.log(`[init] RAILWAY_TOKEN configurado: ${railwayOk ? 'SIM' : 'NÃO — tokens não persistem entre deploys!'}`);
+  for (const num of ['1', '2']) {
+    const c = data.contas[num] || {};
+    const temToken = !!c.access_token;
+    const temRefresh = !!c.refresh_token;
+    console.log(`[init] Conta ${num}: access_token=${temToken ? 'OK' : 'ausente'}, refresh_token=${temRefresh ? 'OK' : 'ausente'}`);
+  }
+})();
 
 // Busca nickname das contas conectadas que ainda não têm o campo salvo
 async function fetchMissingNicknames() {
