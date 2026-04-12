@@ -23,8 +23,8 @@
         <button class="conta-btn" data-conta="2" onclick="trocarConta('2')">Conta 2</button>
       </div>
       <nav>
-        <button class="nav-btn active" data-tab="estoque">📦 Estoque</button>
-        <button class="nav-btn" data-tab="vendas">🏷️ Vendas</button>
+        <button class="nav-btn" data-tab="estoque">📦 Estoque</button>
+        <button class="nav-btn active" data-tab="vendas">🏷️ Vendas</button>
       </nav>
       <div class="sidebar-footer">
         <button class="btn-sair" onclick="sair()">Sair</button>
@@ -34,7 +34,7 @@
     <main class="content">
 
       <!-- ── Aba: Estoque ── -->
-      <section id="tab-estoque" class="tab active">
+      <section id="tab-estoque" class="tab">
         <h1>Estoque</h1>
         <p class="subtitle">Anúncios ativos com SKU, título, MLB e quantidade em estoque.</p>
 
@@ -87,7 +87,7 @@
       </section>
 
       <!-- ── Aba: Vendas ── -->
-      <section id="tab-vendas" class="tab">
+      <section id="tab-vendas" class="tab active">
         <h1>Vendas</h1>
         <p class="subtitle">Vendas com etiqueta de envio disponível para baixar.</p>
 
@@ -161,6 +161,6 @@
   </div>
 
   <script src="/js/painel2.js"></script>
-  <div id="version-badge">v110</div>
+  <div id="version-badge">v111</div>
 </body>
 </html>

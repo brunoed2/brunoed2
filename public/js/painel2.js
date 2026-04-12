@@ -784,14 +784,14 @@ async function verificarNovosShipments() {
 
 function iniciarMonitoramento() {
   pedirPermissaoNotificacao();
-  // Verifica a cada 90 segundos
-  intervaloNotif = setInterval(verificarNovosShipments, 90_000);
-  // Primeira verificação após 10s (deixa a página carregar primeiro)
-  setTimeout(verificarNovosShipments, 10_000);
+  // Verifica a cada 30 segundos
+  intervaloNotif = setInterval(verificarNovosShipments, 30_000);
+  // Primeira verificação após 5s (deixa a página carregar primeiro)
+  setTimeout(verificarNovosShipments, 5_000);
 }
 
 // ── Inicialização ─────────────────────────────────────────────
 
 inicializarSeletorConta();
-carregarEstoque(true);
+carregarVendas();
 iniciarMonitoramento();
