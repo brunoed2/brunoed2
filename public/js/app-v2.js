@@ -119,7 +119,10 @@ async function atualizarStatus() {
   const txt = document.getElementById('status-text');
   if (!dot || !txt) return;
   try {
-    const resp = await fetch(`/api/ml/status?conta=${contaConfigurando}`);
+    const ctrl = new AbortController();
+    const t    = setTimeout(() => ctrl.abort(), 5000);
+    const resp = await fetch(`/api/ml/status?conta=${contaConfigurando}`, { signal: ctrl.signal });
+    clearTimeout(t);
     const data = await resp.json();
     if (data.connected) {
       dot.className   = 'dot conectado';
@@ -128,9 +131,9 @@ async function atualizarStatus() {
       dot.className   = 'dot desconectado';
       txt.textContent = 'Desconectado';
     }
-  } catch (e) {
-    dot.className   = 'dot desconectado';
-    txt.textContent = 'Erro: ' + e.message;
+  } catch {
+    // servidor ainda acordando — tenta de novo em 5s sem alterar o texto
+    setTimeout(atualizarStatus, 5000);
   }
 }
 
