@@ -18,7 +18,7 @@ function abrirAba(nome) {
   if (nome === 'loja')    carregarLoja();
   if (nome === 'estoque') carregarEstoque(true);
   if (nome === 'ads')     carregarAds();
-  if (nome === 'config')  carregarConfig(contaConfigurando);
+  if (nome === 'config')  { carregarConfig(contaConfigurando); atualizarStatus(); }
 }
 
 navBtns.forEach(btn => {
@@ -117,11 +117,9 @@ async function inicializarSeletorConta() {
 async function atualizarStatus() {
   const dot = document.getElementById('status-dot');
   const txt = document.getElementById('status-text');
+  if (!dot || !txt) return;
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 10000);
-    const resp = await fetch(`/api/ml/status?conta=${contaConfigurando}`, { signal: controller.signal });
-    clearTimeout(timer);
+    const resp = await fetch(`/api/ml/status?conta=${contaConfigurando}`);
     const data = await resp.json();
     if (data.connected) {
       dot.className   = 'dot conectado';
@@ -130,9 +128,9 @@ async function atualizarStatus() {
       dot.className   = 'dot desconectado';
       txt.textContent = 'Desconectado';
     }
-  } catch {
+  } catch (e) {
     dot.className   = 'dot desconectado';
-    txt.textContent = 'Sem resposta do servidor';
+    txt.textContent = 'Erro: ' + e.message;
   }
 }
 
