@@ -32,6 +32,8 @@ navBtns.forEach(btn => {
 
   if (params.get('connected') === 'true') {
     const conta = params.get('conta') || '1';
+    contaConfigurando = conta; // garante que o status verifica a conta recém-conectada
+    abrirConfigConta(conta);
     mostrarMsg('msg-config', `✅ Conta ${conta} conectada com sucesso ao Mercado Livre!`, 'ok');
   }
   if (params.get('error')) {
@@ -114,27 +116,38 @@ async function inicializarSeletorConta() {
 
 // ── Status de conexão ─────────────────────────────────────────
 
+let _statusPendente = false;
+let _statusTimer    = null;
+
 async function atualizarStatus() {
+  if (_statusPendente) return; // já há uma verificação em andamento
+  _statusPendente = true;
+  if (_statusTimer) { clearTimeout(_statusTimer); _statusTimer = null; }
+
   const dot = document.getElementById('status-dot');
   const txt = document.getElementById('status-text');
-  if (!dot || !txt) return;
+
   try {
     const ctrl = new AbortController();
-    const t    = setTimeout(() => ctrl.abort(), 5000);
+    const t    = setTimeout(() => ctrl.abort(), 8000);
     const resp = await fetch(`/api/ml/status?conta=${contaConfigurando}`, { signal: ctrl.signal });
     clearTimeout(t);
     const data = await resp.json();
-    if (data.connected) {
-      dot.className   = 'dot conectado';
-      txt.textContent = `Conectado${data.nickname ? ` como ${data.nickname}` : ''}`;
-    } else {
-      dot.className   = 'dot desconectado';
-      txt.textContent = 'Desconectado';
+    if (dot && txt) {
+      if (data.connected) {
+        dot.className   = 'dot conectado';
+        txt.textContent = `Conectado${data.nickname ? ` como ${data.nickname}` : ''}`;
+      } else {
+        dot.className   = 'dot desconectado';
+        txt.textContent = 'Desconectado';
+      }
     }
   } catch {
-    // servidor ainda acordando — tenta de novo em 5s sem alterar o texto
-    setTimeout(atualizarStatus, 5000);
+    // servidor dormindo — tenta de novo em 8s sem alterar o texto
+    _statusTimer = setTimeout(() => { _statusPendente = false; atualizarStatus(); }, 8000);
+    return;
   }
+  _statusPendente = false;
 }
 
 // ── Configurações ─────────────────────────────────────────────
@@ -172,8 +185,7 @@ async function salvarConfig(event) {
 
   try {
     await apiFetch('/api/config', { method: 'POST', body: JSON.stringify(payload) });
-    mostrarMsg('msg-config', `✅ Conta ${contaConfigurando} salva com sucesso.`, 'ok');
-    atualizarStatus();
+    mostrarMsg('msg-config', `✅ Conta ${contaConfigurando} salva. Clique em "Conectar via OAuth" para autorizar.`, 'ok');
   } catch {
     mostrarMsg('msg-config', '❌ Erro ao salvar. Tente novamente.', 'erro');
   }
@@ -745,6 +757,5 @@ function sair() {
 // ── Inicialização ─────────────────────────────────────────────
 
 inicializarSeletorConta();
-carregarConfig('1');
-atualizarStatus();
+atualizarStatus(); // guard interno previne chamadas duplas
 setInterval(atualizarStatus, 60_000);
