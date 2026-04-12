@@ -29,6 +29,7 @@
         <button class="nav-btn" data-tab="estoque">📦 Estoque</button>
         <button class="nav-btn" data-tab="ads">📊 Ads</button>
         <button class="nav-btn" data-tab="config">⚙️ Configurações</button>
+        <button class="nav-btn" data-tab="conexao">🔌 Conexão</button>
       </nav>
       <div class="sidebar-footer">
         <button class="btn-sair" onclick="sair()">Sair</button>
@@ -206,11 +207,74 @@
         </div>
       </section>
 
+      <!-- ── Aba: Conexão ── -->
+      <section id="tab-conexao" class="tab">
+        <h1>Conexão</h1>
+        <p class="subtitle">Configure e monitore a autenticação com o Mercado Livre.</p>
+
+        <div class="cx-layout">
+
+          <!-- Coluna esquerda: form + status -->
+          <div class="cx-form-col">
+
+            <div id="cx-status-box" class="cx-status-box">
+              <span id="cx-status-dot" class="dot"></span>
+              <span id="cx-status-txt">Verificando...</span>
+              <button class="btn-sm" onclick="verificarConexao()">↻</button>
+            </div>
+
+            <div class="card">
+              <h2>Credenciais</h2>
+              <p class="card-desc">
+                Crie um app em <a href="https://developers.mercadolivre.com.br" target="_blank">developers.mercadolivre.com.br</a>
+                e configure o Redirect URI abaixo.
+              </p>
+              <div class="field">
+                <label>Conta</label>
+                <div style="display:flex;gap:8px">
+                  <button class="filtro-btn active" id="cx-conta-1" onclick="selecionarContaCx('1')">Conta 1</button>
+                  <button class="filtro-btn" id="cx-conta-2" onclick="selecionarContaCx('2')">Conta 2</button>
+                </div>
+              </div>
+              <div class="field">
+                <label>Client ID</label>
+                <input type="text" id="cx-client-id" placeholder="Ex: 1234567890" autocomplete="off">
+              </div>
+              <div class="field">
+                <label>Client Secret</label>
+                <input type="password" id="cx-client-secret" placeholder="Seu client secret" autocomplete="off">
+              </div>
+              <div class="btn-row">
+                <button class="btn-primary" onclick="cxSalvarEConectar()">🔗 Salvar e Conectar via OAuth</button>
+              </div>
+              <div class="msg" id="cx-msg"></div>
+            </div>
+
+            <div class="card card-info">
+              <h2>Redirect URI</h2>
+              <p>Configure este endereço no seu app do ML:</p>
+              <code id="cx-callback-url" style="word-break:break-all;font-size:13px"></code>
+            </div>
+
+          </div>
+
+          <!-- Coluna direita: log ao vivo -->
+          <div class="cx-log-col">
+            <div class="cx-log-header">
+              <span>📋 Log ao vivo</span>
+              <button class="btn-sm" onclick="cxLimparLog()">Limpar</button>
+            </div>
+            <div id="cx-log-lista" class="cx-log-lista"></div>
+          </div>
+
+        </div>
+      </section>
 
     </main>
   </div>
 
   <script src="/js/app-v2.js"></script>
-  <div id="version-badge">v102</div>
+  <script src="/js/conexao.js"></script>
+  <div id="version-badge">v103</div>
 </body>
 </html>

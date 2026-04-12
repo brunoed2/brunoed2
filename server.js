@@ -14,6 +14,23 @@ const PORT = process.env.PORT || 3000;
 
 const DATA_FILE = path.join(__dirname, 'data.json');
 
+// ── Log ao vivo (aba Conexão) ─────────────────────────────────
+
+const logBuffer = [];          // últimas 300 entradas em memória
+const sseClients = new Set();  // clientes SSE conectados
+
+function addLog(msg, tipo = 'info') {
+  const entry = { ts: Date.now(), msg, tipo };
+  logBuffer.push(entry);
+  if (logBuffer.length > 300) logBuffer.shift();
+  console.log(`[${tipo.toUpperCase()}] ${msg}`);
+  // Envia em tempo real para todos os clientes SSE conectados
+  const line = `data: ${JSON.stringify(entry)}\n\n`;
+  for (const res of sseClients) {
+    try { res.write(line); } catch {}
+  }
+}
+
 // ── Middleware ────────────────────────────────────────────────
 app.set('trust proxy', 1);
 app.use(express.json());
@@ -143,12 +160,13 @@ initFromEnvVars();
 (function logStartupState() {
   const data = loadData();
   const railwayOk = !!(process.env.RAILWAY_TOKEN && process.env.RAILWAY_PROJECT_ID);
-  console.log(`[init] RAILWAY_TOKEN configurado: ${railwayOk ? 'SIM' : 'NÃO — tokens não persistem entre deploys!'}`);
+  addLog(`🚀 Servidor iniciado`, 'info');
+  addLog(`Railway env vars: ${railwayOk ? 'configuradas ✅' : 'AUSENTES — tokens serão perdidos ao redeployar ⚠️'}`, railwayOk ? 'ok' : 'warn');
   for (const num of ['1', '2']) {
     const c = data.contas[num] || {};
     const temToken = !!c.access_token;
     const temRefresh = !!c.refresh_token;
-    console.log(`[init] Conta ${num}: access_token=${temToken ? 'OK' : 'ausente'}, refresh_token=${temRefresh ? 'OK' : 'ausente'}`);
+    addLog(`Conta ${num}: access_token=${temToken ? 'presente' : 'AUSENTE'}, refresh_token=${temRefresh ? 'presente' : 'AUSENTE'}`, temToken ? 'ok' : 'warn');
   }
 })();
 
@@ -248,7 +266,7 @@ app.get('/api/ml/callback', async (req, res) => {
   const proto    = req.get('x-forwarded-proto') || req.protocol;
   const callback = `${proto}://${req.get('host')}/api/ml/callback`;
 
-  console.log(`[oauth] callback: conta=${num} redirect_uri=${callback}`);
+  addLog(`OAuth callback recebido — conta ${num}, redirect_uri: ${callback}`, 'info');
 
   if (!c.client_secret) {
     return res.redirect('/app.html?tab=config&error=auth_falhou&detalhe=' +
@@ -271,6 +289,7 @@ app.get('/api/ml/callback', async (req, res) => {
     c.refresh_token   = resp.data.refresh_token;
     c.token_expires_at = Date.now() + ((resp.data.expires_in || 21600) - 300) * 1000;
     c.user_id         = resp.data.user_id;
+    addLog(`✅ Token obtido com sucesso — conta ${num} (user_id: ${c.user_id})`, 'ok');
     // Busca o nickname para exibir no seletor de conta
     try {
       const me = await axios.get('https://api.mercadolibre.com/users/me', {
@@ -278,14 +297,18 @@ app.get('/api/ml/callback', async (req, res) => {
         timeout: 8000,
       });
       c.nickname = me.data.nickname;
-    } catch {}
+      addLog(`👤 Nickname obtido: ${c.nickname}`, 'ok');
+    } catch (e) {
+      addLog(`⚠️ Não foi possível obter nickname: ${e.message}`, 'warn');
+    }
     data.contas[num] = c;
     saveData(data);
-    res.redirect(`/app.html?tab=config&connected=true&conta=${num}`);
+    addLog(`💾 Credenciais salvas — redirecionando para o painel`, 'ok');
+    res.redirect(`/app.html?tab=conexao&connected=true&conta=${num}`);
   } catch (err) {
     const detalhe = JSON.stringify(err.response?.data || err.message);
-    console.error('Erro no callback OAuth:', detalhe);
-    res.redirect(`/app.html?tab=config&error=auth_falhou&detalhe=${encodeURIComponent(detalhe)}`);
+    addLog(`❌ Erro no token exchange: ${detalhe}`, 'erro');
+    res.redirect(`/app.html?tab=conexao&error=auth_falhou&detalhe=${encodeURIComponent(detalhe)}`);
   }
 });
 
@@ -309,7 +332,7 @@ async function refreshToken(data, num) {
   // expires_in vem em segundos (normalmente 21600 = 6h); guarda com 5min de margem
   c.token_expires_at = Date.now() + ((resp.data.expires_in || 21600) - 300) * 1000;
   saveData(data);
-  console.log(`[auth] Token da conta ${num} renovado com sucesso.`);
+  addLog(`🔄 Token da conta ${num} renovado automaticamente`, 'ok');
   return c;
 }
 
@@ -356,12 +379,46 @@ setInterval(async () => {
       const expira = c.token_expires_at || 0;
       if (Date.now() >= expira) {
         try { await refreshToken(data, num); } catch (e) {
-          console.warn(`[refresh] Falha ao renovar conta ${num}:`, e.message);
+          addLog(`❌ Falha ao renovar token conta ${num}: ${e.message}`, 'erro');
         }
       }
     }
   } catch {}
 }, 5 * 60 * 60 * 1000);
+
+// ── Rotas da aba Conexão ──────────────────────────────────────
+
+// SSE — stream de logs em tempo real
+app.get('/api/conexao/stream', (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+
+  // Envia histórico de logs existentes
+  for (const entry of logBuffer) {
+    res.write(`data: ${JSON.stringify(entry)}\n\n`);
+  }
+
+  sseClients.add(res);
+  req.on('close', () => sseClients.delete(res));
+});
+
+// Status de conexão da conta (sem chamada externa)
+app.get('/api/conexao/status', (req, res) => {
+  const data = loadData();
+  const num  = req.query.conta || '1';
+  const c    = data.contas[num] || {};
+  const agora = Date.now();
+  const expira = c.token_expires_at || 0;
+  res.json({
+    connected:    !!c.access_token,
+    nickname:     c.nickname || null,
+    hasRefresh:   !!c.refresh_token,
+    tokenExpired: agora > expira,
+    expiresIn:    expira > agora ? Math.round((expira - agora) / 60000) + ' min' : 'expirado',
+  });
+});
 
 app.get('/api/ml/status', (req, res) => {
   const data = loadData();
