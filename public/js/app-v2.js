@@ -22,6 +22,8 @@ window.onunhandledrejection = (e) => {
 // ── Estado ────────────────────────────────────────────────────
 
 let contaConfigurando = '1'; // conta sendo editada na aba config
+let trocandoConta     = false;
+let contaGen          = 0;
 
 // ── Navegação entre abas ──────────────────────────────────────
 
@@ -86,9 +88,6 @@ async function apiFetch(url, opts = {}) {
 }
 
 // ── Troca de conta ────────────────────────────────────────────
-
-let trocandoConta = false;
-let contaGen      = 0;
 
 async function trocarConta(num) {
   if (trocandoConta) return;
