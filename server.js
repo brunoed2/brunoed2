@@ -8,6 +8,17 @@ const express = require('express');
 const axios   = require('axios');
 const fs      = require('fs');
 const path    = require('path');
+const crypto  = require('crypto');
+
+// PKCE: guarda code_verifier em memória por conta durante o fluxo OAuth
+const pkceVerifiers = new Map(); // num → code_verifier
+
+function gerarCodeVerifier() {
+  return crypto.randomBytes(32).toString('base64url');
+}
+function gerarCodeChallenge(verifier) {
+  return crypto.createHash('sha256').update(verifier).digest('base64url');
+}
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -252,13 +263,23 @@ app.get('/api/ml/auth', (req, res) => {
   const data  = loadData();
   const num   = req.query.conta || data.conta_ativa;
   const c     = data.contas[num] || {};
-  if (!c.client_id) return res.redirect('/app.html?tab=config&error=sem_client_id');
-  const callback = `${req.protocol}://${req.get('host')}/api/ml/callback`;
+  if (!c.client_id) return res.redirect('/app.html?tab=conexao&error=sem_client_id');
+  const proto    = req.get('x-forwarded-proto') || req.protocol;
+  const callback = `${proto}://${req.get('host')}/api/ml/callback`;
+
+  // Gera PKCE
+  const verifier  = gerarCodeVerifier();
+  const challenge = gerarCodeChallenge(verifier);
+  pkceVerifiers.set(num, verifier);
+  addLog(`OAuth iniciado — conta ${num}, PKCE gerado`, 'info');
+
   const url = `https://auth.mercadolivre.com.br/authorization`
     + `?response_type=code`
     + `&client_id=${c.client_id}`
     + `&redirect_uri=${encodeURIComponent(callback)}`
     + `&state=${num}`
+    + `&code_challenge=${challenge}`
+    + `&code_challenge_method=S256`
     + `&scope=offline_access+read_listings+write_listings+read_orders+write_orders+read_shipping+write_shipping+read_product_ads`;
   res.redirect(url);
 });
@@ -281,16 +302,24 @@ app.get('/api/ml/callback', async (req, res) => {
       encodeURIComponent('Client Secret não encontrado. Salve as credenciais antes de conectar.'));
   }
 
+  // Recupera o code_verifier do PKCE gerado no /api/ml/auth
+  const codeVerifier = pkceVerifiers.get(num);
+  pkceVerifiers.delete(num);
+  if (!codeVerifier) addLog(`⚠️ PKCE verifier não encontrado para conta ${num}`, 'warn');
+
   try {
+    const params = new URLSearchParams({
+      grant_type:    'authorization_code',
+      client_id:     c.client_id,
+      client_secret: c.client_secret,
+      code,
+      redirect_uri:  callback,
+    });
+    if (codeVerifier) params.set('code_verifier', codeVerifier);
+
     const resp = await axios.post(
       'https://api.mercadolibre.com/oauth/token',
-      new URLSearchParams({
-        grant_type:    'authorization_code',
-        client_id:     c.client_id,
-        client_secret: c.client_secret,
-        code,
-        redirect_uri:  callback,
-      }),
+      params,
       { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 15000 }
     );
     c.access_token    = resp.data.access_token;
