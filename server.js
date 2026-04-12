@@ -279,7 +279,7 @@ async function refreshToken(data, num) {
       client_secret: c.client_secret,
       refresh_token: c.refresh_token,
     }),
-    { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+    { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 10000 }
   );
   c.access_token    = resp.data.access_token;
   c.refresh_token   = resp.data.refresh_token;
@@ -342,13 +342,14 @@ setInterval(async () => {
 
 app.get('/api/ml/status', async (req, res) => {
   const data = loadData();
-  const num  = data.conta_ativa;
+  const num  = req.query.conta || data.conta_ativa;
   const c    = data.contas[num];
   if (!c || !c.access_token) return res.json({ connected: false });
   try {
     const token = await getToken(data, num);
     const resp  = await axios.get('https://api.mercadolibre.com/users/me', {
       headers: { Authorization: `Bearer ${token}` },
+      timeout: 8000,
     });
     res.json({ connected: true, nickname: resp.data.nickname });
   } catch {
