@@ -756,6 +756,17 @@ function mostrarToastPedido(qtd) {
   setTimeout(() => toast.remove(), 15000);
 }
 
+function atualizarSino(qtd) {
+  const count = document.getElementById('notif-count');
+  if (!count) return;
+  if (qtd > 0) {
+    count.textContent  = qtd > 99 ? '99+' : qtd;
+    count.style.display = 'flex';
+  } else {
+    count.style.display = 'none';
+  }
+}
+
 async function verificarNovosShipments() {
   try {
     const data = await apiFetch('/api/ml/vendas-etiquetas');
@@ -764,6 +775,9 @@ async function verificarNovosShipments() {
     const todasVendas = data.vendas || [];
     const pendentes   = todasVendas.filter(v => !v.atendida);
     const idsAtual    = new Set(pendentes.map(v => String(v.shipmentId)));
+
+    // Atualiza o sino sempre
+    atualizarSino(pendentes.length);
 
     if (shipmentsConhecidos === null) {
       // Primeira carga — apenas registra, não notifica
@@ -774,7 +788,6 @@ async function verificarNovosShipments() {
     const novos = [...idsAtual].filter(id => !shipmentsConhecidos.has(id));
     if (novos.length > 0) {
       mostrarNotificacaoPedido(novos.length);
-      // Recarrega a aba de vendas se estiver aberta
       const abaAtiva = document.querySelector('.tab.active')?.id;
       if (abaAtiva === 'tab-vendas') carregarVendas();
     }
