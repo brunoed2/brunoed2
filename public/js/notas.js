@@ -227,7 +227,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (aba && aba.classList.contains('active')) {
       notasCarregarConfig();
       notasCarregarLista();
-      observer.disconnect();
+      // não desconecta — recarrega sempre que a aba for aberta
     }
   });
   const tab = document.getElementById('tab-notas');
