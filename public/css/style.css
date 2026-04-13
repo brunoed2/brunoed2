@@ -1127,7 +1127,22 @@ code {
   .tabela { font-size: 13px; }
   .tabela th { font-size: 11px; padding: 10px 10px; }
   .tabela td { padding: 10px 10px; }
-  .td-titulo { max-width: 160px; }
+  .td-titulo { max-width: none; white-space: normal; overflow: visible; text-overflow: unset; }
+
+  /* Tabela de vendas (painel2): col 6=SKU, 8=Status */
+  /* thead: ch1=check, 2=thumb, 3=Pedido, 4=Comprador, 5=Qtd, 6=SKU, 7=Itens, 8=Status, 9=Etiqueta, 10=btn */
+  #tabela-vendas thead tr th:nth-child(6),
+  #tabela-vendas tbody tr td:nth-child(6),
+  #tabela-vendas thead tr th:nth-child(8),
+  #tabela-vendas tbody tr td:nth-child(8) { display: none; }
+
+  /* Tabela atendidos: col 5=SKU */
+  #tabela-atendidos thead tr th:nth-child(5),
+  #tabela-atendidos tbody tr td:nth-child(5) { display: none; }
+
+  /* Sub-linhas de vendas também ocultam a 6ª coluna */
+  .venda-sub-item td:nth-child(6),
+  .venda-sub-last td:nth-child(6) { display: none; }
 
   /* Status bar */
   .status-bar { font-size: 12px; padding: 6px 12px; }
