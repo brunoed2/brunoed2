@@ -28,6 +28,7 @@
         <button class="nav-btn active" data-tab="loja">🏪 Loja</button>
         <button class="nav-btn" data-tab="estoque">📦 Estoque</button>
         <button class="nav-btn" data-tab="ads">📊 Ads</button>
+        <button class="nav-btn" data-tab="shopee">🛒 Shopee</button>
         <button class="nav-btn" data-tab="config">⚙️ Configurações</button>
         <button class="nav-btn" data-tab="conexao">🔌 Conexão</button>
       </nav>
@@ -207,6 +208,55 @@
         </div>
       </section>
 
+      <!-- ── Aba: Shopee ── -->
+      <section id="tab-shopee" class="tab">
+        <h1>Shopee</h1>
+        <p class="subtitle">Pedidos prontos para envio na Shopee.</p>
+
+        <div id="shopee-status-box" class="cx-status-box" style="margin-bottom:20px">
+          <span id="shopee-status-dot" class="dot"></span>
+          <span id="shopee-status-txt">Verificando...</span>
+        </div>
+
+        <div class="card" style="margin-bottom:24px">
+          <h2>Credenciais</h2>
+          <p class="card-desc">Obtenha em <a href="https://open.shopee.com" target="_blank">open.shopee.com</a> → My Apps.</p>
+          <div class="field">
+            <label>Partner ID</label>
+            <input type="text" id="shopee-partner-id" placeholder="Ex: 123456" autocomplete="off">
+          </div>
+          <div class="field">
+            <label>Partner Key</label>
+            <input type="password" id="shopee-partner-key" placeholder="Sua partner key" autocomplete="off">
+          </div>
+          <div class="btn-row">
+            <button class="btn-primary" onclick="shopeeSalvarEConectar()">🔗 Salvar e Conectar</button>
+          </div>
+          <div class="msg" id="shopee-msg"></div>
+        </div>
+
+        <div class="tabela-container">
+          <div class="tabela-topo">
+            <span id="shopee-total"></span>
+            <button class="btn-secondary" onclick="carregarShopeeOrders()">↻ Atualizar</button>
+          </div>
+          <div id="shopee-loading" class="loading" style="display:none">Carregando pedidos...</div>
+          <div id="shopee-erro" class="estoque-erro" style="display:none"></div>
+          <table class="tabela" id="tabela-shopee" style="display:none">
+            <thead>
+              <tr>
+                <th>Pedido</th>
+                <th>Comprador</th>
+                <th class="col-num">Qtd</th>
+                <th>Itens</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="tabela-shopee-body"></tbody>
+          </table>
+        </div>
+      </section>
+
       <!-- ── Aba: Conexão ── -->
       <section id="tab-conexao" class="tab">
         <h1>Conexão</h1>
@@ -278,6 +328,7 @@
 
   <script src="/js/app-v2.js"></script>
   <script src="/js/conexao.js"></script>
-  <div id="version-badge">v117</div>
+  <script src="/js/shopee.js?v=118"></script>
+  <div id="version-badge">v118</div>
 </body>
 </html>

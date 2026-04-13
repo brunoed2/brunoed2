@@ -1291,6 +1291,128 @@ app.put('/api/ml/estoque/:mlb', async (req, res) => {
   }
 });
 
+// ── Shopee: helpers ──────────────────────────────────────────
+
+function shopeeSign(partnerId, path, timestamp, partnerKey, accessToken, shopId) {
+  let base = `${partnerId}|${path}|${timestamp}`;
+  if (accessToken) base += `|${accessToken}`;
+  if (shopId)      base += `|${shopId}`;
+  return crypto.createHmac('sha256', partnerKey).update(base).digest('hex');
+}
+
+const SHOPEE_BASE = 'https://partner.shopeemobile.com/api/v2';
+
+function shopeeParams(path, partnerKey, partnerId, accessToken, shopId) {
+  const timestamp = Math.floor(Date.now() / 1000);
+  const sign = shopeeSign(partnerId, path, timestamp, partnerKey, accessToken, shopId);
+  const p = { partner_id: Number(partnerId), timestamp, sign };
+  if (accessToken) p.access_token = accessToken;
+  if (shopId)      p.shop_id      = Number(shopId);
+  return p;
+}
+
+// ── Shopee: rotas ─────────────────────────────────────────────
+
+app.get('/api/shopee/config', (req, res) => {
+  const data = loadData();
+  const sp   = data.shopee || {};
+  res.json({ partner_id: sp.partner_id || '', shop_id: sp.shop_id || '', connected: !!sp.access_token });
+});
+
+app.post('/api/shopee/config', (req, res) => {
+  const { partner_id, partner_key } = req.body;
+  const data = loadData();
+  if (!data.shopee) data.shopee = {};
+  if (partner_id  !== undefined) data.shopee.partner_id  = String(partner_id);
+  if (partner_key !== undefined) data.shopee.partner_key = String(partner_key);
+  saveData(data);
+  res.json({ ok: true });
+});
+
+app.get('/api/shopee/auth', (req, res) => {
+  const data = loadData();
+  const sp   = data.shopee || {};
+  if (!sp.partner_id || !sp.partner_key) return res.redirect('/app.html?shopee_error=sem_credenciais');
+  const proto    = req.get('x-forwarded-proto') || req.protocol;
+  const callback = `${proto}://${req.get('host')}/api/shopee/callback`;
+  const timestamp = Math.floor(Date.now() / 1000);
+  const path = '/api/v2/shop/auth_partner';
+  const sign = shopeeSign(sp.partner_id, path, timestamp, sp.partner_key);
+  const url  = `${SHOPEE_BASE}/shop/auth_partner`
+    + `?partner_id=${sp.partner_id}&timestamp=${timestamp}&sign=${sign}`
+    + `&redirect=${encodeURIComponent(callback)}`;
+  res.redirect(url);
+});
+
+app.get('/api/shopee/callback', async (req, res) => {
+  const { code, shop_id, error } = req.query;
+  if (error || !code || !shop_id) return res.redirect('/app.html?shopee_error=auth_cancelado');
+  const data = loadData();
+  const sp   = data.shopee || {};
+  if (!sp.partner_id || !sp.partner_key) return res.redirect('/app.html?shopee_error=sem_credenciais');
+  try {
+    const path      = '/api/v2/auth/token/get';
+    const timestamp = Math.floor(Date.now() / 1000);
+    const sign      = shopeeSign(sp.partner_id, path, timestamp, sp.partner_key);
+    const r = await axios.post(`${SHOPEE_BASE}/auth/token/get`, {
+      code, shop_id: Number(shop_id), partner_id: Number(sp.partner_id),
+    }, { params: { partner_id: Number(sp.partner_id), timestamp, sign }, timeout: 10000 });
+    const { access_token, refresh_token, expire_in } = r.data;
+    if (!access_token) throw new Error(JSON.stringify(r.data));
+    data.shopee = { ...sp, shop_id: String(shop_id), access_token, refresh_token, expires_at: Date.now() + (expire_in || 14400) * 1000 };
+    saveData(data);
+    addLog(`Shopee: conectado — shop_id ${shop_id}`, 'info');
+    res.redirect('/app.html?shopee_ok=1');
+  } catch (err) {
+    addLog(`Shopee callback erro: ${err.message}`, 'warn');
+    res.redirect('/app.html?shopee_error=token');
+  }
+});
+
+app.get('/api/shopee/status', async (req, res) => {
+  const data = loadData();
+  const sp   = data.shopee || {};
+  if (!sp.access_token) return res.json({ connected: false });
+  try {
+    const path      = '/api/v2/shop/get_shop_info';
+    const params    = shopeeParams(path, sp.partner_key, sp.partner_id, sp.access_token, sp.shop_id);
+    const r = await axios.get(`${SHOPEE_BASE}/shop/get_shop_info`, { params, timeout: 8000 });
+    if (r.data.error) return res.json({ connected: false, error: r.data.message });
+    res.json({ connected: true, shop_name: r.data.response?.shop_name || '—', shop_id: sp.shop_id });
+  } catch (err) {
+    res.json({ connected: false, error: err.message });
+  }
+});
+
+app.get('/api/shopee/orders', async (req, res) => {
+  const data = loadData();
+  const sp   = data.shopee || {};
+  if (!sp.access_token) return res.json({ error: 'Shopee não conectada' });
+  try {
+    const path   = '/api/v2/order/get_order_list';
+    const params = shopeeParams(path, sp.partner_key, sp.partner_id, sp.access_token, sp.shop_id);
+    params.order_status = 'READY_TO_SHIP';
+    params.page_size    = 50;
+    params.cursor       = '';
+    const r = await axios.get(`${SHOPEE_BASE}/order/get_order_list`, { params, timeout: 10000 });
+    if (r.data.error) return res.json({ error: r.data.message });
+    const orders = r.data.response?.order_list || [];
+    if (!orders.length) return res.json({ orders: [] });
+
+    // Busca detalhes dos pedidos
+    const sns = orders.map(o => o.order_sn);
+    const pathD   = '/api/v2/order/get_order_detail';
+    const paramsD = shopeeParams(pathD, sp.partner_key, sp.partner_id, sp.access_token, sp.shop_id);
+    paramsD.order_sn_list   = sns.join(',');
+    paramsD.response_optional_fields = 'buyer_username,item_list,recipient_address';
+    const rd = await axios.get(`${SHOPEE_BASE}/order/get_order_detail`, { params: paramsD, timeout: 10000 });
+    const detalhes = rd.data.response?.order_list || [];
+    res.json({ orders: detalhes });
+  } catch (err) {
+    res.json({ error: err.message });
+  }
+});
+
 // ── Telegram: notificação de novos pedidos ────────────────────
 
 const TELEGRAM_TOKEN   = process.env.TELEGRAM_TOKEN;
