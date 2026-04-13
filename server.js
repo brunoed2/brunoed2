@@ -1683,70 +1683,81 @@ app.get('/api/notas/buscar', async (req, res) => {
   const n = data.notas_contas[num];
   if (!n.cert_b64) return res.json({ error: 'Certificado não configurado. Faça o upload do certificado digital.' });
 
-  const ultNSU = n.ultNSU || '0';
-  const cUF    = req.query.cUF || '35';
+  const cUF     = req.query.cUF || '35';
+  const pfxBuffer = Buffer.from(n.cert_b64, 'base64');
+
+  // Acumula notas de múltiplos lotes até atingir maxNSU ou receber 656
+  const listaExistente = n.lista || [];
+  const nsuSet  = new Set(listaExistente.map(x => x.nsu));
+  const todasNovas = [];
+  let nsuAtual  = n.ultNSU || '0';
+  let maxNSUFinal = n.maxNSU || '0';
+  let aviso = null;
+  const MAX_LOTES = 20; // segurança: no máximo 20 chamadas por busca (~1000 docs)
 
   try {
-    const pfxBuffer = Buffer.from(n.cert_b64, 'base64');
-    addLog(`Notas conta ${num}: consultando SEFAZ — UF ${cUF}, NSU a partir de ${ultNSU}`, 'info');
-    const xmlResp = await queryNFeDistribuicao(pfxBuffer, n.senha, n.cnpj, cUF, ultNSU);
-    const { cStat, xMotivo, ultNSU: novoNSU, maxNSU, docs } = parsearRespostaSefaz(xmlResp);
+    for (let lote = 0; lote < MAX_LOTES; lote++) {
+      addLog(`Notas conta ${num}: lote ${lote + 1} — UF ${cUF}, NSU ${nsuAtual}`, 'info');
+      const xmlResp = await queryNFeDistribuicao(pfxBuffer, n.senha, n.cnpj, cUF, nsuAtual);
+      const { cStat, xMotivo, ultNSU: novoNSU, maxNSU, docs } = parsearRespostaSefaz(xmlResp);
 
-    if (cStat !== '137' && cStat !== '138') {
-      addLog(`Notas conta ${num}: SEFAZ ${cStat} — ${xMotivo}`, 'warn');
-      if (novoNSU && novoNSU !== '000000000000000') {
-        n.ultNSU = novoNSU;
+      if (novoNSU && novoNSU !== '000000000000000') nsuAtual = novoNSU;
+      if (maxNSU)  maxNSUFinal = maxNSU;
+
+      if (cStat !== '137' && cStat !== '138') {
+        addLog(`Notas conta ${num}: SEFAZ ${cStat} — ${xMotivo}`, 'warn');
+        aviso = `SEFAZ ${cStat}: ${xMotivo || 'Erro desconhecido'}`;
+        // Salva NSU mesmo no erro para próxima consulta partir dali
+        n.ultNSU = nsuAtual;
+        n.maxNSU = maxNSUFinal;
         saveData(data);
-        addLog(`Notas conta ${num}: ultNSU atualizado para ${novoNSU} após erro ${cStat}`, 'info');
+        break;
       }
-      return res.json({
-        aviso: `SEFAZ ${cStat}: ${xMotivo || 'Erro desconhecido'}`,
-        novas: [],
-        novasCount: 0,
-        ultNSU: novoNSU || n.ultNSU || '0',
-        maxNSU: n.maxNSU || '0',
-      });
+
+      for (const doc of docs) {
+        if (nsuSet.has(doc.nsu)) continue;
+        nsuSet.add(doc.nsu);
+        try {
+          const buf    = Buffer.from(doc.zip, 'base64');
+          const xmlDoc = zlib.gunzipSync(buf).toString('utf8');
+          const campos = extrairCampos(xmlDoc);
+          // Mantém só compras: CNPJ como destinatário ou tpNF=entrada e não é o emitente
+          const ehCompra = campos.CNPJ_dest === n.cnpj ||
+            (campos.tpNF === '0' && campos.CNPJ_emit !== n.cnpj) ||
+            (!campos.CNPJ_dest && !campos.tpNF && campos.CNPJ_emit !== n.cnpj);
+          if (!ehCompra) continue;
+          campos.nsu    = doc.nsu;
+          campos.schema = doc.schema;
+          campos.tipo   = doc.schema.startsWith('resNFe') ? 'resumo' : 'completa';
+          todasNovas.push(campos);
+        } catch (e) {
+          addLog(`Notas conta ${num}: erro NSU ${doc.nsu}: ${e.message}`, 'warn');
+        }
+      }
+
+      // Salva progresso após cada lote
+      const listaAtualizada = [...todasNovas, ...listaExistente];
+      n.lista  = listaAtualizada;
+      n.ultNSU = nsuAtual;
+      n.maxNSU = maxNSUFinal;
+      saveData(data);
+
+      // Para quando chegamos ao fim
+      const ult = parseInt(nsuAtual);
+      const max = parseInt(maxNSUFinal);
+      if (!docs.length || ult >= max) break;
     }
 
-    const listaExistente = n.lista || [];
-    const nsuSet = new Set(listaExistente.map(x => x.nsu));
-
-    const novasNotas = [];
-    for (const doc of docs) {
-      if (nsuSet.has(doc.nsu)) continue;
-      try {
-        const buf    = Buffer.from(doc.zip, 'base64');
-        const xmlDoc = zlib.gunzipSync(buf).toString('utf8');
-        const campos = extrairCampos(xmlDoc);
-
-        const ehCompra = campos.CNPJ_dest === n.cnpj ||
-          (campos.tpNF === '0' && campos.CNPJ_emit !== n.cnpj);
-        if (!ehCompra) continue;
-
-        campos.nsu    = doc.nsu;
-        campos.schema = doc.schema;
-        campos.tipo   = doc.schema.startsWith('resNFe') ? 'resumo' : 'completa';
-        novasNotas.push(campos);
-      } catch (e) {
-        addLog(`Notas conta ${num}: erro ao processar NSU ${doc.nsu}: ${e.message}`, 'warn');
-      }
-    }
-
-    const listaAtualizada = [...novasNotas, ...listaExistente];
-    n.lista  = listaAtualizada;
-    n.ultNSU = novoNSU || ultNSU;
-    n.maxNSU = maxNSU  || n.maxNSU || '0';
-    saveData(data);
-
-    addLog(`Notas: ${novasNotas.length} nova(s). Total: ${listaAtualizada.length}. NSU até ${novoNSU}`, 'info');
+    const listaFinal = n.lista || [];
+    addLog(`Notas conta ${num}: ${todasNovas.length} nova(s). Total: ${listaFinal.length}. NSU ${nsuAtual}/${maxNSUFinal}`, 'info');
     res.json({
       ok: true,
-      novas: novasNotas,
-      novasCount: novasNotas.length,
-      ultNSU: novoNSU,
-      maxNSU,
-      total: listaAtualizada.length,
-      status: xMotivo,
+      novas: todasNovas,
+      novasCount: todasNovas.length,
+      total: listaFinal.length,
+      ultNSU: nsuAtual,
+      maxNSU: maxNSUFinal,
+      ...(aviso ? { aviso } : {}),
     });
   } catch (err) {
     addLog(`Notas: erro — ${err.message}`, 'erro');
