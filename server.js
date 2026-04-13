@@ -101,6 +101,13 @@ async function syncRailwayEnvVars(data) {
     if (c.user_id)          variables[`ML_USER_ID_${num}`]          = String(c.user_id);
     if (c.token_expires_at) variables[`ML_TOKEN_EXPIRES_AT_${num}`] = String(c.token_expires_at);
   }
+  // Certificado digital Notas de Entrada
+  const n = data.notas || {};
+  if (n.cert_b64)  variables['NOTAS_CERT_B64']  = n.cert_b64;
+  if (n.cert_nome) variables['NOTAS_CERT_NOME'] = n.cert_nome;
+  if (n.senha)     variables['NOTAS_SENHA']     = n.senha;
+  if (n.cnpj)      variables['NOTAS_CNPJ']      = n.cnpj;
+  if (n.titular)   variables['NOTAS_TITULAR']   = n.titular;
 
   try {
     await axios.post(
@@ -166,6 +173,17 @@ function initFromEnvVars() {
       c1[key] = process.env[envKey];
       changed = true;
     }
+  }
+
+  // Certificado digital Notas de Entrada
+  if (!data.notas?.cert_b64 && process.env.NOTAS_CERT_B64) {
+    data.notas = data.notas || {};
+    data.notas.cert_b64  = process.env.NOTAS_CERT_B64;
+    data.notas.cert_nome = process.env.NOTAS_CERT_NOME || '';
+    data.notas.senha     = process.env.NOTAS_SENHA     || '';
+    data.notas.cnpj      = process.env.NOTAS_CNPJ      || '';
+    data.notas.titular   = process.env.NOTAS_TITULAR   || '';
+    changed = true;
   }
 
   if (changed) fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
