@@ -1305,7 +1305,7 @@ async function enviarTelegram(texto) {
       parse_mode: 'HTML',
     }, { timeout: 8000 });
   } catch (err) {
-    log('WARN', `Telegram: falha ao enviar mensagem — ${err.message}`);
+    addLog(`Telegram: falha ao enviar mensagem — ${err.message}`, 'warn');
   }
 }
 
@@ -1361,7 +1361,7 @@ async function verificarNovosShipmentsTelegram() {
         } catch {}
       }
     } catch (err) {
-      log('WARN', `Telegram monitor conta ${num}: ${err.message}`);
+      addLog(`Telegram monitor conta ${num}: ${err.message}`, 'warn');
     }
   }
   telegramPrimeiraVerificacao = false;
@@ -1372,12 +1372,12 @@ app.listen(PORT, () => {
   console.log(`Servidor rodando em http://localhost:${PORT}`);
   // Inicia monitoramento Telegram 10s após subir, depois a cada 60s
   if (TELEGRAM_TOKEN && TELEGRAM_CHAT_ID) {
-    log('INFO', 'Telegram: monitoramento de pedidos ativado');
+    addLog('Telegram: monitoramento de pedidos ativado', 'info');
     setTimeout(() => {
       verificarNovosShipmentsTelegram();
       setInterval(verificarNovosShipmentsTelegram, 60_000);
     }, 10_000);
   } else {
-    log('WARN', 'Telegram: TELEGRAM_TOKEN ou TELEGRAM_CHAT_ID não configurados');
+    addLog('Telegram: TELEGRAM_TOKEN ou TELEGRAM_CHAT_ID não configurados', 'warn');
   }
 });
