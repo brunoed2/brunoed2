@@ -143,9 +143,8 @@ body {
 .content {
   margin-left: 220px;
   flex: 1;
-  padding: 40px 48px;
-  max-width: 1400px;
-  width: 100%;
+  padding: 40px 32px;
+  min-width: 0;
 }
 
 /* ── Abas ───────────────────────────────────────────────────── */
