@@ -101,13 +101,15 @@ async function syncRailwayEnvVars(data) {
     if (c.user_id)          variables[`ML_USER_ID_${num}`]          = String(c.user_id);
     if (c.token_expires_at) variables[`ML_TOKEN_EXPIRES_AT_${num}`] = String(c.token_expires_at);
   }
-  // Certificado digital Notas de Entrada
-  const n = data.notas || {};
-  if (n.cert_b64)  variables['NOTAS_CERT_B64']  = n.cert_b64;
-  if (n.cert_nome) variables['NOTAS_CERT_NOME'] = n.cert_nome;
-  if (n.senha)     variables['NOTAS_SENHA']     = n.senha;
-  if (n.cnpj)      variables['NOTAS_CNPJ']      = n.cnpj;
-  if (n.titular)   variables['NOTAS_TITULAR']   = n.titular;
+  // Certificado digital Notas de Entrada — por conta
+  for (const num of ['1', '2']) {
+    const n = (data.notas_contas || {})[num] || {};
+    if (n.cert_b64)  variables[`NOTAS_CERT_B64_${num}`]  = n.cert_b64;
+    if (n.cert_nome) variables[`NOTAS_CERT_NOME_${num}`] = n.cert_nome;
+    if (n.senha)     variables[`NOTAS_SENHA_${num}`]     = n.senha;
+    if (n.cnpj)      variables[`NOTAS_CNPJ_${num}`]      = n.cnpj;
+    if (n.titular)   variables[`NOTAS_TITULAR_${num}`]   = n.titular;
+  }
 
   try {
     await axios.post(
@@ -175,15 +177,19 @@ function initFromEnvVars() {
     }
   }
 
-  // Certificado digital Notas de Entrada
-  if (!data.notas?.cert_b64 && process.env.NOTAS_CERT_B64) {
-    data.notas = data.notas || {};
-    data.notas.cert_b64  = process.env.NOTAS_CERT_B64;
-    data.notas.cert_nome = process.env.NOTAS_CERT_NOME || '';
-    data.notas.senha     = process.env.NOTAS_SENHA     || '';
-    data.notas.cnpj      = process.env.NOTAS_CNPJ      || '';
-    data.notas.titular   = process.env.NOTAS_TITULAR   || '';
-    changed = true;
+  // Certificado digital Notas de Entrada — por conta
+  data.notas_contas = data.notas_contas || {};
+  for (const num of ['1', '2']) {
+    const nc = data.notas_contas[num] || {};
+    if (!nc.cert_b64 && process.env[`NOTAS_CERT_B64_${num}`]) {
+      nc.cert_b64  = process.env[`NOTAS_CERT_B64_${num}`];
+      nc.cert_nome = process.env[`NOTAS_CERT_NOME_${num}`] || '';
+      nc.senha     = process.env[`NOTAS_SENHA_${num}`]     || '';
+      nc.cnpj      = process.env[`NOTAS_CNPJ_${num}`]      || '';
+      nc.titular   = process.env[`NOTAS_TITULAR_${num}`]   || '';
+      data.notas_contas[num] = nc;
+      changed = true;
+    }
   }
 
   if (changed) fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
@@ -1626,17 +1632,20 @@ function extrairCampos(xmlDoc) {
 app.post('/api/notas/certificado', uploadMem.single('cert'), (req, res) => {
   if (!req.file) return res.json({ error: 'Arquivo não enviado' });
   const senha = req.body.senha || '';
+  const data  = loadData();
+  const num   = req.body.conta || data.conta_ativa;
   try {
     const { cnpj, titular } = extrairCnpjDoCert(req.file.buffer, senha);
-    const data = loadData();
-    data.notas = data.notas || {};
-    data.notas.cert_b64  = req.file.buffer.toString('base64');
-    data.notas.cert_nome = req.file.originalname;
-    data.notas.senha     = senha;
-    data.notas.cnpj      = cnpj;
-    data.notas.titular   = titular;
+    data.notas_contas = data.notas_contas || {};
+    data.notas_contas[num] = data.notas_contas[num] || {};
+    const n = data.notas_contas[num];
+    n.cert_b64  = req.file.buffer.toString('base64');
+    n.cert_nome = req.file.originalname;
+    n.senha     = senha;
+    n.cnpj      = cnpj;
+    n.titular   = titular;
     saveData(data);
-    addLog(`Notas: certificado carregado — ${titular} (${cnpj})`, 'info');
+    addLog(`Notas conta ${num}: certificado carregado — ${titular} (${cnpj})`, 'info');
     res.json({ ok: true, cnpj, titular });
   } catch (err) {
     res.json({ error: err.message });
@@ -1644,47 +1653,51 @@ app.post('/api/notas/certificado', uploadMem.single('cert'), (req, res) => {
 });
 
 app.get('/api/notas/config', (req, res) => {
-  const d = loadData();
-  const n = d.notas || {};
+  const data = loadData();
+  const num  = req.query.conta || data.conta_ativa;
+  const n    = (data.notas_contas || {})[num] || {};
   res.json({ cnpj: n.cnpj || null, titular: n.titular || null, cert_nome: n.cert_nome || null });
 });
 
 app.get('/api/notas/lista', (req, res) => {
   const data = loadData();
-  const n    = data.notas || {};
+  const num  = req.query.conta || data.conta_ativa;
+  const n    = (data.notas_contas || {})[num] || {};
   res.json({ notas: n.lista || [], ultNSU: n.ultNSU || '0', maxNSU: n.maxNSU || '0' });
 });
 
 app.post('/api/notas/limpar', (req, res) => {
   const data = loadData();
-  if (data.notas) { data.notas.lista = []; data.notas.ultNSU = '0'; data.notas.maxNSU = '0'; }
+  const num  = req.body.conta || data.conta_ativa;
+  const n    = (data.notas_contas || {})[num];
+  if (n) { n.lista = []; n.ultNSU = '0'; n.maxNSU = '0'; }
   saveData(data);
   res.json({ ok: true });
 });
 
 app.get('/api/notas/buscar', async (req, res) => {
   const data = loadData();
-  const n    = data.notas || {};
+  const num  = req.query.conta || data.conta_ativa;
+  data.notas_contas = data.notas_contas || {};
+  data.notas_contas[num] = data.notas_contas[num] || {};
+  const n = data.notas_contas[num];
   if (!n.cert_b64) return res.json({ error: 'Certificado não configurado. Faça o upload do certificado digital.' });
 
-  // Usa o NSU salvo como ponto de partida (ignora query param — o servidor controla)
   const ultNSU = n.ultNSU || '0';
   const cUF    = req.query.cUF || '35';
 
   try {
     const pfxBuffer = Buffer.from(n.cert_b64, 'base64');
-    addLog(`Notas: consultando SEFAZ — UF ${cUF}, NSU a partir de ${ultNSU}`, 'info');
+    addLog(`Notas conta ${num}: consultando SEFAZ — UF ${cUF}, NSU a partir de ${ultNSU}`, 'info');
     const xmlResp = await queryNFeDistribuicao(pfxBuffer, n.senha, n.cnpj, cUF, ultNSU);
     const { cStat, xMotivo, ultNSU: novoNSU, maxNSU, docs } = parsearRespostaSefaz(xmlResp);
 
-    // 656 = consumo indevido, 137/138 = ok — em todos os casos mantém a lista existente
     if (cStat !== '137' && cStat !== '138') {
-      addLog(`Notas: SEFAZ ${cStat} — ${xMotivo}`, 'warn');
-      // Salva o ultNSU retornado pela SEFAZ mesmo no erro, para próxima consulta partir dali
+      addLog(`Notas conta ${num}: SEFAZ ${cStat} — ${xMotivo}`, 'warn');
       if (novoNSU && novoNSU !== '000000000000000') {
-        data.notas.ultNSU = novoNSU;
+        n.ultNSU = novoNSU;
         saveData(data);
-        addLog(`Notas: ultNSU atualizado para ${novoNSU} após erro ${cStat}`, 'info');
+        addLog(`Notas conta ${num}: ultNSU atualizado para ${novoNSU} após erro ${cStat}`, 'info');
       }
       return res.json({
         aviso: `SEFAZ ${cStat}: ${xMotivo || 'Erro desconhecido'}`,
@@ -1695,20 +1708,17 @@ app.get('/api/notas/buscar', async (req, res) => {
       });
     }
 
-    // Monta mapa das notas já salvas por NSU para deduplicar
     const listaExistente = n.lista || [];
     const nsuSet = new Set(listaExistente.map(x => x.nsu));
 
     const novasNotas = [];
     for (const doc of docs) {
-      if (nsuSet.has(doc.nsu)) continue; // já temos esta nota
+      if (nsuSet.has(doc.nsu)) continue;
       try {
         const buf    = Buffer.from(doc.zip, 'base64');
         const xmlDoc = zlib.gunzipSync(buf).toString('utf8');
         const campos = extrairCampos(xmlDoc);
 
-        // Mantém apenas notas onde o CNPJ consultado é o DESTINATÁRIO (compras)
-        // Para documentos de resumo (resNFe), tpNF='0' indica entrada
         const ehCompra = campos.CNPJ_dest === n.cnpj ||
           (campos.tpNF === '0' && campos.CNPJ_emit !== n.cnpj);
         if (!ehCompra) continue;
@@ -1718,15 +1728,14 @@ app.get('/api/notas/buscar', async (req, res) => {
         campos.tipo   = doc.schema.startsWith('resNFe') ? 'resumo' : 'completa';
         novasNotas.push(campos);
       } catch (e) {
-        addLog(`Notas: erro ao processar NSU ${doc.nsu}: ${e.message}`, 'warn');
+        addLog(`Notas conta ${num}: erro ao processar NSU ${doc.nsu}: ${e.message}`, 'warn');
       }
     }
 
-    // Persiste: adiciona novas ao início (mais recentes primeiro) e atualiza NSU
     const listaAtualizada = [...novasNotas, ...listaExistente];
-    data.notas.lista   = listaAtualizada;
-    data.notas.ultNSU  = novoNSU || ultNSU;
-    data.notas.maxNSU  = maxNSU  || n.maxNSU || '0';
+    n.lista  = listaAtualizada;
+    n.ultNSU = novoNSU || ultNSU;
+    n.maxNSU = maxNSU  || n.maxNSU || '0';
     saveData(data);
 
     addLog(`Notas: ${novasNotas.length} nova(s). Total: ${listaAtualizada.length}. NSU até ${novoNSU}`, 'info');

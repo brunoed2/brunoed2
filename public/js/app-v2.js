@@ -113,6 +113,7 @@ async function trocarConta(num) {
     if (abaAtiva === 'loja')    carregarLoja();
     if (abaAtiva === 'estoque') carregarEstoque(true);
     atualizarStatus();
+    document.dispatchEvent(new CustomEvent('contaMudou', { detail: { conta: num } }));
   } finally {
     document.querySelectorAll('.conta-btn').forEach(b => b.disabled = false);
     trocandoConta = false;

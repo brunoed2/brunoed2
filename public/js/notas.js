@@ -1,5 +1,9 @@
 // ── Notas de Entrada (SEFAZ NF-e) ──────────────────────────────
 
+function notasContaAtual() {
+  return document.querySelector('.conta-btn.active')?.dataset?.conta || '1';
+}
+
 function notasFormatarCnpj(c) {
   if (!c || c.length !== 14) return c || '—';
   return `${c.slice(0,2)}.${c.slice(2,5)}.${c.slice(5,8)}/${c.slice(8,12)}-${c.slice(12)}`;
@@ -43,26 +47,31 @@ function notasAtualizarTotal(total) {
 }
 
 async function notasCarregarConfig() {
+  const conta = notasContaAtual();
   try {
-    const d = await fetch('/api/notas/config').then(r => r.json());
+    const d = await fetch(`/api/notas/config?conta=${conta}`).then(r => r.json());
     const box = document.getElementById('notas-cert-info');
     if (d.cnpj) {
       box.textContent = `Certificado: ${d.titular} — CNPJ ${notasFormatarCnpj(d.cnpj)}`;
       box.style.display = 'block';
     } else {
+      box.textContent = '';
       box.style.display = 'none';
     }
   } catch {}
 }
 
 async function notasCarregarLista() {
+  const conta  = notasContaAtual();
   const tabela = document.getElementById('tabela-notas');
   const tbody  = document.getElementById('tabela-notas-body');
+  tbody.innerHTML = '';
+  tabela.style.display = 'none';
+  document.getElementById('notas-total').textContent = '';
   try {
-    const d = await fetch('/api/notas/lista').then(r => r.json());
+    const d = await fetch(`/api/notas/lista?conta=${conta}`).then(r => r.json());
     const notas = d.notas || [];
     if (!notas.length) return;
-    tbody.innerHTML = '';
     notas.forEach(n => tbody.appendChild(notasRenderirLinha(n)));
     tabela.style.display = 'table';
     notasAtualizarTotal(notas.length);
@@ -73,6 +82,7 @@ async function notasEnviarCertificado() {
   const fileInput = document.getElementById('notas-cert-file');
   const senha     = document.getElementById('notas-cert-senha').value;
   const msg       = document.getElementById('notas-msg');
+  const conta     = notasContaAtual();
 
   if (!fileInput.files[0]) {
     msg.textContent = 'Selecione o arquivo .pfx do certificado.';
@@ -89,6 +99,7 @@ async function notasEnviarCertificado() {
   const form = new FormData();
   form.append('cert', fileInput.files[0]);
   form.append('senha', senha);
+  form.append('conta', conta);
 
   try {
     const d = await fetch('/api/notas/certificado', { method: 'POST', body: form }).then(r => r.json());
@@ -104,13 +115,14 @@ async function notasEnviarCertificado() {
 }
 
 async function notasLimparEBuscar() {
-  if (!confirm('Isso apagará a lista salva e buscará tudo do zero. Continuar?')) return;
-  const tbody = document.getElementById('tabela-notas-body');
+  if (!confirm('Isso apagará a lista salva desta conta e buscará tudo do zero. Continuar?')) return;
+  const conta  = notasContaAtual();
+  const tbody  = document.getElementById('tabela-notas-body');
   const tabela = document.getElementById('tabela-notas');
   tbody.innerHTML = '';
   tabela.style.display = 'none';
   document.getElementById('notas-total').textContent = '';
-  await fetch('/api/notas/limpar', { method: 'POST' });
+  await fetch('/api/notas/limpar', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ conta }) });
   await notasBuscar();
 }
 
@@ -120,21 +132,21 @@ async function notasBuscar() {
   const tabela  = document.getElementById('tabela-notas');
   const tbody   = document.getElementById('tabela-notas-body');
   const cUF     = document.getElementById('notas-uf').value;
+  const conta   = notasContaAtual();
 
   loading.style.display = 'block';
   erroEl.style.display  = 'none';
 
   try {
-    const d = await fetch(`/api/notas/buscar?cUF=${cUF}`).then(r => r.json());
+    const d = await fetch(`/api/notas/buscar?cUF=${cUF}&conta=${conta}`).then(r => r.json());
     loading.style.display = 'none';
 
     if (d.error) {
-      erroEl.textContent = d.error; erroEl.style.display = 'block'; return;
+      erroEl.textContent = d.error; erroEl.style.color = '#c00'; erroEl.style.display = 'block'; return;
     }
 
     if (d.aviso) {
-      erroEl.textContent = d.aviso; erroEl.style.display = 'block';
-      // Mantém tabela como está — não limpa
+      erroEl.textContent = d.aviso; erroEl.style.color = '#92400e'; erroEl.style.display = 'block';
       return;
     }
 
@@ -145,12 +157,11 @@ async function notasBuscar() {
       erroEl.style.display = 'block';
     } else {
       erroEl.style.display = 'none';
-      // Insere novas no topo da tabela
       novas.forEach(n => tbody.insertBefore(notasRenderirLinha(n), tbody.firstChild));
       tabela.style.display = 'table';
     }
 
-    notasAtualizarTotal(d.total || parseInt(document.getElementById('notas-total').textContent) || 0);
+    notasAtualizarTotal(d.total || 0);
   } catch {
     loading.style.display = 'none';
     erroEl.textContent = 'Erro ao consultar SEFAZ.';
@@ -158,6 +169,15 @@ async function notasBuscar() {
     erroEl.style.display = 'block';
   }
 }
+
+// Recarrega a aba quando a conta muda
+document.addEventListener('contaMudou', () => {
+  const aba = document.getElementById('tab-notas');
+  if (aba && aba.classList.contains('active')) {
+    notasCarregarConfig();
+    notasCarregarLista();
+  }
+});
 
 document.addEventListener('DOMContentLoaded', () => {
   const observer = new MutationObserver(() => {
