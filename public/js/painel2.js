@@ -29,8 +29,6 @@ async function trocarConta(num) {
 
   // Invalida qualquer requisição em andamento da conta anterior
   contaGen++;
-  if (intervaloNotif) { clearInterval(intervaloNotif); intervaloNotif = null; }
-  shipmentsConhecidos = null;
 
   document.querySelectorAll('.conta-btn').forEach(b => b.disabled = true);
 
@@ -52,8 +50,6 @@ async function trocarConta(num) {
   } finally {
     document.querySelectorAll('.conta-btn').forEach(b => b.disabled = false);
     trocandoConta = false;
-    // Reinicia o monitoramento para a nova conta
-    intervaloNotif = setInterval(verificarNovosShipments, 90_000);
   }
 }
 
