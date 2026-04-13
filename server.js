@@ -801,10 +801,15 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
             let thumb = b.thumbnail || null;
             // O ML retorna thumbnail em baixa resolução com "-I.jpg" — troca por "-O.jpg" para melhor qualidade
             if (thumb) thumb = thumb.replace(/-[A-Z]\.jpg/, '-O.jpg');
+            const varMap = {};
+            for (const v of (b.variations || [])) {
+              varMap[v.id] = (v.attribute_combinations || []).map(a => a.value_name).join(' / ') || `Var. ${v.id}`;
+            }
             itemMap[b.id] = {
-              thumbnail: thumb,
-              sku:       sku !== '—' ? sku : null,
-              permalink: b.permalink || null,
+              thumbnail:  thumb,
+              sku:        sku !== '—' ? sku : null,
+              permalink:  b.permalink || null,
+              variations: varMap,
             };
           }
         }
@@ -831,8 +836,12 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
       const grupo = porShipment.get(sid);
       for (const i of (order.order_items || [])) {
         const extra = itemMap[i.item.id] || {};
+        const variacaoNome = (extra.variations && i.item.variation_id)
+          ? (extra.variations[i.item.variation_id] || null)
+          : null;
         grupo.itensLista.push({
           titulo:     i.item.title,
+          variacao:   variacaoNome,
           sku:        extra.sku || '—',
           thumbnail:  extra.thumbnail || null,
           permalink:  extra.permalink || null,

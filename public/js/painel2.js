@@ -560,7 +560,7 @@ async function carregarVendas() {
         <td>${v.comprador}</td>
         <td class="col-num venda-qtd">${item0.quantidade ?? ''}</td>
         <td class="td-sku">${item0.sku || '—'}</td>
-        <td class="td-titulo" title="${item0.titulo || ''}">${item0.titulo || '—'}</td>
+        <td class="td-titulo" title="${item0.titulo || ''}${item0.variacao ? ` (${item0.variacao})` : ''}">${item0.titulo || '—'}${item0.variacao ? `<span class="venda-variacao"> — ${item0.variacao}</span>` : ''}</td>
         <td><span class="badge-deposito ${bStatus}">${v.statusLabel}</span></td>
         <td><a class="btn-etiqueta" href="/api/ml/etiqueta/${v.shipmentId}?conta=${v.conta}" target="_blank">${v.acaoLabel}</a></td>
         <td><button class="btn-atender" onclick="marcarAtendido('${v.shipmentId}', this, vendaCache['${v.shipmentId}'])" title="Marcar como atendido">✔</button></td>
@@ -583,7 +583,7 @@ async function carregarVendas() {
           <td colspan="2" class="venda-sub-mais">↳ mesmo pedido</td>
           <td class="col-num venda-qtd">${item.quantidade ?? ''}</td>
           <td class="td-sku">${item.sku || '—'}</td>
-          <td class="td-titulo" title="${item.titulo || ''}">${item.titulo || '—'}</td>
+          <td class="td-titulo" title="${item.titulo || ''}${item.variacao ? ` (${item.variacao})` : ''}">${item.titulo || '—'}${item.variacao ? `<span class="venda-variacao"> — ${item.variacao}</span>` : ''}</td>
           <td colspan="3"></td>
         `;
         tbody.appendChild(trSub);
