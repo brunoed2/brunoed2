@@ -1680,11 +1680,17 @@ app.get('/api/notas/buscar', async (req, res) => {
     // 656 = consumo indevido, 137/138 = ok — em todos os casos mantém a lista existente
     if (cStat !== '137' && cStat !== '138') {
       addLog(`Notas: SEFAZ ${cStat} — ${xMotivo}`, 'warn');
+      // Salva o ultNSU retornado pela SEFAZ mesmo no erro, para próxima consulta partir dali
+      if (novoNSU && novoNSU !== '000000000000000') {
+        data.notas.ultNSU = novoNSU;
+        saveData(data);
+        addLog(`Notas: ultNSU atualizado para ${novoNSU} após erro ${cStat}`, 'info');
+      }
       return res.json({
         aviso: `SEFAZ ${cStat}: ${xMotivo || 'Erro desconhecido'}`,
-        notas: [],
+        novas: [],
         novasCount: 0,
-        ultNSU: n.ultNSU || '0',
+        ultNSU: novoNSU || n.ultNSU || '0',
         maxNSU: n.maxNSU || '0',
       });
     }
