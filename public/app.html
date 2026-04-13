@@ -40,6 +40,14 @@
 
     <!-- Conteúdo principal -->
     <main class="content">
+      <!-- Topbar visível só no mobile -->
+      <div class="mobile-topbar">
+        <div class="mobile-conta-seletor">
+          <button class="conta-btn active" data-conta="1" onclick="trocarConta('1')">Conta 1</button>
+          <button class="conta-btn" data-conta="2" onclick="trocarConta('2')">Conta 2</button>
+        </div>
+        <button class="btn-sair" onclick="sair()" style="width:auto;padding:7px 14px;font-size:13px">Sair</button>
+      </div>
 
       <!-- ── Aba: Ads ── -->
       <section id="tab-ads" class="tab">
@@ -235,19 +243,19 @@
         <div class="filtros-bar">
           <input type="text" id="filtro-sku" class="filtro-sku-input" placeholder="Filtrar por SKU..." oninput="renderizarTabela()">
           <input type="text" id="filtro-titulo" class="filtro-sku-input" placeholder="Filtrar por título..." oninput="renderizarTabela()">
-          <span class="filtro-sep">|</span>
-          <label class="filtro-label">Depósito:</label>
-          <button class="filtro-btn active" data-filtro="deposito" data-valor="todos">Todos</button>
-          <button class="filtro-btn" data-filtro="deposito" data-valor="fulfillment">Full</button>
-          <button class="filtro-btn" data-filtro="deposito" data-valor="proprio">Próprio</button>
-
-          <span class="filtro-sep">|</span>
-
-          <label class="filtro-label">Status:</label>
-          <button class="filtro-btn active" data-filtro="status" data-valor="todos">Todos</button>
-          <button class="filtro-btn" data-filtro="status" data-valor="active">Ativos</button>
-          <button class="filtro-btn" data-filtro="status" data-valor="paused">Pausados</button>
-          <button class="filtro-btn" data-filtro="status" data-valor="closed">Encerrados</button>
+          <div class="filtros-bar-row">
+            <label class="filtro-label">Depósito:</label>
+            <button class="filtro-btn active" data-filtro="deposito" data-valor="todos">Todos</button>
+            <button class="filtro-btn" data-filtro="deposito" data-valor="fulfillment">Full</button>
+            <button class="filtro-btn" data-filtro="deposito" data-valor="proprio">Próprio</button>
+          </div>
+          <div class="filtros-bar-row">
+            <label class="filtro-label">Status:</label>
+            <button class="filtro-btn active" data-filtro="status" data-valor="todos">Todos</button>
+            <button class="filtro-btn" data-filtro="status" data-valor="active">Ativos</button>
+            <button class="filtro-btn" data-filtro="status" data-valor="paused">Pausados</button>
+            <button class="filtro-btn" data-filtro="status" data-valor="closed">Encerrados</button>
+          </div>
         </div>
 
         <div class="tabela-container">
@@ -399,7 +407,7 @@
   <script src="/js/app-v2.js"></script>
   <script src="/js/conexao.js"></script>
   <script src="/js/shopee.js?v=118"></script>
-  <script src="/js/notas.js?v=126"></script>
-  <div id="version-badge">v126</div>
+  <script src="/js/notas.js?v=127"></script>
+  <div id="version-badge">v127</div>
 </body>
 </html>

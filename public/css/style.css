@@ -952,14 +952,193 @@ code {
 }
 .btn-sm:hover { background: #3d4264; color: #fff; }
 
-/* ── Responsivo ─────────────────────────────────────────────── */
+/* ── Responsivo — Mobile ────────────────────────────────────── */
 
-@media (max-width: 700px) {
+@media (max-width: 768px) {
+
+  /* Sidebar vira barra de navegação inferior */
   .sidebar {
-    width: 60px;
-    padding: 16px 0;
+    width: 100%;
+    height: auto;
+    position: fixed;
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    flex-direction: row;
+    align-items: stretch;
+    padding: 0;
+    z-index: 100;
+    border-top: 1px solid #222;
   }
-  .sidebar-logo, .nav-btn span, .sidebar-footer { display: none; }
-  .nav-btn { text-align: center; font-size: 20px; }
-  .content { margin-left: 60px; padding: 24px 20px; }
+
+  .sidebar-logo { display: none; }
+
+  .conta-seletor {
+    display: none; /* movido para topo do content */
+  }
+
+  .sidebar nav {
+    flex-direction: row;
+    flex: 1;
+    padding: 0;
+    gap: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .sidebar nav::-webkit-scrollbar { display: none; }
+
+  .nav-btn {
+    flex: 1;
+    min-width: 60px;
+    text-align: center;
+    padding: 10px 4px 8px;
+    font-size: 10px;
+    border-radius: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    color: #666;
+    white-space: nowrap;
+  }
+  .nav-btn.active {
+    background: #1a1a1a;
+    color: #fff;
+    border-top: 2px solid #fff;
+  }
+
+  .sidebar-footer { display: none; }
+
+  /* Botão sair aparece no topo do content */
+  .mobile-topbar {
+    display: flex !important;
+  }
+
+  /* Conteúdo ocupa tudo */
+  .content {
+    margin-left: 0;
+    padding: 16px 14px 80px; /* espaço para navbar inferior */
+  }
+
+  h1 { font-size: 20px; }
+  .subtitle { font-size: 13px; margin-bottom: 16px; }
+
+  /* Topbar mobile */
+  .mobile-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+    gap: 8px;
+  }
+
+  .mobile-conta-seletor {
+    display: flex !important;
+    gap: 6px;
+    flex: 1;
+  }
+
+  /* Cards */
+  .card { padding: 18px 16px; }
+
+  /* Filtros em coluna */
+  .filtros-bar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .filtros-bar .filtro-sku-input {
+    width: 100%;
+  }
+  .filtros-bar .filtro-sku-input:focus {
+    width: 100%;
+  }
+
+  .filtros-bar-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+  }
+
+  .filtro-sep { display: none; }
+
+  /* Tabela topo */
+  .tabela-topo {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 14px;
+  }
+
+  .tabela-topo > div,
+  .tabela-topo > span {
+    width: 100%;
+  }
+
+  .tabela-topo > div {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .tabela-topo .btn-secondary,
+  .tabela-topo .btn-primary {
+    flex: 1;
+    min-width: 120px;
+    text-align: center;
+    padding: 10px 12px;
+    font-size: 13px;
+  }
+
+  /* Botões maiores para toque */
+  .btn-primary, .btn-secondary {
+    padding: 12px 18px;
+    font-size: 14px;
+    min-height: 44px;
+  }
+
+  .btn-row {
+    flex-direction: column;
+  }
+  .btn-row .btn-primary,
+  .btn-row .btn-secondary {
+    width: 100%;
+    text-align: center;
+  }
+
+  /* Layout Conexão */
+  .cx-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .cx-log-col {
+    min-height: 260px;
+    max-height: 40vh;
+  }
+
+  /* Imagens menores */
+  .venda-thumb { width: 56px !important; height: 56px !important; }
+  .td-thumb { width: 66px !important; }
+
+  /* Textos de tabela menores */
+  .tabela { font-size: 13px; }
+  .tabela th { font-size: 11px; padding: 10px 10px; }
+  .tabela td { padding: 10px 10px; }
+  .td-titulo { max-width: 160px; }
+
+  /* Status bar */
+  .status-bar { font-size: 12px; padding: 6px 12px; }
+
+  /* version badge acima da navbar */
+  #version-badge { bottom: 68px; }
+
+  /* Aba conexão */
+  .cx-status-box { font-size: 13px; }
 }
+
+/* Topbar mobile — oculto no desktop */
+.mobile-topbar { display: none; }
+.mobile-conta-seletor { display: none; }
