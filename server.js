@@ -836,9 +836,13 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
       const grupo = porShipment.get(sid);
       for (const i of (order.order_items || [])) {
         const extra = itemMap[i.item.id] || {};
-        const variacaoNome = (extra.variations && i.item.variation_id)
-          ? (extra.variations[i.item.variation_id] || null)
-          : null;
+        // Tenta variation_attributes direto da ordem (mais confiável)
+        let variacaoNome = null;
+        if (i.item.variation_attributes && i.item.variation_attributes.length > 0) {
+          variacaoNome = i.item.variation_attributes.map(a => a.value_name).join(' / ');
+        } else if (extra.variations && i.item.variation_id) {
+          variacaoNome = extra.variations[i.item.variation_id] || null;
+        }
         grupo.itensLista.push({
           titulo:     i.item.title,
           variacao:   variacaoNome,
