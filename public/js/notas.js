@@ -103,6 +103,17 @@ async function notasEnviarCertificado() {
   }
 }
 
+async function notasLimparEBuscar() {
+  if (!confirm('Isso apagará a lista salva e buscará tudo do zero. Continuar?')) return;
+  const tbody = document.getElementById('tabela-notas-body');
+  const tabela = document.getElementById('tabela-notas');
+  tbody.innerHTML = '';
+  tabela.style.display = 'none';
+  document.getElementById('notas-total').textContent = '';
+  await fetch('/api/notas/limpar', { method: 'POST' });
+  await notasBuscar();
+}
+
 async function notasBuscar() {
   const loading = document.getElementById('notas-loading');
   const erroEl  = document.getElementById('notas-erro');

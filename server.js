@@ -1607,6 +1607,7 @@ function parsearRespostaSefaz(xmlResp) {
 function extrairCampos(xmlDoc) {
   const get = tag => xmlDoc.match(new RegExp(`<${tag}>([^<]*)<\\/${tag}>`))?.[1] || '';
   const emitBloco = xmlDoc.match(/<emit>([\s\S]*?)<\/emit>/)?.[1] || '';
+  const destBloco = xmlDoc.match(/<dest>([\s\S]*?)<\/dest>/)?.[1] || '';
   const getBloco  = (src, tag) => src.match(new RegExp(`<${tag}>([^<]*)<\\/${tag}>`))?.[1] || '';
   return {
     chNFe:     get('chNFe') || (xmlDoc.match(/Id="NFe(\d{44})"/) || [])[1] || '',
@@ -1615,7 +1616,8 @@ function extrairCampos(xmlDoc) {
     dhEmi:     get('dhEmi') || get('dEmi'),
     vNF:       get('vNF'),
     xNome:     emitBloco ? getBloco(emitBloco, 'xNome') : get('xNome'),
-    CNPJ_emit: emitBloco ? getBloco(emitBloco, 'CNPJ')  : get('CNPJ'),
+    CNPJ_emit: emitBloco ? getBloco(emitBloco, 'CNPJ')  : '',
+    CNPJ_dest: destBloco ? getBloco(destBloco, 'CNPJ')  : '',
     tpNF:      get('tpNF'),
     xSitNFe:   get('xSitNFe'),
   };
@@ -1651,6 +1653,13 @@ app.get('/api/notas/lista', (req, res) => {
   const data = loadData();
   const n    = data.notas || {};
   res.json({ notas: n.lista || [], ultNSU: n.ultNSU || '0', maxNSU: n.maxNSU || '0' });
+});
+
+app.post('/api/notas/limpar', (req, res) => {
+  const data = loadData();
+  if (data.notas) { data.notas.lista = []; data.notas.ultNSU = '0'; data.notas.maxNSU = '0'; }
+  saveData(data);
+  res.json({ ok: true });
 });
 
 app.get('/api/notas/buscar', async (req, res) => {
@@ -1691,6 +1700,13 @@ app.get('/api/notas/buscar', async (req, res) => {
         const buf    = Buffer.from(doc.zip, 'base64');
         const xmlDoc = zlib.gunzipSync(buf).toString('utf8');
         const campos = extrairCampos(xmlDoc);
+
+        // Mantém apenas notas onde o CNPJ consultado é o DESTINATÁRIO (compras)
+        // Para documentos de resumo (resNFe), tpNF='0' indica entrada
+        const ehCompra = campos.CNPJ_dest === n.cnpj ||
+          (campos.tpNF === '0' && campos.CNPJ_emit !== n.cnpj);
+        if (!ehCompra) continue;
+
         campos.nsu    = doc.nsu;
         campos.schema = doc.schema;
         campos.tipo   = doc.schema.startsWith('resNFe') ? 'resumo' : 'completa';
