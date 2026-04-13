@@ -1647,13 +1647,20 @@ app.get('/api/notas/config', (req, res) => {
   res.json({ cnpj: n.cnpj || null, titular: n.titular || null, cert_nome: n.cert_nome || null });
 });
 
+app.get('/api/notas/lista', (req, res) => {
+  const data = loadData();
+  const n    = data.notas || {};
+  res.json({ notas: n.lista || [], ultNSU: n.ultNSU || '0', maxNSU: n.maxNSU || '0' });
+});
+
 app.get('/api/notas/buscar', async (req, res) => {
   const data = loadData();
   const n    = data.notas || {};
   if (!n.cert_b64) return res.json({ error: 'Certificado não configurado. Faça o upload do certificado digital.' });
 
-  const ultNSU = req.query.ultNSU || '0';
-  const cUF    = req.query.cUF    || '35';
+  // Usa o NSU salvo como ponto de partida (ignora query param — o servidor controla)
+  const ultNSU = n.ultNSU || '0';
+  const cUF    = req.query.cUF || '35';
 
   try {
     const pfxBuffer = Buffer.from(n.cert_b64, 'base64');
@@ -1661,13 +1668,25 @@ app.get('/api/notas/buscar', async (req, res) => {
     const xmlResp = await queryNFeDistribuicao(pfxBuffer, n.senha, n.cnpj, cUF, ultNSU);
     const { cStat, xMotivo, ultNSU: novoNSU, maxNSU, docs } = parsearRespostaSefaz(xmlResp);
 
+    // 656 = consumo indevido, 137/138 = ok — em todos os casos mantém a lista existente
     if (cStat !== '137' && cStat !== '138') {
       addLog(`Notas: SEFAZ ${cStat} — ${xMotivo}`, 'warn');
-      return res.json({ error: `SEFAZ ${cStat}: ${xMotivo || 'Erro desconhecido'}` });
+      return res.json({
+        aviso: `SEFAZ ${cStat}: ${xMotivo || 'Erro desconhecido'}`,
+        notas: [],
+        novasCount: 0,
+        ultNSU: n.ultNSU || '0',
+        maxNSU: n.maxNSU || '0',
+      });
     }
 
-    const notas = [];
+    // Monta mapa das notas já salvas por NSU para deduplicar
+    const listaExistente = n.lista || [];
+    const nsuSet = new Set(listaExistente.map(x => x.nsu));
+
+    const novasNotas = [];
     for (const doc of docs) {
+      if (nsuSet.has(doc.nsu)) continue; // já temos esta nota
       try {
         const buf    = Buffer.from(doc.zip, 'base64');
         const xmlDoc = zlib.gunzipSync(buf).toString('utf8');
@@ -1675,14 +1694,29 @@ app.get('/api/notas/buscar', async (req, res) => {
         campos.nsu    = doc.nsu;
         campos.schema = doc.schema;
         campos.tipo   = doc.schema.startsWith('resNFe') ? 'resumo' : 'completa';
-        notas.push(campos);
+        novasNotas.push(campos);
       } catch (e) {
         addLog(`Notas: erro ao processar NSU ${doc.nsu}: ${e.message}`, 'warn');
       }
     }
 
-    addLog(`Notas: ${notas.length} doc(s) retornado(s). NSU até ${novoNSU}`, 'info');
-    res.json({ ok: true, notas, ultNSU: novoNSU, maxNSU, total: notas.length, status: xMotivo });
+    // Persiste: adiciona novas ao início (mais recentes primeiro) e atualiza NSU
+    const listaAtualizada = [...novasNotas, ...listaExistente];
+    data.notas.lista   = listaAtualizada;
+    data.notas.ultNSU  = novoNSU || ultNSU;
+    data.notas.maxNSU  = maxNSU  || n.maxNSU || '0';
+    saveData(data);
+
+    addLog(`Notas: ${novasNotas.length} nova(s). Total: ${listaAtualizada.length}. NSU até ${novoNSU}`, 'info');
+    res.json({
+      ok: true,
+      novas: novasNotas,
+      novasCount: novasNotas.length,
+      ultNSU: novoNSU,
+      maxNSU,
+      total: listaAtualizada.length,
+      status: xMotivo,
+    });
   } catch (err) {
     addLog(`Notas: erro — ${err.message}`, 'erro');
     res.json({ error: `Erro ao consultar SEFAZ: ${err.message}` });

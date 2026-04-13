@@ -1,16 +1,5 @@
 // ── Notas de Entrada (SEFAZ NF-e) ──────────────────────────────
 
-let notasUltNSU = '0';
-let todasNotas  = [];
-
-const UF_NOMES = {
-  '11':'RO','12':'AC','13':'AM','14':'RR','15':'PA','16':'AP','17':'TO',
-  '21':'MA','22':'PI','23':'CE','24':'RN','25':'PB','26':'PE','27':'AL','28':'SE','29':'BA',
-  '31':'MG','32':'ES','33':'RJ','35':'SP',
-  '41':'PR','42':'SC','43':'RS',
-  '50':'MS','51':'MT','52':'GO','53':'DF',
-};
-
 function notasFormatarCnpj(c) {
   if (!c || c.length !== 14) return c || '—';
   return `${c.slice(0,2)}.${c.slice(2,5)}.${c.slice(5,8)}/${c.slice(8,12)}-${c.slice(12)}`;
@@ -28,6 +17,31 @@ function notasFormatarValor(v) {
   return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
+function notasRenderirLinha(n) {
+  const urlDanfe = n.chNFe
+    ? `https://www.nfe.fazenda.gov.br/portal/consultaRecaptcha.aspx?tipoConsulta=completa&tipoConteudo=7PhJ+gAVw2g=&nfe=${n.chNFe}`
+    : null;
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td class="col-num" style="font-size:11px;color:#94a3b8">${n.nsu || '—'}</td>
+    <td class="col-num">${n.nNF || '—'}</td>
+    <td>${notasFormatarData(n.dhEmi)}</td>
+    <td class="td-titulo">${n.xNome || '—'}</td>
+    <td style="font-size:12px">${n.CNPJ_emit ? notasFormatarCnpj(n.CNPJ_emit) : '—'}</td>
+    <td class="col-num">${notasFormatarValor(n.vNF)}</td>
+    <td>${n.tipo === 'resumo'
+      ? '<span class="badge-deposito" style="background:#e2e8f0;color:#475569;font-size:11px">Resumo</span>'
+      : '<span class="badge-deposito badge-ativo" style="font-size:11px">Completa</span>'}</td>
+    <td>${urlDanfe ? `<a href="${urlDanfe}" target="_blank" class="btn-sm">🔍 Ver</a>` : '—'}</td>
+  `;
+  return tr;
+}
+
+function notasAtualizarTotal(total) {
+  document.getElementById('notas-total').textContent =
+    `${total} nota${total !== 1 ? 's' : ''} encontrada${total !== 1 ? 's' : ''}`;
+}
+
 async function notasCarregarConfig() {
   try {
     const d = await fetch('/api/notas/config').then(r => r.json());
@@ -38,6 +52,20 @@ async function notasCarregarConfig() {
     } else {
       box.style.display = 'none';
     }
+  } catch {}
+}
+
+async function notasCarregarLista() {
+  const tabela = document.getElementById('tabela-notas');
+  const tbody  = document.getElementById('tabela-notas-body');
+  try {
+    const d = await fetch('/api/notas/lista').then(r => r.json());
+    const notas = d.notas || [];
+    if (!notas.length) return;
+    tbody.innerHTML = '';
+    notas.forEach(n => tbody.appendChild(notasRenderirLinha(n)));
+    tabela.style.display = 'table';
+    notasAtualizarTotal(notas.length);
   } catch {}
 }
 
@@ -75,81 +103,47 @@ async function notasEnviarCertificado() {
   }
 }
 
-async function notasBuscar(mais = false) {
+async function notasBuscar() {
   const loading = document.getElementById('notas-loading');
   const erroEl  = document.getElementById('notas-erro');
-  const totalEl = document.getElementById('notas-total');
   const tabela  = document.getElementById('tabela-notas');
   const tbody   = document.getElementById('tabela-notas-body');
-  const btnMais = document.getElementById('notas-btn-mais');
   const cUF     = document.getElementById('notas-uf').value;
-
-  if (!mais) {
-    notasUltNSU = '0';
-    todasNotas  = [];
-    tbody.innerHTML = '';
-    tabela.style.display = 'none';
-    btnMais.style.display = 'none';
-  }
 
   loading.style.display = 'block';
   erroEl.style.display  = 'none';
 
   try {
-    const d = await fetch(`/api/notas/buscar?ultNSU=${notasUltNSU}&cUF=${cUF}`).then(r => r.json());
+    const d = await fetch(`/api/notas/buscar?cUF=${cUF}`).then(r => r.json());
     loading.style.display = 'none';
 
     if (d.error) {
       erroEl.textContent = d.error; erroEl.style.display = 'block'; return;
     }
 
-    const novas = d.notas || [];
-    todasNotas.push(...novas);
-    notasUltNSU = d.ultNSU || notasUltNSU;
-
-    const tot = todasNotas.length;
-    totalEl.textContent = `${tot} nota${tot !== 1 ? 's' : ''} encontrada${tot !== 1 ? 's' : ''}`;
-
-    if (!tot) {
-      erroEl.textContent = 'Nenhuma nota encontrada para este CNPJ.';
-      erroEl.style.display = 'block'; return;
+    if (d.aviso) {
+      erroEl.textContent = d.aviso; erroEl.style.display = 'block';
+      // Mantém tabela como está — não limpa
+      return;
     }
 
-    // Renderiza a partir das novas (se carregando mais) ou reconstrói tudo
-    if (!mais) tbody.innerHTML = '';
-    for (const n of novas) {
-      const tr = document.createElement('tr');
-      const urlDanfe = n.chNFe
-        ? `https://www.nfe.fazenda.gov.br/portal/consultaRecaptcha.aspx?tipoConsulta=completa&tipoConteudo=7PhJ+gAVw2g=&nfe=${n.chNFe}`
-        : null;
-      tr.innerHTML = `
-        <td class="col-num" style="font-size:11px;color:#94a3b8">${n.nsu || '—'}</td>
-        <td class="col-num">${n.nNF || '—'}</td>
-        <td>${notasFormatarData(n.dhEmi)}</td>
-        <td class="td-titulo">${n.xNome || '—'}</td>
-        <td style="font-size:12px">${n.CNPJ_emit ? notasFormatarCnpj(n.CNPJ_emit) : '—'}</td>
-        <td class="col-num">${notasFormatarValor(n.vNF)}</td>
-        <td>${n.tipo === 'resumo'
-          ? '<span class="badge-deposito" style="background:#e2e8f0;color:#475569;font-size:11px">Resumo</span>'
-          : '<span class="badge-deposito badge-ativo" style="font-size:11px">Completa</span>'}</td>
-        <td>${urlDanfe ? `<a href="${urlDanfe}" target="_blank" class="btn-sm">🔍 Ver</a>` : '—'}</td>
-      `;
-      tbody.appendChild(tr);
-    }
-
-    tabela.style.display = 'table';
-
-    // Mostra "carregar mais" se ainda há documentos
-    const maxNSU = parseInt(d.maxNSU || '0');
-    const ult    = parseInt(notasUltNSU || '0');
-    if (novas.length >= 50 || ult < maxNSU) {
-      btnMais.style.display = 'inline-block';
+    const novas = d.novas || [];
+    if (novas.length === 0) {
+      erroEl.textContent = 'Nenhuma nota nova encontrada.';
+      erroEl.style.color = '#64748b';
+      erroEl.style.display = 'block';
     } else {
-      btnMais.style.display = 'none';
+      erroEl.style.display = 'none';
+      // Insere novas no topo da tabela
+      novas.forEach(n => tbody.insertBefore(notasRenderirLinha(n), tbody.firstChild));
+      tabela.style.display = 'table';
     }
+
+    notasAtualizarTotal(d.total || parseInt(document.getElementById('notas-total').textContent) || 0);
   } catch {
     loading.style.display = 'none';
     erroEl.textContent = 'Erro ao consultar SEFAZ.';
+    erroEl.style.color = '#c00';
     erroEl.style.display = 'block';
   }
 }
@@ -159,6 +153,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const aba = document.getElementById('tab-notas');
     if (aba && aba.classList.contains('active')) {
       notasCarregarConfig();
+      notasCarregarLista();
       observer.disconnect();
     }
   });
