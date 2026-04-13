@@ -1656,7 +1656,30 @@ app.get('/api/notas/config', (req, res) => {
   const data = loadData();
   const num  = req.query.conta || data.conta_ativa;
   const n    = (data.notas_contas || {})[num] || {};
-  res.json({ cnpj: n.cnpj || null, titular: n.titular || null, cert_nome: n.cert_nome || null });
+  res.json({
+    cnpj: n.cnpj || null,
+    titular: n.titular || null,
+    cert_nome: n.cert_nome || null,
+    ultimaRejeicao656: n.ultimaRejeicao656 || null,
+  });
+});
+
+app.get('/api/notas/xml/:nsu', (req, res) => {
+  const data = loadData();
+  const num  = req.query.conta || data.conta_ativa;
+  const n    = (data.notas_contas || {})[num] || {};
+  const nota = (n.lista || []).find(x => x.nsu === req.params.nsu);
+  if (!nota) return res.status(404).json({ error: 'Nota não encontrada' });
+  if (!nota.zip) return res.status(404).json({ error: 'XML não disponível para esta nota' });
+  try {
+    const xml = zlib.gunzipSync(Buffer.from(nota.zip, 'base64'));
+    const nomeArquivo = `NFe_${nota.chNFe || nota.nsu}.xml`;
+    res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${nomeArquivo}"`);
+    res.send(xml);
+  } catch {
+    res.status(500).json({ error: 'Erro ao descompactar XML' });
+  }
 });
 
 app.get('/api/notas/lista', (req, res) => {
@@ -1707,9 +1730,9 @@ app.get('/api/notas/buscar', async (req, res) => {
       if (cStat !== '137' && cStat !== '138') {
         addLog(`Notas conta ${num}: SEFAZ ${cStat} — ${xMotivo}`, 'warn');
         aviso = `SEFAZ ${cStat}: ${xMotivo || 'Erro desconhecido'}`;
-        // Salva NSU mesmo no erro para próxima consulta partir dali
         n.ultNSU = nsuAtual;
         n.maxNSU = maxNSUFinal;
+        if (cStat === '656') n.ultimaRejeicao656 = Date.now();
         saveData(data);
         break;
       }
@@ -1729,6 +1752,7 @@ app.get('/api/notas/buscar', async (req, res) => {
           campos.nsu    = doc.nsu;
           campos.schema = doc.schema;
           campos.tipo   = doc.schema.startsWith('resNFe') ? 'resumo' : 'completa';
+          campos.zip    = doc.zip; // base64 gzip — para download do XML
           todasNovas.push(campos);
         } catch (e) {
           addLog(`Notas conta ${num}: erro NSU ${doc.nsu}: ${e.message}`, 'warn');

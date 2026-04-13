@@ -1,5 +1,7 @@
 // ── Notas de Entrada (SEFAZ NF-e) ──────────────────────────────
 
+let notasCountdownInterval = null;
+
 function notasContaAtual() {
   return document.querySelector('.conta-btn.active')?.dataset?.conta || '1';
 }
@@ -21,10 +23,38 @@ function notasFormatarValor(v) {
   return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
+function notasIniciarCountdown(ultimaRejeicao656) {
+  if (notasCountdownInterval) clearInterval(notasCountdownInterval);
+  const boxEl = document.getElementById('notas-countdown');
+  if (!boxEl) return;
+
+  const UMA_HORA = 60 * 60 * 1000;
+
+  function atualizar() {
+    const agora     = Date.now();
+    const liberadoEm = ultimaRejeicao656 + UMA_HORA;
+    const restante  = liberadoEm - agora;
+
+    if (restante <= 0) {
+      boxEl.style.display = 'none';
+      clearInterval(notasCountdownInterval);
+      notasCountdownInterval = null;
+      return;
+    }
+
+    const min = Math.floor(restante / 60000);
+    const seg = Math.floor((restante % 60000) / 1000);
+    boxEl.textContent = `⏳ Próxima consulta disponível em ${min}m ${seg}s`;
+    boxEl.style.display = 'block';
+  }
+
+  atualizar();
+  notasCountdownInterval = setInterval(atualizar, 1000);
+}
+
 function notasRenderirLinha(n) {
-  const urlDanfe = n.chNFe
-    ? `https://www.nfe.fazenda.gov.br/portal/consultaRecaptcha.aspx?tipoConsulta=completa&tipoConteudo=7PhJ+gAVw2g=&nfe=${n.chNFe}`
-    : null;
+  const conta = notasContaAtual();
+  const urlXml = n.zip ? `/api/notas/xml/${n.nsu}?conta=${conta}` : null;
   const tr = document.createElement('tr');
   tr.innerHTML = `
     <td class="col-num" style="font-size:11px;color:#94a3b8">${n.nsu || '—'}</td>
@@ -36,7 +66,9 @@ function notasRenderirLinha(n) {
     <td>${n.tipo === 'resumo'
       ? '<span class="badge-deposito" style="background:#e2e8f0;color:#475569;font-size:11px">Resumo</span>'
       : '<span class="badge-deposito badge-ativo" style="font-size:11px">Completa</span>'}</td>
-    <td>${urlDanfe ? `<a href="${urlDanfe}" target="_blank" class="btn-sm">🔍 Ver</a>` : '—'}</td>
+    <td style="display:flex;gap:4px">
+      ${urlXml ? `<a href="${urlXml}" download class="btn-sm" title="Baixar XML">⬇ XML</a>` : '<span style="color:#cbd5e1;font-size:11px">sem XML</span>'}
+    </td>
   `;
   return tr;
 }
@@ -57,6 +89,14 @@ async function notasCarregarConfig() {
     } else {
       box.textContent = '';
       box.style.display = 'none';
+    }
+    // Inicia countdown se há rejeição 656 recente (< 1h)
+    if (d.ultimaRejeicao656 && (Date.now() - d.ultimaRejeicao656) < 60 * 60 * 1000) {
+      notasIniciarCountdown(d.ultimaRejeicao656);
+    } else {
+      if (notasCountdownInterval) clearInterval(notasCountdownInterval);
+      const boxEl = document.getElementById('notas-countdown');
+      if (boxEl) boxEl.style.display = 'none';
     }
   } catch {}
 }
@@ -147,18 +187,20 @@ async function notasBuscar() {
 
     if (d.aviso) {
       erroEl.textContent = d.aviso; erroEl.style.color = '#92400e'; erroEl.style.display = 'block';
-      return;
+      // Recarrega config para iniciar countdown
+      await notasCarregarConfig();
+    } else {
+      erroEl.style.display = 'none';
     }
 
     const novas = d.novas || [];
-    if (novas.length === 0) {
+    if (novas.length > 0) {
+      novas.forEach(n => tbody.insertBefore(notasRenderirLinha(n), tbody.firstChild));
+      tabela.style.display = 'table';
+    } else if (!d.aviso) {
       erroEl.textContent = 'Nenhuma nota nova encontrada.';
       erroEl.style.color = '#64748b';
       erroEl.style.display = 'block';
-    } else {
-      erroEl.style.display = 'none';
-      novas.forEach(n => tbody.insertBefore(notasRenderirLinha(n), tbody.firstChild));
-      tabela.style.display = 'table';
     }
 
     notasAtualizarTotal(d.total || 0);
@@ -170,10 +212,10 @@ async function notasBuscar() {
   }
 }
 
-// Recarrega a aba quando a conta muda
 document.addEventListener('contaMudou', () => {
   const aba = document.getElementById('tab-notas');
   if (aba && aba.classList.contains('active')) {
+    if (notasCountdownInterval) { clearInterval(notasCountdownInterval); notasCountdownInterval = null; }
     notasCarregarConfig();
     notasCarregarLista();
   }
