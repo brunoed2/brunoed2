@@ -1291,7 +1291,93 @@ app.put('/api/ml/estoque/:mlb', async (req, res) => {
   }
 });
 
+// ── Telegram: notificação de novos pedidos ────────────────────
+
+const TELEGRAM_TOKEN   = process.env.TELEGRAM_TOKEN;
+const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+
+async function enviarTelegram(texto) {
+  if (!TELEGRAM_TOKEN || !TELEGRAM_CHAT_ID) return;
+  try {
+    await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
+      chat_id:    TELEGRAM_CHAT_ID,
+      text:       texto,
+      parse_mode: 'HTML',
+    }, { timeout: 8000 });
+  } catch (err) {
+    log('WARN', `Telegram: falha ao enviar mensagem — ${err.message}`);
+  }
+}
+
+// Mantém os shipmentIds já notificados em memória (reseta ao reiniciar)
+const shipmentsNotificados = new Set();
+let telegramPrimeiraVerificacao = true;
+
+async function verificarNovosShipmentsTelegram() {
+  if (!TELEGRAM_TOKEN || !TELEGRAM_CHAT_ID) return;
+  const data = loadData();
+  // Verifica todas as contas configuradas
+  for (const num of ['1', '2']) {
+    const c = data.contas[num];
+    if (!c || !c.access_token) continue;
+    try {
+      // Reutiliza a mesma lógica do endpoint de vendas-etiquetas
+      const resp = await axios.get('https://api.mercadolibre.com/orders/search', {
+        params: { seller: c.user_id, 'order.status': 'paid', sort: 'date_desc', limit: 50 },
+        headers: { Authorization: `Bearer ${c.access_token}` },
+        timeout: 15000,
+      });
+      const orders = resp.data.results || [];
+      const LABEL_STATUSES    = new Set(['handling', 'ready_to_ship']);
+      const LABEL_SUBSTATUSES = new Set(['ready_to_print', 'printed']);
+      const STATUS_PT = { handling: 'Preparando', ready_to_ship: 'Aguardando coleta' };
+
+      for (const order of orders) {
+        if (!order.shipping?.id) continue;
+        const sid = String(order.shipping.id);
+        if (shipmentsNotificados.has(sid)) continue;
+
+        try {
+          const sr = await axios.get(`https://api.mercadolibre.com/shipments/${order.shipping.id}`, {
+            headers: { Authorization: `Bearer ${c.access_token}` }, timeout: 8000,
+          });
+          const shipment = sr.data;
+          const isFull = (shipment.logistic_type || '').includes('fulfillment');
+          if (!LABEL_STATUSES.has(shipment.status) || !LABEL_SUBSTATUSES.has(shipment.substatus) || isFull) {
+            shipmentsNotificados.add(sid); // marca para não checar de novo
+            continue;
+          }
+          shipmentsNotificados.add(sid);
+          if (telegramPrimeiraVerificacao) continue; // não notifica na inicialização
+
+          const itens = (order.order_items || []).map(i => `• ${i.item.title} (x${i.quantity})`).join('\n');
+          const conta = c.nome || `Conta ${num}`;
+          const status = STATUS_PT[shipment.status] || shipment.status;
+          const texto = `🛍 <b>Novo pedido — ${conta}</b>\n` +
+            `Pedido: #${order.id}\n` +
+            `Comprador: ${order.buyer?.nickname || '—'}\n` +
+            `Status: ${status}\n\n${itens}`;
+          await enviarTelegram(texto);
+        } catch {}
+      }
+    } catch (err) {
+      log('WARN', `Telegram monitor conta ${num}: ${err.message}`);
+    }
+  }
+  telegramPrimeiraVerificacao = false;
+}
+
 // ── Inicia o servidor ─────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`Servidor rodando em http://localhost:${PORT}`);
+  // Inicia monitoramento Telegram 10s após subir, depois a cada 60s
+  if (TELEGRAM_TOKEN && TELEGRAM_CHAT_ID) {
+    log('INFO', 'Telegram: monitoramento de pedidos ativado');
+    setTimeout(() => {
+      verificarNovosShipmentsTelegram();
+      setInterval(verificarNovosShipmentsTelegram, 60_000);
+    }, 10_000);
+  } else {
+    log('WARN', 'Telegram: TELEGRAM_TOKEN ou TELEGRAM_CHAT_ID não configurados');
+  }
 });
