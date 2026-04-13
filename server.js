@@ -1489,6 +1489,188 @@ async function verificarNovosShipmentsTelegram() {
   telegramPrimeiraVerificacao = false;
 }
 
+// ── Notas de Entrada (SEFAZ NF-e) ────────────────────────────────────────────
+
+const multer = require('multer');
+const forge  = require('node-forge');
+const https  = require('https');
+const zlib   = require('zlib');
+
+const uploadMem = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+
+function extrairCnpjDoCert(pfxBuffer, senha) {
+  let p12;
+  try {
+    const p12Asn1 = forge.asn1.fromDer(pfxBuffer.toString('binary'));
+    p12 = forge.pkcs12.pkcs12FromAsn1(p12Asn1, senha);
+  } catch {
+    throw new Error('Senha incorreta ou arquivo PFX inválido');
+  }
+  const certBags = p12.getBags({ bagType: forge.pki.oids.certBag });
+  const bags = certBags[forge.pki.oids.certBag] || [];
+  if (!bags.length) throw new Error('Nenhum certificado encontrado no PFX');
+  const cert = bags[0].cert;
+
+  const cn = cert.subject.getField('CN')?.value || '';
+  const allAttrs = cert.subject.attributes.map(a => String(a.value || '')).join(' ');
+  let cnpj = null;
+  const titular = cn.includes(':') ? cn.split(':')[0].trim() : cn.trim();
+
+  // Padrão ICP-Brasil: "NOME DA EMPRESA:01234567000195"
+  const matchCn = cn.match(/:(\d{14})(\s|$)/);
+  if (matchCn) {
+    cnpj = matchCn[1];
+  } else {
+    const matchAny = allAttrs.match(/\b(\d{14})\b/);
+    if (matchAny) cnpj = matchAny[1];
+  }
+
+  if (!cnpj) {
+    const sanExt = cert.extensions?.find(e => e.name === 'subjectAltName');
+    if (sanExt?.altNames) {
+      for (const alt of sanExt.altNames) {
+        const m = String(alt.value || '').match(/\d{14}/);
+        if (m) { cnpj = m[0]; break; }
+      }
+    }
+  }
+
+  if (!cnpj) throw new Error('CNPJ não encontrado no certificado. Certifique-se de usar um certificado e-CNPJ ICP-Brasil válido.');
+  return { cnpj, titular };
+}
+
+async function queryNFeDistribuicao(pfxBuffer, senha, cnpj, cUF, ultNSU) {
+  const nsuPad = String(ultNSU || 0).padStart(15, '0');
+  const soapBody = `<?xml version="1.0" encoding="UTF-8"?><soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:nfe="http://www.portalfiscal.inf.br/nfe/wsdl/NFeDistribuicaoDFe"><soapenv:Header/><soapenv:Body><nfe:nfeDistDFeInteresse><nfe:nfeDadosMsg><distDFeInt xmlns="http://www.portalfiscal.inf.br/nfe" versao="1.01"><tpAmb>1</tpAmb><cUFAutor>${cUF}</cUFAutor><CNPJ>${cnpj}</CNPJ><distNSU><ultNSU>${nsuPad}</ultNSU></distNSU></distDFeInt></nfe:nfeDadosMsg></nfe:nfeDistDFeInteresse></soapenv:Body></soapenv:Envelope>`;
+
+  return new Promise((resolve, reject) => {
+    const req = https.request({
+      hostname: 'www1.nfe.fazenda.gov.br',
+      port: 443,
+      path: '/NFeDistribuicaoDFe/NFeDistribuicaoDFe.asmx',
+      method: 'POST',
+      pfx: pfxBuffer,
+      passphrase: senha,
+      headers: {
+        'Content-Type': 'text/xml;charset=UTF-8',
+        'SOAPAction': '"http://www.portalfiscal.inf.br/nfe/wsdl/NFeDistribuicaoDFe/nfeDistDFeInteresse"',
+        'Content-Length': Buffer.byteLength(soapBody, 'utf8'),
+      },
+      rejectUnauthorized: false,
+      timeout: 30000,
+    }, (res) => {
+      let data = '';
+      res.on('data', c => data += c);
+      res.on('end', () => resolve(data));
+    });
+    req.on('error', reject);
+    req.on('timeout', () => { req.destroy(); reject(new Error('Timeout ao consultar SEFAZ (30s)')); });
+    req.write(soapBody);
+    req.end();
+  });
+}
+
+function parsearRespostaSefaz(xmlResp) {
+  const get = tag => xmlResp.match(new RegExp(`<${tag}>([^<]*)<\\/${tag}>`))?.[1];
+  const cStat   = get('cStat');
+  const xMotivo = get('xMotivo');
+  const ultNSU  = get('ultNSU');
+  const maxNSU  = get('maxNSU');
+
+  const docs = [];
+  const re = /<docZip[^>]*NSU="(\d+)"[^>]*schema="([^"]*)"[^>]*>([\s\S]+?)<\/docZip>/g;
+  let m;
+  while ((m = re.exec(xmlResp)) !== null) {
+    docs.push({ nsu: m[1], schema: m[2], zip: m[3].trim() });
+  }
+  return { cStat, xMotivo, ultNSU, maxNSU, docs };
+}
+
+function extrairCampos(xmlDoc) {
+  const get = tag => xmlDoc.match(new RegExp(`<${tag}>([^<]*)<\\/${tag}>`))?.[1] || '';
+  const emitBloco = xmlDoc.match(/<emit>([\s\S]*?)<\/emit>/)?.[1] || '';
+  const getBloco  = (src, tag) => src.match(new RegExp(`<${tag}>([^<]*)<\\/${tag}>`))?.[1] || '';
+  return {
+    chNFe:     get('chNFe') || (xmlDoc.match(/Id="NFe(\d{44})"/) || [])[1] || '',
+    nNF:       get('nNF'),
+    serie:     get('serie'),
+    dhEmi:     get('dhEmi') || get('dEmi'),
+    vNF:       get('vNF'),
+    xNome:     emitBloco ? getBloco(emitBloco, 'xNome') : get('xNome'),
+    CNPJ_emit: emitBloco ? getBloco(emitBloco, 'CNPJ')  : get('CNPJ'),
+    tpNF:      get('tpNF'),
+    xSitNFe:   get('xSitNFe'),
+  };
+}
+
+app.post('/api/notas/certificado', uploadMem.single('cert'), (req, res) => {
+  if (!req.file) return res.json({ error: 'Arquivo não enviado' });
+  const senha = req.body.senha || '';
+  try {
+    const { cnpj, titular } = extrairCnpjDoCert(req.file.buffer, senha);
+    const data = loadData();
+    data.notas = data.notas || {};
+    data.notas.cert_b64  = req.file.buffer.toString('base64');
+    data.notas.cert_nome = req.file.originalname;
+    data.notas.senha     = senha;
+    data.notas.cnpj      = cnpj;
+    data.notas.titular   = titular;
+    saveData(data);
+    addLog(`Notas: certificado carregado — ${titular} (${cnpj})`, 'info');
+    res.json({ ok: true, cnpj, titular });
+  } catch (err) {
+    res.json({ error: err.message });
+  }
+});
+
+app.get('/api/notas/config', (req, res) => {
+  const d = loadData();
+  const n = d.notas || {};
+  res.json({ cnpj: n.cnpj || null, titular: n.titular || null, cert_nome: n.cert_nome || null });
+});
+
+app.get('/api/notas/buscar', async (req, res) => {
+  const data = loadData();
+  const n    = data.notas || {};
+  if (!n.cert_b64) return res.json({ error: 'Certificado não configurado. Faça o upload do certificado digital.' });
+
+  const ultNSU = req.query.ultNSU || '0';
+  const cUF    = req.query.cUF    || '35';
+
+  try {
+    const pfxBuffer = Buffer.from(n.cert_b64, 'base64');
+    addLog(`Notas: consultando SEFAZ — UF ${cUF}, NSU a partir de ${ultNSU}`, 'info');
+    const xmlResp = await queryNFeDistribuicao(pfxBuffer, n.senha, n.cnpj, cUF, ultNSU);
+    const { cStat, xMotivo, ultNSU: novoNSU, maxNSU, docs } = parsearRespostaSefaz(xmlResp);
+
+    if (cStat !== '137' && cStat !== '138') {
+      addLog(`Notas: SEFAZ ${cStat} — ${xMotivo}`, 'warn');
+      return res.json({ error: `SEFAZ ${cStat}: ${xMotivo || 'Erro desconhecido'}` });
+    }
+
+    const notas = [];
+    for (const doc of docs) {
+      try {
+        const buf    = Buffer.from(doc.zip, 'base64');
+        const xmlDoc = zlib.gunzipSync(buf).toString('utf8');
+        const campos = extrairCampos(xmlDoc);
+        campos.nsu    = doc.nsu;
+        campos.schema = doc.schema;
+        campos.tipo   = doc.schema.startsWith('resNFe') ? 'resumo' : 'completa';
+        notas.push(campos);
+      } catch (e) {
+        addLog(`Notas: erro ao processar NSU ${doc.nsu}: ${e.message}`, 'warn');
+      }
+    }
+
+    addLog(`Notas: ${notas.length} doc(s) retornado(s). NSU até ${novoNSU}`, 'info');
+    res.json({ ok: true, notas, ultNSU: novoNSU, maxNSU, total: notas.length, status: xMotivo });
+  } catch (err) {
+    addLog(`Notas: erro — ${err.message}`, 'erro');
+    res.json({ error: `Erro ao consultar SEFAZ: ${err.message}` });
+  }
+});
+
 // ── Inicia o servidor ─────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`Servidor rodando em http://localhost:${PORT}`);

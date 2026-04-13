@@ -29,6 +29,7 @@
         <button class="nav-btn" data-tab="estoque">📦 Estoque</button>
         <button class="nav-btn" data-tab="ads">📊 Ads</button>
         <button class="nav-btn" data-tab="shopee">🛒 Shopee</button>
+        <button class="nav-btn" data-tab="notas">📄 Notas de Entrada</button>
         <button class="nav-btn" data-tab="config">⚙️ Configurações</button>
         <button class="nav-btn" data-tab="conexao">🔌 Conexão</button>
       </nav>
@@ -69,6 +70,76 @@
             </thead>
             <tbody id="tabela-ads-body"></tbody>
           </table>
+        </div>
+      </section>
+
+      <!-- ── Aba: Notas de Entrada ── -->
+      <section id="tab-notas" class="tab">
+        <h1>Notas de Entrada</h1>
+        <p class="subtitle">Consulta de NF-e de compra emitidas para o CNPJ do certificado digital (SEFAZ).</p>
+
+        <div class="card" style="margin-bottom:24px">
+          <h2>Certificado Digital</h2>
+          <p class="card-desc">Faça upload do arquivo <strong>.pfx</strong> (e-CNPJ A1) e informe a senha. O certificado é usado para autenticação junto à SEFAZ.</p>
+          <div id="notas-cert-info" style="display:none;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:#166534"></div>
+          <div class="field">
+            <label>Arquivo do certificado (.pfx)</label>
+            <input type="file" id="notas-cert-file" accept=".pfx,.p12" style="padding:6px 0">
+          </div>
+          <div class="field">
+            <label>Senha do certificado</label>
+            <input type="password" id="notas-cert-senha" placeholder="Senha do .pfx" autocomplete="off">
+          </div>
+          <div class="btn-row">
+            <button class="btn-primary" onclick="notasEnviarCertificado()">💾 Salvar Certificado</button>
+          </div>
+          <div class="msg" id="notas-msg"></div>
+        </div>
+
+        <div id="notas-erro" class="estoque-erro" style="display:none"></div>
+
+        <div class="tabela-container">
+          <div class="tabela-topo">
+            <span id="notas-total"></span>
+            <div style="display:flex;gap:8px;align-items:center">
+              <label style="font-size:13px;color:#64748b">UF:</label>
+              <select id="notas-uf" style="padding:5px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px">
+                <option value="11">RO</option><option value="12">AC</option><option value="13">AM</option>
+                <option value="14">RR</option><option value="15">PA</option><option value="16">AP</option>
+                <option value="17">TO</option><option value="21">MA</option><option value="22">PI</option>
+                <option value="23">CE</option><option value="24">RN</option><option value="25">PB</option>
+                <option value="26">PE</option><option value="27">AL</option><option value="28">SE</option>
+                <option value="29">BA</option><option value="31">MG</option><option value="32">ES</option>
+                <option value="33">RJ</option><option value="35" selected>SP</option>
+                <option value="41">PR</option><option value="42">SC</option><option value="43">RS</option>
+                <option value="50">MS</option><option value="51">MT</option><option value="52">GO</option>
+                <option value="53">DF</option>
+              </select>
+              <button class="btn-secondary" onclick="notasBuscar(false)" id="btn-atualizar-notas">↻ Buscar notas</button>
+            </div>
+          </div>
+
+          <div id="notas-loading" class="loading" style="display:none">Consultando SEFAZ (pode levar alguns segundos)...</div>
+
+          <table class="tabela" id="tabela-notas" style="display:none">
+            <thead>
+              <tr>
+                <th class="col-num">NSU</th>
+                <th class="col-num">Nº NF</th>
+                <th>Data</th>
+                <th>Emitente</th>
+                <th>CNPJ Emitente</th>
+                <th class="col-num">Valor</th>
+                <th>Tipo</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="tabela-notas-body"></tbody>
+          </table>
+
+          <div style="margin-top:12px;text-align:center">
+            <button class="btn-secondary" id="notas-btn-mais" onclick="notasBuscar(true)" style="display:none">Carregar mais</button>
+          </div>
         </div>
       </section>
 
@@ -329,6 +400,7 @@
   <script src="/js/app-v2.js"></script>
   <script src="/js/conexao.js"></script>
   <script src="/js/shopee.js?v=118"></script>
-  <div id="version-badge">v118</div>
+  <script src="/js/notas.js?v=119"></script>
+  <div id="version-badge">v119</div>
 </body>
 </html>
