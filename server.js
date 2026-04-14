@@ -1239,13 +1239,13 @@ app.get('/api/lucro/vendas', async (req, res) => {
       })
     );
 
-    // Modo debug: retorna estrutura crua dos primeiros shipments
+    // Modo debug: mostra campo shipping dos pedidos + estrutura de custo dos shipments
     if (req.query.debug === '1') {
-      const amostra = shipmentIds.slice(0, 3).map(sid => ({
-        shipment_id: sid,
-        cost_raw:    fretePorShipment[sid],  // valor já extraído
+      const ordersShipping = todasOrdens.slice(0, 5).map(o => ({
+        orderId:      o.id,
+        shipping:     o.shipping,
+        pack_id:      o.pack_id,
       }));
-      // Busca estrutura completa dos primeiros 3
       const rawData = await Promise.all(
         shipmentIds.slice(0, 3).map(async sid => {
           try {
@@ -1254,7 +1254,7 @@ app.get('/api/lucro/vendas', async (req, res) => {
           } catch (e) { return { sid, error: e.message }; }
         })
       );
-      return res.json({ shipment_ids_sample: shipmentIds.slice(0, 5), raw: rawData });
+      return res.json({ shipment_ids_found: shipmentIds.length, orders_shipping: ordersShipping, shipments_raw: rawData });
     }
 
     const vendas = todasOrdens.map(order => {
