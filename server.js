@@ -1321,14 +1321,26 @@ app.get('/api/ml/debug-order-shipment/:order_id', async (req, res) => {
   const headers = { Authorization: `Bearer ${c.access_token}` };
   try {
     const order = await axios.get(`https://api.mercadolibre.com/orders/${req.params.order_id}`, { headers, timeout: 10000 }).then(r => r.data);
-    // Dump completo — exclui apenas campos grandes/repetitivos
-    const { order_items, ...orderRest } = order;
+    const sid    = order.shipping?.id;
+    const packId = order.pack_id;
+    const [ship, pack] = await Promise.all([
+      sid    ? axios.get(`https://api.mercadolibre.com/shipments/${sid}`, { headers, timeout: 10000 }).then(r => r.data).catch(() => null) : null,
+      packId ? axios.get(`https://api.mercadolibre.com/packs/${packId}`, { headers, timeout: 10000 }).then(r => r.data).catch(() => null) : null,
+    ]);
     res.json({
-      order_raw: orderRest,
-      order_items_fees: (order_items || []).map(oi => ({
-        id: oi.item?.id, qty: oi.quantity, unit_price: oi.unit_price, sale_fee: oi.sale_fee,
-        shipping_cost: oi.shipping_cost, seller_costs: oi.seller_costs, differential_pricing: oi.differential_pricing,
-      })),
+      order_shipping_cost: order.shipping_cost,
+      pack_id: packId,
+      pack_shipping_cost: pack?.shipping_cost,
+      pack_total_amount:  pack?.total_amount,
+      pack_paid_amount:   pack?.paid_amount,
+      pack_buyer_costs:   pack?.buyer_costs,
+      pack_seller_costs:  pack?.seller_costs,
+      ship_logistic_type: ship?.logistic_type,
+      ship_cost:          ship?.cost,
+      ship_cost_components: ship?.cost_components,
+      ship_base_cost:     ship?.base_cost,
+      // dump do pack para encontrar o campo de frete
+      pack_raw_keys: pack ? Object.keys(pack) : null,
     });
   } catch (err) { res.json({ error: err.message }); }
 });
