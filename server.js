@@ -1189,16 +1189,20 @@ app.get('/api/ml/debug-auth-code', async (req, res) => {
       result[label] = { status: e.response?.status, error: e.response?.data || e.message };
     }
   };
-  // Candidatos na API pública oficial do ML
-  await tryGet('shipping_preferences',   `https://api.mercadolibre.com/users/${uid}/shipping_preferences`);
-  await tryGet('returns',                `https://api.mercadolibre.com/users/${uid}/returns`);
-  await tryGet('claims',                 `https://api.mercadolibre.com/users/${uid}/claims`, { limit: 1 });
-  await tryGet('shipment_label_options', `https://api.mercadolibre.com/users/${uid}/shipment_label_options`);
-  await tryGet('drop_off_options',       `https://api.mercadolibre.com/users/${uid}/drop_off_options`);
-  await tryGet('user_profile',           `https://api.mercadolibre.com/users/${uid}`);
-  await tryGet('shipping_modes',         `https://api.mercadolibre.com/users/${uid}/shipping_modes`);
-  await tryGet('returns_v1',             `https://api.mercadolibre.com/returns`, { seller_id: uid, limit: 1 });
-  await tryGet('returns_v2',             `https://api.mercadolibre.com/post-purchase/v1/returns`, { caller_id: uid, limit: 1 });
+  // Carrier IDs do xd_drop_off
+  const carrierId = 17502440;
+  await tryGet('carrier_info',              `https://api.mercadolibre.com/carrier_pickup/${carrierId}`);
+  await tryGet('carrier_auth',              `https://api.mercadolibre.com/carrier_pickup/${carrierId}/authorization`);
+  await tryGet('user_carrier_pickup',       `https://api.mercadolibre.com/users/${uid}/carrier_pickup`);
+  await tryGet('user_carrier_auth',         `https://api.mercadolibre.com/users/${uid}/carrier_pickup/authorization`);
+  await tryGet('user_carrier_code',         `https://api.mercadolibre.com/users/${uid}/carrier_pickup/code`);
+  await tryGet('xd_dropoff_auth',           `https://api.mercadolibre.com/users/${uid}/xd_drop_off/authorization`);
+  await tryGet('returns_auth',              `https://api.mercadolibre.com/users/${uid}/returns/authorization`);
+  await tryGet('returns_auth_code',         `https://api.mercadolibre.com/users/${uid}/returns/authorization_code`);
+  await tryGet('shipping_returns',          `https://api.mercadolibre.com/users/${uid}/shipping_returns`);
+  await tryGet('returns_v2',               `https://api.mercadolibre.com/post-purchase/v1/returns/authorization`, { caller_id: uid });
+  await tryGet('shipping_options',          `https://api.mercadolibre.com/users/${uid}/shipping/options`);
+  await tryGet('coleta_auth',               `https://api.mercadolibre.com/users/${uid}/coleta/authorization`);
   res.json(result);
 });
 
