@@ -27,26 +27,22 @@ async function lucroCarregarConfig() {
     const cfg = await fetch(`/api/lucro/config?conta=${conta}`).then(r => r.json());
     lucroConfig = cfg;
     const tiEl = document.getElementById('lucro-taxa-imposto');
-    const fmEl = document.getElementById('lucro-frete-medio');
     if (tiEl) tiEl.value = cfg.taxa_imposto || 0;
-    if (fmEl) fmEl.value = cfg.frete_medio  || 0;
   } catch {}
 }
 
 async function lucroSalvarConfig() {
   const conta        = lucroContaAtual();
   const taxa_imposto = parseFloat(document.getElementById('lucro-taxa-imposto').value) || 0;
-  const frete_medio  = parseFloat(document.getElementById('lucro-frete-medio').value)  || 0;
   const btn = document.getElementById('btn-lucro-salvar-cfg');
   if (btn) { btn.disabled = true; btn.textContent = 'Salvando...'; }
   try {
     await fetch('/api/lucro/config', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ conta, taxa_imposto, frete_medio }),
+      body:    JSON.stringify({ conta, taxa_imposto }),
     });
     lucroConfig.taxa_imposto = taxa_imposto;
-    lucroConfig.frete_medio  = frete_medio;
     lucroRecalcularERenderizar();
   } catch {}
   if (btn) { btn.disabled = false; btn.textContent = 'Salvar'; }
@@ -82,10 +78,10 @@ async function lucroSalvarCusto(input) {
 // ── Cálculo ──────────────────────────────────────────────────
 
 function lucroCalcular(raw) {
-  const { taxa_imposto, frete_medio, custos } = lucroConfig;
+  const { taxa_imposto, custos } = lucroConfig;
   return raw.map(v => {
     const custo   = v.itens.reduce((s, i) => s + (custos[i.mlb] || 0) * i.quantidade, 0);
-    const frete   = frete_medio || 0;
+    const frete   = v.freteReal ?? 0; // custo real de frete do vendedor (sender_cost da API)
     const imposto = v.receita * (taxa_imposto / 100);
     const lucro   = v.receita - v.taxaML - frete - custo - imposto;
     const margem  = v.receita > 0 ? (lucro / v.receita) * 100 : 0;

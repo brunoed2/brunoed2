@@ -1213,28 +1213,50 @@ app.get('/api/lucro/vendas', async (req, res) => {
   const headers = { Authorization: `Bearer ${c.access_token}` };
 
   try {
-    const resp = await axios.get('https://api.mercadolibre.com/orders/search', {
-      params: { seller: c.user_id, 'order.status': 'paid', sort: 'date_desc', limit: 100 },
-      headers, timeout: 20000,
-    });
-    const orders = resp.data.results || [];
+    // ML limita a 50 por página — busca até 3 páginas (150 pedidos)
+    let todasOrdens = [];
+    for (let offset = 0; offset < 150; offset += 50) {
+      const resp = await axios.get('https://api.mercadolibre.com/orders/search', {
+        params: { seller: c.user_id, 'order.status': 'paid', sort: 'date_desc', limit: 50, offset },
+        headers, timeout: 15000,
+      });
+      const results = resp.data.results || [];
+      todasOrdens = todasOrdens.concat(results);
+      if (results.length < 50) break; // não há mais páginas
+    }
 
-    const vendas = orders.map(order => {
+    // Busca custo de frete real (sender_cost) em paralelo para cada shipment único
+    const shipmentIds = [...new Set(todasOrdens.map(o => o.shipping?.id).filter(Boolean))];
+    const fretePorShipment = {};
+    await Promise.all(
+      shipmentIds.map(async (sid) => {
+        try {
+          const r = await axios.get(`https://api.mercadolibre.com/shipments/${sid}`, {
+            headers, timeout: 8000,
+          });
+          fretePorShipment[sid] = r.data?.cost?.sender_cost ?? 0;
+        } catch { fretePorShipment[sid] = 0; }
+      })
+    );
+
+    const vendas = todasOrdens.map(order => {
       const itens = (order.order_items || []).map(oi => ({
         mlb:        oi.item?.id    || '',
         titulo:     oi.item?.title || '',
         quantidade: oi.quantity    || 1,
         precoUnit:  oi.unit_price  || 0,
-        taxaML:     oi.sale_fee    || 0, // taxa total do item (já inclui qtd)
+        taxaML:     oi.sale_fee    || 0,
       }));
-      const receita = itens.reduce((s, i) => s + i.precoUnit * i.quantidade, 0);
-      const taxaML  = itens.reduce((s, i) => s + i.taxaML, 0);
+      const receita   = itens.reduce((s, i) => s + i.precoUnit * i.quantidade, 0);
+      const taxaML    = itens.reduce((s, i) => s + i.taxaML, 0);
+      const freteReal = fretePorShipment[order.shipping?.id] ?? 0;
       return {
         orderId: order.id,
         data:    order.date_closed || order.date_created,
         itens,
         receita,
         taxaML,
+        freteReal,
       };
     });
 
