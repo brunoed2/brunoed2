@@ -745,6 +745,29 @@ code {
   white-space: nowrap;
 }
 
+/* ── Flag de atendido ────────────────────────────────────────── */
+
+tr.venda-atendida td { opacity: .45; }
+
+.btn-flag {
+  background: none;
+  border: 1.5px solid #cbd5e1;
+  color: #94a3b8;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.btn-flag:hover { background: #f0fdf4; border-color: #86efac; color: #16a34a; }
+.btn-flag-ativo {
+  background: #16a34a;
+  border-color: #16a34a;
+  color: #fff;
+}
+.btn-flag-ativo:hover { background: #15803d; border-color: #15803d; }
+.btn-flag:disabled { opacity: .5; cursor: default; }
+
 /* ── Mini-abas de vendas ─────────────────────────────────────── */
 
 .vendas-mini-abas {
