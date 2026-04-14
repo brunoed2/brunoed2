@@ -1297,7 +1297,7 @@ app.get('/api/ml/debug-shipment/:sid', async (req, res) => {
     const r = await axios.get(`https://api.mercadolibre.com/shipments/${req.params.sid}`, {
       headers: { Authorization: `Bearer ${c.access_token}` }, timeout: 10000,
     });
-    // Retorna apenas os campos de custo para não poluir
+    // Retorna todos os campos de custo
     const d = r.data;
     res.json({
       id:               d.id,
@@ -1306,6 +1306,33 @@ app.get('/api/ml/debug-shipment/:sid', async (req, res) => {
       cost_components:  d.cost_components,
       base_cost:        d.base_cost,
       shipping_costs:   d.shipping_costs,
+      cost_detail:      d.cost_detail,
+      extended_info:    d.extended_info,
+    });
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+// Debug — inspeciona custo do shipment a partir do order_id
+app.get('/api/ml/debug-order-shipment/:order_id', async (req, res) => {
+  const data = loadData();
+  const num  = req.query.conta || data.conta_ativa;
+  const c    = data.contas[num];
+  if (!c?.access_token) return res.json({ error: 'Não conectado' });
+  const headers = { Authorization: `Bearer ${c.access_token}` };
+  try {
+    const order = await axios.get(`https://api.mercadolibre.com/orders/${req.params.order_id}`, { headers, timeout: 10000 }).then(r => r.data);
+    const sid = order.shipping?.id;
+    if (!sid) return res.json({ order_id: order.id, shipping: order.shipping, error: 'sem shipping id' });
+    const ship = await axios.get(`https://api.mercadolibre.com/shipments/${sid}`, { headers, timeout: 10000 }).then(r => r.data);
+    res.json({
+      order_id:        order.id,
+      shipping_id:     sid,
+      logistic_type:   ship.logistic_type,
+      cost:            ship.cost,
+      cost_components: ship.cost_components,
+      base_cost:       ship.base_cost,
+      shipping_costs:  ship.shipping_costs,
+      cost_detail:     ship.cost_detail,
     });
   } catch (err) { res.json({ error: err.message }); }
 });
