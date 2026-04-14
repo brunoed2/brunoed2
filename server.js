@@ -1340,7 +1340,8 @@ app.get('/api/ml/debug-order-shipment/:order_id', async (req, res) => {
       ship_cost_components: ship?.cost_components,
       ship_base_cost:     ship?.base_cost,
       // dump do pack para encontrar o campo de frete
-      pack_raw_keys: pack ? Object.keys(pack) : null,
+      pack_shipment:  pack?.shipment,
+      pack_orders_ids: (pack?.orders || []).map(o => o.id),
     });
   } catch (err) { res.json({ error: err.message }); }
 });
