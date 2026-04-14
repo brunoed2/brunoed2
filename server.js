@@ -876,10 +876,7 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
           shipmentId:     shipment.id,
           conta:          data.conta_ativa,
           status:         shipment.status,
-          substatus:      shipment.substatus || null,
           statusLabel:    STATUS_PT[shipment.status] || shipment.status,
-          substatusLabel: SUBSTATUS_PT[shipment.substatus] || shipment.substatus || null,
-          temEtiqueta:    LABEL_SUBSTATUSES.has(shipment.substatus),
           acaoLabel:      SUBSTATUS_LABEL[shipment.substatus] || 'Baixar',
           itensLista:     [],
         });
