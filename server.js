@@ -1321,28 +1321,13 @@ app.get('/api/ml/debug-order-shipment/:order_id', async (req, res) => {
   const headers = { Authorization: `Bearer ${c.access_token}` };
   try {
     const order = await axios.get(`https://api.mercadolibre.com/orders/${req.params.order_id}`, { headers, timeout: 10000 }).then(r => r.data);
-    const sid = order.shipping?.id;
-    const ship = sid ? await axios.get(`https://api.mercadolibre.com/shipments/${sid}`, { headers, timeout: 10000 }).then(r => r.data).catch(() => null) : null;
+    // Dump completo — exclui apenas campos grandes/repetitivos
+    const { order_items, ...orderRest } = order;
     res.json({
-      order_id:             order.id,
-      total_amount:         order.total_amount,
-      paid_amount:          order.paid_amount,
-      coupon:               order.coupon,
-      order_shipping:       order.shipping,
-      taxes:                order.taxes,
-      buyer_costs:          order.buyer_costs,
-      shipping_id:          sid,
-      ship_logistic_type:   ship?.logistic_type,
-      ship_cost:            ship?.cost,
-      ship_cost_components: ship?.cost_components,
-      ship_base_cost:       ship?.base_cost,
-      ship_shipping_costs:  ship?.shipping_costs,
-      order_items_fees: (order.order_items || []).map(oi => ({
-        id: oi.item?.id, qty: oi.quantity, unit_price: oi.unit_price, sale_fee: oi.sale_fee, shipping_cost: oi.shipping_cost,
-      })),
-      payments: (order.payments || []).map(p => ({
-        id: p.id, status: p.status, total_paid: p.total_paid_amount, net_received: p.net_received_amount,
-        shipping_cost: p.shipping_cost, marketplace_fee: p.marketplace_fee, overpaid: p.overpaid_amount,
+      order_raw: orderRest,
+      order_items_fees: (order_items || []).map(oi => ({
+        id: oi.item?.id, qty: oi.quantity, unit_price: oi.unit_price, sale_fee: oi.sale_fee,
+        shipping_cost: oi.shipping_cost, seller_costs: oi.seller_costs, differential_pricing: oi.differential_pricing,
       })),
     });
   } catch (err) { res.json({ error: err.message }); }
