@@ -1265,7 +1265,7 @@ app.get('/api/lucro/vendas', async (req, res) => {
         titulo:     oi.item?.title      || '',
         quantidade: oi.quantity         || 1,
         precoUnit:  oi.unit_price       || 0,
-        taxaML:     oi.sale_fee         || 0,
+        taxaML:     (oi.sale_fee || 0) * (oi.quantity || 1), // sale_fee é por unidade
       }));
       const receita   = itens.reduce((s, i) => s + i.precoUnit * i.quantidade, 0);
       const taxaML    = itens.reduce((s, i) => s + i.taxaML, 0);
