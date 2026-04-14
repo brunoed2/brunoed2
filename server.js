@@ -1052,33 +1052,65 @@ app.get('/api/ml/ads-roas', async (req, res) => {
   }
 });
 
-// DEBUG — explora API de Ads
+// DEBUG — testa order ID ou pack ID
 app.get('/api/ml/debug-order/:order_id', async (req, res) => {
   const data = loadData();
   const num  = req.query.conta || data.conta_ativa;
   const c    = data.contas[num];
   if (!c || !c.access_token) return res.json({ error: 'Não conectado' });
   const headers = { Authorization: `Bearer ${c.access_token}` };
+  const id = req.params.order_id;
+  const result = { conta_usada: num, user_id: c.user_id };
+
+  // Tenta como order direto
   try {
-    const order = await axios.get(`https://api.mercadolibre.com/orders/${req.params.order_id}`, { headers, timeout: 10000 });
-    const o = order.data;
+    const r = await axios.get(`https://api.mercadolibre.com/orders/${id}`, { headers, timeout: 10000 });
+    const o = r.data;
     const shipping = o.shipping?.id
-      ? await axios.get(`https://api.mercadolibre.com/shipments/${o.shipping.id}`, { headers, timeout: 10000 }).then(r => r.data).catch(e => ({ error: e.message }))
+      ? await axios.get(`https://api.mercadolibre.com/shipments/${o.shipping.id}`, { headers, timeout: 10000 }).then(r2 => r2.data).catch(() => null)
       : null;
-    res.json({
-      conta_usada:    num,
-      user_id:        c.user_id,
-      order_id:       o.id,
-      order_status:   o.status,
-      shipping_id:    o.shipping?.id,
-      logistic_type:  o.shipping?.logistic_type,
-      mode:           o.shipping?.mode,
-      shipment_status:    shipping?.status,
-      shipment_substatus: shipping?.substatus,
-      shipment_logistic:  shipping?.logistic_type,
+    result.via = 'order';
+    result.order_status = o.status;
+    result.shipping_id  = o.shipping?.id;
+    result.shipment_status    = shipping?.status;
+    result.shipment_substatus = shipping?.substatus;
+    result.logistic_type      = shipping?.logistic_type;
+    return res.json(result);
+  } catch {}
+
+  // Tenta como pack
+  try {
+    const r = await axios.get(`https://api.mercadolibre.com/packs/${id}`, { headers, timeout: 10000 });
+    const pack = r.data;
+    const orders = pack.orders || [];
+    const shipId = pack.shipment?.id;
+    const shipping = shipId
+      ? await axios.get(`https://api.mercadolibre.com/shipments/${shipId}`, { headers, timeout: 10000 }).then(r2 => r2.data).catch(() => null)
+      : null;
+    result.via = 'pack';
+    result.pack_status        = pack.status;
+    result.order_ids          = orders.map(o => o.id);
+    result.shipping_id        = shipId;
+    result.shipment_status    = shipping?.status;
+    result.shipment_substatus = shipping?.substatus;
+    result.logistic_type      = shipping?.logistic_type;
+    return res.json(result);
+  } catch {}
+
+  // Tenta buscar orders pelo pack.id
+  try {
+    const r = await axios.get('https://api.mercadolibre.com/orders/search', {
+      params: { seller: c.user_id, 'pack.id': id },
+      headers, timeout: 10000,
     });
+    result.via = 'orders_by_pack';
+    result.orders = (r.data.results || []).map(o => ({
+      order_id: o.id, status: o.status, shipping_id: o.shipping?.id,
+    }));
+    return res.json(result);
   } catch (e) {
-    res.json({ error: e.response?.data || e.message, conta_usada: num, user_id: c.user_id });
+    result.error = e.response?.data || e.message;
+    return res.json(result);
   }
 });
 
