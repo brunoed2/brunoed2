@@ -28,6 +28,8 @@ async function lucroCarregarConfig() {
     lucroConfig = cfg;
     const tiEl = document.getElementById('lucro-taxa-imposto');
     if (tiEl) tiEl.value = cfg.taxa_imposto || 0;
+    // Re-renderiza se já há vendas carregadas (ex: usuário volta para a aba)
+    if (lucroVendasRaw.length) lucroRecalcularERenderizar();
   } catch {}
 }
 
@@ -126,10 +128,10 @@ function lucroRenderizarCards(t, qtd) {
     }
   };
   set('lucro-sum-receita',  lucroFmt(t.receita));
-  set('lucro-sum-taxaml',   lucroFmt(t.taxaML),  true);
-  set('lucro-sum-frete',    lucroFmt(t.frete),   true);
-  set('lucro-sum-custo',    lucroFmt(t.custo),   true);
-  set('lucro-sum-imposto',  lucroFmt(t.imposto), true);
+  set('lucro-sum-taxaml',   t.taxaML  > 0 ? lucroFmt(t.taxaML)  : '—', true);
+  set('lucro-sum-frete',    t.frete   > 0 ? lucroFmt(t.frete)   : '—', true);
+  set('lucro-sum-custo',    t.custo   > 0 ? lucroFmt(t.custo)   : '—', true);
+  set('lucro-sum-imposto',  t.imposto > 0 ? lucroFmt(t.imposto) : '—', true);
   const lucroEl  = document.getElementById('lucro-sum-lucro');
   const margemEl = document.getElementById('lucro-sum-margem');
   if (lucroEl)  { lucroEl.textContent  = lucroFmt(t.lucro);       lucroEl.className  = 'lucro-card-valor ' + (t.lucro  >= 0 ? 'lucro-val-pos' : 'lucro-val-neg'); }
@@ -156,20 +158,21 @@ function lucroRenderizarTabela(vendas) {
     const margemCls  = v.margem >= 10 ? 'lucro-val-pos' : v.margem < 0 ? 'lucro-val-neg' : '';
 
     const tr = document.createElement('tr');
+    const fmtCusto = (val) => val > 0 ? lucroFmt(val) : '—';
     tr.innerHTML = `
       <td class="lucro-td-data">${new Date(v.data).toLocaleDateString('pt-BR')}</td>
       <td class="td-titulo">${item0.titulo || '—'}${multi ? `<span class="lucro-multi"> +${v.itens.length - 1}</span>` : ''}</td>
       <td class="lucro-td-mlb">${item0.mlb || '—'}</td>
       <td class="col-num">${qtdTotal}</td>
       <td class="col-num">${lucroFmt(v.receita)}</td>
-      <td class="col-num lucro-neg-leve">-${lucroFmt(v.taxaML)}</td>
-      <td class="col-num lucro-neg-leve">-${lucroFmt(v.frete)}</td>
+      <td class="col-num lucro-neg-leve">${fmtCusto(v.taxaML)}</td>
+      <td class="col-num lucro-neg-leve">${fmtCusto(v.frete)}</td>
       <td class="col-num">
         <input type="number" class="lucro-custo-input" data-mlb="${item0.mlb}"
           value="${custoSalvo || ''}" placeholder="—"
           onchange="lucroSalvarCusto(this)" step="0.01" min="0">
       </td>
-      <td class="col-num lucro-neg-leve">-${lucroFmt(v.imposto)}</td>
+      <td class="col-num lucro-neg-leve">${fmtCusto(v.imposto)}</td>
       <td class="col-num ${margemCls}"><strong>${lucroFmt(v.lucro)}</strong></td>
       <td class="col-num ${margemCls}">${lucroFmtPct(v.margem)}</td>
     `;
