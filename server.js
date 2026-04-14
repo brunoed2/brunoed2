@@ -1142,20 +1142,39 @@ app.get('/api/ml/debug-orders', async (req, res) => {
   if (!c || !c.access_token) return res.json({ error: 'Não conectado' });
   if (!c.user_id) return res.json({ error: 'user_id não encontrado' });
   const headers = { Authorization: `Bearer ${c.access_token}` };
+  const findId  = req.query.find; // busca um order_id específico na lista
   try {
-    const resp = await axios.get('https://api.mercadolibre.com/orders/search', {
-      params: { seller: c.user_id, 'order.status': 'paid', sort: 'date_desc', offset: 0, limit: 10 },
-      headers, timeout: 15000,
-    });
-    const orders = (resp.data.results || []).map(o => ({
-      order_id:      o.id,
-      date:          o.date_created?.slice(0, 10),
-      status:        o.status,
-      shipping_id:   o.shipping?.id,
-      logistic_type: o.shipping?.logistic_type,
-      mode:          o.shipping?.mode,
-    }));
-    res.json({ conta: num, user_id: c.user_id, total: resp.data.paging?.total, orders });
+    let found = null;
+    let offset = 0;
+    const limit = 50;
+    while (offset < 600) {
+      const resp = await axios.get('https://api.mercadolibre.com/orders/search', {
+        params: { seller: c.user_id, 'order.status': 'paid', sort: 'date_desc', offset, limit },
+        headers, timeout: 15000,
+      });
+      const results = resp.data.results || [];
+      if (findId) {
+        const match = results.find(o => String(o.id) === String(findId));
+        if (match) {
+          found = { order_id: match.id, date: match.date_created?.slice(0,10), pack_id: match.pack_id || null, shipping: match.shipping };
+          break;
+        }
+        if (results.length < limit) break;
+        offset += limit;
+        continue;
+      }
+      const orders = results.map(o => ({
+        order_id:      o.id,
+        date:          o.date_created?.slice(0, 10),
+        status:        o.status,
+        pack_id:       o.pack_id || null,
+        shipping_id:   o.shipping?.id,
+        logistic_type: o.shipping?.logistic_type,
+        mode:          o.shipping?.mode,
+      }));
+      return res.json({ conta: num, user_id: c.user_id, total: resp.data.paging?.total, orders });
+    }
+    if (findId) return res.json({ conta: num, user_id: c.user_id, found, searched_up_to_offset: offset });
   } catch (e) {
     res.json({ error: e.response?.data || e.message });
   }
