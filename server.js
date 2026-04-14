@@ -1268,6 +1268,29 @@ app.get('/api/lucro/vendas', async (req, res) => {
   }
 });
 
+// Debug — estrutura real do shipment para diagnóstico do frete
+app.get('/api/ml/debug-shipment/:sid', async (req, res) => {
+  const data = loadData();
+  const num  = req.query.conta || data.conta_ativa;
+  const c    = data.contas[num];
+  if (!c?.access_token) return res.json({ error: 'Não conectado' });
+  try {
+    const r = await axios.get(`https://api.mercadolibre.com/shipments/${req.params.sid}`, {
+      headers: { Authorization: `Bearer ${c.access_token}` }, timeout: 10000,
+    });
+    // Retorna apenas os campos de custo para não poluir
+    const d = r.data;
+    res.json({
+      id:               d.id,
+      logistic_type:    d.logistic_type,
+      cost:             d.cost,
+      cost_components:  d.cost_components,
+      base_cost:        d.base_cost,
+      shipping_costs:   d.shipping_costs,
+    });
+  } catch (err) { res.json({ error: err.message }); }
+});
+
 // Lista os primeiros pedidos pagos da conta para diagnóstico
 app.get('/api/ml/debug-orders', async (req, res) => {
   const data = loadData();
