@@ -785,12 +785,35 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
       offset += limit;
     }
 
-    // Filtra ordens com shipment, excluindo Full já no nível da ordem quando possível
+    // Filtra ordens com shipment direto, excluindo Full
     const comShipment = todasOrdens.filter(o =>
       o.shipping && o.shipping.id &&
       o.shipping.logistic_type !== 'fulfillment' &&
       o.shipping.mode !== 'fulfillment'
     );
+
+    // Orders de pack sem shipping próprio — busca o shipping pelo pack
+    const semShipmentComPack = todasOrdens.filter(o =>
+      o.pack_id && !(o.shipping && o.shipping.id)
+    );
+    const packsVistos = new Set();
+    for (const o of semShipmentComPack) {
+      const packId = o.pack_id;
+      if (packsVistos.has(packId)) continue;
+      packsVistos.add(packId);
+      try {
+        const rPack = await axios.get(
+          `https://api.mercadolibre.com/packs/${packId}`,
+          { headers: { Authorization: `Bearer ${c.access_token}` }, timeout: 8000 }
+        );
+        const pack = rPack.data;
+        if (pack.shipment?.id) {
+          // Associa o shipping do pack à primeira order do pack que temos
+          o.shipping = { id: pack.shipment.id };
+          comShipment.push(o);
+        }
+      } catch {}
+    }
 
     const resultado = [];
     for (let i = 0; i < comShipment.length; i += 10) {
