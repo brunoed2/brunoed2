@@ -768,6 +768,88 @@ tr.venda-atendida td { opacity: .45; }
 .btn-flag-ativo:hover { background: #15803d; border-color: #15803d; }
 .btn-flag:disabled { opacity: .5; cursor: default; }
 
+/* ── Lucro ───────────────────────────────────────────────────── */
+
+.lucro-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.lucro-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 14px 18px;
+  min-width: 130px;
+  flex: 1;
+}
+
+.lucro-card-destaque {
+  border-color: #c7d2fe;
+  background: #f5f3ff;
+}
+
+.lucro-card-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .6px;
+  color: #94a3b8;
+  margin-bottom: 6px;
+}
+
+.lucro-card-valor {
+  font-size: 18px;
+  font-weight: 700;
+  color: #1a1a1a;
+}
+
+.lucro-val-pos { color: #16a34a; }
+.lucro-val-neg { color: #dc2626; }
+
+.lucro-neg-leve { color: #ef4444; font-size: 12px; }
+
+.lucro-custo-input {
+  width: 80px;
+  padding: 4px 6px;
+  border: 1px solid #e2e8f0;
+  border-radius: 5px;
+  font-size: 12px;
+  text-align: right;
+  transition: border-color .2s;
+}
+
+.lucro-custo-input:focus {
+  outline: none;
+  border-color: #818cf8;
+}
+
+.lucro-td-data {
+  font-size: 12px;
+  white-space: nowrap;
+  color: #64748b;
+}
+
+.lucro-td-mlb {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.lucro-multi {
+  font-size: 11px;
+  color: #94a3b8;
+  margin-left: 4px;
+}
+
+tr.lucro-sub-item td {
+  border-top: none;
+  padding-top: 2px;
+  padding-bottom: 2px;
+  background: #fafafa;
+}
+
 /* ── Mini-abas de vendas ─────────────────────────────────────── */
 
 .vendas-mini-abas {

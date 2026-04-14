@@ -101,6 +101,11 @@ async function syncRailwayEnvVars(data) {
     if (c.user_id)          variables[`ML_USER_ID_${num}`]          = String(c.user_id);
     if (c.token_expires_at) variables[`ML_TOKEN_EXPIRES_AT_${num}`] = String(c.token_expires_at);
   }
+  // Configuração de lucro (custos + impostos) — por conta
+  for (const num of ['1', '2']) {
+    const lc = (data.lucro_contas || {})[num];
+    if (lc) variables[`LUCRO_CONFIG_${num}`] = JSON.stringify(lc);
+  }
   // Certificado digital Notas de Entrada — por conta
   for (const num of ['1', '2']) {
     const n = (data.notas_contas || {})[num] || {};
@@ -188,6 +193,13 @@ function initFromEnvVars() {
     }
   }
 
+  // Configuração de lucro
+  data.lucro_contas = data.lucro_contas || {};
+  for (const num of ['1', '2']) {
+    if (!data.lucro_contas[num] && process.env[`LUCRO_CONFIG_${num}`]) {
+      try { data.lucro_contas[num] = JSON.parse(process.env[`LUCRO_CONFIG_${num}`]); changed = true; } catch {}
+    }
+  }
   // Certificado digital Notas de Entrada — por conta
   data.notas_contas = data.notas_contas || {};
   for (const num of ['1', '2']) {
@@ -1152,6 +1164,86 @@ app.get('/api/ml/debug-order/:order_id', async (req, res) => {
   }
 });
 
+
+// ── Rotas: Lucro ─────────────────────────────────────────────
+
+app.get('/api/lucro/config', (req, res) => {
+  const data  = loadData();
+  const num   = req.query.conta || data.conta_ativa;
+  const lc    = (data.lucro_contas || {})[num] || {};
+  res.json({
+    taxa_imposto: lc.taxa_imposto ?? 0,
+    frete_medio:  lc.frete_medio  ?? 0,
+    custos:       lc.custos       || {},
+  });
+});
+
+app.post('/api/lucro/config', (req, res) => {
+  const { conta, taxa_imposto, frete_medio } = req.body;
+  const num = String(conta || '1');
+  if (!['1','2'].includes(num)) return res.status(400).json({ error: 'Conta inválida' });
+  const data = loadData();
+  data.lucro_contas = data.lucro_contas || {};
+  const lc = data.lucro_contas[num] = data.lucro_contas[num] || {};
+  if (taxa_imposto !== undefined) lc.taxa_imposto = parseFloat(taxa_imposto) || 0;
+  if (frete_medio  !== undefined) lc.frete_medio  = parseFloat(frete_medio)  || 0;
+  saveData(data);
+  res.json({ ok: true });
+});
+
+app.post('/api/lucro/custo', (req, res) => {
+  const { conta, mlb, custo } = req.body;
+  const num = String(conta || '1');
+  if (!mlb) return res.status(400).json({ error: 'mlb obrigatório' });
+  const data = loadData();
+  data.lucro_contas = data.lucro_contas || {};
+  const lc = data.lucro_contas[num] = data.lucro_contas[num] || {};
+  lc.custos = lc.custos || {};
+  lc.custos[mlb] = parseFloat(custo) || 0;
+  saveData(data);
+  res.json({ ok: true });
+});
+
+app.get('/api/lucro/vendas', async (req, res) => {
+  const data    = loadData();
+  const num     = req.query.conta || data.conta_ativa;
+  const c       = data.contas[num];
+  if (!c?.access_token) return res.json({ error: 'Não conectado' });
+  if (!c.user_id)       return res.json({ error: 'user_id não encontrado' });
+  const headers = { Authorization: `Bearer ${c.access_token}` };
+
+  try {
+    const resp = await axios.get('https://api.mercadolibre.com/orders/search', {
+      params: { seller: c.user_id, 'order.status': 'paid', sort: 'date_desc', limit: 100 },
+      headers, timeout: 20000,
+    });
+    const orders = resp.data.results || [];
+
+    const vendas = orders.map(order => {
+      const itens = (order.order_items || []).map(oi => ({
+        mlb:        oi.item?.id    || '',
+        titulo:     oi.item?.title || '',
+        quantidade: oi.quantity    || 1,
+        precoUnit:  oi.unit_price  || 0,
+        taxaML:     oi.sale_fee    || 0, // taxa total do item (já inclui qtd)
+      }));
+      const receita = itens.reduce((s, i) => s + i.precoUnit * i.quantidade, 0);
+      const taxaML  = itens.reduce((s, i) => s + i.taxaML, 0);
+      return {
+        orderId: order.id,
+        data:    order.date_closed || order.date_created,
+        itens,
+        receita,
+        taxaML,
+      };
+    });
+
+    res.json({ vendas });
+  } catch (err) {
+    addLog(`Lucro: erro ao buscar vendas — ${err.message}`, 'erro');
+    res.json({ error: `Erro ao buscar vendas: ${err.message}` });
+  }
+});
 
 // Lista os primeiros pedidos pagos da conta para diagnóstico
 app.get('/api/ml/debug-orders', async (req, res) => {

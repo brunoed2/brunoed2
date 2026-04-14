@@ -28,6 +28,7 @@
         <button class="nav-btn active" data-tab="loja">🏪 Loja</button>
         <button class="nav-btn" data-tab="estoque">📦 Estoque</button>
         <button class="nav-btn" data-tab="ads">📊 Ads</button>
+        <button class="nav-btn" data-tab="lucro">💰 Lucro</button>
         <button class="nav-btn" data-tab="shopee">🛒 Shopee</button>
         <button class="nav-btn" data-tab="notas">📄 Notas de Entrada</button>
         <button class="nav-btn" data-tab="config">⚙️ Configurações</button>
@@ -48,6 +49,99 @@
         </div>
         <button class="btn-sair" onclick="sair()" style="width:auto;padding:7px 14px;font-size:13px">Sair</button>
       </div>
+
+      <!-- ── Aba: Lucro ── -->
+      <section id="tab-lucro" class="tab">
+        <h1>Lucro</h1>
+        <p class="subtitle">Análise de lucro por venda — taxas ML, frete, custo do produto e imposto.</p>
+
+        <div id="lucro-erro" class="estoque-erro" style="display:none"></div>
+
+        <!-- Config -->
+        <div class="card" style="margin-bottom:24px">
+          <h2>Configurações</h2>
+          <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:flex-end">
+            <div class="field" style="margin:0">
+              <label>Imposto sobre receita (%)</label>
+              <input type="number" id="lucro-taxa-imposto" value="0" step="0.1" min="0" max="100" style="width:130px">
+            </div>
+            <div class="field" style="margin:0">
+              <label>Frete médio por pedido (R$)</label>
+              <input type="number" id="lucro-frete-medio" value="0" step="0.01" min="0" style="width:130px">
+            </div>
+            <button class="btn-primary" id="btn-lucro-salvar-cfg" onclick="lucroSalvarConfig()">Salvar</button>
+          </div>
+          <p style="font-size:12px;color:#94a3b8;margin-top:10px">
+            O imposto é calculado sobre a receita bruta de cada venda. O frete médio é descontado por pedido como estimativa do custo de envio ao vendedor.
+          </p>
+        </div>
+
+        <!-- Cards de resumo -->
+        <div class="lucro-cards" id="lucro-cards" style="display:none">
+          <div class="lucro-card">
+            <div class="lucro-card-label">Receita</div>
+            <div class="lucro-card-valor" id="lucro-sum-receita">—</div>
+          </div>
+          <div class="lucro-card">
+            <div class="lucro-card-label">Taxa ML</div>
+            <div class="lucro-card-valor lucro-val-neg" id="lucro-sum-taxaml">—</div>
+          </div>
+          <div class="lucro-card">
+            <div class="lucro-card-label">Frete</div>
+            <div class="lucro-card-valor lucro-val-neg" id="lucro-sum-frete">—</div>
+          </div>
+          <div class="lucro-card">
+            <div class="lucro-card-label">Custo produto</div>
+            <div class="lucro-card-valor lucro-val-neg" id="lucro-sum-custo">—</div>
+          </div>
+          <div class="lucro-card">
+            <div class="lucro-card-label">Imposto</div>
+            <div class="lucro-card-valor lucro-val-neg" id="lucro-sum-imposto">—</div>
+          </div>
+          <div class="lucro-card lucro-card-destaque">
+            <div class="lucro-card-label">Lucro líquido</div>
+            <div class="lucro-card-valor" id="lucro-sum-lucro">—</div>
+          </div>
+          <div class="lucro-card lucro-card-destaque">
+            <div class="lucro-card-label">Margem</div>
+            <div class="lucro-card-valor" id="lucro-sum-margem">—</div>
+          </div>
+        </div>
+
+        <!-- Tabela -->
+        <div class="tabela-container">
+          <div class="tabela-topo">
+            <span id="lucro-total"></span>
+            <div style="display:flex;gap:8px;align-items:center">
+              <button class="filtro-btn" data-lucro-dias="7"  onclick="lucroSetPeriodo(7)">7 dias</button>
+              <button class="filtro-btn active" data-lucro-dias="30" onclick="lucroSetPeriodo(30)">30 dias</button>
+              <button class="filtro-btn" data-lucro-dias="60" onclick="lucroSetPeriodo(60)">60 dias</button>
+              <button class="btn-secondary" onclick="lucroCarregarVendas()" id="btn-atualizar-lucro">↻ Atualizar</button>
+            </div>
+          </div>
+
+          <div id="lucro-loading" class="loading" style="display:none">Carregando vendas...</div>
+
+          <table class="tabela" id="tabela-lucro" style="display:none">
+            <thead>
+              <tr>
+                <th>Data</th>
+                <th>Produto</th>
+                <th>MLB</th>
+                <th class="col-num">Qtd</th>
+                <th class="col-num">Receita</th>
+                <th class="col-num">Taxa ML</th>
+                <th class="col-num">Frete</th>
+                <th class="col-num">Custo</th>
+                <th class="col-num">Imposto</th>
+                <th class="col-num">Lucro</th>
+                <th class="col-num">Margem</th>
+              </tr>
+            </thead>
+            <tbody id="tabela-lucro-body"></tbody>
+          </table>
+        </div>
+      </section>
 
       <!-- ── Aba: Ads ── -->
       <section id="tab-ads" class="tab">
@@ -404,10 +498,11 @@
     </main>
   </div>
 
+  <script src="/js/lucro.js"></script>
   <script src="/js/app-v2.js"></script>
   <script src="/js/conexao.js"></script>
   <script src="/js/shopee.js?v=118"></script>
   <script src="/js/notas.js?v=128"></script>
-  <div id="version-badge">v148</div>
+  <div id="version-badge">v149</div>
 </body>
 </html>

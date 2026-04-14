@@ -38,6 +38,7 @@ function abrirAba(nome) {
   if (nome === 'loja')    carregarLoja();
   if (nome === 'estoque') carregarEstoque(true);
   if (nome === 'ads')     carregarAds();
+  if (nome === 'lucro')   lucroInit();
   if (nome === 'config')  carregarConfig(contaConfigurando);
 }
 
@@ -112,6 +113,7 @@ async function trocarConta(num) {
     const abaAtiva = document.querySelector('.tab.active')?.id?.replace('tab-', '');
     if (abaAtiva === 'loja')    carregarLoja();
     if (abaAtiva === 'estoque') carregarEstoque(true);
+    if (abaAtiva === 'lucro')   { lucroCarregado = false; lucroCarregarConfig().then(() => lucroCarregarVendas()); }
     atualizarStatus();
     document.dispatchEvent(new CustomEvent('contaMudou', { detail: { conta: num } }));
   } finally {
