@@ -1322,17 +1322,24 @@ app.get('/api/ml/debug-order-shipment/:order_id', async (req, res) => {
   try {
     const order = await axios.get(`https://api.mercadolibre.com/orders/${req.params.order_id}`, { headers, timeout: 10000 }).then(r => r.data);
     const sid = order.shipping?.id;
-    if (!sid) return res.json({ order_id: order.id, shipping: order.shipping, error: 'sem shipping id' });
-    const ship = await axios.get(`https://api.mercadolibre.com/shipments/${sid}`, { headers, timeout: 10000 }).then(r => r.data);
+    const ship = sid ? await axios.get(`https://api.mercadolibre.com/shipments/${sid}`, { headers, timeout: 10000 }).then(r => r.data).catch(() => null) : null;
     res.json({
-      order_id:        order.id,
-      shipping_id:     sid,
-      logistic_type:   ship.logistic_type,
-      cost:            ship.cost,
-      cost_components: ship.cost_components,
-      base_cost:       ship.base_cost,
-      shipping_costs:  ship.shipping_costs,
-      cost_detail:     ship.cost_detail,
+      order_id:             order.id,
+      total_amount:         order.total_amount,
+      paid_amount:          order.paid_amount,
+      coupon:               order.coupon,
+      order_shipping:       order.shipping,
+      taxes:                order.taxes,
+      buyer_costs:          order.buyer_costs,
+      shipping_id:          sid,
+      ship_logistic_type:   ship?.logistic_type,
+      ship_cost:            ship?.cost,
+      ship_cost_components: ship?.cost_components,
+      ship_base_cost:       ship?.base_cost,
+      ship_shipping_costs:  ship?.shipping_costs,
+      order_items_fees: (order.order_items || []).map(oi => ({
+        id: oi.item?.id, qty: oi.quantity, unit_price: oi.unit_price, sale_fee: oi.sale_fee, shipping_cost: oi.shipping_cost,
+      })),
     });
   } catch (err) { res.json({ error: err.message }); }
 });
