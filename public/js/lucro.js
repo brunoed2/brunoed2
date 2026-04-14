@@ -15,6 +15,14 @@ function lucroFmt(v) {
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
+function lucroCopiarPedido(el, orderId) {
+  navigator.clipboard.writeText(orderId).then(() => {
+    const orig = el.style.color;
+    el.style.color = '#86efac';
+    setTimeout(() => { el.style.color = orig; }, 1000);
+  });
+}
+
 function lucroFmtPct(v) {
   return (v >= 0 ? '+' : '') + v.toFixed(1) + '%';
 }
@@ -162,7 +170,7 @@ function lucroRenderizarTabela(vendas) {
     const fmtCusto = (val) => val > 0 ? lucroFmt(val) : '—';
     tr.innerHTML = `
       <td class="lucro-td-data">${new Date(v.data).toLocaleDateString('pt-BR')}</td>
-      <td class="td-titulo">${item0.titulo || '—'}${multi ? `<span class="lucro-multi"> +${v.itens.length - 1}</span>` : ''}</td>
+      <td class="td-titulo lucro-titulo-copy" onclick="lucroCopiarPedido(this, '${v.orderId}')" title="Clique para copiar o número do pedido">${item0.titulo || '—'}${multi ? `<span class="lucro-multi"> +${v.itens.length - 1}</span>` : ''}</td>
       <td class="lucro-td-mlb">${chave0 || '—'}</td>
       <td class="col-num">${qtdTotal}</td>
       <td class="col-num">${lucroFmt(v.receita)}</td>

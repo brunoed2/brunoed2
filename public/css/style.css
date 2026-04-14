@@ -826,6 +826,9 @@ tr.venda-atendida td { opacity: .45; }
   border-color: #818cf8;
 }
 
+.lucro-titulo-copy { cursor: pointer; }
+.lucro-titulo-copy:hover { text-decoration: underline dotted #94a3b8; }
+
 .lucro-custo-total {
   display: block;
   font-size: 12px;
