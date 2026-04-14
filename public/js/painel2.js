@@ -44,7 +44,6 @@ async function trocarConta(num) {
     });
 
     // Recarrega a aba atual só após confirmação do servidor
-    carregarCodAutorizacao();
     const abaAtiva = document.querySelector('.tab.active')?.id?.replace('tab-', '');
     if (abaAtiva === 'estoque') carregarEstoque(true);
     if (abaAtiva === 'vendas')  carregarVendas();
@@ -648,32 +647,6 @@ async function toggleFlag(shipmentId, btn) {
   btn.disabled = false;
 }
 
-// ── Código de autorização ─────────────────────────────────────
-
-async function carregarCodAutorizacao() {
-  try {
-    const data = await apiFetch('/api/conta/cod-autorizacao');
-    const el = document.getElementById('sidebar-cod-auth');
-    if (el) el.textContent = data.cod || '—';
-  } catch {}
-}
-
-async function editarCodAutorizacao() {
-  const el  = document.getElementById('sidebar-cod-auth');
-  const cod = (el?.textContent === '—' ? '' : el?.textContent) || '';
-  const novo = window.prompt('Código de autorização do dia:', cod);
-  if (novo === null) return; // cancelou
-  try {
-    const data = await apiFetch('/api/conta/ativa');
-    const num  = data.conta_ativa || '1';
-    await apiFetch('/api/conta/cod-autorizacao', {
-      method: 'POST',
-      body:   JSON.stringify({ conta: num, cod: novo }),
-    });
-    if (el) el.textContent = novo.trim().toUpperCase() || '—';
-  } catch {}
-}
-
 // ── Sair ──────────────────────────────────────────────────────
 
 function sair() {
@@ -684,5 +657,4 @@ function sair() {
 // ── Inicialização ─────────────────────────────────────────────
 
 inicializarSeletorConta();
-carregarCodAutorizacao();
 carregarVendas();

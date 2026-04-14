@@ -94,11 +94,10 @@ async function syncRailwayEnvVars(data) {
   const variables = { ML_CONTA_ATIVA: data.conta_ativa || '1' };
   for (const num of ['1', '2']) {
     const c = data.contas[num] || {};
-    if (c.client_id)           variables[`ML_CLIENT_ID_${num}`]           = c.client_id;
-    if (c.client_secret)       variables[`ML_CLIENT_SECRET_${num}`]       = c.client_secret;
-    if (c.access_token)        variables[`ML_ACCESS_TOKEN_${num}`]        = c.access_token;
-    if (c.refresh_token)       variables[`ML_REFRESH_TOKEN_${num}`]       = c.refresh_token;
-    if (c.cod_autorizacao)     variables[`COD_AUTH_${num}`]               = c.cod_autorizacao;
+    if (c.client_id)        variables[`ML_CLIENT_ID_${num}`]        = c.client_id;
+    if (c.client_secret)    variables[`ML_CLIENT_SECRET_${num}`]    = c.client_secret;
+    if (c.access_token)     variables[`ML_ACCESS_TOKEN_${num}`]     = c.access_token;
+    if (c.refresh_token)    variables[`ML_REFRESH_TOKEN_${num}`]    = c.refresh_token;
     if (c.user_id)          variables[`ML_USER_ID_${num}`]          = String(c.user_id);
     if (c.token_expires_at) variables[`ML_TOKEN_EXPIRES_AT_${num}`] = String(c.token_expires_at);
   }
@@ -158,7 +157,6 @@ function initFromEnvVars() {
       access_token:     `ML_ACCESS_TOKEN_${num}`,
       refresh_token:    `ML_REFRESH_TOKEN_${num}`,
       user_id:          `ML_USER_ID_${num}`,
-      cod_autorizacao:  `COD_AUTH_${num}`,
     };
     for (const [key, envKey] of Object.entries(map)) {
       if (!c[key] && process.env[envKey]) {
@@ -276,24 +274,6 @@ async function fetchMissingNicknames() {
 fetchMissingNicknames();
 
 // ── Rotas: conta ativa ────────────────────────────────────────
-
-app.get('/api/conta/cod-autorizacao', (req, res) => {
-  const data = loadData();
-  const num  = req.query.conta || data.conta_ativa;
-  const c    = data.contas[num] || {};
-  res.json({ cod: c.cod_autorizacao || '' });
-});
-
-app.post('/api/conta/cod-autorizacao', (req, res) => {
-  const { conta, cod } = req.body;
-  const num = conta || '1';
-  if (!['1', '2'].includes(num)) return res.status(400).json({ error: 'Conta inválida' });
-  const data = loadData();
-  data.contas[num] = data.contas[num] || {};
-  data.contas[num].cod_autorizacao = (cod || '').trim().toUpperCase();
-  saveData(data);
-  res.json({ ok: true });
-});
 
 app.get('/api/conta/ativa', (req, res) => {
   const data = loadData();
@@ -1172,39 +1152,6 @@ app.get('/api/ml/debug-order/:order_id', async (req, res) => {
   }
 });
 
-// DEBUG — testa endpoints da API pública do ML para o código de autorização diário
-app.get('/api/ml/debug-auth-code', async (req, res) => {
-  const data = loadData();
-  const num  = req.query.conta || data.conta_ativa;
-  const c    = data.contas[num];
-  if (!c || !c.access_token) return res.json({ error: 'Não conectado' });
-  const uid     = c.user_id;
-  const headers = { Authorization: `Bearer ${c.access_token}` };
-  const result  = {};
-  const tryGet  = async (label, url, params = {}) => {
-    try {
-      const r = await axios.get(url, { headers, params, timeout: 8000 });
-      result[label] = r.data;
-    } catch (e) {
-      result[label] = { status: e.response?.status, error: e.response?.data || e.message };
-    }
-  };
-  // Carrier IDs do xd_drop_off
-  const carrierId = 17502440;
-  await tryGet('carrier_info',              `https://api.mercadolibre.com/carrier_pickup/${carrierId}`);
-  await tryGet('carrier_auth',              `https://api.mercadolibre.com/carrier_pickup/${carrierId}/authorization`);
-  await tryGet('user_carrier_pickup',       `https://api.mercadolibre.com/users/${uid}/carrier_pickup`);
-  await tryGet('user_carrier_auth',         `https://api.mercadolibre.com/users/${uid}/carrier_pickup/authorization`);
-  await tryGet('user_carrier_code',         `https://api.mercadolibre.com/users/${uid}/carrier_pickup/code`);
-  await tryGet('xd_dropoff_auth',           `https://api.mercadolibre.com/users/${uid}/xd_drop_off/authorization`);
-  await tryGet('returns_auth',              `https://api.mercadolibre.com/users/${uid}/returns/authorization`);
-  await tryGet('returns_auth_code',         `https://api.mercadolibre.com/users/${uid}/returns/authorization_code`);
-  await tryGet('shipping_returns',          `https://api.mercadolibre.com/users/${uid}/shipping_returns`);
-  await tryGet('returns_v2',               `https://api.mercadolibre.com/post-purchase/v1/returns/authorization`, { caller_id: uid });
-  await tryGet('shipping_options',          `https://api.mercadolibre.com/users/${uid}/shipping/options`);
-  await tryGet('coleta_auth',               `https://api.mercadolibre.com/users/${uid}/coleta/authorization`);
-  res.json(result);
-});
 
 // Lista os primeiros pedidos pagos da conta para diagnóstico
 app.get('/api/ml/debug-orders', async (req, res) => {

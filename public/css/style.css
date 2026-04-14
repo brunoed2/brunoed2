@@ -41,49 +41,10 @@ body {
   font-size: 20px;
   font-weight: 700;
   color: #fff;
-  padding: 0 24px 20px;
+  padding: 0 24px 28px;
   letter-spacing: .5px;
   border-bottom: 1px solid #2a2a2a;
   margin-bottom: 16px;
-}
-
-.auth-code-label {
-  font-size: 10px;
-  font-weight: 500;
-  color: #666;
-  text-transform: uppercase;
-  letter-spacing: .8px;
-  margin-bottom: 6px;
-}
-
-.auth-code-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.auth-code-valor {
-  font-size: 18px;
-  font-weight: 700;
-  color: #fff;
-  letter-spacing: 2px;
-  font-family: 'Courier New', monospace;
-}
-
-.btn-edit-cod {
-  background: none;
-  border: none;
-  color: #555;
-  cursor: pointer;
-  font-size: 15px;
-  padding: 2px 4px;
-  border-radius: 4px;
-  line-height: 1;
-  transition: color .15s;
-}
-
-.btn-edit-cod:hover {
-  color: #aaa;
 }
 
 .sidebar nav {
