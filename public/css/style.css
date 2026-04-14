@@ -826,6 +826,14 @@ tr.venda-atendida td { opacity: .45; }
   border-color: #818cf8;
 }
 
+.lucro-custo-total {
+  display: block;
+  font-size: 12px;
+  color: #64748b;
+  text-align: right;
+  margin-bottom: 2px;
+}
+
 .lucro-td-data {
   font-size: 12px;
   white-space: nowrap;

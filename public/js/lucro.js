@@ -170,8 +170,9 @@ function lucroRenderizarTabela(vendas) {
       <td class="col-num lucro-neg-leve">${fmtCusto(v.frete)}</td>
       <td class="col-num">
         ${chave0
-          ? `<input type="number" class="lucro-custo-input" data-sku="${chave0}"
-              value="${custoSalvo || ''}" placeholder="—"
+          ? `${custoSalvo > 0 ? `<span class="lucro-custo-total">${fmtCusto(custoSalvo * qtdTotal)}</span>` : ''}
+             <input type="number" class="lucro-custo-input" data-sku="${chave0}"
+              value="${custoSalvo || ''}" placeholder="unit."
               onchange="lucroSalvarCusto(this)" step="0.01" min="0">`
           : '—'}
       </td>
@@ -197,8 +198,9 @@ function lucroRenderizarTabela(vendas) {
         <td></td><td></td>
         <td class="col-num">
           ${chaveI
-            ? `<input type="number" class="lucro-custo-input" data-sku="${chaveI}"
-                value="${cSalvo2 || ''}" placeholder="—"
+            ? `${cSalvo2 > 0 ? `<span class="lucro-custo-total">${lucroFmt(cSalvo2 * item.quantidade)}</span>` : ''}
+               <input type="number" class="lucro-custo-input" data-sku="${chaveI}"
+                value="${cSalvo2 || ''}" placeholder="unit."
                 onchange="lucroSalvarCusto(this)" step="0.01" min="0">`
             : ''}
         </td>
