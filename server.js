@@ -1063,6 +1063,8 @@ app.get('/api/ml/debug-order/:order_id', async (req, res) => {
       ? await axios.get(`https://api.mercadolibre.com/shipments/${o.shipping.id}`, { headers, timeout: 10000 }).then(r => r.data).catch(e => ({ error: e.message }))
       : null;
     res.json({
+      conta_usada:    num,
+      user_id:        c.user_id,
       order_id:       o.id,
       order_status:   o.status,
       shipping_id:    o.shipping?.id,
@@ -1072,6 +1074,33 @@ app.get('/api/ml/debug-order/:order_id', async (req, res) => {
       shipment_substatus: shipping?.substatus,
       shipment_logistic:  shipping?.logistic_type,
     });
+  } catch (e) {
+    res.json({ error: e.response?.data || e.message, conta_usada: num, user_id: c.user_id });
+  }
+});
+
+// Lista os primeiros pedidos pagos da conta para diagnóstico
+app.get('/api/ml/debug-orders', async (req, res) => {
+  const data = loadData();
+  const num  = req.query.conta || data.conta_ativa;
+  const c    = data.contas[num];
+  if (!c || !c.access_token) return res.json({ error: 'Não conectado' });
+  if (!c.user_id) return res.json({ error: 'user_id não encontrado' });
+  const headers = { Authorization: `Bearer ${c.access_token}` };
+  try {
+    const resp = await axios.get('https://api.mercadolibre.com/orders/search', {
+      params: { seller: c.user_id, 'order.status': 'paid', sort: 'date_desc', offset: 0, limit: 10 },
+      headers, timeout: 15000,
+    });
+    const orders = (resp.data.results || []).map(o => ({
+      order_id:      o.id,
+      date:          o.date_created?.slice(0, 10),
+      status:        o.status,
+      shipping_id:   o.shipping?.id,
+      logistic_type: o.shipping?.logistic_type,
+      mode:          o.shipping?.mode,
+    }));
+    res.json({ conta: num, user_id: c.user_id, total: resp.data.paging?.total, orders });
   } catch (e) {
     res.json({ error: e.response?.data || e.message });
   }
