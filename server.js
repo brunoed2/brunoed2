@@ -813,18 +813,6 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
       handling:      'Preparando',
       ready_to_ship: 'Aguardando coleta',
     };
-    const SUBSTATUS_PT = {
-      ready_to_print:                  'Imprimir etiqueta',
-      printed:                         'Etiqueta impressa',
-      generating:                      'Gerando etiqueta',
-      invoice_pending:                 'NF-e pendente',
-      waiting_bo:                      'Aguardando aprovação',
-      waiting_for_carrier_authorization: 'Aguardando transportadora',
-      waiting_carrier:                 'Aguardando coleta',
-      carrier_confirmed:               'Coleta confirmada',
-      in_hub:                          'No centro de distribuição',
-      almost_there:                    'Quase chegando',
-    };
 
     const isFull = (s) => s && (
       s.logistic_type === 'fulfillment' ||
@@ -832,10 +820,10 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
       (s.logistic_type || '').includes('fulfillment')
     );
 
-    // Mostra todos os pedidos ativos não-Full, independente do substatus
     const filtradas = resultado.filter(({ shipment }) =>
       shipment &&
       LABEL_STATUSES.has(shipment.status) &&
+      LABEL_SUBSTATUSES.has(shipment.substatus) &&
       !isFull(shipment)
     );
 
@@ -1065,6 +1053,33 @@ app.get('/api/ml/ads-roas', async (req, res) => {
 });
 
 // DEBUG — explora API de Ads
+app.get('/api/ml/debug-order/:order_id', async (req, res) => {
+  const data = loadData();
+  const num  = req.query.conta || data.conta_ativa;
+  const c    = data.contas[num];
+  if (!c || !c.access_token) return res.json({ error: 'Não conectado' });
+  const headers = { Authorization: `Bearer ${c.access_token}` };
+  try {
+    const order = await axios.get(`https://api.mercadolibre.com/orders/${req.params.order_id}`, { headers, timeout: 10000 });
+    const o = order.data;
+    const shipping = o.shipping?.id
+      ? await axios.get(`https://api.mercadolibre.com/shipments/${o.shipping.id}`, { headers, timeout: 10000 }).then(r => r.data).catch(e => ({ error: e.message }))
+      : null;
+    res.json({
+      order_id:       o.id,
+      order_status:   o.status,
+      shipping_id:    o.shipping?.id,
+      logistic_type:  o.shipping?.logistic_type,
+      mode:           o.shipping?.mode,
+      shipment_status:    shipping?.status,
+      shipment_substatus: shipping?.substatus,
+      shipment_logistic:  shipping?.logistic_type,
+    });
+  } catch (e) {
+    res.json({ error: e.response?.data || e.message });
+  }
+});
+
 app.get('/api/ml/debug-ads', async (req, res) => {
   const data = loadData();
   const num  = data.conta_ativa;
