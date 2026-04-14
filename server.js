@@ -1169,15 +1169,8 @@ app.get('/api/ml/debug-auth-code', async (req, res) => {
       result[label] = { status: e.response?.status, error: e.response?.data || e.message };
     }
   };
-  await tryGet('logistics_auth',        `https://api.mercadolibre.com/users/${uid}/logistics/authorization_code`);
-  await tryGet('logistics_auth2',       `https://api.mercadolibre.com/logistics/authorization_code?user_id=${uid}`);
-  await tryGet('me2_auth',              `https://api.mercadolibre.com/users/${uid}/me2/authorization_code`);
-  await tryGet('carrier_auth',          `https://api.mercadolibre.com/carrier/17502440/authorization_code?user_id=${uid}`);
-  await tryGet('xd_drop_off_code',      `https://api.mercadolibre.com/users/${uid}/xd_drop_off/code`);
-  await tryGet('xd_auth_v2',            `https://api.mercadolibre.com/xd_drop_off/authorization_code?seller_id=${uid}`);
-  await tryGet('shipments_today',       `https://api.mercadolibre.com/users/${uid}/shipments?status=handling&limit=1`);
-  await tryGet('pickup_points',         `https://api.mercadolibre.com/users/${uid}/pickup_points`);
-  await tryGet('logistics_centers',     `https://api.mercadolibre.com/users/${uid}/logistics/centers`);
+  await tryGet('shipping_banner',  `https://www.mercadolivre.com.br/vendas/omni/lista/api/shipping/banner`);
+  await tryGet('shipping_banner2', `https://www.mercadolivre.com.br/vendas/omni/lista/api/shipping/banner?user_id=${uid}`);
   res.json(result);
 });
 
