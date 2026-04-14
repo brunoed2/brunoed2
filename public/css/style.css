@@ -826,6 +826,17 @@ tr.venda-atendida td { opacity: .45; }
   border-color: #818cf8;
 }
 
+.lucro-date-input {
+  padding: 5px 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #e2e8f0;
+  background: #1e293b;
+  cursor: pointer;
+}
+.lucro-date-input:focus { outline: none; border-color: #818cf8; }
+
 .lucro-titulo-copy { cursor: pointer; }
 .lucro-titulo-copy:hover { text-decoration: underline dotted #94a3b8; }
 

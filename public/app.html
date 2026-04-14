@@ -126,12 +126,16 @@
 
         <!-- Tabela -->
         <div class="tabela-container">
-          <div class="tabela-topo">
+          <div class="tabela-topo" style="flex-wrap:wrap;gap:8px">
             <span id="lucro-total"></span>
-            <div style="display:flex;gap:8px;align-items:center">
-              <button class="filtro-btn" data-lucro-dias="7"  onclick="lucroSetPeriodo(7)">7 dias</button>
-              <button class="filtro-btn active" data-lucro-dias="30" onclick="lucroSetPeriodo(30)">30 dias</button>
-              <button class="filtro-btn" data-lucro-dias="60" onclick="lucroSetPeriodo(60)">60 dias</button>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+              <input type="date" id="lucro-data-de" class="lucro-date-input" onchange="lucroRecalcularERenderizar()">
+              <span style="color:#64748b;font-size:13px">até</span>
+              <input type="date" id="lucro-data-ate" class="lucro-date-input" onchange="lucroRecalcularERenderizar()">
+              <button class="filtro-btn" onclick="lucroSetPeriodoRapido(0)">Hoje</button>
+              <button class="filtro-btn" onclick="lucroSetPeriodoRapido(7)">7d</button>
+              <button class="filtro-btn" onclick="lucroSetPeriodoRapido(30)">30d</button>
+              <button class="filtro-btn" onclick="lucroSetPeriodoRapido(60)">60d</button>
               <button class="btn-secondary" onclick="lucroCarregarVendas()" id="btn-atualizar-lucro">↻ Atualizar</button>
             </div>
           </div>
@@ -519,6 +523,6 @@
   <script src="/js/conexao.js"></script>
   <script src="/js/shopee.js?v=118"></script>
   <script src="/js/notas.js?v=128"></script>
-  <div id="version-badge">v162</div>
+  <div id="version-badge">v163</div>
 </body>
 </html>
