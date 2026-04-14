@@ -1152,6 +1152,32 @@ app.get('/api/ml/debug-order/:order_id', async (req, res) => {
   }
 });
 
+// DEBUG — testa endpoints possíveis para o código de autorização diário
+app.get('/api/ml/debug-auth-code', async (req, res) => {
+  const data = loadData();
+  const num  = req.query.conta || data.conta_ativa;
+  const c    = data.contas[num];
+  if (!c || !c.access_token) return res.json({ error: 'Não conectado' });
+  const uid  = c.user_id;
+  const headers = { Authorization: `Bearer ${c.access_token}` };
+  const result = {};
+  const tryGet = async (label, url) => {
+    try {
+      const r = await axios.get(url, { headers, timeout: 8000 });
+      result[label] = r.data;
+    } catch (e) {
+      result[label] = { status: e.response?.status, error: e.response?.data || e.message };
+    }
+  };
+  await tryGet('users_me',              `https://api.mercadolibre.com/users/${uid}`);
+  await tryGet('shipping_prefs',        `https://api.mercadolibre.com/users/${uid}/shipping_preferences`);
+  await tryGet('pickup_auth',           `https://api.mercadolibre.com/users/${uid}/pickup_authorization`);
+  await tryGet('shipping_auth',         `https://api.mercadolibre.com/users/${uid}/shipping_authorization`);
+  await tryGet('shipments_auth_code',   `https://api.mercadolibre.com/shipments/authorization_code?seller_id=${uid}`);
+  await tryGet('xd_auth',              `https://api.mercadolibre.com/users/${uid}/xd_drop_off/authorization_code`);
+  res.json(result);
+});
+
 // Lista os primeiros pedidos pagos da conta para diagnóstico
 app.get('/api/ml/debug-orders', async (req, res) => {
   const data = loadData();
