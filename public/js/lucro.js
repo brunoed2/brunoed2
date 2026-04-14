@@ -82,7 +82,7 @@ async function lucroSalvarCusto(input) {
 function lucroCalcular(raw) {
   const { taxa_imposto, custos } = lucroConfig;
   return raw.map(v => {
-    const custo   = v.itens.reduce((s, i) => s + (custos[i.sku] || 0) * i.quantidade, 0);
+    const custo   = v.itens.reduce((s, i) => s + (custos[i.sku || i.mlb] || 0) * i.quantidade, 0);
     const frete   = v.freteReal ?? 0; // custo real de frete do vendedor (sender_cost da API)
     const imposto = v.receita * (taxa_imposto / 100);
     const lucro   = v.receita - v.taxaML - frete - custo - imposto;
@@ -154,7 +154,8 @@ function lucroRenderizarTabela(vendas) {
     const item0      = v.itens[0] || {};
     const multi      = v.itens.length > 1;
     const qtdTotal   = v.itens.reduce((s, i) => s + i.quantidade, 0);
-    const custoSalvo = lucroConfig.custos[item0.sku] || 0;
+    const chave0     = item0.sku || item0.mlb || '';
+    const custoSalvo = lucroConfig.custos[chave0] || 0;
     const margemCls  = v.margem >= 10 ? 'lucro-val-pos' : v.margem < 0 ? 'lucro-val-neg' : '';
 
     const tr = document.createElement('tr');
@@ -162,17 +163,17 @@ function lucroRenderizarTabela(vendas) {
     tr.innerHTML = `
       <td class="lucro-td-data">${new Date(v.data).toLocaleDateString('pt-BR')}</td>
       <td class="td-titulo">${item0.titulo || '—'}${multi ? `<span class="lucro-multi"> +${v.itens.length - 1}</span>` : ''}</td>
-      <td class="lucro-td-mlb">${item0.sku || item0.mlb || '—'}</td>
+      <td class="lucro-td-mlb">${chave0 || '—'}</td>
       <td class="col-num">${qtdTotal}</td>
       <td class="col-num">${lucroFmt(v.receita)}</td>
       <td class="col-num lucro-neg-leve">${fmtCusto(v.taxaML)}</td>
       <td class="col-num lucro-neg-leve">${fmtCusto(v.frete)}</td>
       <td class="col-num">
-        ${item0.sku
-          ? `<input type="number" class="lucro-custo-input" data-sku="${item0.sku}"
+        ${chave0
+          ? `<input type="number" class="lucro-custo-input" data-sku="${chave0}"
               value="${custoSalvo || ''}" placeholder="—"
               onchange="lucroSalvarCusto(this)" step="0.01" min="0">`
-          : '<span style="color:#cbd5e1;font-size:11px">sem SKU</span>'}
+          : '—'}
       </td>
       <td class="col-num lucro-neg-leve">${fmtCusto(v.imposto)}</td>
       <td class="col-num ${margemCls}"><strong>${lucroFmt(v.lucro)}</strong></td>
@@ -183,19 +184,20 @@ function lucroRenderizarTabela(vendas) {
     // Sub-linhas para itens adicionais
     for (let i = 1; i < v.itens.length; i++) {
       const item    = v.itens[i];
-      const cSalvo2 = lucroConfig.custos[item.sku] || 0;
+      const chaveI  = item.sku || item.mlb || '';
+      const cSalvo2 = lucroConfig.custos[chaveI] || 0;
       const trSub   = document.createElement('tr');
       trSub.classList.add('lucro-sub-item');
       trSub.innerHTML = `
         <td></td>
-        <td class="td-titulo" style="color:#94a3b8;font-size:12px">↳ ${item.titulo || item.sku || item.mlb}</td>
-        <td class="lucro-td-mlb">${item.sku || item.mlb || '—'}</td>
+        <td class="td-titulo" style="color:#94a3b8;font-size:12px">↳ ${item.titulo || chaveI}</td>
+        <td class="lucro-td-mlb">${chaveI || '—'}</td>
         <td class="col-num">${item.quantidade}</td>
         <td class="col-num" style="color:#94a3b8">${lucroFmt(item.precoUnit * item.quantidade)}</td>
         <td></td><td></td>
         <td class="col-num">
-          ${item.sku
-            ? `<input type="number" class="lucro-custo-input" data-sku="${item.sku}"
+          ${chaveI
+            ? `<input type="number" class="lucro-custo-input" data-sku="${chaveI}"
                 value="${cSalvo2 || ''}" placeholder="—"
                 onchange="lucroSalvarCusto(this)" step="0.01" min="0">`
             : ''}
