@@ -1172,36 +1172,33 @@ app.get('/api/ml/debug-order/:order_id', async (req, res) => {
   }
 });
 
-// DEBUG — testa endpoints possíveis para o código de autorização diário
+// DEBUG — testa endpoints da API pública do ML para o código de autorização diário
 app.get('/api/ml/debug-auth-code', async (req, res) => {
   const data = loadData();
   const num  = req.query.conta || data.conta_ativa;
   const c    = data.contas[num];
   if (!c || !c.access_token) return res.json({ error: 'Não conectado' });
-  const uid  = c.user_id;
+  const uid     = c.user_id;
   const headers = { Authorization: `Bearer ${c.access_token}` };
-  const result = {};
-  const tryGet = async (label, url) => {
+  const result  = {};
+  const tryGet  = async (label, url, params = {}) => {
     try {
-      const r = await axios.get(url, { headers, timeout: 8000 });
+      const r = await axios.get(url, { headers, params, timeout: 8000 });
       result[label] = r.data;
     } catch (e) {
       result[label] = { status: e.response?.status, error: e.response?.data || e.message };
     }
   };
-  const bannerUrl = `https://www.mercadolivre.com.br/vendas/omni/lista/api/shipping/banner`;
-  const tok = c.access_token;
-  // Tenta variações de auth para o endpoint interno do ML
-  const tryBanner = async (label, extraHeaders, extraParams = '') => {
-    try {
-      const r = await axios.get(bannerUrl + extraParams, { headers: { Authorization: `Bearer ${tok}`, ...extraHeaders }, timeout: 8000 });
-      result[label] = r.data;
-    } catch (e) { result[label] = { status: e.response?.status, error: e.response?.data || e.message }; }
-  };
-  await tryBanner('bearer_caller',        {}, `?caller.id=${uid}`);
-  await tryBanner('bearer_caller_token',  {}, `?caller.id=${uid}&access_token=${tok}`);
-  await tryBanner('cookie_caller',        { Cookie: `access_token=${tok}` }, `?caller.id=${uid}`);
-  await tryBanner('no_auth_token_param',  { Authorization: undefined }, `?access_token=${tok}&caller.id=${uid}`);
+  // Candidatos na API pública oficial do ML
+  await tryGet('shipping_preferences',   `https://api.mercadolibre.com/users/${uid}/shipping_preferences`);
+  await tryGet('returns',                `https://api.mercadolibre.com/users/${uid}/returns`);
+  await tryGet('claims',                 `https://api.mercadolibre.com/users/${uid}/claims`, { limit: 1 });
+  await tryGet('shipment_label_options', `https://api.mercadolibre.com/users/${uid}/shipment_label_options`);
+  await tryGet('drop_off_options',       `https://api.mercadolibre.com/users/${uid}/drop_off_options`);
+  await tryGet('user_profile',           `https://api.mercadolibre.com/users/${uid}`);
+  await tryGet('shipping_modes',         `https://api.mercadolibre.com/users/${uid}/shipping_modes`);
+  await tryGet('returns_v1',             `https://api.mercadolibre.com/returns`, { seller_id: uid, limit: 1 });
+  await tryGet('returns_v2',             `https://api.mercadolibre.com/post-purchase/v1/returns`, { caller_id: uid, limit: 1 });
   res.json(result);
 });
 
