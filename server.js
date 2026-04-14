@@ -1914,17 +1914,25 @@ app.get('/api/notas/buscar', async (req, res) => {
         if (nsuSet.has(doc.nsu)) continue;
         nsuSet.add(doc.nsu);
         try {
+          // Ignora eventos (cancelamentos, EPEC, etc.) — não são NF-e de entrada
+          const schema = doc.schema || '';
+          if (schema.toLowerCase().includes('evento')) continue;
+
           const buf    = Buffer.from(doc.zip, 'base64');
           const xmlDoc = zlib.gunzipSync(buf).toString('utf8');
           const campos = extrairCampos(xmlDoc);
-          // Mantém só compras: CNPJ como destinatário ou tpNF=entrada e não é o emitente
+
+          // Ignora se não extraiu dados mínimos de NF-e
+          if (!campos.chNFe && !campos.nNF) continue;
+
+          // Mantém só compras: CNPJ como destinatário, ou tpNF=0 (entrada) e não é o emitente
           const ehCompra = campos.CNPJ_dest === n.cnpj ||
-            (campos.tpNF === '0' && campos.CNPJ_emit !== n.cnpj) ||
-            (!campos.CNPJ_dest && !campos.tpNF && campos.CNPJ_emit !== n.cnpj);
+            (campos.tpNF === '0' && campos.CNPJ_emit !== n.cnpj);
           if (!ehCompra) continue;
+
           campos.nsu    = doc.nsu;
-          campos.schema = doc.schema;
-          campos.tipo   = doc.schema.startsWith('resNFe') ? 'resumo' : 'completa';
+          campos.schema = schema;
+          campos.tipo   = schema.startsWith('resNFe') ? 'resumo' : 'completa';
           campos.zip    = doc.zip; // base64 gzip — para download do XML
           todasNovas.push(campos);
         } catch (e) {
