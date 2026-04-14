@@ -18,7 +18,11 @@
 
     <aside class="sidebar">
       <div class="sidebar-logo">
-        <span>Painel</span>
+        <div class="auth-code-label">Código do dia</div>
+        <div class="auth-code-row">
+          <span id="sidebar-cod-auth" class="auth-code-valor">—</span>
+          <button class="btn-edit-cod" onclick="editarCodAutorizacao()" title="Atualizar código">✎</button>
+        </div>
       </div>
       <div class="conta-seletor">
         <button class="conta-btn active" data-conta="1" onclick="trocarConta('1')">Conta 1</button>
@@ -138,7 +142,7 @@
     </main>
   </div>
 
-  <script src="/js/painel2.js?v=128"></script>
-  <div id="version-badge">v145</div>
+  <script src="/js/painel2.js?v=146"></script>
+  <div id="version-badge">v146</div>
 </body>
 </html>

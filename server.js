@@ -94,10 +94,11 @@ async function syncRailwayEnvVars(data) {
   const variables = { ML_CONTA_ATIVA: data.conta_ativa || '1' };
   for (const num of ['1', '2']) {
     const c = data.contas[num] || {};
-    if (c.client_id)        variables[`ML_CLIENT_ID_${num}`]        = c.client_id;
-    if (c.client_secret)    variables[`ML_CLIENT_SECRET_${num}`]    = c.client_secret;
-    if (c.access_token)     variables[`ML_ACCESS_TOKEN_${num}`]     = c.access_token;
-    if (c.refresh_token)    variables[`ML_REFRESH_TOKEN_${num}`]    = c.refresh_token;
+    if (c.client_id)           variables[`ML_CLIENT_ID_${num}`]           = c.client_id;
+    if (c.client_secret)       variables[`ML_CLIENT_SECRET_${num}`]       = c.client_secret;
+    if (c.access_token)        variables[`ML_ACCESS_TOKEN_${num}`]        = c.access_token;
+    if (c.refresh_token)       variables[`ML_REFRESH_TOKEN_${num}`]       = c.refresh_token;
+    if (c.cod_autorizacao)     variables[`COD_AUTH_${num}`]               = c.cod_autorizacao;
     if (c.user_id)          variables[`ML_USER_ID_${num}`]          = String(c.user_id);
     if (c.token_expires_at) variables[`ML_TOKEN_EXPIRES_AT_${num}`] = String(c.token_expires_at);
   }
@@ -157,6 +158,7 @@ function initFromEnvVars() {
       access_token:     `ML_ACCESS_TOKEN_${num}`,
       refresh_token:    `ML_REFRESH_TOKEN_${num}`,
       user_id:          `ML_USER_ID_${num}`,
+      cod_autorizacao:  `COD_AUTH_${num}`,
     };
     for (const [key, envKey] of Object.entries(map)) {
       if (!c[key] && process.env[envKey]) {
@@ -274,6 +276,24 @@ async function fetchMissingNicknames() {
 fetchMissingNicknames();
 
 // ── Rotas: conta ativa ────────────────────────────────────────
+
+app.get('/api/conta/cod-autorizacao', (req, res) => {
+  const data = loadData();
+  const num  = req.query.conta || data.conta_ativa;
+  const c    = data.contas[num] || {};
+  res.json({ cod: c.cod_autorizacao || '' });
+});
+
+app.post('/api/conta/cod-autorizacao', (req, res) => {
+  const { conta, cod } = req.body;
+  const num = conta || '1';
+  if (!['1', '2'].includes(num)) return res.status(400).json({ error: 'Conta inválida' });
+  const data = loadData();
+  data.contas[num] = data.contas[num] || {};
+  data.contas[num].cod_autorizacao = (cod || '').trim().toUpperCase();
+  saveData(data);
+  res.json({ ok: true });
+});
 
 app.get('/api/conta/ativa', (req, res) => {
   const data = loadData();
