@@ -1239,6 +1239,24 @@ app.get('/api/lucro/vendas', async (req, res) => {
       })
     );
 
+    // Modo debug: retorna estrutura crua dos primeiros shipments
+    if (req.query.debug === '1') {
+      const amostra = shipmentIds.slice(0, 3).map(sid => ({
+        shipment_id: sid,
+        cost_raw:    fretePorShipment[sid],  // valor já extraído
+      }));
+      // Busca estrutura completa dos primeiros 3
+      const rawData = await Promise.all(
+        shipmentIds.slice(0, 3).map(async sid => {
+          try {
+            const r = await axios.get(`https://api.mercadolibre.com/shipments/${sid}`, { headers, timeout: 8000 });
+            return { sid, cost: r.data.cost, cost_components: r.data.cost_components, base_cost: r.data.base_cost, logistic_type: r.data.logistic_type };
+          } catch (e) { return { sid, error: e.message }; }
+        })
+      );
+      return res.json({ shipment_ids_sample: shipmentIds.slice(0, 5), raw: rawData });
+    }
+
     const vendas = todasOrdens.map(order => {
       const itens = (order.order_items || []).map(oi => ({
         mlb:        oi.item?.id         || '',
