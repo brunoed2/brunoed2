@@ -761,18 +761,15 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
   const LABEL_SUBSTATUSES = new Set(['ready_to_print', 'printed']);
 
   try {
-    // Busca pedidos dos últimos 60 dias para não perder pedidos antigos com etiqueta pendente
-    const dataInicio = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString().slice(0, 19) + '.000-03:00';
     const todasOrdens = [];
     let offset = 0;
     const limit = 50;
     while (true) {
       const resp = await axios.get('https://api.mercadolibre.com/orders/search', {
         params: {
-          seller:                      c.user_id,
-          'order.status':              'paid',
-          'order.date_created.from':   dataInicio,
-          sort:                        'date_desc',
+          seller:         c.user_id,
+          'order.status': 'paid',
+          sort:           'date_desc',
           offset,
           limit,
         },
