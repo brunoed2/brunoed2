@@ -1234,7 +1234,8 @@ app.get('/api/lucro/vendas', async (req, res) => {
           const r = await axios.get(`https://api.mercadolibre.com/shipments/${sid}`, {
             headers, timeout: 8000,
           });
-          fretePorShipment[sid] = r.data?.cost?.sender_cost ?? 0;
+          // ML não retorna cost.sender_cost — o custo real do vendedor está em cost_components.ratio
+          fretePorShipment[sid] = r.data?.cost_components?.ratio ?? r.data?.base_cost ?? 0;
         } catch { fretePorShipment[sid] = 0; }
       })
     );
