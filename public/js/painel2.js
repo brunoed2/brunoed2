@@ -549,6 +549,10 @@ async function carregarVendas() {
       const imgHtml0 = item0.thumbnail
         ? `<a href="${item0.permalink || '#'}" target="_blank" class="venda-thumb-link"><img src="${item0.thumbnail}" class="venda-thumb" loading="lazy"></a>`
         : `<div class="venda-thumb-vazio"></div>`;
+      const statusTxt = v.substatusLabel || v.statusLabel;
+      const etiquetaHtml = v.temEtiqueta
+        ? `<a class="btn-etiqueta" href="/api/ml/etiqueta/${v.shipmentId}?conta=${v.conta}" target="_blank">${v.acaoLabel}</a>`
+        : `<span class="btn-etiqueta btn-etiqueta-inativo" title="${statusTxt}">—</span>`;
       tr.innerHTML = `
         <td><input type="checkbox" class="check-venda" data-shipment-id="${v.shipmentId}" data-conta="${v.conta}" onchange="atualizarBotaoSelecionadas()"></td>
         <td class="td-thumb">${imgHtml0}</td>
@@ -557,8 +561,8 @@ async function carregarVendas() {
         <td class="col-num venda-qtd">${item0.quantidade ?? ''}</td>
         <td class="td-sku">${item0.sku || '—'}</td>
         <td class="td-titulo" title="${item0.titulo || ''}${item0.variacao ? ` (${item0.variacao})` : ''}">${item0.titulo || '—'}${item0.variacao ? `<span class="venda-variacao"> — ${item0.variacao}</span>` : ''}</td>
-        <td><span class="badge-deposito ${bStatus}">${v.statusLabel}</span></td>
-        <td><a class="btn-etiqueta" href="/api/ml/etiqueta/${v.shipmentId}?conta=${v.conta}" target="_blank">${v.acaoLabel}</a></td>
+        <td><span class="badge-deposito ${bStatus}" title="${statusTxt}">${v.statusLabel}</span></td>
+        <td>${etiquetaHtml}</td>
         <td><button class="btn-atender" onclick="marcarAtendido('${v.shipmentId}', this, vendaCache['${v.shipmentId}'])" title="Marcar como atendido">✔</button></td>
       `;
       tbody.appendChild(tr);

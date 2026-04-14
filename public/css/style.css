@@ -839,6 +839,12 @@ code {
   transition: background .2s;
 }
 .btn-etiqueta:hover { background: #333; }
+.btn-etiqueta-inativo {
+  background: transparent;
+  color: #94a3b8;
+  cursor: default;
+  pointer-events: none;
+}
 
 /* ── Link de anúncio na tabela de estoque ───────────────────── */
 

@@ -109,6 +109,14 @@ async function syncRailwayEnvVars(data) {
     if (n.senha)     variables[`NOTAS_SENHA_${num}`]     = n.senha;
     if (n.cnpj)      variables[`NOTAS_CNPJ_${num}`]      = n.cnpj;
     if (n.titular)   variables[`NOTAS_TITULAR_${num}`]   = n.titular;
+    // Lista de notas (sem o campo zip para economizar espaço nas env vars)
+    if (n.lista && n.lista.length > 0) {
+      const listaSemZip = n.lista.map(({ zip, ...resto }) => resto);
+      variables[`NOTAS_LISTA_${num}`] = JSON.stringify(listaSemZip);
+    }
+    if (n.ultNSU) variables[`NOTAS_ULTNSU_${num}`] = n.ultNSU;
+    if (n.maxNSU) variables[`NOTAS_MAXNSU_${num}`] = n.maxNSU;
+    if (n.ultimaRejeicao656) variables[`NOTAS_REJEICAO656_${num}`] = String(n.ultimaRejeicao656);
   }
 
   try {
@@ -187,9 +195,22 @@ function initFromEnvVars() {
       nc.senha     = process.env[`NOTAS_SENHA_${num}`]     || '';
       nc.cnpj      = process.env[`NOTAS_CNPJ_${num}`]      || '';
       nc.titular   = process.env[`NOTAS_TITULAR_${num}`]   || '';
-      data.notas_contas[num] = nc;
       changed = true;
     }
+    // Restaura lista de notas (sem zip — download de XML requer nova busca)
+    if (!nc.lista && process.env[`NOTAS_LISTA_${num}`]) {
+      try { nc.lista = JSON.parse(process.env[`NOTAS_LISTA_${num}`]); changed = true; } catch {}
+    }
+    if (!nc.ultNSU && process.env[`NOTAS_ULTNSU_${num}`]) {
+      nc.ultNSU = process.env[`NOTAS_ULTNSU_${num}`]; changed = true;
+    }
+    if (!nc.maxNSU && process.env[`NOTAS_MAXNSU_${num}`]) {
+      nc.maxNSU = process.env[`NOTAS_MAXNSU_${num}`]; changed = true;
+    }
+    if (!nc.ultimaRejeicao656 && process.env[`NOTAS_REJEICAO656_${num}`]) {
+      nc.ultimaRejeicao656 = parseInt(process.env[`NOTAS_REJEICAO656_${num}`]) || 0; changed = true;
+    }
+    data.notas_contas[num] = nc;
   }
 
   if (changed) fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
@@ -788,7 +809,22 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
     }
 
     const SUBSTATUS_LABEL = { ready_to_print: 'Baixar', printed: 'Baixar novamente' };
-    const STATUS_PT = { handling: 'Preparando', ready_to_ship: 'Aguardando coleta' };
+    const STATUS_PT = {
+      handling:      'Preparando',
+      ready_to_ship: 'Aguardando coleta',
+    };
+    const SUBSTATUS_PT = {
+      ready_to_print:                  'Imprimir etiqueta',
+      printed:                         'Etiqueta impressa',
+      generating:                      'Gerando etiqueta',
+      invoice_pending:                 'NF-e pendente',
+      waiting_bo:                      'Aguardando aprovação',
+      waiting_for_carrier_authorization: 'Aguardando transportadora',
+      waiting_carrier:                 'Aguardando coleta',
+      carrier_confirmed:               'Coleta confirmada',
+      in_hub:                          'No centro de distribuição',
+      almost_there:                    'Quase chegando',
+    };
 
     const isFull = (s) => s && (
       s.logistic_type === 'fulfillment' ||
@@ -796,10 +832,10 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
       (s.logistic_type || '').includes('fulfillment')
     );
 
+    // Mostra todos os pedidos ativos não-Full, independente do substatus
     const filtradas = resultado.filter(({ shipment }) =>
       shipment &&
       LABEL_STATUSES.has(shipment.status) &&
-      LABEL_SUBSTATUSES.has(shipment.substatus) &&
       !isFull(shipment)
     );
 
@@ -846,15 +882,18 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
       const sid = String(shipment.id);
       if (!porShipment.has(sid)) {
         porShipment.set(sid, {
-          orderId:     order.id,
-          data:        order.date_created,
-          comprador:   order.buyer?.nickname || '—',
-          shipmentId:  shipment.id,
-          conta:       data.conta_ativa,
-          status:      shipment.status,
-          statusLabel: STATUS_PT[shipment.status] || shipment.status,
-          acaoLabel:   SUBSTATUS_LABEL[shipment.substatus] || 'Baixar',
-          itensLista:  [],
+          orderId:        order.id,
+          data:           order.date_created,
+          comprador:      order.buyer?.nickname || '—',
+          shipmentId:     shipment.id,
+          conta:          data.conta_ativa,
+          status:         shipment.status,
+          substatus:      shipment.substatus || null,
+          statusLabel:    STATUS_PT[shipment.status] || shipment.status,
+          substatusLabel: SUBSTATUS_PT[shipment.substatus] || shipment.substatus || null,
+          temEtiqueta:    LABEL_SUBSTATUSES.has(shipment.substatus),
+          acaoLabel:      SUBSTATUS_LABEL[shipment.substatus] || 'Baixar',
+          itensLista:     [],
         });
       }
       const grupo = porShipment.get(sid);
