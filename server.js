@@ -1169,8 +1169,20 @@ app.get('/api/ml/debug-auth-code', async (req, res) => {
       result[label] = { status: e.response?.status, error: e.response?.data || e.message };
     }
   };
-  await tryGet('shipping_banner',  `https://www.mercadolivre.com.br/vendas/omni/lista/api/shipping/banner`);
-  await tryGet('shipping_banner2', `https://www.mercadolivre.com.br/vendas/omni/lista/api/shipping/banner?user_id=${uid}`);
+  const bannerUrl = `https://www.mercadolivre.com.br/vendas/omni/lista/api/shipping/banner`;
+  const tok = c.access_token;
+  // Tenta variações de auth para o endpoint interno do ML
+  const tryBanner = async (label, extraHeaders, extraParams = '') => {
+    try {
+      const r = await axios.get(bannerUrl + extraParams, { headers: { Authorization: `Bearer ${tok}`, ...extraHeaders }, timeout: 8000 });
+      result[label] = r.data;
+    } catch (e) { result[label] = { status: e.response?.status, error: e.response?.data || e.message }; }
+  };
+  await tryBanner('bearer',       {});
+  await tryBanner('cookie_token', { Cookie: `access_token=${tok}` });
+  await tryBanner('x_token',      { 'X-Access-Token': tok });
+  await tryBanner('with_uid',     {}, `?caller.id=${uid}`);
+  await tryBanner('with_uid2',    {}, `?user_id=${uid}&access_token=${tok}`);
   res.json(result);
 });
 
