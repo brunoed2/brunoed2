@@ -1320,28 +1320,23 @@ app.get('/api/ml/debug-order-shipment/:order_id', async (req, res) => {
   if (!c?.access_token) return res.json({ error: 'Não conectado' });
   const headers = { Authorization: `Bearer ${c.access_token}` };
   try {
-    const order = await axios.get(`https://api.mercadolibre.com/orders/${req.params.order_id}`, { headers, timeout: 10000 }).then(r => r.data);
-    const sid    = order.shipping?.id;
-    const packId = order.pack_id;
-    const [ship, pack] = await Promise.all([
-      sid    ? axios.get(`https://api.mercadolibre.com/shipments/${sid}`, { headers, timeout: 10000 }).then(r => r.data).catch(() => null) : null,
-      packId ? axios.get(`https://api.mercadolibre.com/packs/${packId}`, { headers, timeout: 10000 }).then(r => r.data).catch(() => null) : null,
+    const order   = await axios.get(`https://api.mercadolibre.com/orders/${req.params.order_id}`, { headers, timeout: 10000 }).then(r => r.data);
+    const sid     = order.shipping?.id;
+    const payId   = order.payments?.[0]?.id;
+    const [ship, shipCosts, collection] = await Promise.all([
+      sid   ? axios.get(`https://api.mercadolibre.com/shipments/${sid}`, { headers, timeout: 10000 }).then(r => r.data).catch(() => null) : null,
+      sid   ? axios.get(`https://api.mercadolibre.com/shipments/${sid}/costs`, { headers, timeout: 10000 }).then(r => r.data).catch(e => ({ error: e.message })) : null,
+      payId ? axios.get(`https://api.mercadolibre.com/collections/${payId}`, { headers, timeout: 10000 }).then(r => r.data).catch(e => ({ error: e.message })) : null,
     ]);
+    const col = collection?.collection || collection;
     res.json({
-      order_shipping_cost: order.shipping_cost,
-      pack_id: packId,
-      pack_shipping_cost: pack?.shipping_cost,
-      pack_total_amount:  pack?.total_amount,
-      pack_paid_amount:   pack?.paid_amount,
-      pack_buyer_costs:   pack?.buyer_costs,
-      pack_seller_costs:  pack?.seller_costs,
-      ship_logistic_type: ship?.logistic_type,
-      ship_cost:          ship?.cost,
-      ship_cost_components: ship?.cost_components,
-      ship_base_cost:     ship?.base_cost,
-      // dump do pack para encontrar o campo de frete
-      pack_shipment:  pack?.shipment,
-      pack_orders_ids: (pack?.orders || []).map(o => o.id),
+      ship_cost_components:      ship?.cost_components,
+      ship_base_cost:            ship?.base_cost,
+      shipment_costs_endpoint:   shipCosts,
+      collection_net_received:   col?.net_received_amount,
+      collection_shipping_cost:  col?.shipping_cost,
+      collection_marketplace_fee: col?.marketplace_fee,
+      collection_raw_keys:       col ? Object.keys(col) : null,
     });
   } catch (err) { res.json({ error: err.message }); }
 });
