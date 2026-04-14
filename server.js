@@ -1340,6 +1340,10 @@ app.get('/api/ml/debug-order-shipment/:order_id', async (req, res) => {
       order_items_fees: (order.order_items || []).map(oi => ({
         id: oi.item?.id, qty: oi.quantity, unit_price: oi.unit_price, sale_fee: oi.sale_fee, shipping_cost: oi.shipping_cost,
       })),
+      payments: (order.payments || []).map(p => ({
+        id: p.id, status: p.status, total_paid: p.total_paid_amount, net_received: p.net_received_amount,
+        shipping_cost: p.shipping_cost, marketplace_fee: p.marketplace_fee, overpaid: p.overpaid_amount,
+      })),
     });
   } catch (err) { res.json({ error: err.message }); }
 });
