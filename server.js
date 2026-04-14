@@ -1192,14 +1192,14 @@ app.post('/api/lucro/config', (req, res) => {
 });
 
 app.post('/api/lucro/custo', (req, res) => {
-  const { conta, mlb, custo } = req.body;
+  const { conta, sku, custo } = req.body;
   const num = String(conta || '1');
-  if (!mlb) return res.status(400).json({ error: 'mlb obrigatório' });
+  if (!sku) return res.status(400).json({ error: 'sku obrigatório' });
   const data = loadData();
   data.lucro_contas = data.lucro_contas || {};
   const lc = data.lucro_contas[num] = data.lucro_contas[num] || {};
   lc.custos = lc.custos || {};
-  lc.custos[mlb] = parseFloat(custo) || 0;
+  lc.custos[sku] = parseFloat(custo) || 0;
   saveData(data);
   res.json({ ok: true });
 });
@@ -1241,11 +1241,12 @@ app.get('/api/lucro/vendas', async (req, res) => {
 
     const vendas = todasOrdens.map(order => {
       const itens = (order.order_items || []).map(oi => ({
-        mlb:        oi.item?.id    || '',
-        titulo:     oi.item?.title || '',
-        quantidade: oi.quantity    || 1,
-        precoUnit:  oi.unit_price  || 0,
-        taxaML:     oi.sale_fee    || 0,
+        mlb:        oi.item?.id         || '',
+        sku:        oi.item?.seller_sku || '',
+        titulo:     oi.item?.title      || '',
+        quantidade: oi.quantity         || 1,
+        precoUnit:  oi.unit_price       || 0,
+        taxaML:     oi.sale_fee         || 0,
       }));
       const receita   = itens.reduce((s, i) => s + i.precoUnit * i.quantidade, 0);
       const taxaML    = itens.reduce((s, i) => s + i.taxaML, 0);

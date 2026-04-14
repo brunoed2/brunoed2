@@ -54,23 +54,23 @@ async function lucroSalvarConfig() {
 
 async function lucroSalvarCusto(input) {
   const conta = lucroContaAtual();
-  const mlb   = input.dataset.mlb;
+  const sku   = input.dataset.sku;
   const custo = parseFloat(input.value.replace(',', '.')) || 0;
-  if (!mlb) return;
-  input.style.borderColor = '#cbd5e1'; // neutro enquanto salva
+  if (!sku) return;
+  input.style.borderColor = '#cbd5e1';
   try {
     await fetch('/api/lucro/custo', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ conta, mlb, custo }),
+      body:    JSON.stringify({ conta, sku, custo }),
     });
-    lucroConfig.custos[mlb] = custo;
-    // Atualiza todos os inputs com o mesmo MLB
-    document.querySelectorAll(`.lucro-custo-input[data-mlb="${mlb}"]`).forEach(el => {
+    lucroConfig.custos[sku] = custo;
+    // Atualiza todos os inputs com o mesmo SKU (tabela de custos + tabela de vendas)
+    document.querySelectorAll(`.lucro-custo-input[data-sku="${sku}"]`).forEach(el => {
       el.value = custo || '';
     });
     lucroRecalcularERenderizar();
-    input.style.borderColor = '#86efac'; // verde = salvo
+    input.style.borderColor = '#86efac';
     setTimeout(() => { input.style.borderColor = ''; }, 1500);
   } catch {
     input.style.borderColor = '#fca5a5'; // vermelho = erro
@@ -82,7 +82,7 @@ async function lucroSalvarCusto(input) {
 function lucroCalcular(raw) {
   const { taxa_imposto, custos } = lucroConfig;
   return raw.map(v => {
-    const custo   = v.itens.reduce((s, i) => s + (custos[i.mlb] || 0) * i.quantidade, 0);
+    const custo   = v.itens.reduce((s, i) => s + (custos[i.sku] || 0) * i.quantidade, 0);
     const frete   = v.freteReal ?? 0; // custo real de frete do vendedor (sender_cost da API)
     const imposto = v.receita * (taxa_imposto / 100);
     const lucro   = v.receita - v.taxaML - frete - custo - imposto;
@@ -154,7 +154,7 @@ function lucroRenderizarTabela(vendas) {
     const item0      = v.itens[0] || {};
     const multi      = v.itens.length > 1;
     const qtdTotal   = v.itens.reduce((s, i) => s + i.quantidade, 0);
-    const custoSalvo = lucroConfig.custos[item0.mlb] || 0;
+    const custoSalvo = lucroConfig.custos[item0.sku] || 0;
     const margemCls  = v.margem >= 10 ? 'lucro-val-pos' : v.margem < 0 ? 'lucro-val-neg' : '';
 
     const tr = document.createElement('tr');
@@ -162,15 +162,17 @@ function lucroRenderizarTabela(vendas) {
     tr.innerHTML = `
       <td class="lucro-td-data">${new Date(v.data).toLocaleDateString('pt-BR')}</td>
       <td class="td-titulo">${item0.titulo || '—'}${multi ? `<span class="lucro-multi"> +${v.itens.length - 1}</span>` : ''}</td>
-      <td class="lucro-td-mlb">${item0.mlb || '—'}</td>
+      <td class="lucro-td-mlb">${item0.sku || item0.mlb || '—'}</td>
       <td class="col-num">${qtdTotal}</td>
       <td class="col-num">${lucroFmt(v.receita)}</td>
       <td class="col-num lucro-neg-leve">${fmtCusto(v.taxaML)}</td>
       <td class="col-num lucro-neg-leve">${fmtCusto(v.frete)}</td>
       <td class="col-num">
-        <input type="number" class="lucro-custo-input" data-mlb="${item0.mlb}"
-          value="${custoSalvo || ''}" placeholder="—"
-          onchange="lucroSalvarCusto(this)" step="0.01" min="0">
+        ${item0.sku
+          ? `<input type="number" class="lucro-custo-input" data-sku="${item0.sku}"
+              value="${custoSalvo || ''}" placeholder="—"
+              onchange="lucroSalvarCusto(this)" step="0.01" min="0">`
+          : '<span style="color:#cbd5e1;font-size:11px">sem SKU</span>'}
       </td>
       <td class="col-num lucro-neg-leve">${fmtCusto(v.imposto)}</td>
       <td class="col-num ${margemCls}"><strong>${lucroFmt(v.lucro)}</strong></td>
@@ -178,23 +180,25 @@ function lucroRenderizarTabela(vendas) {
     `;
     tbody.appendChild(tr);
 
-    // Sub-linhas para itens adicionais (só MLB + custo)
+    // Sub-linhas para itens adicionais
     for (let i = 1; i < v.itens.length; i++) {
       const item    = v.itens[i];
-      const cSalvo2 = lucroConfig.custos[item.mlb] || 0;
+      const cSalvo2 = lucroConfig.custos[item.sku] || 0;
       const trSub   = document.createElement('tr');
       trSub.classList.add('lucro-sub-item');
       trSub.innerHTML = `
         <td></td>
-        <td class="td-titulo" style="color:#94a3b8;font-size:12px">↳ ${item.titulo || item.mlb}</td>
-        <td class="lucro-td-mlb">${item.mlb || '—'}</td>
+        <td class="td-titulo" style="color:#94a3b8;font-size:12px">↳ ${item.titulo || item.sku || item.mlb}</td>
+        <td class="lucro-td-mlb">${item.sku || item.mlb || '—'}</td>
         <td class="col-num">${item.quantidade}</td>
         <td class="col-num" style="color:#94a3b8">${lucroFmt(item.precoUnit * item.quantidade)}</td>
         <td></td><td></td>
         <td class="col-num">
-          <input type="number" class="lucro-custo-input" data-mlb="${item.mlb}"
-            value="${cSalvo2 || ''}" placeholder="—"
-            onchange="lucroSalvarCusto(this)" step="0.01" min="0">
+          ${item.sku
+            ? `<input type="number" class="lucro-custo-input" data-sku="${item.sku}"
+                value="${cSalvo2 || ''}" placeholder="—"
+                onchange="lucroSalvarCusto(this)" step="0.01" min="0">`
+            : ''}
         </td>
         <td colspan="3"></td>
       `;
@@ -203,6 +207,51 @@ function lucroRenderizarTabela(vendas) {
   });
 
   tabela.style.display = 'table';
+}
+
+// ── Tabela de custos por SKU ──────────────────────────────────
+
+async function lucroCustosCarregar() {
+  const loading = document.getElementById('lucro-custos-loading');
+  const tabela  = document.getElementById('tabela-custos');
+  const tbody   = document.getElementById('tabela-custos-body');
+  if (loading) loading.style.display = 'block';
+  if (tabela)  tabela.style.display  = 'none';
+
+  try {
+    const d = await fetch('/api/ml/estoque').then(r => r.json());
+    if (loading) loading.style.display = 'none';
+    if (d.error || !d.items?.length) return;
+
+    // Deduplica por SKU (ignora itens sem SKU)
+    const skuMap = {};
+    (d.items || []).forEach(item => {
+      if (item.sku && !skuMap[item.sku]) {
+        skuMap[item.sku] = { sku: item.sku, titulo: item.titulo };
+      }
+    });
+    const skus = Object.values(skuMap).sort((a, b) => a.sku.localeCompare(b.sku, 'pt-BR', { numeric: true }));
+
+    tbody.innerHTML = '';
+    skus.forEach(item => {
+      const custoSalvo = lucroConfig.custos[item.sku] || 0;
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td class="lucro-td-mlb">${item.sku}</td>
+        <td class="td-titulo">${item.titulo || '—'}</td>
+        <td class="col-num">
+          <input type="number" class="lucro-custo-input" data-sku="${item.sku}"
+            value="${custoSalvo || ''}" placeholder="—"
+            onchange="lucroSalvarCusto(this)" step="0.01" min="0">
+        </td>
+      `;
+      tbody.appendChild(tr);
+    });
+
+    if (tabela) tabela.style.display = 'table';
+  } catch {
+    if (loading) loading.style.display = 'none';
+  }
 }
 
 // ── Período ───────────────────────────────────────────────────
@@ -248,7 +297,10 @@ async function lucroCarregarVendas() {
 
 async function lucroInit() {
   await lucroCarregarConfig();
-  if (!lucroCarregado) await lucroCarregarVendas();
+  if (!lucroCarregado) {
+    await lucroCarregarVendas();
+    lucroCustosCarregar(); // não bloqueia — carrega em paralelo
+  }
 }
 
 // Recarrega quando conta muda e aba lucro está ativa

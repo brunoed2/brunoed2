@@ -72,6 +72,26 @@
           </p>
         </div>
 
+        <!-- Custos por SKU -->
+        <div class="card" style="margin-bottom:24px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+            <h2 style="margin:0">Custos por SKU</h2>
+            <button class="btn-secondary" onclick="lucroCustosCarregar()" style="font-size:12px;padding:5px 10px">↻ Recarregar</button>
+          </div>
+          <p class="card-desc" style="margin-bottom:12px">Informe o custo unitário de cada SKU. O valor é aplicado automaticamente em todas as vendas do produto.</p>
+          <div id="lucro-custos-loading" class="loading" style="display:none">Carregando produtos...</div>
+          <table class="tabela" id="tabela-custos" style="display:none">
+            <thead>
+              <tr>
+                <th>SKU</th>
+                <th>Produto</th>
+                <th class="col-num">Custo unitário (R$)</th>
+              </tr>
+            </thead>
+            <tbody id="tabela-custos-body"></tbody>
+          </table>
+        </div>
+
         <!-- Cards de resumo -->
         <div class="lucro-cards" id="lucro-cards" style="display:none">
           <div class="lucro-card">
@@ -123,7 +143,7 @@
               <tr>
                 <th>Data</th>
                 <th>Produto</th>
-                <th>MLB</th>
+                <th>SKU</th>
                 <th class="col-num">Qtd</th>
                 <th class="col-num">Receita</th>
                 <th class="col-num">Taxa ML</th>
@@ -499,6 +519,6 @@
   <script src="/js/conexao.js"></script>
   <script src="/js/shopee.js?v=118"></script>
   <script src="/js/notas.js?v=128"></script>
-  <div id="version-badge">v151</div>
+  <div id="version-badge">v152</div>
 </body>
 </html>
