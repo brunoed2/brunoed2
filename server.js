@@ -1178,11 +1178,10 @@ app.get('/api/ml/debug-auth-code', async (req, res) => {
       result[label] = r.data;
     } catch (e) { result[label] = { status: e.response?.status, error: e.response?.data || e.message }; }
   };
-  await tryBanner('bearer',       {});
-  await tryBanner('cookie_token', { Cookie: `access_token=${tok}` });
-  await tryBanner('x_token',      { 'X-Access-Token': tok });
-  await tryBanner('with_uid',     {}, `?caller.id=${uid}`);
-  await tryBanner('with_uid2',    {}, `?user_id=${uid}&access_token=${tok}`);
+  await tryBanner('bearer_caller',        {}, `?caller.id=${uid}`);
+  await tryBanner('bearer_caller_token',  {}, `?caller.id=${uid}&access_token=${tok}`);
+  await tryBanner('cookie_caller',        { Cookie: `access_token=${tok}` }, `?caller.id=${uid}`);
+  await tryBanner('no_auth_token_param',  { Authorization: undefined }, `?access_token=${tok}&caller.id=${uid}`);
   res.json(result);
 });
 
