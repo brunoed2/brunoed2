@@ -117,6 +117,9 @@ async function syncRailwayEnvVars(data) {
     if (n.ultNSU) variables[`NOTAS_ULTNSU_${num}`] = n.ultNSU;
     if (n.maxNSU) variables[`NOTAS_MAXNSU_${num}`] = n.maxNSU;
     if (n.ultimaRejeicao656) variables[`NOTAS_REJEICAO656_${num}`] = String(n.ultimaRejeicao656);
+    // IDs dos pedidos flagados como atendidos
+    const sidsAtendidos = ((data.contas[num] || {}).atendidas_dados || []).map(v => String(v.shipmentId));
+    if (sidsAtendidos.length) variables[`ATENDIDAS_SIDS_${num}`] = JSON.stringify(sidsAtendidos);
   }
 
   try {
@@ -211,6 +214,17 @@ function initFromEnvVars() {
       nc.ultimaRejeicao656 = parseInt(process.env[`NOTAS_REJEICAO656_${num}`]) || 0; changed = true;
     }
     data.notas_contas[num] = nc;
+
+    // Restaura IDs de pedidos atendidos (flagados)
+    const c = data.contas[num] || {};
+    if (!c.atendidas_dados?.length && process.env[`ATENDIDAS_SIDS_${num}`]) {
+      try {
+        const sids = JSON.parse(process.env[`ATENDIDAS_SIDS_${num}`]);
+        c.atendidas_dados = sids.map(sid => ({ shipmentId: sid, atendida: true, atendidaEm: null }));
+        data.contas[num] = c;
+        changed = true;
+      } catch {}
+    }
   }
 
   if (changed) fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
