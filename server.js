@@ -1225,17 +1225,18 @@ app.get('/api/lucro/vendas', async (req, res) => {
       if (results.length < 50) break; // não há mais páginas
     }
 
-    // Busca custo de frete real (sender_cost) em paralelo para cada shipment único
+    // Busca custo de frete real via /shipments/{id}/costs → senders[].cost (custo do vendedor)
     const shipmentIds = [...new Set(todasOrdens.map(o => o.shipping?.id).filter(Boolean))];
     const fretePorShipment = {};
     await Promise.all(
       shipmentIds.map(async (sid) => {
         try {
-          const r = await axios.get(`https://api.mercadolibre.com/shipments/${sid}`, {
+          const r = await axios.get(`https://api.mercadolibre.com/shipments/${sid}/costs`, {
             headers, timeout: 8000,
           });
-          // ML não retorna cost.sender_cost — o custo real do vendedor está em cost_components.ratio
-          fretePorShipment[sid] = r.data?.cost_components?.ratio ?? r.data?.base_cost ?? 0;
+          const senders = r.data?.senders || [];
+          const sender  = senders.find(s => s.user_id == c.user_id) || senders[0];
+          fretePorShipment[sid] = sender?.cost ?? 0;
         } catch { fretePorShipment[sid] = 0; }
       })
     );
