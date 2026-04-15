@@ -954,7 +954,6 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
         });
       }
     }
-    // Pedidos atendidos ficam salvos com dados completos — não dependem da API
     const atendidasMap = new Map((c.atendidas_dados || []).map(v => [String(v.shipmentId), v]));
 
     // Pendentes: da API, excluindo os já atendidos
@@ -962,12 +961,23 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
       .filter(v => !atendidasMap.has(String(v.shipmentId)))
       .map(v => ({ ...v, atendida: false }));
 
-    // Atualiza os dados salvos dos atendidos com info mais recente se ainda estiver na API
+    // Atualiza atendidos que ainda estão na API; remove os que saíram (já enviados)
     atendidasMap.forEach((salvo, sid) => {
-      if (porShipment.has(sid)) atendidasMap.set(sid, { ...porShipment.get(sid), atendida: true });
+      if (porShipment.has(sid)) {
+        atendidasMap.set(sid, { ...porShipment.get(sid), atendida: true });
+      } else {
+        atendidasMap.delete(sid); // saiu da API — remove para não mostrar com dados indefinidos
+      }
     });
 
-    const atendidas = [...atendidasMap.values()].map(v => ({ ...v, atendida: true }));
+    // Persiste a limpeza caso algum atendido tenha sido removido
+    const novaLista = [...atendidasMap.values()];
+    if (novaLista.length !== (c.atendidas_dados || []).length) {
+      c.atendidas_dados = novaLista;
+      saveData(data);
+    }
+
+    const atendidas = novaLista.map(v => ({ ...v, atendida: true }));
     const vendas = [...pendentes, ...atendidas];
 
     res.json({ vendas });
