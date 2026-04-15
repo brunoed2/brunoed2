@@ -2070,9 +2070,7 @@ app.get('/api/notas/lista', (req, res) => {
   const data = loadData();
   const num  = req.query.conta || data.conta_ativa;
   const n    = (data.notas_contas || {})[num] || {};
-  // Filtra notas sem dados úteis (entradas antigas sem nNF nem xNome)
-  const notas = (n.lista || []).filter(x => x.nNF || x.xNome);
-  res.json({ notas, ultNSU: n.ultNSU || '0', maxNSU: n.maxNSU || '0' });
+  res.json({ notas: n.lista || [], ultNSU: n.ultNSU || '0', maxNSU: n.maxNSU || '0' });
 });
 
 app.post('/api/notas/limpar', (req, res) => {
