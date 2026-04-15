@@ -133,9 +133,7 @@
               <span style="color:#64748b;font-size:13px">até</span>
               <input type="date" id="lucro-data-ate" class="lucro-date-input" onchange="lucroRecalcularERenderizar()">
               <button class="filtro-btn" onclick="lucroSetPeriodoRapido(0)">Hoje</button>
-              <button class="filtro-btn" onclick="lucroSetPeriodoRapido(7)">7d</button>
-              <button class="filtro-btn" onclick="lucroSetPeriodoRapido(30)">30d</button>
-              <button class="filtro-btn" onclick="lucroSetPeriodoRapido(60)">60d</button>
+              <button class="filtro-btn" onclick="lucroSetMesAtual()">Mês</button>
               <button class="btn-secondary" onclick="lucroCarregarVendas()" id="btn-atualizar-lucro">↻ Atualizar</button>
             </div>
           </div>
@@ -523,6 +521,6 @@
   <script src="/js/conexao.js"></script>
   <script src="/js/shopee.js?v=118"></script>
   <script src="/js/notas.js?v=128"></script>
-  <div id="version-badge">v164</div>
+  <div id="version-badge">v165</div>
 </body>
 </html>

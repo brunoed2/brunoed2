@@ -84,11 +84,11 @@ async function lucroSalvarCusto(input) {
       body:    JSON.stringify({ conta, sku, custo }),
     });
     lucroConfig.custos[sku] = custo;
-    // Atualiza todos os inputs com o mesmo SKU (tabela de custos + tabela de vendas)
+    lucroRecalcularERenderizar(); // reconstrói tabela de vendas com novo custo
+    // Atualiza inputs com mesmo SKU em todas as tabelas (custos + vendas reconstruída)
     document.querySelectorAll(`.lucro-custo-input[data-sku="${sku}"]`).forEach(el => {
       el.value = custo || '';
     });
-    lucroRecalcularERenderizar();
     input.style.borderColor = '#86efac';
     setTimeout(() => { input.style.borderColor = ''; }, 1500);
   } catch {
@@ -284,6 +284,17 @@ async function lucroCustosCarregar() {
 }
 
 // ── Período ───────────────────────────────────────────────────
+
+function lucroSetMesAtual() {
+  const hoje = lucroHoje();
+  const d = new Date();
+  const primeiroDia = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+  const de  = document.getElementById('lucro-data-de');
+  const ate = document.getElementById('lucro-data-ate');
+  if (de)  de.value  = primeiroDia;
+  if (ate) ate.value = hoje;
+  lucroRecalcularERenderizar();
+}
 
 function lucroSetPeriodoRapido(dias) {
   const hoje = lucroHoje();
