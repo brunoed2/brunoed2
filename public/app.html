@@ -30,6 +30,7 @@
         <button class="nav-btn" data-tab="ads">📊 Ads</button>
         <button class="nav-btn" data-tab="lucro">💰 Lucro</button>
         <button class="nav-btn" data-tab="shopee">🛒 Shopee</button>
+        <button class="nav-btn" data-tab="promocoes">🏷️ Promoções</button>
         <button class="nav-btn" data-tab="notas">📄 Notas de Entrada</button>
         <button class="nav-btn" data-tab="config">⚙️ Configurações</button>
         <button class="nav-btn" data-tab="conexao">🔌 Conexão</button>
@@ -447,6 +448,22 @@
         </div>
       </section>
 
+      <!-- ── Aba: Promoções ── -->
+      <section id="tab-promocoes" class="tab">
+        <h1>Promoções</h1>
+        <p class="subtitle">Promoções disponíveis nos seus anúncios — participe com um clique.</p>
+
+        <div class="tabela-container">
+          <div class="tabela-topo">
+            <span id="promocoes-total"></span>
+            <button class="btn-secondary" onclick="carregarPromocoes()" id="btn-atualizar-promocoes">↻ Atualizar</button>
+          </div>
+          <div id="promocoes-loading" class="loading" style="display:none">Carregando promoções...</div>
+          <div id="promocoes-erro" class="estoque-erro" style="display:none"></div>
+          <div id="promocoes-lista"></div>
+        </div>
+      </section>
+
       <!-- ── Aba: Conexão ── -->
       <section id="tab-conexao" class="tab">
         <h1>Conexão</h1>
@@ -521,6 +538,7 @@
   <script src="/js/conexao.js"></script>
   <script src="/js/shopee.js?v=118"></script>
   <script src="/js/notas.js?v=128"></script>
-  <div id="version-badge">v174</div>
+  <script src="/js/promocoes.js?v=1"></script>
+  <div id="version-badge">v175</div>
 </body>
 </html>

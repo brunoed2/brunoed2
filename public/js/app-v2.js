@@ -39,7 +39,8 @@ function abrirAba(nome) {
   if (nome === 'estoque') carregarEstoque(true);
   if (nome === 'ads')     carregarAds();
   if (nome === 'lucro')   lucroInit();
-  if (nome === 'config')  carregarConfig(contaConfigurando);
+  if (nome === 'config')    carregarConfig(contaConfigurando);
+  if (nome === 'promocoes') carregarPromocoes();
 }
 
 navBtns.forEach(btn => {

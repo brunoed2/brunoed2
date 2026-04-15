@@ -1018,6 +1018,115 @@ app.delete('/api/vendas/atendida', (req, res) => {
 });
 
 
+// ── Promoções ──────────────────────────────────────────────────
+
+app.get('/api/ml/promocoes', async (req, res) => {
+  const data = loadData();
+  const c    = contaAtiva(data);
+  if (!c.access_token) return res.json({ error: 'Não conectado' });
+  if (!c.user_id)      return res.json({ error: 'user_id não encontrado' });
+
+  const headers = { Authorization: `Bearer ${c.access_token}` };
+
+  try {
+    // Busca promoções disponíveis (candidatas) para o vendedor
+    const rPromo = await axios.get('https://api.mercadolibre.com/seller-promotions/promotions', {
+      params: { seller_id: c.user_id, status: 'candidate', limit: 50 },
+      headers,
+      timeout: 15000,
+    });
+    const promocoes = rPromo.data.results || rPromo.data || [];
+    if (!Array.isArray(promocoes) || !promocoes.length) return res.json({ promocoes: [] });
+
+    // Para cada promoção, busca os itens elegíveis
+    const resultado = await Promise.all(
+      promocoes.map(async (promo) => {
+        try {
+          const rItens = await axios.get('https://api.mercadolibre.com/seller-promotions/items', {
+            params: { promotion_id: promo.id, seller_id: c.user_id, limit: 100 },
+            headers,
+            timeout: 12000,
+          });
+          const itens = rItens.data.results || rItens.data || [];
+
+          // Busca thumbnail/SKU/título dos itens (em lote)
+          const mlbs = [...new Set(itens.map(i => i.item_id || i.id).filter(Boolean))];
+          const itemMap = {};
+          for (let i = 0; i < mlbs.length; i += 20) {
+            const chunk = mlbs.slice(i, i + 20);
+            try {
+              const r = await axios.get('https://api.mercadolibre.com/items', {
+                params:  { ids: chunk.join(','), attributes: 'id,title,thumbnail,price,seller_custom_field,permalink' },
+                headers,
+                timeout: 10000,
+              });
+              for (const entry of r.data) {
+                if (entry.code === 200) {
+                  const b = entry.body;
+                  itemMap[b.id] = { titulo: b.title, thumbnail: b.thumbnail?.replace(/-[A-Z]\.jpg/, '-O.jpg') || null, preco: b.price, sku: b.seller_custom_field || null, permalink: b.permalink };
+                }
+              }
+            } catch {}
+          }
+
+          return {
+            id:          promo.id,
+            nome:        promo.name || promo.type || promo.id,
+            tipo:        promo.type || '—',
+            inicio:      promo.start_date || null,
+            fim:         promo.finish_date || null,
+            status:      promo.status || '—',
+            itens:       itens.map(i => {
+              const mlb  = i.item_id || i.id;
+              const info = itemMap[mlb] || {};
+              return {
+                mlb,
+                titulo:         info.titulo    || i.title || '—',
+                thumbnail:      info.thumbnail || null,
+                sku:            info.sku       || '—',
+                permalink:      info.permalink || null,
+                precoAtual:     info.preco     ?? i.price ?? null,
+                precoSugerido:  i.suggested_price ?? i.price_action?.suggested_price ?? null,
+                descontoMin:    i.min_discount_percentage ?? null,
+                descontoMax:    i.max_discount_percentage ?? null,
+                participando:   i.status === 'active' || i.status === 'started',
+              };
+            }),
+          };
+        } catch {
+          return { id: promo.id, nome: promo.name || promo.id, tipo: promo.type || '—', itens: [] };
+        }
+      })
+    );
+
+    res.json({ promocoes: resultado });
+  } catch (err) {
+    console.error('Promoções:', err.response?.data || err.message);
+    res.json({ error: 'Erro ao buscar promoções: ' + (err.response?.data?.message || err.message) });
+  }
+});
+
+app.post('/api/ml/promocoes/participar', async (req, res) => {
+  const { mlb, promotion_id, preco } = req.body;
+  if (!mlb || !promotion_id) return res.json({ error: 'mlb e promotion_id obrigatórios' });
+  const data = loadData();
+  const c    = contaAtiva(data);
+  if (!c.access_token) return res.json({ error: 'Não conectado' });
+
+  try {
+    const body = { promotion_id };
+    if (preco != null) body.price = preco;
+    const r = await axios.post(
+      `https://api.mercadolibre.com/seller-promotions/items/${mlb}`,
+      body,
+      { headers: { Authorization: `Bearer ${c.access_token}` }, timeout: 10000 }
+    );
+    res.json({ ok: true, data: r.data });
+  } catch (err) {
+    res.json({ error: err.response?.data?.message || err.message, detail: err.response?.data });
+  }
+});
+
 app.get('/api/ml/ads-roas', async (req, res) => {
   const data = loadData();
   const num  = data.conta_ativa;
