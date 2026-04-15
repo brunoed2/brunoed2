@@ -1213,33 +1213,39 @@ app.get('/api/lucro/vendas', async (req, res) => {
   const headers = { Authorization: `Bearer ${c.access_token}` };
 
   try {
-    // ML limita a 50 por página — busca até 3 páginas (150 pedidos)
+    // Busca todos os pedidos pagos (sem limite fixo — pagina até acabar)
     let todasOrdens = [];
-    for (let offset = 0; offset < 150; offset += 50) {
+    let offset = 0;
+    while (true) {
       const resp = await axios.get('https://api.mercadolibre.com/orders/search', {
         params: { seller: c.user_id, 'order.status': 'paid', sort: 'date_desc', limit: 50, offset },
         headers, timeout: 15000,
       });
       const results = resp.data.results || [];
       todasOrdens = todasOrdens.concat(results);
-      if (results.length < 50) break; // não há mais páginas
+      if (results.length < 50) break;
+      offset += 50;
     }
 
-    // Busca custo de frete real via /shipments/{id}/costs → senders[].cost (custo do vendedor)
+    // Busca custo de frete via /shipments/{id}/costs → senders[].cost
+    // Em lotes de 25 para não sobrecarregar a API do ML
     const shipmentIds = [...new Set(todasOrdens.map(o => o.shipping?.id).filter(Boolean))];
     const fretePorShipment = {};
-    await Promise.all(
-      shipmentIds.map(async (sid) => {
-        try {
-          const r = await axios.get(`https://api.mercadolibre.com/shipments/${sid}/costs`, {
-            headers, timeout: 8000,
-          });
-          const senders = r.data?.senders || [];
-          const sender  = senders.find(s => s.user_id == c.user_id) || senders[0];
-          fretePorShipment[sid] = sender?.cost ?? 0;
-        } catch { fretePorShipment[sid] = 0; }
-      })
-    );
+    const BATCH = 25;
+    for (let i = 0; i < shipmentIds.length; i += BATCH) {
+      await Promise.all(
+        shipmentIds.slice(i, i + BATCH).map(async (sid) => {
+          try {
+            const r = await axios.get(`https://api.mercadolibre.com/shipments/${sid}/costs`, {
+              headers, timeout: 8000,
+            });
+            const senders = r.data?.senders || [];
+            const sender  = senders.find(s => s.user_id == c.user_id) || senders[0];
+            fretePorShipment[sid] = sender?.cost ?? 0;
+          } catch { fretePorShipment[sid] = 0; }
+        })
+      );
+    }
 
     // Modo debug: mostra campo shipping dos pedidos + estrutura de custo dos shipments
     if (req.query.debug === '1') {
