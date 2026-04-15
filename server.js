@@ -1220,7 +1220,7 @@ app.get('/api/lucro/vendas', async (req, res) => {
     // Busca pedidos paginando até acabar (max 20 páginas = 1000 pedidos por segurança)
     let todasOrdens = [];
     let offset = 0;
-    while (offset < 1000) {
+    while (offset < 5000) {
       const params = { seller: c.user_id, 'order.status': 'paid', sort: 'date_desc', limit: 50, offset };
       if (dateFrom) params['order.date_created.from'] = dateFrom + 'T00:00:00.000-03:00';
       if (dateTo)   params['order.date_created.to']   = dateTo   + 'T23:59:59.000-03:00';
