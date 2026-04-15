@@ -354,7 +354,7 @@ app.get('/api/ml/auth', (req, res) => {
     + `&state=${num}`
     + `&code_challenge=${challenge}`
     + `&code_challenge_method=S256`
-    + `&scope=offline_access+read_listings+write_listings+read_orders+write_orders+read_shipping+write_shipping+read_product_ads`;
+    + `&scope=offline_access+read_listings+write_listings+read_orders+write_orders+read_shipping+write_shipping+read_product_ads+seller_promotions`;
   res.redirect(url);
 });
 
