@@ -1038,15 +1038,17 @@ app.get('/api/ml/promocoes/debug', async (req, res) => {
   }
 
   const r = {};
-  // Endpoints a testar
+  // seller-promotions (convite ML)
   r['seller-promotions/promotions?candidate']    = await testar('', `https://api.mercadolibre.com/seller-promotions/promotions`, { seller_id: uid, status: 'candidate', limit: 5 });
   r['seller-promotions/promotions?started']      = await testar('', `https://api.mercadolibre.com/seller-promotions/promotions`, { seller_id: uid, status: 'started', limit: 5 });
-  r['seller-promotions/promotions/sem-filtro']   = await testar('', `https://api.mercadolibre.com/seller-promotions/promotions`, { seller_id: uid, limit: 5 });
-  r['users/{id}/deals']                          = await testar('', `https://api.mercadolibre.com/users/${uid}/deals`, { limit: 5 });
-  r['campaigns?seller_id']                       = await testar('', `https://api.mercadolibre.com/campaigns`, { seller_id: uid, limit: 5 });
-  r['campaigns/search']                          = await testar('', `https://api.mercadolibre.com/campaigns/search`, { seller_id: uid, limit: 5 });
-  r['users/{id}/promotions']                     = await testar('', `https://api.mercadolibre.com/users/${uid}/promotions`, { limit: 5 });
-  r['seller-promotions/items?seller_id']         = await testar('', `https://api.mercadolibre.com/seller-promotions/items`, { seller_id: uid, limit: 5 });
+  // price-discounts (descontos que qualquer vendedor pode criar)
+  r['price-discounts?candidate']                 = await testar('', `https://api.mercadolibre.com/price-discounts`, { seller_id: uid, status: 'candidate', limit: 5 });
+  r['price-discounts?active']                    = await testar('', `https://api.mercadolibre.com/price-discounts`, { seller_id: uid, status: 'active', limit: 5 });
+  r['price-discounts/sem-filtro']                = await testar('', `https://api.mercadolibre.com/price-discounts`, { seller_id: uid, limit: 5 });
+  r['users/{id}/price-discounts']                = await testar('', `https://api.mercadolibre.com/users/${uid}/price-discounts`, { limit: 5 });
+  // price-discounts com marketplace
+  r['price-discounts?marketplace=MLB']           = await testar('', `https://api.mercadolibre.com/price-discounts`, { seller_id: uid, marketplace_id: 'MLB', limit: 5 });
+  r['promotions']                                = await testar('', `https://api.mercadolibre.com/promotions`, { seller_id: uid, limit: 5 });
 
   res.json({ user_id: uid, r });
 });
