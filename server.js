@@ -1020,35 +1020,35 @@ app.delete('/api/vendas/atendida', (req, res) => {
 
 // ── Promoções ──────────────────────────────────────────────────
 
-// Debug temporário — retorna resposta bruta da API de promoções ML
+// Debug temporário — testa vários endpoints possíveis de promoções ML
 app.get('/api/ml/promocoes/debug', async (req, res) => {
   const data = loadData();
   const c    = contaAtiva(data);
   if (!c.access_token) return res.json({ error: 'Não conectado' });
-  const headers = { Authorization: `Bearer ${c.access_token}` };
-  const resultados = {};
-  for (const status of ['candidate', 'started', 'paused']) {
+  const h = { Authorization: `Bearer ${c.access_token}` };
+  const uid = c.user_id;
+
+  async function testar(label, url, params = {}) {
     try {
-      const r = await axios.get('https://api.mercadolibre.com/seller-promotions/promotions', {
-        params: { seller_id: c.user_id, status, limit: 10 },
-        headers, timeout: 10000,
-      });
-      resultados[status] = r.data;
+      const r = await axios.get(url, { params, headers: h, timeout: 8000 });
+      return { status: r.status, data: r.data };
     } catch (e) {
-      resultados[status] = { error: e.response?.data || e.message };
+      return { status: e.response?.status, error: e.response?.data || e.message };
     }
   }
-  // Tenta também sem filtro de status
-  try {
-    const r = await axios.get('https://api.mercadolibre.com/seller-promotions/promotions', {
-      params: { seller_id: c.user_id, limit: 10 },
-      headers, timeout: 10000,
-    });
-    resultados['sem_status'] = r.data;
-  } catch (e) {
-    resultados['sem_status'] = { error: e.response?.data || e.message };
-  }
-  res.json({ user_id: c.user_id, resultados });
+
+  const r = {};
+  // Endpoints a testar
+  r['seller-promotions/promotions?candidate']    = await testar('', `https://api.mercadolibre.com/seller-promotions/promotions`, { seller_id: uid, status: 'candidate', limit: 5 });
+  r['seller-promotions/promotions?started']      = await testar('', `https://api.mercadolibre.com/seller-promotions/promotions`, { seller_id: uid, status: 'started', limit: 5 });
+  r['seller-promotions/promotions/sem-filtro']   = await testar('', `https://api.mercadolibre.com/seller-promotions/promotions`, { seller_id: uid, limit: 5 });
+  r['users/{id}/deals']                          = await testar('', `https://api.mercadolibre.com/users/${uid}/deals`, { limit: 5 });
+  r['campaigns?seller_id']                       = await testar('', `https://api.mercadolibre.com/campaigns`, { seller_id: uid, limit: 5 });
+  r['campaigns/search']                          = await testar('', `https://api.mercadolibre.com/campaigns/search`, { seller_id: uid, limit: 5 });
+  r['users/{id}/promotions']                     = await testar('', `https://api.mercadolibre.com/users/${uid}/promotions`, { limit: 5 });
+  r['seller-promotions/items?seller_id']         = await testar('', `https://api.mercadolibre.com/seller-promotions/items`, { seller_id: uid, limit: 5 });
+
+  res.json({ user_id: uid, r });
 });
 
 app.get('/api/ml/promocoes', async (req, res) => {
