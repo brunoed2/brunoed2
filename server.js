@@ -1020,6 +1020,37 @@ app.delete('/api/vendas/atendida', (req, res) => {
 
 // ── Promoções ──────────────────────────────────────────────────
 
+// Debug temporário — retorna resposta bruta da API de promoções ML
+app.get('/api/ml/promocoes/debug', async (req, res) => {
+  const data = loadData();
+  const c    = contaAtiva(data);
+  if (!c.access_token) return res.json({ error: 'Não conectado' });
+  const headers = { Authorization: `Bearer ${c.access_token}` };
+  const resultados = {};
+  for (const status of ['candidate', 'started', 'paused']) {
+    try {
+      const r = await axios.get('https://api.mercadolibre.com/seller-promotions/promotions', {
+        params: { seller_id: c.user_id, status, limit: 10 },
+        headers, timeout: 10000,
+      });
+      resultados[status] = r.data;
+    } catch (e) {
+      resultados[status] = { error: e.response?.data || e.message };
+    }
+  }
+  // Tenta também sem filtro de status
+  try {
+    const r = await axios.get('https://api.mercadolibre.com/seller-promotions/promotions', {
+      params: { seller_id: c.user_id, limit: 10 },
+      headers, timeout: 10000,
+    });
+    resultados['sem_status'] = r.data;
+  } catch (e) {
+    resultados['sem_status'] = { error: e.response?.data || e.message };
+  }
+  res.json({ user_id: c.user_id, resultados });
+});
+
 app.get('/api/ml/promocoes', async (req, res) => {
   const data = loadData();
   const c    = contaAtiva(data);
@@ -1029,14 +1060,19 @@ app.get('/api/ml/promocoes', async (req, res) => {
   const headers = { Authorization: `Bearer ${c.access_token}` };
 
   try {
-    // Busca promoções disponíveis (candidatas) para o vendedor
-    const rPromo = await axios.get('https://api.mercadolibre.com/seller-promotions/promotions', {
-      params: { seller_id: c.user_id, status: 'candidate', limit: 50 },
-      headers,
-      timeout: 15000,
-    });
-    const promocoes = rPromo.data.results || rPromo.data || [];
-    if (!Array.isArray(promocoes) || !promocoes.length) return res.json({ promocoes: [] });
+    // Busca promoções disponíveis — tenta candidate primeiro, depois started
+    let promocoes = [];
+    for (const status of ['candidate', 'started']) {
+      try {
+        const rPromo = await axios.get('https://api.mercadolibre.com/seller-promotions/promotions', {
+          params: { seller_id: c.user_id, status, limit: 50 },
+          headers, timeout: 15000,
+        });
+        const lista = rPromo.data.results || (Array.isArray(rPromo.data) ? rPromo.data : []);
+        promocoes = promocoes.concat(lista);
+      } catch {}
+    }
+    if (!promocoes.length) return res.json({ promocoes: [] });
 
     // Para cada promoção, busca os itens elegíveis
     const resultado = await Promise.all(
