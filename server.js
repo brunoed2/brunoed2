@@ -2071,7 +2071,9 @@ app.get('/api/notas/lista', (req, res) => {
   const data = loadData();
   const num  = req.query.conta || data.conta_ativa;
   const n    = (data.notas_contas || {})[num] || {};
-  res.json({ notas: n.lista || [], ultNSU: n.ultNSU || '0', maxNSU: n.maxNSU || '0' });
+  // Exclui eventos (resEvento, procEventoNFe) que não são notas de compra
+  const notas = (n.lista || []).filter(x => !x.schema || !x.schema.toLowerCase().includes('evento'));
+  res.json({ notas, ultNSU: n.ultNSU || '0', maxNSU: n.maxNSU || '0' });
 });
 
 app.post('/api/notas/limpar', (req, res) => {
