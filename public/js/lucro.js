@@ -129,15 +129,7 @@ function lucroTotais(vendas) {
 
 function lucroRecalcularERenderizar() {
   if (!lucroVendasRaw.length) return;
-  const deVal  = document.getElementById('lucro-data-de')?.value;
-  const ateVal = document.getElementById('lucro-data-ate')?.value;
-  const from   = deVal  ? new Date(deVal  + 'T00:00:00').getTime() : 0;
-  const to     = ateVal ? new Date(ateVal + 'T23:59:59').getTime() : Infinity;
-  const filtro = lucroVendasRaw.filter(v => {
-    const t = new Date(v.data).getTime();
-    return t >= from && t <= to;
-  });
-  const vendas = lucroCalcular(filtro);
+  const vendas = lucroCalcular(lucroVendasRaw);
   const total  = lucroTotais(vendas);
   lucroRenderizarCards(total, vendas.length);
   lucroRenderizarTabela(vendas);
@@ -294,7 +286,7 @@ function lucroSetMesAtual() {
   const ate = document.getElementById('lucro-data-ate');
   if (de)  de.value  = primeiroDia;
   if (ate) ate.value = hoje;
-  lucroRecalcularERenderizar();
+  lucroCarregarVendas();
 }
 
 function lucroSetPeriodoRapido(dias) {
@@ -302,16 +294,8 @@ function lucroSetPeriodoRapido(dias) {
   const ate  = document.getElementById('lucro-data-ate');
   const de   = document.getElementById('lucro-data-de');
   if (ate) ate.value = hoje;
-  if (de) {
-    if (dias === 0) {
-      de.value = hoje;
-    } else {
-      const d = new Date();
-      d.setDate(d.getDate() - dias + 1);
-      de.value = d.toISOString().slice(0, 10);
-    }
-  }
-  lucroRecalcularERenderizar();
+  if (de)  de.value  = hoje; // "Hoje" = mesmo dia nos dois
+  lucroCarregarVendas();
 }
 
 // ── Carregamento ──────────────────────────────────────────────
@@ -328,7 +312,10 @@ async function lucroCarregarVendas() {
   document.getElementById('lucro-cards').style.display  = 'none';
 
   try {
-    const d = await fetch(`/api/lucro/vendas?conta=${conta}`).then(r => r.json());
+    const de  = document.getElementById('lucro-data-de')?.value  || '';
+    const ate = document.getElementById('lucro-data-ate')?.value || '';
+    const qs  = new URLSearchParams({ conta, date_from: de, date_to: ate });
+    const d = await fetch(`/api/lucro/vendas?${qs}`).then(r => r.json());
     loading.style.display = 'none';
     if (d.error) {
       erroEl.textContent = d.error; erroEl.style.display = 'block';

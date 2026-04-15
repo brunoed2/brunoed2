@@ -1213,13 +1213,19 @@ app.get('/api/lucro/vendas', async (req, res) => {
   const headers = { Authorization: `Bearer ${c.access_token}` };
 
   try {
-    // Busca todos os pedidos pagos (sem limite fixo — pagina até acabar)
+    // Filtra por data no servidor para não buscar todo o histórico
+    const dateFrom = req.query.date_from; // YYYY-MM-DD (opcional)
+    const dateTo   = req.query.date_to;   // YYYY-MM-DD (opcional)
+
+    // Busca pedidos paginando até acabar (max 20 páginas = 1000 pedidos por segurança)
     let todasOrdens = [];
     let offset = 0;
-    while (true) {
+    while (offset < 1000) {
+      const params = { seller: c.user_id, 'order.status': 'paid', sort: 'date_desc', limit: 50, offset };
+      if (dateFrom) params['order.date_created.from'] = dateFrom + 'T00:00:00.000-03:00';
+      if (dateTo)   params['order.date_created.to']   = dateTo   + 'T23:59:59.000-03:00';
       const resp = await axios.get('https://api.mercadolibre.com/orders/search', {
-        params: { seller: c.user_id, 'order.status': 'paid', sort: 'date_desc', limit: 50, offset },
-        headers, timeout: 15000,
+        params, headers, timeout: 15000,
       });
       const results = resp.data.results || [];
       todasOrdens = todasOrdens.concat(results);
