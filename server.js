@@ -2083,31 +2083,15 @@ app.post('/api/notas/limpar', (req, res) => {
   res.json({ ok: true });
 });
 
-// Endpoint temporário de diagnóstico — mostra XML bruto do primeiro doc do lote
+// Endpoint temporário de diagnóstico — mostra campos salvos nas notas
 app.get('/api/notas/debug', async (req, res) => {
   const data = loadData();
   const num  = req.query.conta || data.conta_ativa;
   const n    = (data.notas_contas || {})[num] || {};
-  if (!n.cert_b64) return res.json({ error: 'Certificado não configurado' });
-  const cUF = req.query.cUF || '35';
-  try {
-    const pfxBuffer = Buffer.from(n.cert_b64, 'base64');
-    const xmlResp   = await queryNFeDistribuicao(pfxBuffer, n.senha, n.cnpj, cUF, n.ultNSU || '0');
-    const { cStat, xMotivo, ultNSU, maxNSU, docs } = parsearRespostaSefaz(xmlResp);
-    const amostras = [];
-    for (const doc of docs.slice(0, 3)) {
-      try {
-        const xmlDoc = zlib.gunzipSync(Buffer.from(doc.zip, 'base64')).toString('utf8');
-        const campos = extrairCampos(xmlDoc);
-        amostras.push({ nsu: doc.nsu, schema: doc.schema, zipLen: doc.zip.length, xml_ini: xmlDoc.slice(0, 300), campos });
-      } catch (e) {
-        amostras.push({ nsu: doc.nsu, schema: doc.schema, erro: e.message });
-      }
-    }
-    res.json({ cStat, xMotivo, ultNSU, maxNSU, totalDocs: docs.length, amostras });
-  } catch (err) {
-    res.json({ error: err.message });
-  }
+  const lista = n.lista || [];
+  // Mostra os primeiros 5 registros sem o campo zip (que pode ser grande)
+  const amostras = lista.slice(0, 5).map(({ zip, ...rest }) => rest);
+  res.json({ total: lista.length, ultNSU: n.ultNSU, maxNSU: n.maxNSU, cnpj: n.cnpj, amostras });
 });
 
 app.get('/api/notas/buscar', async (req, res) => {
