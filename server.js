@@ -2008,6 +2008,7 @@ function extrairCampos(xmlDoc) {
     xNome:     emitBloco ? getBloco(emitBloco, 'xNome') : get('xNome'),
     CNPJ_emit: emitBloco ? getBloco(emitBloco, 'CNPJ')  : '',
     CNPJ_dest: destBloco ? getBloco(destBloco, 'CNPJ')  : '',
+    CNPJ_raiz: get('CNPJ'), // primeiro CNPJ no doc (emitente no resNFe)
     tpNF:      get('tpNF'),
     xSitNFe:   get('xSitNFe'),
   };
@@ -2133,12 +2134,20 @@ app.get('/api/notas/buscar', async (req, res) => {
           const xmlDoc = zlib.gunzipSync(buf).toString('utf8');
           const campos = extrairCampos(xmlDoc);
 
-          // Ignora se não extraiu dados mínimos úteis (nNF ou emitente obrigatório)
-          if (!campos.nNF && !campos.xNome) continue;
+          // Log para diagnóstico quando campos importantes estão vazios
+          if (!campos.nNF && !campos.xNome) {
+            addLog(`Notas NSU ${doc.nsu} (schema=${schema}): nNF e xNome vazios. chNFe=${campos.chNFe?.slice(0,10)||'—'} tpNF=${campos.tpNF} CNPJ_dest=${campos.CNPJ_dest} CNPJ_emit=${campos.CNPJ_emit} xml_ini="${xmlDoc.slice(0,120).replace(/\s+/g,' ')}"`, 'warn');
+          }
+
+          // Ignora se não extraiu chave nem número de NF
+          if (!campos.chNFe && !campos.nNF) continue;
 
           // Mantém só compras: CNPJ como destinatário, ou tpNF=0 (entrada) e não é o emitente
+          // Para resNFe: não há bloco dest/emit — considera compra se CNPJ raiz (emitente) ≠ nosso CNPJ
+          const CNPJ_raiz = campos.CNPJ_emit || campos.CNPJ_raiz || '';
           const ehCompra = campos.CNPJ_dest === n.cnpj ||
-            (campos.tpNF === '0' && campos.CNPJ_emit !== n.cnpj);
+            (campos.tpNF === '0' && campos.CNPJ_emit !== n.cnpj) ||
+            (schema.startsWith('resNFe') && CNPJ_raiz !== n.cnpj);
           if (!ehCompra) continue;
 
           campos.nsu    = doc.nsu;
