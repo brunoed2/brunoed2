@@ -1028,27 +1028,28 @@ app.get('/api/ml/promocoes/debug', async (req, res) => {
   const h = { Authorization: `Bearer ${c.access_token}` };
   const uid = c.user_id;
 
-  async function testar(label, url, params = {}) {
+  async function testar(url, params = {}) {
     try {
       const r = await axios.get(url, { params, headers: h, timeout: 8000 });
-      return { status: r.status, data: r.data };
+      return { status: r.status, ct: r.headers['content-type'], data: r.data };
     } catch (e) {
       return { status: e.response?.status, error: e.response?.data || e.message };
     }
   }
 
   const r = {};
-  // seller-promotions (convite ML)
-  r['seller-promotions/promotions?candidate']    = await testar('', `https://api.mercadolibre.com/seller-promotions/promotions`, { seller_id: uid, status: 'candidate', limit: 5 });
-  r['seller-promotions/promotions?started']      = await testar('', `https://api.mercadolibre.com/seller-promotions/promotions`, { seller_id: uid, status: 'started', limit: 5 });
-  // price-discounts (descontos que qualquer vendedor pode criar)
-  r['price-discounts?candidate']                 = await testar('', `https://api.mercadolibre.com/price-discounts`, { seller_id: uid, status: 'candidate', limit: 5 });
-  r['price-discounts?active']                    = await testar('', `https://api.mercadolibre.com/price-discounts`, { seller_id: uid, status: 'active', limit: 5 });
-  r['price-discounts/sem-filtro']                = await testar('', `https://api.mercadolibre.com/price-discounts`, { seller_id: uid, limit: 5 });
-  r['users/{id}/price-discounts']                = await testar('', `https://api.mercadolibre.com/users/${uid}/price-discounts`, { limit: 5 });
-  // price-discounts com marketplace
-  r['price-discounts?marketplace=MLB']           = await testar('', `https://api.mercadolibre.com/price-discounts`, { seller_id: uid, marketplace_id: 'MLB', limit: 5 });
-  r['promotions']                                = await testar('', `https://api.mercadolibre.com/promotions`, { seller_id: uid, limit: 5 });
+  // seller-promotions sem seller_id (usa token para identificar)
+  r['seller-promotions/promotions-sem-seller_id'] = await testar(`https://api.mercadolibre.com/seller-promotions/promotions`, { status: 'candidate', limit: 5 });
+  r['seller-promotions/promotions?candidate']     = await testar(`https://api.mercadolibre.com/seller-promotions/promotions`, { seller_id: uid, status: 'candidate', limit: 5 });
+  r['seller-promotions/promotions?started']       = await testar(`https://api.mercadolibre.com/seller-promotions/promotions`, { seller_id: uid, status: 'started', limit: 5 });
+  r['seller-promotions/promotions?paused']        = await testar(`https://api.mercadolibre.com/seller-promotions/promotions`, { seller_id: uid, status: 'paused', limit: 5 });
+  r['seller-promotions/promotions?finished']      = await testar(`https://api.mercadolibre.com/seller-promotions/promotions`, { seller_id: uid, status: 'finished', limit: 5 });
+  // variações com site_id
+  r['seller-promotions/promotions?site=MLB']      = await testar(`https://api.mercadolibre.com/seller-promotions/promotions`, { seller_id: uid, site_id: 'MLB', limit: 5 });
+  // users/{id}/seller-promotions
+  r['users/{id}/seller-promotions']               = await testar(`https://api.mercadolibre.com/users/${uid}/seller-promotions`, { limit: 5 });
+  // campaings
+  r['seller-promotions/campaigns']                = await testar(`https://api.mercadolibre.com/seller-promotions/campaigns`, { seller_id: uid, limit: 5 });
 
   res.json({ user_id: uid, r });
 });
