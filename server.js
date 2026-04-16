@@ -1528,33 +1528,51 @@ app.get('/api/lucro/gastos-auto', async (req, res) => {
 
   const [adsCost, fullCost] = await Promise.all([
 
-    // ── Ads: busca campanhas e soma custo no período ──────────
+    // ── Ads: usa endpoint seller-level para custo total (mais estável)
     (async () => {
       try {
-        const todosAds = [];
-        let offset = 0;
-        while (true) {
-          const r = await axios.get('https://api.mercadolibre.com/advertising/product_ads/ads/search', {
-            params: { seller_id: c.user_id, limit: 50, offset }, headers, timeout: 12000,
-          });
-          const results = r.data.results || [];
-          todosAds.push(...results);
-          if (results.length < 50 || todosAds.length >= 500) break;
-          offset += 50;
+        // Tenta endpoint de métricas por seller (única chamada, evita inconsistência por timeout por campanha)
+        const r = await axios.get('https://api.mercadolibre.com/advertising/product_ads/metrics', {
+          params: { seller_id: c.user_id, date_from: de, date_to: ate }, headers, timeout: 12000,
+        });
+        const custo = Number(r.data?.cost ?? r.data?.total_cost);
+        if (!isNaN(custo) && custo >= 0) {
+          console.log(`[gastos-auto] ads seller_metrics: R$${custo}`);
+          return custo;
         }
-        const campIds = [...new Set(todosAds.filter(a => a.campaign_id > 0).map(a => a.campaign_id))];
-        if (!campIds.length) return 0;
-        const custos = await Promise.all(campIds.map(async (campId) => {
-          try {
-            const r = await axios.get(
-              `https://api.mercadolibre.com/advertising/product_ads/campaigns/${campId}/metrics`,
-              { params: { date_from: de, date_to: ate }, headers, timeout: 10000 }
-            );
-            return Number(r.data.cost) || 0;
-          } catch { return 0; }
-        }));
-        return custos.reduce((s, v) => s + v, 0);
-      } catch { return 0; }
+        throw new Error('seller_metrics sem campo cost');
+      } catch (e1) {
+        // Fallback: soma por campanha com retry por campanha falha
+        console.log('[gastos-auto] fallback por campanha:', e1.message);
+        try {
+          const todosAds = [];
+          let offset = 0;
+          while (true) {
+            const r = await axios.get('https://api.mercadolibre.com/advertising/product_ads/ads/search', {
+              params: { seller_id: c.user_id, limit: 50, offset }, headers, timeout: 12000,
+            });
+            const results = r.data.results || [];
+            todosAds.push(...results);
+            if (results.length < 50 || todosAds.length >= 500) break;
+            offset += 50;
+          }
+          const campIds = [...new Set(todosAds.filter(a => a.campaign_id > 0).map(a => a.campaign_id))];
+          if (!campIds.length) return 0;
+          const custos = await Promise.all(campIds.map(async (campId) => {
+            for (let t = 0; t < 3; t++) {
+              try {
+                const r = await axios.get(
+                  `https://api.mercadolibre.com/advertising/product_ads/campaigns/${campId}/metrics`,
+                  { params: { date_from: de, date_to: ate }, headers, timeout: 10000 }
+                );
+                return Number(r.data.cost) || 0;
+              } catch { if (t < 2) await new Promise(res => setTimeout(res, 1000 * (t + 1))); }
+            }
+            return 0;
+          }));
+          return custos.reduce((s, v) => s + v, 0);
+        } catch { return 0; }
+      }
     })(),
 
     // ── Full: busca pedidos Full e soma custos de envio ───────
