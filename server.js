@@ -1658,6 +1658,54 @@ app.get('/api/ml/debug-inbound', async (req, res) => {
   res.json(result);
 });
 
+// Debug — Billing API (coleta Full / inbound)
+app.get('/api/ml/debug-billing', async (req, res) => {
+  const data = loadData();
+  const num  = req.query.conta || data.conta_ativa;
+  const c    = data.contas[num];
+  if (!c?.access_token) return res.json({ error: 'Não conectado' });
+  const headers = { Authorization: `Bearer ${c.access_token}` };
+  const result  = {};
+
+  // 1. Tenta listar os períodos de billing disponíveis
+  const periodosTentativas = [
+    { label: 'billing/periods',         url: `https://api.mercadolibre.com/billing/integration/periods`,              params: { user_id: c.user_id, group: 'ML' } },
+    { label: 'billing/periods_seller',  url: `https://api.mercadolibre.com/billing/integration/periods`,              params: { seller_id: c.user_id, group: 'ML' } },
+    { label: 'billing/periods_v2',      url: `https://api.mercadolibre.com/billing/integration/v2/periods`,           params: { user_id: c.user_id, group: 'ML' } },
+    { label: 'billing/documents',       url: `https://api.mercadolibre.com/billing/integration/documents`,            params: { user_id: c.user_id, document_type: 'BILL', group: 'ML', limit: 3 } },
+    { label: 'billing/documents_v2',    url: `https://api.mercadolibre.com/billing/integration/v2/documents`,         params: { user_id: c.user_id, document_type: 'BILL', group: 'ML', limit: 3 } },
+  ];
+
+  for (const { label, url, params } of periodosTentativas) {
+    try {
+      const r = await axios.get(url, { params, headers, timeout: 8000 });
+      result[label] = { status: r.status, data: r.data };
+    } catch (e) {
+      result[label] = { status: e.response?.status, error: e.response?.data || e.message };
+    }
+  }
+
+  // 2. Se passado um key, testa o endpoint de detalhes direto
+  if (req.query.key) {
+    const key = req.query.key;
+    const detalhesTentativas = [
+      { label: `details_key_${key}`,      url: `https://api.mercadolibre.com/billing/integration/periods/key/${key}/group/ML/details`,    params: { document_type: 'BILL' } },
+      { label: `details_key_${key}_v2`,   url: `https://api.mercadolibre.com/billing/integration/v2/periods/key/${key}/group/ML/details`, params: { document_type: 'BILL' } },
+      { label: `details_key_${key}_no_dt`,url: `https://api.mercadolibre.com/billing/integration/periods/key/${key}/group/ML/details`,    params: {} },
+    ];
+    for (const { label, url, params } of detalhesTentativas) {
+      try {
+        const r = await axios.get(url, { params, headers, timeout: 8000 });
+        result[label] = { status: r.status, data: r.data };
+      } catch (e) {
+        result[label] = { status: e.response?.status, error: e.response?.data || e.message };
+      }
+    }
+  }
+
+  res.json(result);
+});
+
 // Debug — estrutura real do shipment para diagnóstico do frete
 app.get('/api/ml/debug-shipment/:sid', async (req, res) => {
   const data = loadData();
