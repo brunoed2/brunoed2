@@ -234,18 +234,30 @@
             </table>
           </div>
 
-          <!-- Gasto fixo: Coleta Full -->
+          <!-- Gastos fixos (recorrentes) -->
           <div class="card" style="margin-bottom:16px">
-            <h2 style="margin-bottom:12px">Coleta Full</h2>
-            <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
-              <span style="color:#64748b;font-size:13px;flex:1">Custo de envio de mercadoria ao centro logístico no mês</span>
-              <div style="display:flex;gap:8px;align-items:center">
-                <span style="font-size:13px;color:#64748b">R$</span>
-                <input type="number" id="gastos-coleta-full" step="0.01" min="0" placeholder="0,00"
-                  style="width:120px;padding:6px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:14px;text-align:right"
-                  onchange="gastosColetaFullSalvar()">
-              </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+              <h2 style="margin:0">Gastos fixos</h2>
             </div>
+            <p class="card-desc" style="margin-bottom:12px">Despesas recorrentes (aluguel, energia, funcionário…). O nome fica salvo todo mês — só atualize o valor.</p>
+            <!-- Adicionar novo tipo -->
+            <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+              <input type="text" id="gastos-fixo-novo-nome" placeholder="Nome do gasto fixo (ex: Aluguel)"
+                style="flex:1;min-width:180px;padding:6px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px">
+              <button class="btn-secondary" onclick="gastosFixoAdicionar()" style="white-space:nowrap">+ Adicionar</button>
+            </div>
+            <!-- Tabela de fixos -->
+            <div id="gastos-fixos-vazio" style="color:#94a3b8;font-size:13px;display:none">Nenhum gasto fixo cadastrado ainda.</div>
+            <table class="tabela" id="tabela-gastos-fixos" style="display:none">
+              <thead>
+                <tr>
+                  <th>Descrição</th>
+                  <th class="col-num">Valor neste mês (R$)</th>
+                  <th style="width:40px"></th>
+                </tr>
+              </thead>
+              <tbody id="tabela-gastos-fixos-body"></tbody>
+            </table>
           </div>
 
           <!-- Lista de gastos -->
@@ -644,6 +656,6 @@
   <script src="/js/shopee.js?v=118"></script>
   <script src="/js/notas.js?v=128"></script>
   <script src="/js/promocoes.js?v=1"></script>
-  <div id="version-badge">v184</div>
+  <div id="version-badge">v185</div>
 </body>
 </html>

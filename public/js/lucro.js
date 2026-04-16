@@ -348,7 +348,7 @@ function lucroAba(nome) {
   document.getElementById('lucro-aba-gastos').style.display  = nome === 'gastos'  ? '' : 'none';
   // Carrega conteúdo sob demanda
   if (nome === 'custos') lucroCustosCarregar();
-  if (nome === 'gastos') { gastosInitMes(); gastosCarregar(); gastosCarregarLucroMes(); gastosAutoCarregar(); }
+  if (nome === 'gastos') { gastosInitMes(); gastosCarregar(); gastosFixosCarregar(); gastosCarregarLucroMes(); gastosAutoCarregar(); }
 }
 
 // ── Gastos mensais ────────────────────────────────────────────
@@ -396,18 +396,105 @@ async function gastosCarregarLucroMes() {
   gastosAtualizarCards();
 }
 
-async function gastosColetaFullSalvar() {
+// ── Gastos fixos ──────────────────────────────────────────────
+
+let gastosFixosTipos   = [];
+let gastosFixosValores = {};
+
+async function gastosFixosCarregar() {
   const conta = lucroContaAtual();
   const mes   = gastosMesAtual();
-  const input = document.getElementById('gastos-coleta-full');
-  const valor = parseFloat(input?.value?.replace(',', '.')) || 0;
-  input.style.borderColor = '#cbd5e1';
   try {
-    await fetch('/api/lucro/coleta-full', {
+    const d = await fetch(`/api/lucro/gastos-fixos?conta=${conta}&mes=${mes}`).then(r => r.json());
+    gastosFixosTipos   = d.tipos   || [];
+    gastosFixosValores = d.valores || {};
+  } catch {
+    gastosFixosTipos   = [];
+    gastosFixosValores = {};
+  }
+  gastosFixosRenderizar();
+}
+
+function gastosFixosRenderizar() {
+  const tbody = document.getElementById('tabela-gastos-fixos-body');
+  const tabela = document.getElementById('tabela-gastos-fixos');
+  const vazio  = document.getElementById('gastos-fixos-vazio');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+
+  if (!gastosFixosTipos.length) {
+    if (tabela) tabela.style.display = 'none';
+    if (vazio)  vazio.style.display  = 'block';
+    gastosAtualizarCards();
+    return;
+  }
+  if (vazio)  vazio.style.display  = 'none';
+  if (tabela) tabela.style.display = 'table';
+
+  gastosFixosTipos.forEach(nome => {
+    const valor = gastosFixosValores[nome] ?? 0;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${nome}</td>
+      <td class="col-num">
+        <input type="number" step="0.01" min="0" value="${valor || ''}" placeholder="0,00"
+          class="lucro-custo-input" style="width:110px"
+          data-nome="${nome}"
+          onchange="gastosFixoSalvarValor(this)">
+      </td>
+      <td style="text-align:center">
+        <button class="lucro-btn-remover" onclick="gastosFixoRemoverTipo('${nome.replace(/'/g,"\\'")}')">✕</button>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+  gastosAtualizarCards();
+}
+
+async function gastosFixoAdicionar() {
+  const input = document.getElementById('gastos-fixo-novo-nome');
+  const nome  = input?.value?.trim();
+  if (!nome) return;
+  const conta = lucroContaAtual();
+  try {
+    await fetch('/api/lucro/gastos-fixo-tipo', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ conta, mes, valor }),
+      body: JSON.stringify({ conta, nome }),
     });
+    if (!gastosFixosTipos.includes(nome)) gastosFixosTipos.push(nome);
+    if (input) input.value = '';
+    gastosFixosRenderizar();
+  } catch {}
+}
+
+async function gastosFixoRemoverTipo(nome) {
+  const conta = lucroContaAtual();
+  try {
+    await fetch('/api/lucro/gastos-fixo-tipo', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ conta, nome }),
+    });
+    gastosFixosTipos   = gastosFixosTipos.filter(t => t !== nome);
+    delete gastosFixosValores[nome];
+    gastosFixosRenderizar();
+  } catch {}
+}
+
+async function gastosFixoSalvarValor(input) {
+  const conta = lucroContaAtual();
+  const mes   = gastosMesAtual();
+  const nome  = input.dataset.nome;
+  const valor = parseFloat(input.value.replace(',', '.')) || 0;
+  input.style.borderColor = '#cbd5e1';
+  try {
+    await fetch('/api/lucro/gastos-fixo-valor', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ conta, mes, nome, valor }),
+    });
+    gastosFixosValores[nome] = valor;
     input.style.borderColor = '#86efac';
     setTimeout(() => { input.style.borderColor = ''; }, 1500);
   } catch {
@@ -458,8 +545,6 @@ async function gastosCarregar() {
   try {
     const d = await fetch(`/api/lucro/gastos?conta=${conta}&mes=${mes}`).then(r => r.json());
     gastosLista = d.gastos || [];
-    const cfInput = document.getElementById('gastos-coleta-full');
-    if (cfInput) cfInput.value = d.coleta_full > 0 ? d.coleta_full : '';
     gastosRenderizar();
   } catch {}
   if (loading) loading.style.display = 'none';
@@ -495,8 +580,8 @@ function gastosRenderizar() {
 function gastosAtualizarCards() {
   const totalManuais  = gastosLista.reduce((s, g) => s + g.valor, 0);
   const totalAuto     = (gastosAuto.ads_cost ?? 0);
-  const coletaFull    = parseFloat(document.getElementById('gastos-coleta-full')?.value) || 0;
-  const totalGastos   = totalManuais + totalAuto + coletaFull;
+  const totalFixos    = gastosFixosTipos.reduce((s, n) => s + (gastosFixosValores[n] ?? 0), 0);
+  const totalGastos   = totalManuais + totalAuto + totalFixos;
   // Lucro do mês completo (buscado independentemente da aba Vendas)
   const vendas  = gastosVendasRaw.length ? lucroCalcular(gastosVendasRaw) : [];
   const totais  = vendas.length ? lucroTotais(vendas) : null;
@@ -581,7 +666,7 @@ async function lucroInit() {
   // Recarrega gastos e lucro do mês ao trocar o mês
   const mesEl = document.getElementById('gastos-mes');
   if (mesEl && !mesEl._listenerOk) {
-    mesEl.addEventListener('change', () => { gastosCarregar(); gastosCarregarLucroMes(); gastosAutoCarregar(); });
+    mesEl.addEventListener('change', () => { gastosCarregar(); gastosFixosCarregar(); gastosCarregarLucroMes(); gastosAutoCarregar(); });
     mesEl._listenerOk = true;
   }
 }

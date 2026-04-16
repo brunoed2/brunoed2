@@ -112,9 +112,12 @@ async function syncRailwayEnvVars(data) {
       if (lc.gastos && Object.keys(lc.gastos).length > 0) {
         variables[`GASTOS_DATA_${num}`] = JSON.stringify(lc.gastos);
       }
-      // Coleta Full por mês
-      if (lc.coleta_full && Object.keys(lc.coleta_full).length > 0) {
-        variables[`COLETA_FULL_${num}`] = JSON.stringify(lc.coleta_full);
+      // Gastos fixos (tipos + valores)
+      if (lc.gastos_fixos_tipos?.length) {
+        variables[`GASTOS_FIXOS_TIPOS_${num}`] = JSON.stringify(lc.gastos_fixos_tipos);
+      }
+      if (lc.gastos_fixos_valores && Object.keys(lc.gastos_fixos_valores).length > 0) {
+        variables[`GASTOS_FIXOS_VALS_${num}`] = JSON.stringify(lc.gastos_fixos_valores);
       }
     }
   }
@@ -219,11 +222,18 @@ function initFromEnvVars() {
         changed = true;
       } catch {}
     }
-    // Coleta Full por mês
-    if (process.env[`COLETA_FULL_${num}`]) {
+    // Gastos fixos (tipos + valores)
+    if (process.env[`GASTOS_FIXOS_TIPOS_${num}`]) {
       try {
         data.lucro_contas[num] = data.lucro_contas[num] || {};
-        data.lucro_contas[num].coleta_full = JSON.parse(process.env[`COLETA_FULL_${num}`]);
+        data.lucro_contas[num].gastos_fixos_tipos = JSON.parse(process.env[`GASTOS_FIXOS_TIPOS_${num}`]);
+        changed = true;
+      } catch {}
+    }
+    if (process.env[`GASTOS_FIXOS_VALS_${num}`]) {
+      try {
+        data.lucro_contas[num] = data.lucro_contas[num] || {};
+        data.lucro_contas[num].gastos_fixos_valores = JSON.parse(process.env[`GASTOS_FIXOS_VALS_${num}`]);
         changed = true;
       } catch {}
     }
@@ -1404,17 +1414,63 @@ app.get('/api/lucro/gastos', (req, res) => {
   });
 });
 
-app.post('/api/lucro/coleta-full', async (req, res) => {
-  const { conta, mes, valor } = req.body;
+// ── Gastos fixos (recorrentes) ────────────────────────────────
+// Tipos: lista de nomes salvos globalmente por conta
+// Valores: { mes: { nome: valor } } por conta
+
+app.get('/api/lucro/gastos-fixos', (req, res) => {
+  const data = loadData();
+  const num  = String(req.query.conta || data.conta_ativa || '1');
+  const mes  = req.query.mes || new Date().toISOString().slice(0, 7);
+  const lc   = (data.lucro_contas || {})[num] || {};
+  res.json({
+    tipos:   lc.gastos_fixos_tipos   || [],
+    valores: (lc.gastos_fixos_valores || {})[mes] || {},
+  });
+});
+
+// Adiciona tipo
+app.post('/api/lucro/gastos-fixo-tipo', async (req, res) => {
+  const { conta, nome } = req.body;
   const num = String(conta || '1');
-  if (!['1','2'].includes(num)) return res.status(400).json({ error: 'Conta inválida' });
+  if (!nome?.trim()) return res.status(400).json({ error: 'Nome obrigatório' });
   const data = loadData();
   data.lucro_contas = data.lucro_contas || {};
   const lc = data.lucro_contas[num] = data.lucro_contas[num] || {};
-  lc.coleta_full = lc.coleta_full || {};
-  lc.coleta_full[mes] = parseFloat(valor) || 0;
+  lc.gastos_fixos_tipos = lc.gastos_fixos_tipos || [];
+  if (!lc.gastos_fixos_tipos.includes(nome.trim())) {
+    lc.gastos_fixos_tipos.push(nome.trim());
+  }
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
-  await syncRailwayEnvVars(data).catch(e => console.error('[coleta-full] sync erro:', e.message));
+  await syncRailwayEnvVars(data).catch(e => console.error('[gastos-fixo-tipo] sync erro:', e.message));
+  res.json({ ok: true });
+});
+
+// Remove tipo
+app.delete('/api/lucro/gastos-fixo-tipo', async (req, res) => {
+  const { conta, nome } = req.body;
+  const num = String(conta || '1');
+  const data = loadData();
+  data.lucro_contas = data.lucro_contas || {};
+  const lc = data.lucro_contas[num] = data.lucro_contas[num] || {};
+  lc.gastos_fixos_tipos = (lc.gastos_fixos_tipos || []).filter(t => t !== nome);
+  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+  await syncRailwayEnvVars(data).catch(e => console.error('[gastos-fixo-tipo] sync erro:', e.message));
+  res.json({ ok: true });
+});
+
+// Salva valor de um tipo para o mês
+app.post('/api/lucro/gastos-fixo-valor', async (req, res) => {
+  const { conta, mes, nome, valor } = req.body;
+  const num = String(conta || '1');
+  const data = loadData();
+  data.lucro_contas = data.lucro_contas || {};
+  const lc = data.lucro_contas[num] = data.lucro_contas[num] || {};
+  lc.gastos_fixos_valores = lc.gastos_fixos_valores || {};
+  lc.gastos_fixos_valores[mes] = lc.gastos_fixos_valores[mes] || {};
+  lc.gastos_fixos_valores[mes][nome] = parseFloat(valor) || 0;
+  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+  await syncRailwayEnvVars(data).catch(e => console.error('[gastos-fixo-valor] sync erro:', e.message));
   res.json({ ok: true });
 });
 
