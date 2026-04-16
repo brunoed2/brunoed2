@@ -211,6 +211,33 @@
             </div>
           </div>
 
+          <!-- Gastos automáticos (Ads + Full) -->
+          <div class="card" style="margin-bottom:16px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+              <h2 style="margin:0">Detectado automaticamente</h2>
+              <button class="btn-secondary" onclick="gastosAutoCarregar()" id="btn-gastos-auto" style="font-size:12px;padding:5px 10px">↻ Atualizar</button>
+            </div>
+            <div id="gastos-auto-loading" class="loading" style="display:none">Buscando dados na API…</div>
+            <table class="tabela" id="tabela-gastos-auto" style="display:none">
+              <thead>
+                <tr>
+                  <th>Origem</th>
+                  <th class="col-num">Valor no mês</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Ads (Product Ads)</td>
+                  <td class="col-num lucro-val-neg" id="gastos-auto-ads">—</td>
+                </tr>
+                <tr>
+                  <td>Envios Full (Mercado Envios Full)</td>
+                  <td class="col-num lucro-val-neg" id="gastos-auto-full">—</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
           <!-- Lista de gastos -->
           <div class="tabela-container">
             <div id="gastos-loading" class="loading" style="display:none">Carregando gastos...</div>
@@ -607,6 +634,6 @@
   <script src="/js/shopee.js?v=118"></script>
   <script src="/js/notas.js?v=128"></script>
   <script src="/js/promocoes.js?v=1"></script>
-  <div id="version-badge">v180</div>
+  <div id="version-badge">v181</div>
 </body>
 </html>

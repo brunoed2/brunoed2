@@ -1420,6 +1420,98 @@ app.delete('/api/lucro/gasto', async (req, res) => {
   res.json({ ok: true });
 });
 
+// ── Gastos automáticos (Ads + Full) ─────────────────────────
+app.get('/api/lucro/gastos-auto', async (req, res) => {
+  const data = loadData();
+  const num  = req.query.conta || data.conta_ativa;
+  const c    = data.contas[num];
+  if (!c?.access_token) return res.json({ error: 'Não conectado' });
+  if (!c.user_id)       return res.json({ error: 'user_id não encontrado' });
+
+  const mes = req.query.mes || new Date().toISOString().slice(0, 7);
+  const [ano, m] = mes.split('-').map(Number);
+  const de       = `${mes}-01`;
+  const hoje     = new Date().toISOString().split('T')[0];
+  const ultimoDia = new Date(ano, m, 0).getDate();
+  const ate_full  = `${mes}-${String(ultimoDia).padStart(2, '0')}`;
+  const ate       = ate_full > hoje ? hoje : ate_full;
+  const headers   = { Authorization: `Bearer ${c.access_token}` };
+
+  const [adsCost, fullCost] = await Promise.all([
+
+    // ── Ads: busca campanhas e soma custo no período ──────────
+    (async () => {
+      try {
+        const todosAds = [];
+        let offset = 0;
+        while (true) {
+          const r = await axios.get('https://api.mercadolibre.com/advertising/product_ads/ads/search', {
+            params: { seller_id: c.user_id, limit: 50, offset }, headers, timeout: 12000,
+          });
+          const results = r.data.results || [];
+          todosAds.push(...results);
+          if (results.length < 50 || todosAds.length >= 500) break;
+          offset += 50;
+        }
+        const campIds = [...new Set(todosAds.filter(a => a.campaign_id > 0).map(a => a.campaign_id))];
+        if (!campIds.length) return 0;
+        const custos = await Promise.all(campIds.map(async (campId) => {
+          try {
+            const r = await axios.get(
+              `https://api.mercadolibre.com/advertising/product_ads/campaigns/${campId}/metrics`,
+              { params: { date_from: de, date_to: ate }, headers, timeout: 10000 }
+            );
+            return Number(r.data.cost) || 0;
+          } catch { return 0; }
+        }));
+        return custos.reduce((s, v) => s + v, 0);
+      } catch { return 0; }
+    })(),
+
+    // ── Full: busca pedidos Full e soma custos de envio ───────
+    (async () => {
+      try {
+        let todasOrdens = [];
+        let offset = 0;
+        while (offset < 5000) {
+          const params = {
+            seller: c.user_id, 'order.status': 'paid', sort: 'date_desc', limit: 50, offset,
+            'order.date_created.from': de  + 'T00:00:00.000-03:00',
+            'order.date_created.to':   ate + 'T23:59:59.000-03:00',
+          };
+          const resp = await axios.get('https://api.mercadolibre.com/orders/search', { params, headers, timeout: 15000 });
+          const results = resp.data.results || [];
+          todasOrdens = todasOrdens.concat(results);
+          if (results.length < 50) break;
+          offset += 50;
+        }
+        const fullOrdens = todasOrdens.filter(o =>
+          o.shipping?.id && (
+            o.shipping.logistic_type === 'fulfillment' ||
+            o.shipping.mode          === 'fulfillment'
+          )
+        );
+        const fullIds = [...new Set(fullOrdens.map(o => o.shipping.id))];
+        const fretePorShipment = {};
+        const BATCH = 25;
+        for (let i = 0; i < fullIds.length; i += BATCH) {
+          await Promise.all(fullIds.slice(i, i + BATCH).map(async (sid) => {
+            try {
+              const r = await axios.get(`https://api.mercadolibre.com/shipments/${sid}/costs`, { headers, timeout: 8000 });
+              const senders = r.data?.senders || [];
+              const sender  = senders.find(s => s.user_id == c.user_id) || senders[0];
+              fretePorShipment[sid] = sender?.cost ?? 0;
+            } catch { fretePorShipment[sid] = 0; }
+          }));
+        }
+        return Object.values(fretePorShipment).reduce((s, v) => s + v, 0);
+      } catch { return 0; }
+    })(),
+  ]);
+
+  res.json({ ads_cost: adsCost, full_cost: fullCost });
+});
+
 app.get('/api/lucro/vendas', async (req, res) => {
   const data    = loadData();
   const num     = req.query.conta || data.conta_ativa;

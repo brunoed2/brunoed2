@@ -7,6 +7,7 @@ let lucroVendasRaw    = []; // dados brutos da API (sem custos/imposto aplicados
 let lucroCarregado    = false; // evita recarregar ao trocar de aba sem trocar conta
 let gastosLista       = []; // gastos carregados para o mês atual
 let gastosVendasRaw   = []; // vendas do mês completo (exclusivo para aba Gastos)
+let gastosAuto        = { ads_cost: null, full_cost: null }; // detectados automaticamente
 
 function lucroHoje() {
   const d = new Date();
@@ -347,7 +348,7 @@ function lucroAba(nome) {
   document.getElementById('lucro-aba-gastos').style.display  = nome === 'gastos'  ? '' : 'none';
   // Carrega conteúdo sob demanda
   if (nome === 'custos') lucroCustosCarregar();
-  if (nome === 'gastos') { gastosInitMes(); gastosCarregar(); gastosCarregarLucroMes(); }
+  if (nome === 'gastos') { gastosInitMes(); gastosCarregar(); gastosCarregarLucroMes(); gastosAutoCarregar(); }
 }
 
 // ── Gastos mensais ────────────────────────────────────────────
@@ -395,6 +396,42 @@ async function gastosCarregarLucroMes() {
   gastosAtualizarCards();
 }
 
+async function gastosAutoCarregar() {
+  const conta   = lucroContaAtual();
+  const mes     = gastosMesAtual();
+  const loading = document.getElementById('gastos-auto-loading');
+  const tabela  = document.getElementById('tabela-gastos-auto');
+  const adsEl   = document.getElementById('gastos-auto-ads');
+  const fullEl  = document.getElementById('gastos-auto-full');
+  const btn     = document.getElementById('btn-gastos-auto');
+
+  if (loading) loading.style.display = 'block';
+  if (tabela)  tabela.style.display  = 'none';
+  if (btn)     btn.disabled = true;
+  if (adsEl)   adsEl.textContent  = '…';
+  if (fullEl)  fullEl.textContent = '…';
+
+  // Reseta enquanto carrega
+  gastosAuto = { ads_cost: null, full_cost: null };
+
+  try {
+    const qs = new URLSearchParams({ conta, mes });
+    const d  = await fetch(`/api/lucro/gastos-auto?${qs}`).then(r => r.json());
+    gastosAuto.ads_cost  = d.ads_cost  ?? 0;
+    gastosAuto.full_cost = d.full_cost ?? 0;
+    if (adsEl)  adsEl.textContent  = gastosAuto.ads_cost  > 0 ? lucroFmt(gastosAuto.ads_cost)  : '—';
+    if (fullEl) fullEl.textContent = gastosAuto.full_cost > 0 ? lucroFmt(gastosAuto.full_cost) : '—';
+  } catch {
+    if (adsEl)  adsEl.textContent  = 'Erro';
+    if (fullEl) fullEl.textContent = 'Erro';
+  }
+
+  if (loading) loading.style.display = 'none';
+  if (tabela)  tabela.style.display  = 'table';
+  if (btn)     btn.disabled = false;
+  gastosAtualizarCards(); // recalcula total com os automáticos
+}
+
 async function gastosCarregar() {
   const conta   = lucroContaAtual();
   const mes     = gastosMesAtual();
@@ -438,7 +475,9 @@ function gastosRenderizar() {
 }
 
 function gastosAtualizarCards() {
-  const totalGastos = gastosLista.reduce((s, g) => s + g.valor, 0);
+  const totalManuais = gastosLista.reduce((s, g) => s + g.valor, 0);
+  const totalAuto    = (gastosAuto.ads_cost ?? 0) + (gastosAuto.full_cost ?? 0);
+  const totalGastos  = totalManuais + totalAuto;
   // Lucro do mês completo (buscado independentemente da aba Vendas)
   const vendas  = gastosVendasRaw.length ? lucroCalcular(gastosVendasRaw) : [];
   const totais  = vendas.length ? lucroTotais(vendas) : null;
@@ -523,7 +562,7 @@ async function lucroInit() {
   // Recarrega gastos e lucro do mês ao trocar o mês
   const mesEl = document.getElementById('gastos-mes');
   if (mesEl && !mesEl._listenerOk) {
-    mesEl.addEventListener('change', () => { gastosCarregar(); gastosCarregarLucroMes(); });
+    mesEl.addEventListener('change', () => { gastosCarregar(); gastosCarregarLucroMes(); gastosAutoCarregar(); });
     mesEl._listenerOk = true;
   }
 }
