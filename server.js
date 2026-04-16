@@ -1618,19 +1618,31 @@ app.get('/api/ml/debug-inbound', async (req, res) => {
   const result  = {};
 
   const tentativas = [
-    { label: 'inbound/plans_seller',       url: `https://api.mercadolibre.com/inbound/plans`,                         params: { seller_id: c.user_id, limit: 3 } },
-    { label: 'inbound/plans_search',       url: `https://api.mercadolibre.com/inbound/plans/search`,                  params: { seller_id: c.user_id, limit: 3 } },
-    { label: 'logistics/inbound_plans',    url: `https://api.mercadolibre.com/logistics/inbound_plans`,               params: { seller_id: c.user_id, limit: 3 } },
-    { label: 'fbm/inbound/plans',          url: `https://api.mercadolibre.com/fbm/inbound/plans`,                     params: { seller_id: c.user_id, limit: 3 } },
-    { label: 'users/inbound_plans',        url: `https://api.mercadolibre.com/users/${c.user_id}/inbound_plans`,       params: { limit: 3 } },
-    { label: 'fulfillment/inbound',        url: `https://api.mercadolibre.com/fulfillment/inbound`,                   params: { seller_id: c.user_id, limit: 3 } },
+    // Logistics API
+    { label: 'logistics/shipment_orders_inbound',   url: `https://api.mercadolibre.com/logistics/shipment_orders/search`,          params: { seller_id: c.user_id, type: 'inbound', limit: 3 } },
+    { label: 'logistics/shipment_orders_FF',        url: `https://api.mercadolibre.com/logistics/shipment_orders/search`,          params: { seller_id: c.user_id, mode: 'FF', limit: 3 } },
+    { label: 'logistics/handling_units',            url: `https://api.mercadolibre.com/logistics/handling_units/search`,           params: { seller_id: c.user_id, limit: 3 } },
+    // Fulfillment restock / replenishment
+    { label: 'fulfillment/restock',                 url: `https://api.mercadolibre.com/fulfillment/restock`,                      params: { seller_id: c.user_id, limit: 3 } },
+    { label: 'fulfillment/inbound/restocking',      url: `https://api.mercadolibre.com/fulfillment/inbound/restocking`,           params: { seller_id: c.user_id, limit: 3 } },
+    { label: 'users/restock',                       url: `https://api.mercadolibre.com/users/${c.user_id}/restock`,                params: { limit: 3 } },
+    // Conta / financeiro
+    { label: 'account/movements_inbound',           url: `https://api.mercadolibre.com/users/${c.user_id}/mercadopago_account/movements`, params: { limit: 3 } },
+    { label: 'account/balance',                     url: `https://api.mercadolibre.com/account/balance`,                          params: { user_id: c.user_id } },
+    // Shipments com filtro Full
+    { label: 'users/shipments_FF',                  url: `https://api.mercadolibre.com/users/${c.user_id}/shipments`,              params: { logistic_type: 'fulfillment', limit: 3 } },
+    { label: 'shipments_search_FF',                 url: `https://api.mercadolibre.com/shipments/search`,                         params: { seller: c.user_id, logistic_type: 'fulfillment', limit: 3 } },
   ];
 
-  // Se passado um plan_id, testa também o detalhe
+  // Se passado um id (plan ou shipment), testa direto
   if (req.query.plan_id) {
+    const pid = req.query.plan_id;
     tentativas.push(
-      { label: 'inbound/plans/{id}',   url: `https://api.mercadolibre.com/inbound/plans/${req.query.plan_id}`,   params: {} },
-      { label: 'inbound/plans/{id}/shipments', url: `https://api.mercadolibre.com/inbound/plans/${req.query.plan_id}/shipments`, params: {} },
+      { label: `shipments/${pid}`,                url: `https://api.mercadolibre.com/shipments/${pid}`,                         params: {} },
+      { label: `shipments/${pid}/costs`,          url: `https://api.mercadolibre.com/shipments/${pid}/costs`,                   params: {} },
+      { label: `logistics/shipment_orders/${pid}`,url: `https://api.mercadolibre.com/logistics/shipment_orders/${pid}`,         params: {} },
+      { label: `fulfillment/inbound/${pid}`,      url: `https://api.mercadolibre.com/fulfillment/inbound/${pid}`,               params: {} },
+      { label: `fulfillment/restock/${pid}`,      url: `https://api.mercadolibre.com/fulfillment/restock/${pid}`,               params: {} },
     );
   }
 
