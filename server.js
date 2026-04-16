@@ -1608,6 +1608,44 @@ app.get('/api/lucro/vendas', async (req, res) => {
   }
 });
 
+// Debug — inbound plans (envios ao Full / reabastecimento)
+app.get('/api/ml/debug-inbound', async (req, res) => {
+  const data = loadData();
+  const num  = req.query.conta || data.conta_ativa;
+  const c    = data.contas[num];
+  if (!c?.access_token) return res.json({ error: 'Não conectado' });
+  const headers = { Authorization: `Bearer ${c.access_token}` };
+  const result  = {};
+
+  const tentativas = [
+    { label: 'inbound/plans_seller',       url: `https://api.mercadolibre.com/inbound/plans`,                         params: { seller_id: c.user_id, limit: 3 } },
+    { label: 'inbound/plans_search',       url: `https://api.mercadolibre.com/inbound/plans/search`,                  params: { seller_id: c.user_id, limit: 3 } },
+    { label: 'logistics/inbound_plans',    url: `https://api.mercadolibre.com/logistics/inbound_plans`,               params: { seller_id: c.user_id, limit: 3 } },
+    { label: 'fbm/inbound/plans',          url: `https://api.mercadolibre.com/fbm/inbound/plans`,                     params: { seller_id: c.user_id, limit: 3 } },
+    { label: 'users/inbound_plans',        url: `https://api.mercadolibre.com/users/${c.user_id}/inbound_plans`,       params: { limit: 3 } },
+    { label: 'fulfillment/inbound',        url: `https://api.mercadolibre.com/fulfillment/inbound`,                   params: { seller_id: c.user_id, limit: 3 } },
+  ];
+
+  // Se passado um plan_id, testa também o detalhe
+  if (req.query.plan_id) {
+    tentativas.push(
+      { label: 'inbound/plans/{id}',   url: `https://api.mercadolibre.com/inbound/plans/${req.query.plan_id}`,   params: {} },
+      { label: 'inbound/plans/{id}/shipments', url: `https://api.mercadolibre.com/inbound/plans/${req.query.plan_id}/shipments`, params: {} },
+    );
+  }
+
+  for (const { label, url, params } of tentativas) {
+    try {
+      const r = await axios.get(url, { params, headers, timeout: 8000 });
+      result[label] = { status: r.status, data: r.data };
+    } catch (e) {
+      result[label] = { status: e.response?.status, error: e.response?.data || e.message };
+    }
+  }
+
+  res.json(result);
+});
+
 // Debug — estrutura real do shipment para diagnóstico do frete
 app.get('/api/ml/debug-shipment/:sid', async (req, res) => {
   const data = loadData();
