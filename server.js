@@ -9,6 +9,12 @@ const axios   = require('axios');
 const fs      = require('fs');
 const path    = require('path');
 const crypto  = require('crypto');
+const multer  = require('multer');
+const forge   = require('node-forge');
+const https   = require('https');
+const zlib    = require('zlib');
+
+const uploadMem = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 // PKCE: guarda code_verifier em memória por conta durante o fluxo OAuth
 const pkceVerifiers = new Map(); // num → code_verifier
@@ -2596,13 +2602,6 @@ app.delete('/api/contas-pagar/:id', async (req, res) => {
 });
 
 // ── Notas de Entrada (SEFAZ NF-e) ────────────────────────────────────────────
-
-const multer = require('multer');
-const forge  = require('node-forge');
-const https  = require('https');
-const zlib   = require('zlib');
-
-const uploadMem = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 function extrairCnpjDoCert(pfxBuffer, senha) {
   let p12;
