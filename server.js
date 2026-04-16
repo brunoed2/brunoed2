@@ -104,7 +104,15 @@ async function syncRailwayEnvVars(data) {
   // Configuração de lucro (custos + impostos) — por conta
   for (const num of ['1', '2']) {
     const lc = (data.lucro_contas || {})[num];
-    if (lc) variables[`LUCRO_CONFIG_${num}`] = JSON.stringify(lc);
+    if (lc) {
+      // Salva custos/imposto sem gastos (evita var muito grande)
+      const { gastos: _g, ...lcSemGastos } = lc;
+      variables[`LUCRO_CONFIG_${num}`] = JSON.stringify(lcSemGastos);
+      // Gastos mensais em var separada
+      if (lc.gastos && Object.keys(lc.gastos).length > 0) {
+        variables[`GASTOS_DATA_${num}`] = JSON.stringify(lc.gastos);
+      }
+    }
   }
   // Certificado digital Notas de Entrada — por conta
   for (const num of ['1', '2']) {
@@ -198,6 +206,15 @@ function initFromEnvVars() {
   for (const num of ['1', '2']) {
     if (!data.lucro_contas[num] && process.env[`LUCRO_CONFIG_${num}`]) {
       try { data.lucro_contas[num] = JSON.parse(process.env[`LUCRO_CONFIG_${num}`]); changed = true; } catch {}
+    }
+    // Gastos mensais — var separada (restaura sempre para não perder novos meses)
+    if (process.env[`GASTOS_DATA_${num}`]) {
+      try {
+        const gastos = JSON.parse(process.env[`GASTOS_DATA_${num}`]);
+        data.lucro_contas[num] = data.lucro_contas[num] || {};
+        data.lucro_contas[num].gastos = gastos;
+        changed = true;
+      } catch {}
     }
   }
   // Certificado digital Notas de Entrada — por conta
