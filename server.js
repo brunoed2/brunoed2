@@ -142,20 +142,25 @@ async function syncRailwayEnvVars(data) {
     if (sidsAtendidos.length) variables[`ATENDIDAS_SIDS_${num}`] = JSON.stringify(sidsAtendidos);
   }
 
-  try {
-    await axios.post(
-      'https://backboard.railway.app/graphql/v2',
-      {
-        query: `mutation Upsert($input: VariableCollectionUpsertInput!) {
-          variableCollectionUpsert(input: $input)
-        }`,
-        variables: { input: { projectId, environmentId, serviceId, variables } },
-      },
-      { headers: { Authorization: `Bearer ${token}` }, timeout: 8000 }
-    );
-    console.log('[sync] Tokens salvos nas env vars do Railway com sucesso.');
-  } catch (e) {
-    console.error('[sync] Erro ao salvar tokens no Railway:', e.message);
+  // Retry até 3 vezes com backoff simples
+  for (let tentativa = 1; tentativa <= 3; tentativa++) {
+    try {
+      await axios.post(
+        'https://backboard.railway.app/graphql/v2',
+        {
+          query: `mutation Upsert($input: VariableCollectionUpsertInput!) {
+            variableCollectionUpsert(input: $input)
+          }`,
+          variables: { input: { projectId, environmentId, serviceId, variables } },
+        },
+        { headers: { Authorization: `Bearer ${token}` }, timeout: 10000 }
+      );
+      console.log(`[sync] Env vars salvas no Railway (tentativa ${tentativa}).`);
+      return;
+    } catch (e) {
+      console.error(`[sync] Erro tentativa ${tentativa}/3: ${e.message}`);
+      if (tentativa < 3) await new Promise(r => setTimeout(r, 2000 * tentativa));
+    }
   }
 }
 

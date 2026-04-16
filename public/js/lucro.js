@@ -522,9 +522,8 @@ async function gastosAutoCarregar() {
   try {
     const qs = new URLSearchParams({ conta, mes });
     const d  = await fetch(`/api/lucro/gastos-auto?${qs}`).then(r => r.json());
-    gastosAuto.ads_cost  = d.ads_cost  ?? 0;
-    gastosAuto.full_cost = d.full_cost ?? 0;
-    if (adsEl)  adsEl.textContent  = gastosAuto.ads_cost  > 0 ? lucroFmt(gastosAuto.ads_cost)  : '—';
+    gastosAuto.ads_cost = d.ads_cost ?? 0;
+    if (adsEl) adsEl.textContent = lucroFmt(gastosAuto.ads_cost);
   } catch {
     if (adsEl)  adsEl.textContent  = 'Erro';
   }
