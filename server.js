@@ -371,7 +371,7 @@ app.get('/api/ml/auth', (req, res) => {
     + `&state=${num}`
     + `&code_challenge=${challenge}`
     + `&code_challenge_method=S256`
-    + `&scope=offline_access+read_listings+write_listings+read_orders+write_orders+read_shipping+write_shipping+read_product_ads+seller_promotions`;
+    + `&scope=offline_access+read_listings+write_listings+read_orders+write_orders+read_shipping+write_shipping+read_product_ads+seller_promotions+read_billing`;
   res.redirect(url);
 });
 
@@ -1669,11 +1669,11 @@ app.get('/api/ml/debug-billing', async (req, res) => {
 
   // 1. Tenta listar os períodos de billing disponíveis
   const periodosTentativas = [
-    { label: 'billing/periods',         url: `https://api.mercadolibre.com/billing/integration/periods`,              params: { user_id: c.user_id, group: 'ML' } },
-    { label: 'billing/periods_seller',  url: `https://api.mercadolibre.com/billing/integration/periods`,              params: { seller_id: c.user_id, group: 'ML' } },
-    { label: 'billing/periods_v2',      url: `https://api.mercadolibre.com/billing/integration/v2/periods`,           params: { user_id: c.user_id, group: 'ML' } },
-    { label: 'billing/documents',       url: `https://api.mercadolibre.com/billing/integration/documents`,            params: { user_id: c.user_id, document_type: 'BILL', group: 'ML', limit: 3 } },
-    { label: 'billing/documents_v2',    url: `https://api.mercadolibre.com/billing/integration/v2/documents`,         params: { user_id: c.user_id, document_type: 'BILL', group: 'ML', limit: 3 } },
+    { label: 'periods_BILL',         url: `https://api.mercadolibre.com/billing/integration/periods`, params: { user_id: c.user_id, group: 'ML', document_type: 'BILL' } },
+    { label: 'periods_BILL_seller',  url: `https://api.mercadolibre.com/billing/integration/periods`, params: { seller_id: c.user_id, group: 'ML', document_type: 'BILL' } },
+    { label: 'periods_RELEASE',      url: `https://api.mercadolibre.com/billing/integration/periods`, params: { user_id: c.user_id, group: 'ML', document_type: 'RELEASE' } },
+    { label: 'periods_no_group',     url: `https://api.mercadolibre.com/billing/integration/periods`, params: { user_id: c.user_id, document_type: 'BILL' } },
+    { label: 'documents_BILL',       url: `https://api.mercadolibre.com/billing/integration/documents`, params: { user_id: c.user_id, document_type: 'BILL', group: 'ML', limit: 3 } },
   ];
 
   for (const { label, url, params } of periodosTentativas) {
