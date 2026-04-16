@@ -1353,7 +1353,7 @@ app.get('/api/lucro/config', (req, res) => {
   });
 });
 
-app.post('/api/lucro/config', (req, res) => {
+app.post('/api/lucro/config', async (req, res) => {
   const { conta, taxa_imposto, frete_medio } = req.body;
   const num = String(conta || '1');
   if (!['1','2'].includes(num)) return res.status(400).json({ error: 'Conta inválida' });
@@ -1362,11 +1362,12 @@ app.post('/api/lucro/config', (req, res) => {
   const lc = data.lucro_contas[num] = data.lucro_contas[num] || {};
   if (taxa_imposto !== undefined) lc.taxa_imposto = parseFloat(taxa_imposto) || 0;
   if (frete_medio  !== undefined) lc.frete_medio  = parseFloat(frete_medio)  || 0;
-  saveData(data);
+  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+  await syncRailwayEnvVars(data).catch(e => console.error('[lucro/config] sync erro:', e.message));
   res.json({ ok: true });
 });
 
-app.post('/api/lucro/custo', (req, res) => {
+app.post('/api/lucro/custo', async (req, res) => {
   const { conta, sku, custo } = req.body;
   const num = String(conta || '1');
   if (!sku) return res.status(400).json({ error: 'sku obrigatório' });
@@ -1375,7 +1376,8 @@ app.post('/api/lucro/custo', (req, res) => {
   const lc = data.lucro_contas[num] = data.lucro_contas[num] || {};
   lc.custos = lc.custos || {};
   lc.custos[sku] = parseFloat(custo) || 0;
-  saveData(data);
+  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+  await syncRailwayEnvVars(data).catch(e => console.error('[lucro/custo] sync erro:', e.message));
   res.json({ ok: true });
 });
 
@@ -1388,7 +1390,7 @@ app.get('/api/lucro/gastos', (req, res) => {
   res.json({ gastos: (lc.gastos || {})[mes] || [] });
 });
 
-app.post('/api/lucro/gasto', (req, res) => {
+app.post('/api/lucro/gasto', async (req, res) => {
   const { conta, mes, descricao, valor } = req.body;
   const num = String(conta || '1');
   if (!['1','2'].includes(num)) return res.status(400).json({ error: 'Conta inválida' });
@@ -1399,11 +1401,12 @@ app.post('/api/lucro/gasto', (req, res) => {
   lc.gastos[mes] = lc.gastos[mes] || [];
   const id = Date.now().toString();
   lc.gastos[mes].push({ id, descricao: String(descricao || '').trim(), valor: parseFloat(valor) || 0 });
-  saveData(data);
+  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+  await syncRailwayEnvVars(data).catch(e => console.error('[lucro/gasto] sync erro:', e.message));
   res.json({ ok: true, id });
 });
 
-app.delete('/api/lucro/gasto', (req, res) => {
+app.delete('/api/lucro/gasto', async (req, res) => {
   const { conta, mes, id } = req.body;
   const num = String(conta || '1');
   const data = loadData();
@@ -1411,7 +1414,8 @@ app.delete('/api/lucro/gasto', (req, res) => {
   const lc = data.lucro_contas[num] = data.lucro_contas[num] || {};
   if (lc.gastos?.[mes]) {
     lc.gastos[mes] = lc.gastos[mes].filter(g => g.id !== id);
-    saveData(data);
+    fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+    await syncRailwayEnvVars(data).catch(e => console.error('[lucro/gasto] sync erro:', e.message));
   }
   res.json({ ok: true });
 });
