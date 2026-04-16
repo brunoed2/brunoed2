@@ -31,7 +31,7 @@
         <button class="nav-btn" data-tab="lucro">💰 Lucro</button>
         <button class="nav-btn" data-tab="shopee">🛒 Shopee</button>
         <button class="nav-btn" data-tab="promocoes">🏷️ Promoções</button>
-        <button class="nav-btn" data-tab="notas">📄 Notas de Entrada</button>
+        <button class="nav-btn" data-tab="contas-pagar">💳 Contas a Pagar</button>
         <button class="nav-btn" data-tab="config">⚙️ Configurações</button>
         <button class="nav-btn" data-tab="conexao">🔌 Conexão</button>
       </nav>
@@ -317,72 +317,69 @@
         </div>
       </section>
 
-      <!-- ── Aba: Notas de Entrada ── -->
-      <section id="tab-notas" class="tab">
-        <h1>Notas de Entrada</h1>
-        <p class="subtitle">Consulta de NF-e de compra emitidas para o CNPJ do certificado digital (SEFAZ).</p>
+      <!-- ── Aba: Contas a Pagar ── -->
+      <section id="tab-contas-pagar" class="tab" style="display:none">
+        <h1>Contas a Pagar</h1>
+        <p class="subtitle">Importe XMLs de notas de compra. O sistema extrai boletos e datas de vencimento automaticamente.</p>
 
+        <!-- Upload -->
         <div class="card" style="margin-bottom:24px">
-          <h2>Certificado Digital</h2>
-          <p class="card-desc">Faça upload do arquivo <strong>.pfx</strong> (e-CNPJ A1) e informe a senha. O certificado é usado para autenticação junto à SEFAZ.</p>
-          <div id="notas-cert-info" style="display:none;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:#166534"></div>
-          <div class="field">
-            <label>Arquivo do certificado (.pfx)</label>
-            <input type="file" id="notas-cert-file" accept=".pfx,.p12" style="padding:6px 0">
+          <h2>Importar NF-e (XML)</h2>
+          <p class="card-desc">Selecione um ou mais arquivos XML de nota fiscal de compra. Os boletos/duplicatas são extraídos automaticamente.</p>
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <input type="file" id="contas-xml-input" accept=".xml" multiple style="font-size:13px;flex:1;min-width:200px">
+            <button class="btn-primary" id="btn-importar-xml" onclick="contasPagarImportarXML()">Importar</button>
           </div>
-          <div class="field">
-            <label>Senha do certificado</label>
-            <input type="password" id="notas-cert-senha" placeholder="Senha do .pfx" autocomplete="off">
-          </div>
-          <div class="btn-row">
-            <button class="btn-primary" onclick="notasEnviarCertificado()">💾 Salvar Certificado</button>
-          </div>
-          <div class="msg" id="notas-msg"></div>
+          <div id="contas-import-status" style="font-size:13px;margin-top:10px;min-height:20px"></div>
         </div>
 
-        <div id="notas-countdown" style="display:none;background:#fef3c7;border:1px solid #fcd34d;border-radius:6px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:#92400e"></div>
-        <div id="notas-erro" class="estoque-erro" style="display:none"></div>
+        <!-- Cards resumo -->
+        <div class="lucro-cards" style="margin-bottom:20px">
+          <div class="lucro-card" style="border-color:#fca5a5">
+            <div class="lucro-card-label">Vencido (em aberto)</div>
+            <div class="lucro-card-valor lucro-val-neg" id="contas-card-vencido">—</div>
+          </div>
+          <div class="lucro-card">
+            <div class="lucro-card-label">A vencer</div>
+            <div class="lucro-card-valor lucro-val-neg" id="contas-card-avencer">—</div>
+          </div>
+          <div class="lucro-card lucro-card-destaque">
+            <div class="lucro-card-label">Total em aberto</div>
+            <div class="lucro-card-valor" id="contas-card-total">—</div>
+          </div>
+          <div class="lucro-card">
+            <div class="lucro-card-label">Próximo vencimento</div>
+            <div class="lucro-card-valor" id="contas-card-proximo" style="font-size:13px;font-weight:600">—</div>
+          </div>
+        </div>
 
+        <!-- Tabela -->
         <div class="tabela-container">
           <div class="tabela-topo">
-            <span id="notas-total"></span>
-            <div style="display:flex;gap:8px;align-items:center">
-              <label style="font-size:13px;color:#64748b">UF:</label>
-              <select id="notas-uf" style="padding:5px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px">
-                <option value="11">RO</option><option value="12">AC</option><option value="13">AM</option>
-                <option value="14">RR</option><option value="15">PA</option><option value="16">AP</option>
-                <option value="17">TO</option><option value="21">MA</option><option value="22">PI</option>
-                <option value="23">CE</option><option value="24">RN</option><option value="25">PB</option>
-                <option value="26">PE</option><option value="27">AL</option><option value="28">SE</option>
-                <option value="29">BA</option><option value="31">MG</option><option value="32">ES</option>
-                <option value="33">RJ</option><option value="35" selected>SP</option>
-                <option value="41">PR</option><option value="42">SC</option><option value="43">RS</option>
-                <option value="50">MS</option><option value="51">MT</option><option value="52">GO</option>
-                <option value="53">DF</option>
-              </select>
-              <button class="btn-secondary" onclick="notasBuscar()" id="btn-atualizar-notas">↻ Buscar novas notas</button>
-              <button class="btn-secondary" onclick="notasLimparEBuscar()" style="color:#c00;border-color:#fca5a5" title="Apaga lista salva e rebusca do zero">🗑 Rebuscar do zero</button>
+            <div style="display:flex;gap:6px;flex-wrap:wrap">
+              <button class="filtro-btn active" data-cf="aberto"  onclick="contasFiltrar('aberto',this)">Em aberto</button>
+              <button class="filtro-btn"        data-cf="vencido" onclick="contasFiltrar('vencido',this)">Vencidos</button>
+              <button class="filtro-btn"        data-cf="pago"    onclick="contasFiltrar('pago',this)">Pagos</button>
+              <button class="filtro-btn"        data-cf="todos"   onclick="contasFiltrar('todos',this)">Todos</button>
             </div>
+            <span id="contas-total-label" style="font-size:13px;color:#64748b"></span>
           </div>
-
-          <div id="notas-loading" class="loading" style="display:none">Consultando SEFAZ — percorrendo todos os lotes, aguarde...</div>
-
-          <table class="tabela" id="tabela-notas" style="display:none">
+          <div id="contas-loading" class="loading" style="display:none">Carregando...</div>
+          <div id="contas-vazio" style="display:none;color:#94a3b8;padding:30px 0;text-align:center;font-size:14px">Nenhuma conta cadastrada. Importe um XML de NF-e acima.</div>
+          <table class="tabela" id="tabela-contas" style="display:none">
             <thead>
               <tr>
-                <th class="col-num">NSU</th>
-                <th class="col-num">Nº NF</th>
-                <th>Data</th>
-                <th>Emitente</th>
-                <th>CNPJ Emitente</th>
+                <th>Vencimento</th>
+                <th>Fornecedor</th>
+                <th>NF / Série</th>
+                <th>Parcela</th>
                 <th class="col-num">Valor</th>
-                <th>Tipo</th>
-                <th></th>
+                <th>Status</th>
+                <th style="width:90px"></th>
               </tr>
             </thead>
-            <tbody id="tabela-notas-body"></tbody>
+            <tbody id="tabela-contas-body"></tbody>
           </table>
-
         </div>
       </section>
 
@@ -660,8 +657,8 @@
   <script src="/js/app-v2.js"></script>
   <script src="/js/conexao.js"></script>
   <script src="/js/shopee.js?v=118"></script>
-  <script src="/js/notas.js?v=128"></script>
+  <script src="/js/contas-pagar.js?v=1"></script>
   <script src="/js/promocoes.js?v=1"></script>
-  <div id="version-badge">v191</div>
+  <div id="version-badge">v192</div>
 </body>
 </html>

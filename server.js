@@ -140,6 +140,9 @@ async function syncRailwayEnvVars(data) {
     // IDs dos pedidos flagados como atendidos
     const sidsAtendidos = ((data.contas[num] || {}).atendidas_dados || []).map(v => String(v.shipmentId));
     if (sidsAtendidos.length) variables[`ATENDIDAS_SIDS_${num}`] = JSON.stringify(sidsAtendidos);
+    // Contas a pagar
+    const cp = (data.contas_pagar || {})[num];
+    if (cp && cp.length) variables[`CONTAS_PAGAR_${num}`] = JSON.stringify(cp);
   }
 
   // Retry até 3 vezes com backoff simples
@@ -278,6 +281,16 @@ function initFromEnvVars() {
         c.atendidas_dados = sids.map(sid => ({ shipmentId: sid, atendida: true, atendidaEm: null }));
         data.contas[num] = c;
         changed = true;
+      } catch {}
+    }
+    // Restaura contas a pagar
+    if (process.env[`CONTAS_PAGAR_${num}`]) {
+      try {
+        data.contas_pagar = data.contas_pagar || {};
+        if (!data.contas_pagar[num]?.length) {
+          data.contas_pagar[num] = JSON.parse(process.env[`CONTAS_PAGAR_${num}`]);
+          changed = true;
+        }
       } catch {}
     }
   }
@@ -2452,6 +2465,135 @@ async function verificarNovosShipmentsTelegram() {
   }
   telegramPrimeiraVerificacao = false;
 }
+
+// ── Contas a Pagar ────────────────────────────────────────────────────────────
+
+// Helper: extrai texto de uma tag XML (ignora prefixo de namespace)
+function xmlVal(xml, tag) {
+  const m = xml.match(new RegExp(`<(?:[^:>]+:)?${tag}(?:\\s[^>]*)?>([^<]*)<\\/(?:[^:>]+:)?${tag}>`, 'i'));
+  return m ? m[1].trim() : '';
+}
+function xmlBlock(xml, tag) {
+  const m = xml.match(new RegExp(`<(?:[^:>]+:)?${tag}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/(?:[^:>]+:)?${tag}>`, 'i'));
+  return m ? m[1] : '';
+}
+function xmlAllBlocks(xml, tag) {
+  const re = new RegExp(`<(?:[^:>]+:)?${tag}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/(?:[^:>]+:)?${tag}>`, 'gi');
+  const res = []; let m;
+  while ((m = re.exec(xml)) !== null) res.push(m[1]);
+  return res;
+}
+
+function parseNFeXML(xmlStr) {
+  const emitBlk = xmlBlock(xmlStr, 'emit');
+  const ideBlk  = xmlBlock(xmlStr, 'ide');
+  const cobrBlk = xmlBlock(xmlStr, 'cobr');
+
+  const fornecedor = xmlVal(emitBlk, 'xNome') || 'Desconhecido';
+  const cnpj       = xmlVal(emitBlk, 'CNPJ')  || xmlVal(emitBlk, 'CPF') || '';
+  const nNF        = xmlVal(ideBlk,  'nNF')    || '';
+  const serie      = xmlVal(ideBlk,  'serie')  || '';
+  const dEmi       = xmlVal(ideBlk,  'dEmi')   || '';
+  const chNFe      = xmlVal(xmlStr,  'chNFe')  || '';
+
+  const dups = [];
+  if (cobrBlk) {
+    xmlAllBlocks(cobrBlk, 'dup').forEach(dup => {
+      const nDup = xmlVal(dup, 'nDup') || '001';
+      const dVenc = xmlVal(dup, 'dVenc');
+      const vDup  = parseFloat(xmlVal(dup, 'vDup')) || 0;
+      if (dVenc && vDup > 0) dups.push({ nDup, dVenc, vDup });
+    });
+  }
+  // Sem cobr/dup: usa valor total da NF
+  if (!dups.length) {
+    const vNF  = parseFloat(xmlVal(xmlStr, 'vNF')) || 0;
+    const dVenc = dEmi || new Date().toISOString().split('T')[0];
+    if (vNF > 0) dups.push({ nDup: '001', dVenc, vDup: vNF });
+  }
+
+  return { fornecedor, cnpj, nNF, serie, dEmi, chNFe, dups };
+}
+
+app.get('/api/contas-pagar', (req, res) => {
+  const data = loadData();
+  const num  = String(data.conta_ativa || '1');
+  const cp   = (data.contas_pagar || {})[num] || [];
+  res.json({ contas: cp });
+});
+
+app.post('/api/contas-pagar/xml', uploadMem.single('xml'), async (req, res) => {
+  const data = loadData();
+  const num  = String(data.conta_ativa || '1');
+  data.contas_pagar = data.contas_pagar || {};
+  data.contas_pagar[num] = data.contas_pagar[num] || [];
+
+  if (!req.file) return res.status(400).json({ error: 'Arquivo XML não recebido' });
+  const xmlStr = req.file.buffer.toString('utf-8').replace(/^\uFEFF/, ''); // remove BOM
+
+  let parsed;
+  try { parsed = parseNFeXML(xmlStr); }
+  catch (e) { return res.status(400).json({ error: 'Erro ao interpretar XML: ' + e.message }); }
+
+  if (!parsed.dups.length) return res.json({ importados: 0, aviso: 'Nenhuma parcela encontrada no XML.' });
+
+  const agora = new Date().toISOString();
+  let importados = 0;
+  let dup = 0;
+
+  for (const d of parsed.dups) {
+    // Evita duplicata: mesmo chNFe + nDup (ou nNF + dVenc + vDup se não tiver chave)
+    const chave = parsed.chNFe
+      ? `${parsed.chNFe}-${d.nDup}`
+      : `${parsed.cnpj}-${parsed.nNF}-${d.nDup}-${d.dVenc}`;
+    const existe = data.contas_pagar[num].find(c => c.chave === chave);
+    if (existe) { dup++; continue; }
+    data.contas_pagar[num].push({
+      id:          Date.now().toString() + Math.random().toString(36).slice(2, 6),
+      chave,
+      fornecedor:  parsed.fornecedor,
+      cnpj:        parsed.cnpj,
+      nNF:         parsed.nNF,
+      serie:       parsed.serie,
+      dEmi:        parsed.dEmi,
+      nDup:        d.nDup,
+      dVenc:       d.dVenc,
+      vDup:        d.vDup,
+      pago:        false,
+      pagoEm:      null,
+      adicionadoEm: agora,
+    });
+    importados++;
+  }
+
+  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+  await syncRailwayEnvVars(data).catch(e => console.error('[contas-pagar] sync erro:', e.message));
+  res.json({ importados, dup });
+});
+
+app.post('/api/contas-pagar/:id/pago', async (req, res) => {
+  const data = loadData();
+  const num  = String(data.conta_ativa || '1');
+  const lista = (data.contas_pagar || {})[num] || [];
+  const item  = lista.find(c => c.id === req.params.id);
+  if (!item) return res.status(404).json({ error: 'Não encontrado' });
+  item.pago   = !item.pago;
+  item.pagoEm = item.pago ? new Date().toISOString() : null;
+  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+  await syncRailwayEnvVars(data).catch(e => console.error('[contas-pagar] sync erro:', e.message));
+  res.json({ ok: true, pago: item.pago });
+});
+
+app.delete('/api/contas-pagar/:id', async (req, res) => {
+  const data = loadData();
+  const num  = String(data.conta_ativa || '1');
+  if (data.contas_pagar?.[num]) {
+    data.contas_pagar[num] = data.contas_pagar[num].filter(c => c.id !== req.params.id);
+  }
+  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+  await syncRailwayEnvVars(data).catch(e => console.error('[contas-pagar] sync erro:', e.message));
+  res.json({ ok: true });
+});
 
 // ── Notas de Entrada (SEFAZ NF-e) ────────────────────────────────────────────
 
