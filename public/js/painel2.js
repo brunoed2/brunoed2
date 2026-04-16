@@ -461,10 +461,15 @@ function toggleTodasVendas(master) {
 
 function atualizarBotaoSelecionadas() {
   const selecionadas = document.querySelectorAll('.check-venda:checked').length;
-  const btn = document.getElementById('btn-baixar-selecionadas');
-  if (btn) {
-    btn.style.display = selecionadas > 0 ? '' : 'none';
-    btn.textContent   = `⬇ Baixar ${selecionadas} etiqueta${selecionadas !== 1 ? 's' : ''}`;
+  const btnBaixar   = document.getElementById('btn-baixar-selecionadas');
+  const btnAtendido = document.getElementById('btn-marcar-atendido');
+  if (btnBaixar) {
+    btnBaixar.style.display = selecionadas > 0 ? '' : 'none';
+    btnBaixar.textContent   = `⬇ Baixar ${selecionadas} etiqueta${selecionadas !== 1 ? 's' : ''}`;
+  }
+  if (btnAtendido) {
+    btnAtendido.style.display = selecionadas > 0 ? '' : 'none';
+    btnAtendido.textContent   = `✔ Marcar ${selecionadas} como atendido`;
   }
   // Atualiza estado do checkbox "todas"
   const total = document.querySelectorAll('.check-venda').length;
@@ -472,6 +477,50 @@ function atualizarBotaoSelecionadas() {
   if (master) {
     master.checked       = selecionadas === total && total > 0;
     master.indeterminate = selecionadas > 0 && selecionadas < total;
+  }
+}
+
+async function marcarAtendidoSelecionadas() {
+  const checks = [...document.querySelectorAll('.check-venda:checked')];
+  if (!checks.length) return;
+  const btn = document.getElementById('btn-marcar-atendido');
+  if (btn) { btn.disabled = true; btn.textContent = 'Salvando…'; }
+
+  const shipmentIds = checks.map(cb => cb.dataset.shipmentId);
+  // Coleta dados de cada venda do cache para enviar junto
+  const vendasDados = {};
+  shipmentIds.forEach(sid => { if (vendaCache[sid]) vendasDados[sid] = vendaCache[sid]; });
+
+  try {
+    const r = await apiFetch('/api/vendas/atendidas-batch', {
+      method: 'POST',
+      body: JSON.stringify({ shipmentIds, vendasDados }),
+    });
+    if (r.ok) {
+      // Atualiza visual de cada linha
+      checks.forEach(cb => {
+        const tr = cb.closest('tr');
+        if (!tr) return;
+        tr.classList.add('venda-atendida');
+        const flagBtn = tr.querySelector('.btn-flag');
+        if (flagBtn) { flagBtn.classList.add('btn-flag-ativo'); flagBtn.title = 'Remover flag'; }
+        // Propaga sub-linhas
+        let next = tr.nextElementSibling;
+        while (next && next.classList.contains('venda-sub-item')) {
+          next.classList.add('venda-atendida');
+          next = next.nextElementSibling;
+        }
+        cb.checked = false;
+      });
+      atualizarBotaoSelecionadas();
+      aplicarFiltroAtendidos();
+    } else {
+      alert('Erro ao salvar. Tente novamente.');
+    }
+  } catch {
+    alert('Erro ao salvar. Tente novamente.');
+  } finally {
+    if (btn) btn.disabled = false;
   }
 }
 

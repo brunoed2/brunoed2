@@ -1060,6 +1060,30 @@ app.delete('/api/vendas/atendida', (req, res) => {
   res.json({ ok: true });
 });
 
+// Marca vários pedidos como atendidos de uma vez e aguarda o sync com Railway
+app.post('/api/vendas/atendidas-batch', async (req, res) => {
+  const { shipmentIds, vendasDados } = req.body;
+  if (!Array.isArray(shipmentIds) || !shipmentIds.length) return res.status(400).json({ error: 'shipmentIds obrigatório' });
+  const data = loadData();
+  const num  = data.conta_ativa;
+  const c    = data.contas[num];
+  if (!c) return res.json({ error: 'Conta não encontrada' });
+  if (!c.atendidas_dados) c.atendidas_dados = [];
+  const agora = new Date().toISOString();
+  shipmentIds.forEach(shipmentId => {
+    const sid      = String(shipmentId);
+    const existente = c.atendidas_dados.find(v => String(v.shipmentId) === sid);
+    const venda    = (vendasDados || {})[sid] || existente || null;
+    c.atendidas_dados = c.atendidas_dados.filter(v => String(v.shipmentId) !== sid);
+    if (venda) c.atendidas_dados.push({ ...venda, atendida: true, atendidaEm: existente?.atendidaEm || agora });
+    else       c.atendidas_dados.push({ shipmentId: sid, atendida: true, atendidaEm: agora });
+  });
+  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+  // Aguarda sync Railway (não fire-and-forget) para garantir persistência
+  await syncRailwayEnvVars(data).catch(e => console.error('[atendidas-batch] sync erro:', e.message));
+  res.json({ ok: true });
+});
+
 
 // ── Promoções ──────────────────────────────────────────────────
 
