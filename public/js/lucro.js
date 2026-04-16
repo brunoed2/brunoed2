@@ -416,20 +416,27 @@ async function gastosFixosCarregar() {
 }
 
 function gastosFixosRenderizar() {
-  const tbody = document.getElementById('tabela-gastos-fixos-body');
-  const tabela = document.getElementById('tabela-gastos-fixos');
-  const vazio  = document.getElementById('gastos-fixos-vazio');
+  const tbody     = document.getElementById('tabela-gastos-fixos-body');
+  const tabela    = document.getElementById('tabela-gastos-fixos');
+  const vazio     = document.getElementById('gastos-fixos-vazio');
+  const salvarWrap = document.getElementById('gastos-fixos-salvar-wrap');
   if (!tbody) return;
   tbody.innerHTML = '';
 
   if (!gastosFixosTipos.length) {
-    if (tabela) tabela.style.display = 'none';
-    if (vazio)  vazio.style.display  = 'block';
+    if (tabela)     tabela.style.display     = 'none';
+    if (vazio)      vazio.style.display      = 'block';
+    if (salvarWrap) salvarWrap.style.display = 'none';
     gastosAtualizarCards();
     return;
   }
-  if (vazio)  vazio.style.display  = 'none';
-  if (tabela) tabela.style.display = 'table';
+  if (vazio)      vazio.style.display      = 'none';
+  if (tabela)     tabela.style.display     = 'table';
+  if (salvarWrap) salvarWrap.style.display = 'flex';
+
+  // Limpa status ao renderizar (ex: ao trocar mês)
+  const statusEl = document.getElementById('gastos-fixos-salvar-status');
+  if (statusEl) statusEl.textContent = '';
 
   gastosFixosTipos.forEach(nome => {
     const valor = gastosFixosValores[nome] ?? 0;
@@ -440,7 +447,7 @@ function gastosFixosRenderizar() {
         <input type="number" step="0.01" min="0" value="${valor || ''}" placeholder="0,00"
           class="lucro-custo-input" style="width:110px"
           data-nome="${nome}"
-          onblur="gastosFixoSalvarTodos(this)" onchange="gastosFixoSalvarTodos(this)">
+          oninput="gastosAtualizarCards()">
       </td>
       <td style="text-align:center">
         <button class="lucro-btn-remover" onclick="gastosFixoRemoverTipo('${nome.replace(/'/g,"\\'")}')">✕</button>
@@ -482,11 +489,13 @@ async function gastosFixoRemoverTipo(nome) {
   } catch {}
 }
 
-async function gastosFixoSalvarTodos(inputAtual) {
-  const conta = lucroContaAtual();
-  const mes   = gastosMesAtual();
+async function gastosFixosSalvarBtn() {
+  const conta    = lucroContaAtual();
+  const mes      = gastosMesAtual();
+  const btn      = document.getElementById('btn-gastos-fixos-salvar');
+  const statusEl = document.getElementById('gastos-fixos-salvar-status');
 
-  // Coleta todos os valores atuais dos inputs renderizados
+  // Coleta todos os valores dos inputs
   const tbody = document.getElementById('tabela-gastos-fixos-body');
   const valores = {};
   if (tbody) {
@@ -495,23 +504,29 @@ async function gastosFixoSalvarTodos(inputAtual) {
     });
   }
 
-  // Atualiza memória local imediatamente
-  Object.assign(gastosFixosValores, valores);
-  gastosAtualizarCards();
+  if (btn) btn.disabled = true;
+  if (statusEl) statusEl.textContent = 'Salvando…';
 
-  if (inputAtual) inputAtual.style.borderColor = '#cbd5e1';
   try {
     await fetch('/api/lucro/gastos-fixos-valores-batch', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ conta, mes, valores }),
     });
-    if (inputAtual) {
-      inputAtual.style.borderColor = '#86efac';
-      setTimeout(() => { inputAtual.style.borderColor = ''; }, 1500);
+    Object.assign(gastosFixosValores, valores);
+    gastosAtualizarCards();
+    if (statusEl) {
+      statusEl.style.color = '#16a34a';
+      statusEl.textContent = 'Salvo!';
+      setTimeout(() => { statusEl.textContent = ''; }, 3000);
     }
   } catch {
-    if (inputAtual) inputAtual.style.borderColor = '#fca5a5';
+    if (statusEl) {
+      statusEl.style.color = '#dc2626';
+      statusEl.textContent = 'Erro ao salvar — tente novamente';
+    }
+  } finally {
+    if (btn) btn.disabled = false;
   }
 }
 
@@ -591,7 +606,16 @@ function gastosRenderizar() {
 function gastosAtualizarCards() {
   const totalManuais  = gastosLista.reduce((s, g) => s + g.valor, 0);
   const totalAuto     = (gastosAuto.ads_cost ?? 0);
-  const totalFixos    = gastosFixosTipos.reduce((s, n) => s + (gastosFixosValores[n] ?? 0), 0);
+  // Lê inputs diretamente para refletir digitação antes de salvar
+  const tbody = document.getElementById('tabela-gastos-fixos-body');
+  let totalFixos = 0;
+  if (tbody) {
+    tbody.querySelectorAll('input[data-nome]').forEach(inp => {
+      totalFixos += parseFloat(inp.value.replace(',', '.')) || 0;
+    });
+  } else {
+    totalFixos = gastosFixosTipos.reduce((s, n) => s + (gastosFixosValores[n] ?? 0), 0);
+  }
   const totalGastos   = totalManuais + totalAuto + totalFixos;
   // Lucro do mês completo (buscado independentemente da aba Vendas)
   const vendas  = gastosVendasRaw.length ? lucroCalcular(gastosVendasRaw) : [];
