@@ -7,7 +7,7 @@ let lucroVendasRaw    = []; // dados brutos da API (sem custos/imposto aplicados
 let lucroCarregado    = false; // evita recarregar ao trocar de aba sem trocar conta
 let gastosLista       = []; // gastos carregados para o mês atual
 let gastosVendasRaw   = []; // vendas do mês completo (exclusivo para aba Gastos)
-let gastosAuto        = { ads_cost: null, full_cost: null }; // detectados automaticamente
+let gastosAuto        = { ads_cost: null }; // detectados automaticamente
 
 function lucroHoje() {
   const d = new Date();
@@ -396,23 +396,41 @@ async function gastosCarregarLucroMes() {
   gastosAtualizarCards();
 }
 
+async function gastosColetaFullSalvar() {
+  const conta = lucroContaAtual();
+  const mes   = gastosMesAtual();
+  const input = document.getElementById('gastos-coleta-full');
+  const valor = parseFloat(input?.value?.replace(',', '.')) || 0;
+  input.style.borderColor = '#cbd5e1';
+  try {
+    await fetch('/api/lucro/coleta-full', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ conta, mes, valor }),
+    });
+    input.style.borderColor = '#86efac';
+    setTimeout(() => { input.style.borderColor = ''; }, 1500);
+  } catch {
+    input.style.borderColor = '#fca5a5';
+  }
+  gastosAtualizarCards();
+}
+
 async function gastosAutoCarregar() {
   const conta   = lucroContaAtual();
   const mes     = gastosMesAtual();
   const loading = document.getElementById('gastos-auto-loading');
   const tabela  = document.getElementById('tabela-gastos-auto');
   const adsEl   = document.getElementById('gastos-auto-ads');
-  const fullEl  = document.getElementById('gastos-auto-full');
   const btn     = document.getElementById('btn-gastos-auto');
 
   if (loading) loading.style.display = 'block';
   if (tabela)  tabela.style.display  = 'none';
   if (btn)     btn.disabled = true;
   if (adsEl)   adsEl.textContent  = '…';
-  if (fullEl)  fullEl.textContent = '…';
 
   // Reseta enquanto carrega
-  gastosAuto = { ads_cost: null, full_cost: null };
+  gastosAuto = { ads_cost: null };
 
   try {
     const qs = new URLSearchParams({ conta, mes });
@@ -420,10 +438,8 @@ async function gastosAutoCarregar() {
     gastosAuto.ads_cost  = d.ads_cost  ?? 0;
     gastosAuto.full_cost = d.full_cost ?? 0;
     if (adsEl)  adsEl.textContent  = gastosAuto.ads_cost  > 0 ? lucroFmt(gastosAuto.ads_cost)  : '—';
-    if (fullEl) fullEl.textContent = gastosAuto.full_cost > 0 ? lucroFmt(gastosAuto.full_cost) : '—';
   } catch {
     if (adsEl)  adsEl.textContent  = 'Erro';
-    if (fullEl) fullEl.textContent = 'Erro';
   }
 
   if (loading) loading.style.display = 'none';
@@ -442,6 +458,8 @@ async function gastosCarregar() {
   try {
     const d = await fetch(`/api/lucro/gastos?conta=${conta}&mes=${mes}`).then(r => r.json());
     gastosLista = d.gastos || [];
+    const cfInput = document.getElementById('gastos-coleta-full');
+    if (cfInput) cfInput.value = d.coleta_full > 0 ? d.coleta_full : '';
     gastosRenderizar();
   } catch {}
   if (loading) loading.style.display = 'none';
@@ -475,9 +493,10 @@ function gastosRenderizar() {
 }
 
 function gastosAtualizarCards() {
-  const totalManuais = gastosLista.reduce((s, g) => s + g.valor, 0);
-  const totalAuto    = (gastosAuto.ads_cost ?? 0) + (gastosAuto.full_cost ?? 0);
-  const totalGastos  = totalManuais + totalAuto;
+  const totalManuais  = gastosLista.reduce((s, g) => s + g.valor, 0);
+  const totalAuto     = (gastosAuto.ads_cost ?? 0);
+  const coletaFull    = parseFloat(document.getElementById('gastos-coleta-full')?.value) || 0;
+  const totalGastos   = totalManuais + totalAuto + coletaFull;
   // Lucro do mês completo (buscado independentemente da aba Vendas)
   const vendas  = gastosVendasRaw.length ? lucroCalcular(gastosVendasRaw) : [];
   const totais  = vendas.length ? lucroTotais(vendas) : null;

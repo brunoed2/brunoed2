@@ -112,6 +112,10 @@ async function syncRailwayEnvVars(data) {
       if (lc.gastos && Object.keys(lc.gastos).length > 0) {
         variables[`GASTOS_DATA_${num}`] = JSON.stringify(lc.gastos);
       }
+      // Coleta Full por mês
+      if (lc.coleta_full && Object.keys(lc.coleta_full).length > 0) {
+        variables[`COLETA_FULL_${num}`] = JSON.stringify(lc.coleta_full);
+      }
     }
   }
   // Certificado digital Notas de Entrada — por conta
@@ -210,9 +214,16 @@ function initFromEnvVars() {
     // Gastos mensais — var separada (restaura sempre para não perder novos meses)
     if (process.env[`GASTOS_DATA_${num}`]) {
       try {
-        const gastos = JSON.parse(process.env[`GASTOS_DATA_${num}`]);
         data.lucro_contas[num] = data.lucro_contas[num] || {};
-        data.lucro_contas[num].gastos = gastos;
+        data.lucro_contas[num].gastos = JSON.parse(process.env[`GASTOS_DATA_${num}`]);
+        changed = true;
+      } catch {}
+    }
+    // Coleta Full por mês
+    if (process.env[`COLETA_FULL_${num}`]) {
+      try {
+        data.lucro_contas[num] = data.lucro_contas[num] || {};
+        data.lucro_contas[num].coleta_full = JSON.parse(process.env[`COLETA_FULL_${num}`]);
         changed = true;
       } catch {}
     }
@@ -1387,7 +1398,24 @@ app.get('/api/lucro/gastos', (req, res) => {
   const num  = String(req.query.conta || data.conta_ativa || '1');
   const mes  = req.query.mes || new Date().toISOString().slice(0, 7);
   const lc   = (data.lucro_contas || {})[num] || {};
-  res.json({ gastos: (lc.gastos || {})[mes] || [] });
+  res.json({
+    gastos:      (lc.gastos      || {})[mes] || [],
+    coleta_full: (lc.coleta_full || {})[mes] ?? 0,
+  });
+});
+
+app.post('/api/lucro/coleta-full', async (req, res) => {
+  const { conta, mes, valor } = req.body;
+  const num = String(conta || '1');
+  if (!['1','2'].includes(num)) return res.status(400).json({ error: 'Conta inválida' });
+  const data = loadData();
+  data.lucro_contas = data.lucro_contas || {};
+  const lc = data.lucro_contas[num] = data.lucro_contas[num] || {};
+  lc.coleta_full = lc.coleta_full || {};
+  lc.coleta_full[mes] = parseFloat(valor) || 0;
+  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+  await syncRailwayEnvVars(data).catch(e => console.error('[coleta-full] sync erro:', e.message));
+  res.json({ ok: true });
 });
 
 app.post('/api/lucro/gasto', async (req, res) => {
