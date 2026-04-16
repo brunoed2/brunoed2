@@ -440,7 +440,7 @@ function gastosFixosRenderizar() {
         <input type="number" step="0.01" min="0" value="${valor || ''}" placeholder="0,00"
           class="lucro-custo-input" style="width:110px"
           data-nome="${nome}"
-          onchange="gastosFixoSalvarValor(this)">
+          onblur="gastosFixoSalvarTodos(this)" onchange="gastosFixoSalvarTodos(this)">
       </td>
       <td style="text-align:center">
         <button class="lucro-btn-remover" onclick="gastosFixoRemoverTipo('${nome.replace(/'/g,"\\'")}')">✕</button>
@@ -482,25 +482,37 @@ async function gastosFixoRemoverTipo(nome) {
   } catch {}
 }
 
-async function gastosFixoSalvarValor(input) {
+async function gastosFixoSalvarTodos(inputAtual) {
   const conta = lucroContaAtual();
   const mes   = gastosMesAtual();
-  const nome  = input.dataset.nome;
-  const valor = parseFloat(input.value.replace(',', '.')) || 0;
-  input.style.borderColor = '#cbd5e1';
+
+  // Coleta todos os valores atuais dos inputs renderizados
+  const tbody = document.getElementById('tabela-gastos-fixos-body');
+  const valores = {};
+  if (tbody) {
+    tbody.querySelectorAll('input[data-nome]').forEach(inp => {
+      valores[inp.dataset.nome] = parseFloat(inp.value.replace(',', '.')) || 0;
+    });
+  }
+
+  // Atualiza memória local imediatamente
+  Object.assign(gastosFixosValores, valores);
+  gastosAtualizarCards();
+
+  if (inputAtual) inputAtual.style.borderColor = '#cbd5e1';
   try {
-    await fetch('/api/lucro/gastos-fixo-valor', {
+    await fetch('/api/lucro/gastos-fixos-valores-batch', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ conta, mes, nome, valor }),
+      body: JSON.stringify({ conta, mes, valores }),
     });
-    gastosFixosValores[nome] = valor;
-    input.style.borderColor = '#86efac';
-    setTimeout(() => { input.style.borderColor = ''; }, 1500);
+    if (inputAtual) {
+      inputAtual.style.borderColor = '#86efac';
+      setTimeout(() => { inputAtual.style.borderColor = ''; }, 1500);
+    }
   } catch {
-    input.style.borderColor = '#fca5a5';
+    if (inputAtual) inputAtual.style.borderColor = '#fca5a5';
   }
-  gastosAtualizarCards();
 }
 
 async function gastosAutoCarregar() {

@@ -1464,7 +1464,7 @@ app.delete('/api/lucro/gastos-fixo-tipo', async (req, res) => {
   res.json({ ok: true });
 });
 
-// Salva valor de um tipo para o mês
+// Salva valor de um tipo para o mês (individual — mantido por compatibilidade)
 app.post('/api/lucro/gastos-fixo-valor', async (req, res) => {
   const { conta, mes, nome, valor } = req.body;
   const num = String(conta || '1');
@@ -1476,6 +1476,24 @@ app.post('/api/lucro/gastos-fixo-valor', async (req, res) => {
   lc.gastos_fixos_valores[mes][nome] = parseFloat(valor) || 0;
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
   await syncRailwayEnvVars(data).catch(e => console.error('[gastos-fixo-valor] sync erro:', e.message));
+  res.json({ ok: true });
+});
+
+// Salva todos os valores do mês de uma vez (batch — evita perda por saves parciais)
+app.post('/api/lucro/gastos-fixos-valores-batch', async (req, res) => {
+  const { conta, mes, valores } = req.body;
+  const num = String(conta || '1');
+  if (!valores || typeof valores !== 'object') return res.status(400).json({ error: 'valores inválido' });
+  const data = loadData();
+  data.lucro_contas = data.lucro_contas || {};
+  const lc = data.lucro_contas[num] = data.lucro_contas[num] || {};
+  lc.gastos_fixos_valores = lc.gastos_fixos_valores || {};
+  lc.gastos_fixos_valores[mes] = {};
+  for (const [nome, valor] of Object.entries(valores)) {
+    lc.gastos_fixos_valores[mes][nome] = parseFloat(valor) || 0;
+  }
+  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+  await syncRailwayEnvVars(data).catch(e => console.error('[gastos-fixo-batch] sync erro:', e.message));
   res.json({ ok: true });
 });
 
