@@ -2,10 +2,11 @@
 // lucro.js — Cálculo de lucro por venda
 // ============================================================
 
-let lucroConfig    = { taxa_imposto: 0, frete_medio: 0, custos: {} };
-let lucroVendasRaw = []; // dados brutos da API (sem custos/imposto aplicados)
-let lucroCarregado = false; // evita recarregar ao trocar de aba sem trocar conta
-let gastosLista    = []; // gastos carregados para o mês atual
+let lucroConfig       = { taxa_imposto: 0, frete_medio: 0, custos: {} };
+let lucroVendasRaw    = []; // dados brutos da API (sem custos/imposto aplicados)
+let lucroCarregado    = false; // evita recarregar ao trocar de aba sem trocar conta
+let gastosLista       = []; // gastos carregados para o mês atual
+let gastosVendasRaw   = []; // vendas do mês completo (exclusivo para aba Gastos)
 
 function lucroHoje() {
   const d = new Date();
@@ -134,10 +135,6 @@ function lucroRecalcularERenderizar() {
   const total  = lucroTotais(vendas);
   lucroRenderizarCards(total, vendas.length);
   lucroRenderizarTabela(vendas);
-  // Atualiza cards de gastos se a aba estiver visível
-  if (document.getElementById('lucro-aba-gastos')?.style.display !== 'none') {
-    gastosAtualizarCards();
-  }
 }
 
 function lucroRenderizarCards(t, qtd) {
@@ -350,7 +347,7 @@ function lucroAba(nome) {
   document.getElementById('lucro-aba-gastos').style.display  = nome === 'gastos'  ? '' : 'none';
   // Carrega conteúdo sob demanda
   if (nome === 'custos') lucroCustosCarregar();
-  if (nome === 'gastos') { gastosInitMes(); gastosCarregar(); gastosAtualizarCards(); }
+  if (nome === 'gastos') { gastosInitMes(); gastosCarregar(); gastosCarregarLucroMes(); }
 }
 
 // ── Gastos mensais ────────────────────────────────────────────
@@ -365,6 +362,37 @@ function gastosInitMes() {
 
 function gastosMesAtual() {
   return document.getElementById('gastos-mes')?.value || new Date().toISOString().slice(0, 7);
+}
+
+// Retorna { de: 'YYYY-MM-DD', ate: 'YYYY-MM-DD' } para o mês selecionado
+function gastosPeriodoMes() {
+  const mes  = gastosMesAtual(); // 'YYYY-MM'
+  const hoje = lucroHoje();
+  const [ano, m] = mes.split('-').map(Number);
+  const de  = `${mes}-01`;
+  // Último dia do mês
+  const ultimoDia = new Date(ano, m, 0).getDate();
+  const ate_full  = `${mes}-${String(ultimoDia).padStart(2,'0')}`;
+  // Se for o mês atual, usa hoje como limite
+  const ate = ate_full > hoje ? hoje : ate_full;
+  return { de, ate };
+}
+
+async function gastosCarregarLucroMes() {
+  const conta   = lucroContaAtual();
+  const { de, ate } = gastosPeriodoMes();
+  const periodoEl   = document.getElementById('gastos-lucro-periodo');
+  const resultadoEl = document.getElementById('gastos-resultado');
+  if (periodoEl)   { periodoEl.textContent = '…'; periodoEl.className = 'lucro-card-valor'; }
+  if (resultadoEl) { resultadoEl.textContent = '…'; resultadoEl.className = 'lucro-card-valor'; }
+  try {
+    const qs = new URLSearchParams({ conta, date_from: de, date_to: ate });
+    const d  = await fetch(`/api/lucro/vendas?${qs}`).then(r => r.json());
+    gastosVendasRaw = d.vendas || [];
+  } catch {
+    gastosVendasRaw = [];
+  }
+  gastosAtualizarCards();
 }
 
 async function gastosCarregar() {
@@ -411,14 +439,22 @@ function gastosRenderizar() {
 
 function gastosAtualizarCards() {
   const totalGastos = gastosLista.reduce((s, g) => s + g.valor, 0);
-  // Lucro do período carregado na aba Vendas
-  const vendas  = lucroVendasRaw.length ? lucroCalcular(lucroVendasRaw) : [];
+  // Lucro do mês completo (buscado independentemente da aba Vendas)
+  const vendas  = gastosVendasRaw.length ? lucroCalcular(gastosVendasRaw) : [];
   const totais  = vendas.length ? lucroTotais(vendas) : null;
   const lucroPeriodo = totais ? totais.lucro : null;
 
   const periodoEl   = document.getElementById('gastos-lucro-periodo');
   const totalEl     = document.getElementById('gastos-total');
   const resultadoEl = document.getElementById('gastos-resultado');
+  const labelEl     = document.getElementById('gastos-label-periodo');
+
+  // Atualiza label com o período real
+  if (labelEl) {
+    const { de, ate } = gastosPeriodoMes();
+    const fmt = s => new Date(s + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+    labelEl.textContent = `Lucro ${fmt(de)} → ${fmt(ate)}`;
+  }
 
   if (periodoEl) {
     periodoEl.textContent = lucroPeriodo !== null ? lucroFmt(lucroPeriodo) : '—';
@@ -484,10 +520,10 @@ async function lucroInit() {
   if (!lucroCarregado) {
     await lucroCarregarVendas();
   }
-  // Recarrega gastos ao trocar o mês
+  // Recarrega gastos e lucro do mês ao trocar o mês
   const mesEl = document.getElementById('gastos-mes');
   if (mesEl && !mesEl._listenerOk) {
-    mesEl.addEventListener('change', () => gastosCarregar());
+    mesEl.addEventListener('change', () => { gastosCarregar(); gastosCarregarLucroMes(); });
     mesEl._listenerOk = true;
   }
 }
