@@ -460,19 +460,34 @@ function toggleTodasVendas(master) {
 }
 
 function atualizarBotaoSelecionadas() {
-  const selecionadas = document.querySelectorAll('.check-venda:checked').length;
+  const checks      = [...document.querySelectorAll('.check-venda:checked')];
+  const selecionadas = checks.length;
   const btnBaixar   = document.getElementById('btn-baixar-selecionadas');
   const btnAtendido = document.getElementById('btn-marcar-atendido');
+
   if (btnBaixar) {
     btnBaixar.style.display = selecionadas > 0 ? '' : 'none';
     btnBaixar.textContent   = `⬇ Baixar ${selecionadas} etiqueta${selecionadas !== 1 ? 's' : ''}`;
   }
   if (btnAtendido) {
-    btnAtendido.style.display = selecionadas > 0 ? '' : 'none';
-    btnAtendido.textContent   = `✔ Marcar ${selecionadas} como atendido`;
+    if (selecionadas === 0) {
+      btnAtendido.style.display = 'none';
+    } else {
+      // Se TODOS os selecionados já são atendidos → botão vira "Remover"
+      const todosAtendidos = checks.every(cb => cb.closest('tr')?.classList.contains('venda-atendida'));
+      btnAtendido.style.display   = '';
+      btnAtendido.dataset.remover = todosAtendidos ? '1' : '0';
+      if (todosAtendidos) {
+        btnAtendido.textContent       = `✕ Remover atendido (${selecionadas})`;
+        btnAtendido.style.background  = '#dc2626';
+      } else {
+        btnAtendido.textContent       = `✔ Marcar atendido (${selecionadas})`;
+        btnAtendido.style.background  = '#16a34a';
+      }
+    }
   }
   // Atualiza estado do checkbox "todas"
-  const total = document.querySelectorAll('.check-venda').length;
+  const total  = document.querySelectorAll('.check-venda').length;
   const master = document.getElementById('check-todas');
   if (master) {
     master.checked       = selecionadas === total && total > 0;
@@ -483,31 +498,35 @@ function atualizarBotaoSelecionadas() {
 async function marcarAtendidoSelecionadas() {
   const checks = [...document.querySelectorAll('.check-venda:checked')];
   if (!checks.length) return;
-  const btn = document.getElementById('btn-marcar-atendido');
+  const btn     = document.getElementById('btn-marcar-atendido');
+  const remover = btn?.dataset.remover === '1';
   if (btn) { btn.disabled = true; btn.textContent = 'Salvando…'; }
 
   const shipmentIds = checks.map(cb => cb.dataset.shipmentId);
-  // Coleta dados de cada venda do cache para enviar junto
   const vendasDados = {};
-  shipmentIds.forEach(sid => { if (vendaCache[sid]) vendasDados[sid] = vendaCache[sid]; });
+  if (!remover) shipmentIds.forEach(sid => { if (vendaCache[sid]) vendasDados[sid] = vendaCache[sid]; });
 
   try {
     const r = await apiFetch('/api/vendas/atendidas-batch', {
-      method: 'POST',
+      method: remover ? 'DELETE' : 'POST',
       body: JSON.stringify({ shipmentIds, vendasDados }),
     });
     if (r.ok) {
-      // Atualiza visual de cada linha
       checks.forEach(cb => {
         const tr = cb.closest('tr');
         if (!tr) return;
-        tr.classList.add('venda-atendida');
-        const flagBtn = tr.querySelector('.btn-flag');
-        if (flagBtn) { flagBtn.classList.add('btn-flag-ativo'); flagBtn.title = 'Remover flag'; }
-        // Propaga sub-linhas
+        if (remover) {
+          tr.classList.remove('venda-atendida');
+          const flagBtn = tr.querySelector('.btn-flag');
+          if (flagBtn) { flagBtn.classList.remove('btn-flag-ativo'); flagBtn.title = 'Marcar como atendido'; }
+        } else {
+          tr.classList.add('venda-atendida');
+          const flagBtn = tr.querySelector('.btn-flag');
+          if (flagBtn) { flagBtn.classList.add('btn-flag-ativo'); flagBtn.title = 'Remover flag'; }
+        }
         let next = tr.nextElementSibling;
         while (next && next.classList.contains('venda-sub-item')) {
-          next.classList.add('venda-atendida');
+          next.classList.toggle('venda-atendida', !remover);
           next = next.nextElementSibling;
         }
         cb.checked = false;
@@ -676,16 +695,18 @@ async function toggleFlag(shipmentId, btn) {
   btn.disabled = true;
   const tr       = btn.closest('tr');
   const atendida = tr.classList.contains('venda-atendida');
+  const sid      = String(shipmentId);
   try {
-    if (atendida) {
-      await apiFetch('/api/vendas/atendida', { method: 'DELETE', body: JSON.stringify({ shipmentId }) });
-    } else {
-      await apiFetch('/api/vendas/atendida', { method: 'POST', body: JSON.stringify({ shipmentId, venda: vendaCache[String(shipmentId)] || null }) });
-    }
+    // Usa o endpoint batch (aguarda sync Railway) mesmo para item único
+    const vendasDados = {};
+    if (!atendida && vendaCache[sid]) vendasDados[sid] = vendaCache[sid];
+    await apiFetch('/api/vendas/atendidas-batch', {
+      method: atendida ? 'DELETE' : 'POST',
+      body: JSON.stringify({ shipmentIds: [sid], vendasDados }),
+    });
     tr.classList.toggle('venda-atendida');
     btn.classList.toggle('btn-flag-ativo');
     btn.title = tr.classList.contains('venda-atendida') ? 'Remover flag' : 'Marcar como atendido';
-    // Propaga para sub-linhas
     let next = tr.nextElementSibling;
     while (next && next.classList.contains('venda-sub-item')) {
       next.classList.toggle('venda-atendida', tr.classList.contains('venda-atendida'));
