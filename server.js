@@ -1362,6 +1362,43 @@ app.post('/api/lucro/custo', (req, res) => {
   res.json({ ok: true });
 });
 
+// ── Gastos mensais ───────────────────────────────────────────
+app.get('/api/lucro/gastos', (req, res) => {
+  const data = loadData();
+  const num  = String(req.query.conta || data.conta_ativa || '1');
+  const mes  = req.query.mes || new Date().toISOString().slice(0, 7);
+  const lc   = (data.lucro_contas || {})[num] || {};
+  res.json({ gastos: (lc.gastos || {})[mes] || [] });
+});
+
+app.post('/api/lucro/gasto', (req, res) => {
+  const { conta, mes, descricao, valor } = req.body;
+  const num = String(conta || '1');
+  if (!['1','2'].includes(num)) return res.status(400).json({ error: 'Conta inválida' });
+  const data = loadData();
+  data.lucro_contas = data.lucro_contas || {};
+  const lc = data.lucro_contas[num] = data.lucro_contas[num] || {};
+  lc.gastos = lc.gastos || {};
+  lc.gastos[mes] = lc.gastos[mes] || [];
+  const id = Date.now().toString();
+  lc.gastos[mes].push({ id, descricao: String(descricao || '').trim(), valor: parseFloat(valor) || 0 });
+  saveData(data);
+  res.json({ ok: true, id });
+});
+
+app.delete('/api/lucro/gasto', (req, res) => {
+  const { conta, mes, id } = req.body;
+  const num = String(conta || '1');
+  const data = loadData();
+  data.lucro_contas = data.lucro_contas || {};
+  const lc = data.lucro_contas[num] = data.lucro_contas[num] || {};
+  if (lc.gastos?.[mes]) {
+    lc.gastos[mes] = lc.gastos[mes].filter(g => g.id !== id);
+    saveData(data);
+  }
+  res.json({ ok: true });
+});
+
 app.get('/api/lucro/vendas', async (req, res) => {
   const data    = loadData();
   const num     = req.query.conta || data.conta_ativa;

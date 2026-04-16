@@ -5,6 +5,7 @@
 let lucroConfig    = { taxa_imposto: 0, frete_medio: 0, custos: {} };
 let lucroVendasRaw = []; // dados brutos da API (sem custos/imposto aplicados)
 let lucroCarregado = false; // evita recarregar ao trocar de aba sem trocar conta
+let gastosLista    = []; // gastos carregados para o mês atual
 
 function lucroHoje() {
   const d = new Date();
@@ -133,6 +134,10 @@ function lucroRecalcularERenderizar() {
   const total  = lucroTotais(vendas);
   lucroRenderizarCards(total, vendas.length);
   lucroRenderizarTabela(vendas);
+  // Atualiza cards de gastos se a aba estiver visível
+  if (document.getElementById('lucro-aba-gastos')?.style.display !== 'none') {
+    gastosAtualizarCards();
+  }
 }
 
 function lucroRenderizarCards(t, qtd) {
@@ -332,12 +337,158 @@ async function lucroCarregarVendas() {
   if (btn) btn.disabled = false;
 }
 
+// ── Sub-abas ──────────────────────────────────────────────────
+
+function lucroAba(nome) {
+  // Atualiza botões
+  document.querySelectorAll('.lucro-subaba-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.textContent.trim().toLowerCase().startsWith(nome === 'vendas' ? 'ven' : nome === 'custos' ? 'cus' : 'gas'));
+  });
+  // Mostra/oculta abas
+  document.getElementById('lucro-aba-vendas').style.display  = nome === 'vendas'  ? '' : 'none';
+  document.getElementById('lucro-aba-custos').style.display  = nome === 'custos'  ? '' : 'none';
+  document.getElementById('lucro-aba-gastos').style.display  = nome === 'gastos'  ? '' : 'none';
+  // Carrega conteúdo sob demanda
+  if (nome === 'custos') lucroCustosCarregar();
+  if (nome === 'gastos') { gastosInitMes(); gastosCarregar(); gastosAtualizarCards(); }
+}
+
+// ── Gastos mensais ────────────────────────────────────────────
+
+function gastosInitMes() {
+  const mesEl = document.getElementById('gastos-mes');
+  if (mesEl && !mesEl.value) {
+    const d = new Date();
+    mesEl.value = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+  }
+}
+
+function gastosMesAtual() {
+  return document.getElementById('gastos-mes')?.value || new Date().toISOString().slice(0, 7);
+}
+
+async function gastosCarregar() {
+  const conta   = lucroContaAtual();
+  const mes     = gastosMesAtual();
+  const loading = document.getElementById('gastos-loading');
+  if (loading) loading.style.display = 'block';
+  document.getElementById('tabela-gastos').style.display = 'none';
+  document.getElementById('gastos-vazio').style.display  = 'none';
+  try {
+    const d = await fetch(`/api/lucro/gastos?conta=${conta}&mes=${mes}`).then(r => r.json());
+    gastosLista = d.gastos || [];
+    gastosRenderizar();
+  } catch {}
+  if (loading) loading.style.display = 'none';
+}
+
+function gastosRenderizar() {
+  const tbody  = document.getElementById('tabela-gastos-body');
+  const tabela = document.getElementById('tabela-gastos');
+  const vazio  = document.getElementById('gastos-vazio');
+  tbody.innerHTML = '';
+  if (!gastosLista.length) {
+    tabela.style.display = 'none';
+    vazio.style.display  = 'block';
+  } else {
+    vazio.style.display  = 'none';
+    const mes = gastosMesAtual();
+    gastosLista.forEach(g => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${g.descricao || '—'}</td>
+        <td class="col-num lucro-val-neg">${lucroFmt(g.valor)}</td>
+        <td style="text-align:center">
+          <button class="lucro-btn-remover" onclick="gastosRemover('${g.id}')" title="Remover">✕</button>
+        </td>
+      `;
+      tbody.appendChild(tr);
+    });
+    tabela.style.display = 'table';
+  }
+  gastosAtualizarCards();
+}
+
+function gastosAtualizarCards() {
+  const totalGastos = gastosLista.reduce((s, g) => s + g.valor, 0);
+  // Lucro do período carregado na aba Vendas
+  const vendas  = lucroVendasRaw.length ? lucroCalcular(lucroVendasRaw) : [];
+  const totais  = vendas.length ? lucroTotais(vendas) : null;
+  const lucroPeriodo = totais ? totais.lucro : null;
+
+  const periodoEl   = document.getElementById('gastos-lucro-periodo');
+  const totalEl     = document.getElementById('gastos-total');
+  const resultadoEl = document.getElementById('gastos-resultado');
+
+  if (periodoEl) {
+    periodoEl.textContent = lucroPeriodo !== null ? lucroFmt(lucroPeriodo) : '—';
+    periodoEl.className   = 'lucro-card-valor' + (lucroPeriodo !== null ? (lucroPeriodo >= 0 ? ' lucro-val-pos' : ' lucro-val-neg') : '');
+  }
+  if (totalEl) {
+    totalEl.textContent = totalGastos > 0 ? lucroFmt(totalGastos) : '—';
+  }
+  if (resultadoEl) {
+    if (lucroPeriodo !== null) {
+      const resultado = lucroPeriodo - totalGastos;
+      resultadoEl.textContent = lucroFmt(resultado);
+      resultadoEl.className   = 'lucro-card-valor ' + (resultado >= 0 ? 'lucro-val-pos' : 'lucro-val-neg');
+    } else {
+      resultadoEl.textContent = '—';
+      resultadoEl.className   = 'lucro-card-valor';
+    }
+  }
+}
+
+async function gastosAdicionar() {
+  const conta      = lucroContaAtual();
+  const mes        = gastosMesAtual();
+  const descricao  = document.getElementById('gastos-descricao')?.value?.trim();
+  const valorInput = document.getElementById('gastos-valor');
+  const valor      = parseFloat(valorInput?.value?.replace(',', '.')) || 0;
+
+  if (!descricao) { alert('Informe a descrição do gasto.'); return; }
+  if (valor <= 0)  { alert('Informe um valor maior que zero.'); return; }
+
+  try {
+    const r = await fetch('/api/lucro/gasto', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ conta, mes, descricao, valor }),
+    }).then(r => r.json());
+    if (r.ok) {
+      gastosLista.push({ id: r.id, descricao, valor });
+      document.getElementById('gastos-descricao').value = '';
+      if (valorInput) valorInput.value = '';
+      gastosRenderizar();
+    }
+  } catch {}
+}
+
+async function gastosRemover(id) {
+  const conta = lucroContaAtual();
+  const mes   = gastosMesAtual();
+  try {
+    await fetch('/api/lucro/gasto', {
+      method:  'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ conta, mes, id }),
+    });
+    gastosLista = gastosLista.filter(g => g.id !== id);
+    gastosRenderizar();
+  } catch {}
+}
+
 async function lucroInit() {
   lucroInitDatas();
   await lucroCarregarConfig();
   if (!lucroCarregado) {
     await lucroCarregarVendas();
-    lucroCustosCarregar(); // não bloqueia — carrega em paralelo
+  }
+  // Recarrega gastos ao trocar o mês
+  const mesEl = document.getElementById('gastos-mes');
+  if (mesEl && !mesEl._listenerOk) {
+    mesEl.addEventListener('change', () => gastosCarregar());
+    mesEl._listenerOk = true;
   }
 }
 

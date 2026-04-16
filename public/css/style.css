@@ -873,6 +873,52 @@ tr.lucro-sub-item td {
   background: #fafafa;
 }
 
+/* ── Sub-abas do Lucro ───────────────────────────────────────── */
+
+.lucro-subabas {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 20px;
+  border-bottom: 2px solid #e5e7eb;
+}
+
+.lucro-subaba-btn {
+  background: none;
+  border: none;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -2px;
+  padding: 8px 18px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #64748b;
+  cursor: pointer;
+  transition: color .15s;
+}
+
+.lucro-subaba-btn:hover { color: #1e293b; }
+
+.lucro-subaba-btn.active {
+  color: #111;
+  border-bottom-color: #6366f1;
+}
+
+.lucro-aba { }
+
+.lucro-btn-remover {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: color .15s, background .15s;
+}
+.lucro-btn-remover:hover {
+  color: #dc2626;
+  background: #fee2e2;
+}
+
 /* ── Mini-abas de vendas ─────────────────────────────────────── */
 
 .vendas-mini-abas {

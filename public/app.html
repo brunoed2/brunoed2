@@ -73,93 +73,161 @@
           </p>
         </div>
 
-        <!-- Custos por SKU -->
-        <div class="card" style="margin-bottom:24px">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-            <h2 style="margin:0">Custos por SKU</h2>
-            <button class="btn-secondary" onclick="lucroCustosCarregar()" style="font-size:12px;padding:5px 10px">↻ Recarregar</button>
-          </div>
-          <p class="card-desc" style="margin-bottom:12px">Informe o custo unitário de cada SKU. O valor é aplicado automaticamente em todas as vendas do produto.</p>
-          <div id="lucro-custos-loading" class="loading" style="display:none">Carregando produtos...</div>
-          <table class="tabela" id="tabela-custos" style="display:none">
-            <thead>
-              <tr>
-                <th>SKU</th>
-                <th>Produto</th>
-                <th class="col-num">Custo unitário (R$)</th>
-              </tr>
-            </thead>
-            <tbody id="tabela-custos-body"></tbody>
-          </table>
+        <!-- Sub-abas -->
+        <div class="lucro-subabas">
+          <button class="lucro-subaba-btn active" onclick="lucroAba('vendas')">Vendas</button>
+          <button class="lucro-subaba-btn" onclick="lucroAba('custos')">Custos por SKU</button>
+          <button class="lucro-subaba-btn" onclick="lucroAba('gastos')">Gastos</button>
         </div>
 
-        <!-- Cards de resumo -->
-        <div class="lucro-cards" id="lucro-cards" style="display:none">
-          <div class="lucro-card">
-            <div class="lucro-card-label">Receita</div>
-            <div class="lucro-card-valor" id="lucro-sum-receita">—</div>
-          </div>
-          <div class="lucro-card">
-            <div class="lucro-card-label">Taxa ML</div>
-            <div class="lucro-card-valor lucro-val-neg" id="lucro-sum-taxaml">—</div>
-          </div>
-          <div class="lucro-card">
-            <div class="lucro-card-label">Frete</div>
-            <div class="lucro-card-valor lucro-val-neg" id="lucro-sum-frete">—</div>
-          </div>
-          <div class="lucro-card">
-            <div class="lucro-card-label">Custo produto</div>
-            <div class="lucro-card-valor lucro-val-neg" id="lucro-sum-custo">—</div>
-          </div>
-          <div class="lucro-card">
-            <div class="lucro-card-label">Imposto</div>
-            <div class="lucro-card-valor lucro-val-neg" id="lucro-sum-imposto">—</div>
-          </div>
-          <div class="lucro-card lucro-card-destaque">
-            <div class="lucro-card-label">Lucro líquido</div>
-            <div class="lucro-card-valor" id="lucro-sum-lucro">—</div>
-          </div>
-          <div class="lucro-card lucro-card-destaque">
-            <div class="lucro-card-label">Margem</div>
-            <div class="lucro-card-valor" id="lucro-sum-margem">—</div>
-          </div>
-        </div>
-
-        <!-- Tabela -->
-        <div class="tabela-container">
-          <div class="tabela-topo" style="flex-wrap:wrap;gap:8px">
-            <span id="lucro-total"></span>
-            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-              <input type="date" id="lucro-data-de" class="lucro-date-input">
-              <span style="color:#64748b;font-size:13px">até</span>
-              <input type="date" id="lucro-data-ate" class="lucro-date-input">
-              <button class="filtro-btn" onclick="lucroSetPeriodoRapido(0)">Hoje</button>
-              <button class="filtro-btn" onclick="lucroSetMesAtual()">Mês</button>
-              <button class="btn-secondary" onclick="lucroCarregarVendas()" id="btn-atualizar-lucro">↻ Atualizar</button>
+        <!-- Aba: Vendas -->
+        <div id="lucro-aba-vendas" class="lucro-aba">
+          <!-- Cards de resumo -->
+          <div class="lucro-cards" id="lucro-cards" style="display:none">
+            <div class="lucro-card">
+              <div class="lucro-card-label">Receita</div>
+              <div class="lucro-card-valor" id="lucro-sum-receita">—</div>
+            </div>
+            <div class="lucro-card">
+              <div class="lucro-card-label">Taxa ML</div>
+              <div class="lucro-card-valor lucro-val-neg" id="lucro-sum-taxaml">—</div>
+            </div>
+            <div class="lucro-card">
+              <div class="lucro-card-label">Frete</div>
+              <div class="lucro-card-valor lucro-val-neg" id="lucro-sum-frete">—</div>
+            </div>
+            <div class="lucro-card">
+              <div class="lucro-card-label">Custo produto</div>
+              <div class="lucro-card-valor lucro-val-neg" id="lucro-sum-custo">—</div>
+            </div>
+            <div class="lucro-card">
+              <div class="lucro-card-label">Imposto</div>
+              <div class="lucro-card-valor lucro-val-neg" id="lucro-sum-imposto">—</div>
+            </div>
+            <div class="lucro-card lucro-card-destaque">
+              <div class="lucro-card-label">Lucro líquido</div>
+              <div class="lucro-card-valor" id="lucro-sum-lucro">—</div>
+            </div>
+            <div class="lucro-card lucro-card-destaque">
+              <div class="lucro-card-label">Margem</div>
+              <div class="lucro-card-valor" id="lucro-sum-margem">—</div>
             </div>
           </div>
 
-          <div id="lucro-loading" class="loading" style="display:none">Carregando vendas...</div>
+          <!-- Tabela de vendas -->
+          <div class="tabela-container">
+            <div class="tabela-topo" style="flex-wrap:wrap;gap:8px">
+              <span id="lucro-total"></span>
+              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                <input type="date" id="lucro-data-de" class="lucro-date-input">
+                <span style="color:#64748b;font-size:13px">até</span>
+                <input type="date" id="lucro-data-ate" class="lucro-date-input">
+                <button class="filtro-btn" onclick="lucroSetPeriodoRapido(0)">Hoje</button>
+                <button class="filtro-btn" onclick="lucroSetMesAtual()">Mês</button>
+                <button class="btn-secondary" onclick="lucroCarregarVendas()" id="btn-atualizar-lucro">↻ Atualizar</button>
+              </div>
+            </div>
 
-          <table class="tabela" id="tabela-lucro" style="display:none">
-            <thead>
-              <tr>
-                <th>Data</th>
-                <th>Produto</th>
-                <th>SKU</th>
-                <th class="col-num">Qtd</th>
-                <th class="col-num">Receita</th>
-                <th class="col-num">Taxa ML</th>
-                <th class="col-num">Frete</th>
-                <th class="col-num">Custo</th>
-                <th class="col-num">Imposto</th>
-                <th class="col-num">Lucro</th>
-                <th class="col-num">Margem</th>
-              </tr>
-            </thead>
-            <tbody id="tabela-lucro-body"></tbody>
-          </table>
+            <div id="lucro-loading" class="loading" style="display:none">Carregando vendas...</div>
+
+            <table class="tabela" id="tabela-lucro" style="display:none">
+              <thead>
+                <tr>
+                  <th>Data</th>
+                  <th>Produto</th>
+                  <th>SKU</th>
+                  <th class="col-num">Qtd</th>
+                  <th class="col-num">Receita</th>
+                  <th class="col-num">Taxa ML</th>
+                  <th class="col-num">Frete</th>
+                  <th class="col-num">Custo</th>
+                  <th class="col-num">Imposto</th>
+                  <th class="col-num">Lucro</th>
+                  <th class="col-num">Margem</th>
+                </tr>
+              </thead>
+              <tbody id="tabela-lucro-body"></tbody>
+            </table>
+          </div>
         </div>
+
+        <!-- Aba: Custos por SKU -->
+        <div id="lucro-aba-custos" class="lucro-aba" style="display:none">
+          <div class="card" style="margin-top:4px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+              <h2 style="margin:0">Custos por SKU</h2>
+              <button class="btn-secondary" onclick="lucroCustosCarregar()" style="font-size:12px;padding:5px 10px">↻ Recarregar</button>
+            </div>
+            <p class="card-desc" style="margin-bottom:12px">Informe o custo unitário de cada SKU. O valor é aplicado automaticamente em todas as vendas do produto.</p>
+            <div id="lucro-custos-loading" class="loading" style="display:none">Carregando produtos...</div>
+            <table class="tabela" id="tabela-custos" style="display:none">
+              <thead>
+                <tr>
+                  <th>SKU</th>
+                  <th>Produto</th>
+                  <th class="col-num">Custo unitário (R$)</th>
+                </tr>
+              </thead>
+              <tbody id="tabela-custos-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Aba: Gastos -->
+        <div id="lucro-aba-gastos" class="lucro-aba" style="display:none">
+          <!-- Resumo do mês com gastos -->
+          <div class="lucro-cards" id="gastos-cards" style="margin-top:4px">
+            <div class="lucro-card">
+              <div class="lucro-card-label">Lucro do período</div>
+              <div class="lucro-card-valor" id="gastos-lucro-periodo">—</div>
+            </div>
+            <div class="lucro-card">
+              <div class="lucro-card-label">Total gastos</div>
+              <div class="lucro-card-valor lucro-val-neg" id="gastos-total">—</div>
+            </div>
+            <div class="lucro-card lucro-card-destaque">
+              <div class="lucro-card-label">Resultado final</div>
+              <div class="lucro-card-valor" id="gastos-resultado">—</div>
+            </div>
+          </div>
+
+          <!-- Formulário para adicionar gasto -->
+          <div class="card" style="margin-top:16px;margin-bottom:16px">
+            <h2 style="margin-bottom:12px">Adicionar gasto</h2>
+            <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
+              <div class="field" style="margin:0;flex:1;min-width:180px">
+                <label>Mês</label>
+                <input type="month" id="gastos-mes" class="lucro-date-input" style="width:100%">
+              </div>
+              <div class="field" style="margin:0;flex:3;min-width:200px">
+                <label>Descrição</label>
+                <input type="text" id="gastos-descricao" placeholder="Ex: Embalagens, Funcionário…" style="width:100%">
+              </div>
+              <div class="field" style="margin:0;flex:1;min-width:120px">
+                <label>Valor (R$)</label>
+                <input type="number" id="gastos-valor" placeholder="0,00" step="0.01" min="0" style="width:100%">
+              </div>
+              <button class="btn-primary" onclick="gastosAdicionar()">Adicionar</button>
+            </div>
+          </div>
+
+          <!-- Lista de gastos -->
+          <div class="tabela-container">
+            <div id="gastos-loading" class="loading" style="display:none">Carregando gastos...</div>
+            <div id="gastos-vazio" style="display:none;color:#94a3b8;padding:20px 0;text-align:center;font-size:14px">Nenhum gasto registrado neste mês.</div>
+            <table class="tabela" id="tabela-gastos" style="display:none">
+              <thead>
+                <tr>
+                  <th>Descrição</th>
+                  <th class="col-num">Valor</th>
+                  <th style="width:40px"></th>
+                </tr>
+              </thead>
+              <tbody id="tabela-gastos-body"></tbody>
+            </table>
+          </div>
+        </div>
+
       </section>
 
       <!-- ── Aba: Ads ── -->
@@ -539,6 +607,6 @@
   <script src="/js/shopee.js?v=118"></script>
   <script src="/js/notas.js?v=128"></script>
   <script src="/js/promocoes.js?v=1"></script>
-  <div id="version-badge">v179</div>
+  <div id="version-badge">v180</div>
 </body>
 </html>
