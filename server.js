@@ -29,7 +29,26 @@ function gerarCodeChallenge(verifier) {
 const app  = express();
 const PORT = process.env.PORT || 3000;
 
-const DATA_FILE = path.join(__dirname, 'data.json');
+// ── Armazenamento persistente ─────────────────────────────────
+// Prioridade: 1) Railway Volume em /data  2) diretório do app (ephemeral no Railway)
+// Para persistência garantida no Railway: adicione um Volume montado em /data
+// no dashboard do Railway (Settings → Volumes → Add). Após isso os dados nunca
+// se perdem entre restarts ou novos deploys.
+function detectarDirDados() {
+  const vol = '/data';
+  try {
+    fs.mkdirSync(vol, { recursive: true });
+    const teste = path.join(vol, '.write_test');
+    fs.writeFileSync(teste, '1');
+    fs.unlinkSync(teste);
+    return vol; // Volume montado e gravável
+  } catch {
+    return __dirname; // Fallback: diretório do app
+  }
+}
+const DATA_DIR     = detectarDirDados();
+const DATA_FILE    = path.join(DATA_DIR, 'data.json');
+const USA_VOLUME   = DATA_DIR === '/data'; // true = volume persistente Railway
 
 // ── Log ao vivo (aba Conexão) ─────────────────────────────────
 
@@ -277,6 +296,16 @@ setInterval(() => {
 }, 3 * 60 * 1000);
 
 function initFromEnvVars() {
+  // Se estiver usando Volume Railway E o arquivo já existir, o Volume é a fonte de verdade.
+  // Não sobrescrever com env vars que podem estar desatualizadas.
+  if (USA_VOLUME && fs.existsSync(DATA_FILE)) {
+    addLog(`[init] Volume persistente em uso (${DATA_FILE}) — dados preservados do restart anterior ✅`, 'ok');
+    return;
+  }
+  if (USA_VOLUME) {
+    addLog('[init] Volume Railway montado, mas sem dados salvos ainda — restaurando de env vars pela primeira vez', 'info');
+  }
+
   const data = loadData();
   let changed = false;
 
@@ -412,6 +441,7 @@ initFromEnvVars();
   const data = loadData();
   const railwayOk = !!(process.env.RAILWAY_TOKEN && process.env.RAILWAY_PROJECT_ID);
   addLog(`🚀 Servidor iniciado`, 'info');
+  addLog(`Armazenamento: ${USA_VOLUME ? '✅ Volume Railway em /data (persistente)' : '⚠️ Diretório do app (ephemeral — dados perdidos em restart)'}`, USA_VOLUME ? 'ok' : 'warn');
   addLog(`Railway env vars: ${railwayOk ? 'configuradas ✅' : 'AUSENTES — tokens serão perdidos ao redeployar ⚠️'}`, railwayOk ? 'ok' : 'warn');
   for (const num of ['1', '2']) {
     const c = data.contas[num] || {};
