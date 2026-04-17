@@ -5,6 +5,8 @@ let contasPagarLista   = [];   // lista completa carregada do servidor
 let contasPagarFiltro  = 'aberto'; // aberto | vencido | pago | todos
 let contasPagarCarregado = false;
 
+let _syncRetryTimer = null;
+
 // ── Inicialização (chamada ao abrir a aba) ─────────────────────
 function contasPagarInit() {
   if (!contasPagarCarregado) contasPagarCarregar();
@@ -145,14 +147,34 @@ function contasPagarExibirSyncStatus(el, d) {
   if (!el) return;
   if (d.ok === null) {
     el.innerHTML = '';
+    _syncRetryParar();
     return;
   }
   const horario = d.ts ? new Date(d.ts).toLocaleTimeString('pt-BR') : '';
   if (d.ok) {
     el.innerHTML = `<span style="color:#16a34a;font-size:12px">✔ Sincronizado com Railway ${horario ? '(' + horario + ')' : ''}</span>`;
+    _syncRetryParar();
   } else {
-    el.innerHTML = `<span style="color:#dc2626;font-size:12px">⚠️ Falha ao sincronizar${d.erro ? ': ' + escHtml(d.erro) : ''} — <a href="#" onclick="contasPagarForcSync(event)" style="color:#dc2626">tentar novamente</a></span>`;
+    el.innerHTML = `<span style="color:#dc2626;font-size:12px">⚠️ Falha ao sincronizar${d.erro ? ': ' + escHtml(d.erro) : ''} — <a href="#" onclick="contasPagarForcSync(event)" style="color:#dc2626">tentar novamente</a> (tentando automaticamente…)</span>`;
+    _syncRetryIniciar();
   }
+}
+
+function _syncRetryIniciar() {
+  if (_syncRetryTimer) return; // já em andamento
+  _syncRetryTimer = setInterval(async () => {
+    try {
+      const d = await fetch('/api/sync/force', { method: 'POST' }).then(r => r.json());
+      const el = document.getElementById('contas-sync-status');
+      if (d.ok) {
+        if (el) contasPagarExibirSyncStatus(el, d); // para o timer via _syncRetryParar
+      }
+    } catch {}
+  }, 15000);
+}
+
+function _syncRetryParar() {
+  if (_syncRetryTimer) { clearInterval(_syncRetryTimer); _syncRetryTimer = null; }
 }
 
 async function contasPagarForcSync(evt) {

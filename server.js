@@ -192,6 +192,57 @@ async function syncRailwayEnvVars(_dataIgnorado) {
   return { ok: false, erro: 'Falha após 3 tentativas' };
 }
 
+// ── Sync dedicado e mínimo para Contas a Pagar ────────────────
+// Envia APENAS as 2 variáveis CONTAS_PAGAR_1 e CONTAS_PAGAR_2.
+// Payload pequeno = muito mais confiável que o sync completo.
+async function syncContasPagar() {
+  const token = process.env.RAILWAY_TOKEN;
+  if (!token) return { ok: false, erro: 'RAILWAY_TOKEN ausente' };
+  const projectId     = process.env.RAILWAY_PROJECT_ID;
+  const environmentId = process.env.RAILWAY_ENVIRONMENT_ID;
+  const serviceId     = process.env.RAILWAY_SERVICE_ID;
+  if (!projectId || !environmentId || !serviceId) return { ok: false, erro: 'Railway IDs ausentes' };
+
+  const data = loadData();
+  const variables = {};
+  for (const num of ['1', '2']) {
+    variables[`CONTAS_PAGAR_${num}`] = JSON.stringify((data.contas_pagar || {})[num] || []);
+  }
+
+  const payloadKB = Math.round(JSON.stringify(variables).length / 1024);
+  addLog(`[sync-cp] Sincronizando contas a pagar (${payloadKB}KB)…`, 'info');
+
+  for (let tentativa = 1; tentativa <= 5; tentativa++) {
+    try {
+      const resp = await axios.post(
+        'https://backboard.railway.app/graphql/v2',
+        {
+          query: `mutation Upsert($input: VariableCollectionUpsertInput!) {
+            variableCollectionUpsert(input: $input)
+          }`,
+          variables: { input: { projectId, environmentId, serviceId, variables } },
+        },
+        { headers: { Authorization: `Bearer ${token}` }, timeout: 20000 }
+      );
+      if (resp.data?.errors?.length) {
+        const msg = resp.data.errors[0]?.message || 'Erro GraphQL';
+        addLog(`[sync-cp] ⚠️ Railway erro (tentativa ${tentativa}/5): ${msg}`, 'warn');
+        if (tentativa < 5) { await new Promise(r => setTimeout(r, 3000 * tentativa)); continue; }
+        lastSyncStatus = { ok: false, ts: Date.now(), erro: msg };
+        return { ok: false, erro: msg };
+      }
+      addLog(`[sync-cp] ✅ Contas a pagar salvas no Railway (tentativa ${tentativa})`, 'ok');
+      lastSyncStatus = { ok: true, ts: Date.now(), erro: null };
+      return { ok: true };
+    } catch (e) {
+      addLog(`[sync-cp] ❌ Erro tentativa ${tentativa}/5: ${e.message}`, 'erro');
+      if (tentativa < 5) await new Promise(r => setTimeout(r, 3000 * tentativa));
+    }
+  }
+  lastSyncStatus = { ok: false, ts: Date.now(), erro: 'Falha após 5 tentativas' };
+  return { ok: false, erro: 'Falha após 5 tentativas' };
+}
+
 // Sync periódico de segurança: a cada 2 minutos garante que Railway tem o estado atual
 setInterval(() => {
   syncRailwayEnvVars().catch(() => {});
@@ -2589,7 +2640,7 @@ app.post('/api/contas-pagar/xml', uploadMem.single('xml'), async (req, res) => {
   }
 
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
-  const syncResult = await syncRailwayEnvVars().catch(e => ({ ok: false, erro: e.message }));
+  const syncResult = await syncContasPagar().catch(e => ({ ok: false, erro: e.message }));
   res.json({ importados, dup, syncOk: syncResult?.ok === true });
 });
 
@@ -2602,7 +2653,7 @@ app.post('/api/contas-pagar/:id/pago', async (req, res) => {
   item.pago   = !item.pago;
   item.pagoEm = item.pago ? new Date().toISOString() : null;
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
-  const syncResult2 = await syncRailwayEnvVars().catch(e => ({ ok: false, erro: e.message }));
+  const syncResult2 = await syncContasPagar().catch(e => ({ ok: false, erro: e.message }));
   res.json({ ok: true, pago: item.pago, syncOk: syncResult2?.ok === true });
 });
 
@@ -2613,7 +2664,7 @@ app.delete('/api/contas-pagar/:id', async (req, res) => {
     data.contas_pagar[num] = data.contas_pagar[num].filter(c => c.id !== req.params.id);
   }
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
-  const syncResult3 = await syncRailwayEnvVars().catch(e => ({ ok: false, erro: e.message }));
+  const syncResult3 = await syncContasPagar().catch(e => ({ ok: false, erro: e.message }));
   res.json({ ok: true, syncOk: syncResult3?.ok === true });
 });
 
@@ -2624,7 +2675,7 @@ app.get('/api/sync/status', (req, res) => {
 });
 
 app.post('/api/sync/force', async (req, res) => {
-  const result = await syncRailwayEnvVars().catch(e => ({ ok: false, erro: e.message }));
+  const result = await syncContasPagar().catch(e => ({ ok: false, erro: e.message }));
   res.json(result);
 });
 
