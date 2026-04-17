@@ -2549,7 +2549,7 @@ const CALLMEBOT_APIKEY_PEDIDOS = process.env.CALLMEBOT_APIKEY_PEDIDOS;
 async function enviarWhatsApp(phone, apikey, texto) {
   if (!phone || !apikey) return;
   try {
-    const msg = encodeURIComponent(texto.replace(/<[^>]+>/g, ''));
+    const msg = texto.replace(/<[^>]+>/g, ''); // remove HTML tags, sem encode manual
     const resp = await axios.get('https://api.callmebot.com/whatsapp.php', {
       params: { phone, text: msg, apikey },
       timeout: 10000,
