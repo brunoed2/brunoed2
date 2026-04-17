@@ -886,7 +886,14 @@ app.get('/api/ml/estoque', async (req, res) => {
         const status       = r.body.status;
 
         if (status === 'paused') {
-          if (!pauseDates[mlb]) { pauseDates[mlb] = agora; pauseChanged = true; }
+          if (!pauseDates[mlb]) {
+            pauseDates[mlb] = agora;
+            pauseChanged = true;
+            // Notifica Telegram quando anúncio é pausado pela primeira vez
+            const titulo = r.body.title || mlb;
+            const conta  = (data.contas[num] || {}).nickname || `Conta ${num}`;
+            enviarTelegram(`⏸ <b>Anúncio pausado — ${conta}</b>\n\n${titulo}\n<code>${mlb}</code>`).catch(() => {});
+          }
         } else {
           if (pauseDates[mlb]) { delete pauseDates[mlb]; pauseChanged = true; }
         }
@@ -2603,12 +2610,42 @@ async function verificarNovosShipmentsTelegram() {
   telegramPrimeiraVerificacao = false;
 }
 
+// ── Notificação diária: contas a pagar vencendo hoje ──────────
+async function notificarContasVencendoHoje() {
+  if (!TELEGRAM_TOKEN || !TELEGRAM_CHAT_ID) return;
+  const hoje = new Date().toISOString().split('T')[0];
+  const data = loadData();
+  const linhas = [];
+
+  for (const num of ['1', '2']) {
+    const lista = (data.contas_pagar || {})[num] || [];
+    const vencemHoje = lista.filter(c => !c.pago && c.dVenc === hoje);
+    for (const c of vencemHoje) {
+      const valor = 'R$ ' + (c.vDup || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+      linhas.push(`• ${c.fornecedor} — ${valor} (NF ${c.nNF} Parc. ${c.nDup})`);
+    }
+  }
+
+  if (!linhas.length) return;
+
+  const dataFmt = hoje.split('-').reverse().join('/');
+  const texto = `📅 <b>Contas a pagar — vencimento hoje (${dataFmt})</b>\n\n` + linhas.join('\n');
+  await enviarTelegram(texto).catch(() => {});
+  addLog(`Telegram: notificação de ${linhas.length} conta(s) vencendo hoje enviada`, 'info');
+}
+
+// Executa check de contas a vencer todo dia às 8h (verifica a cada hora)
+setInterval(() => {
+  const hora = new Date().getHours();
+  if (hora === 8) notificarContasVencendoHoje();
+}, 60 * 60 * 1000);
+
 app.post('/api/telegram/teste', async (req, res) => {
   if (!TELEGRAM_TOKEN || !TELEGRAM_CHAT_ID) {
     return res.json({ ok: false, erro: 'TELEGRAM_TOKEN ou TELEGRAM_CHAT_ID não configurados' });
   }
   try {
-    await enviarTelegram('🧪 <b>Teste de notificação</b>\n\nSeu bot está funcionando! Você receberá avisos quando entrar um novo pedido.');
+    await enviarTelegram('🧪 <b>Teste de notificação</b>\n\nSeu bot está funcionando! Você receberá:\n• 🛍 Novos pedidos para embalar\n• ⏸ Anúncios pausados\n• 📅 Contas a pagar vencendo no dia (às 8h)');
     res.json({ ok: true });
   } catch (e) {
     res.json({ ok: false, erro: e.message });
