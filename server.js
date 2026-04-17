@@ -114,17 +114,11 @@ async function syncRailwayEnvVars(data) {
       // Salva custos/imposto sem gastos (evita var muito grande)
       const { gastos: _g, ...lcSemGastos } = lc;
       variables[`LUCRO_CONFIG_${num}`] = JSON.stringify(lcSemGastos);
-      // Gastos mensais em var separada
-      if (lc.gastos && Object.keys(lc.gastos).length > 0) {
-        variables[`GASTOS_DATA_${num}`] = JSON.stringify(lc.gastos);
-      }
-      // Gastos fixos (tipos + valores)
-      if (lc.gastos_fixos_tipos?.length) {
-        variables[`GASTOS_FIXOS_TIPOS_${num}`] = JSON.stringify(lc.gastos_fixos_tipos);
-      }
-      if (lc.gastos_fixos_valores && Object.keys(lc.gastos_fixos_valores).length > 0) {
-        variables[`GASTOS_FIXOS_VALS_${num}`] = JSON.stringify(lc.gastos_fixos_valores);
-      }
+      // Gastos mensais em var separada — sempre sincroniza
+      variables[`GASTOS_DATA_${num}`] = JSON.stringify(lc.gastos || {});
+      // Gastos fixos (tipos + valores) — sempre sincroniza
+      variables[`GASTOS_FIXOS_TIPOS_${num}`] = JSON.stringify(lc.gastos_fixos_tipos || []);
+      variables[`GASTOS_FIXOS_VALS_${num}`]  = JSON.stringify(lc.gastos_fixos_valores || {});
     }
   }
   // Certificado digital Notas de Entrada — por conta
@@ -143,12 +137,12 @@ async function syncRailwayEnvVars(data) {
     if (n.ultNSU) variables[`NOTAS_ULTNSU_${num}`] = n.ultNSU;
     if (n.maxNSU) variables[`NOTAS_MAXNSU_${num}`] = n.maxNSU;
     if (n.ultimaRejeicao656) variables[`NOTAS_REJEICAO656_${num}`] = String(n.ultimaRejeicao656);
-    // IDs dos pedidos flagados como atendidos
+    // IDs dos pedidos flagados como atendidos — sempre sincroniza, mesmo vazio,
+    // para sobrescrever lista antiga no Railway quando o usuário desmarcar todos
     const sidsAtendidos = ((data.contas[num] || {}).atendidas_dados || []).map(v => String(v.shipmentId));
-    if (sidsAtendidos.length) variables[`ATENDIDAS_SIDS_${num}`] = JSON.stringify(sidsAtendidos);
-    // Contas a pagar
-    const cp = (data.contas_pagar || {})[num];
-    if (cp && cp.length) variables[`CONTAS_PAGAR_${num}`] = JSON.stringify(cp);
+    variables[`ATENDIDAS_SIDS_${num}`] = JSON.stringify(sidsAtendidos);
+    // Contas a pagar — sempre sincroniza
+    variables[`CONTAS_PAGAR_${num}`] = JSON.stringify((data.contas_pagar || {})[num] || []);
   }
 
   // Retry até 3 vezes com backoff simples
