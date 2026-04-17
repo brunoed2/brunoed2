@@ -436,6 +436,14 @@ function initFromEnvVars() {
 
 initFromEnvVars();
 
+// Evita crash do processo por promessas não tratadas (ex: falha de rede em polling)
+process.on('unhandledRejection', (reason) => {
+  addLog(`[unhandledRejection] ${reason?.message || reason}`, 'warn');
+});
+process.on('uncaughtException', (err) => {
+  addLog(`[uncaughtException] ${err.message}`, 'erro');
+});
+
 // Log de diagnóstico na inicialização
 (function logStartupState() {
   const data = loadData();
@@ -2755,7 +2763,7 @@ async function notificarContasVencendoHoje() {
 // Executa check de contas a vencer todo dia às 8h (verifica a cada hora)
 setInterval(() => {
   const hora = new Date().getHours();
-  if (hora === 8) notificarContasVencendoHoje();
+  if (hora === 8) notificarContasVencendoHoje().catch(() => {});
 }, 60 * 60 * 1000);
 
 app.post('/api/telegram/teste', async (req, res) => {
@@ -3217,13 +3225,13 @@ app.listen(PORT, () => {
     addLog('Telegram: monitoramento de pedidos e anúncios ativado', 'info');
     // Pedidos novos: verifica a cada 60s
     setTimeout(() => {
-      verificarNovosShipmentsTelegram();
-      setInterval(verificarNovosShipmentsTelegram, 60_000);
+      verificarNovosShipmentsTelegram().catch(() => {});
+      setInterval(() => verificarNovosShipmentsTelegram().catch(() => {}), 60_000);
     }, 10_000);
     // Anúncios pausados: verifica a cada 5 minutos
     setTimeout(() => {
-      verificarAnunciosPausadosTelegram();
-      setInterval(verificarAnunciosPausadosTelegram, 5 * 60_000);
+      verificarAnunciosPausadosTelegram().catch(() => {});
+      setInterval(() => verificarAnunciosPausadosTelegram().catch(() => {}), 5 * 60_000);
     }, 30_000);
   } else {
     addLog('Telegram: TELEGRAM_TOKEN ou TELEGRAM_CHAT_ID não configurados', 'warn');
