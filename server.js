@@ -2505,13 +2505,7 @@ function parseNFeXML(xmlStr) {
       if (dVenc && vDup > 0) dups.push({ nDup, dVenc, vDup });
     });
   }
-  // Sem cobr/dup: usa valor total da NF
-  if (!dups.length) {
-    const vNF  = parseFloat(xmlVal(xmlStr, 'vNF')) || 0;
-    const dVenc = dEmi || new Date().toISOString().split('T')[0];
-    if (vNF > 0) dups.push({ nDup: '001', dVenc, vDup: vNF });
-  }
-
+  // NFs sem <dup> são pagamentos à vista — não geram conta a pagar
   return { fornecedor, cnpj, nNF, serie, dEmi, chNFe, dups };
 }
 
@@ -2535,7 +2529,7 @@ app.post('/api/contas-pagar/xml', uploadMem.single('xml'), async (req, res) => {
   try { parsed = parseNFeXML(xmlStr); }
   catch (e) { return res.status(400).json({ error: 'Erro ao interpretar XML: ' + e.message }); }
 
-  if (!parsed.dups.length) return res.json({ importados: 0, aviso: 'Nenhuma parcela encontrada no XML.' });
+  if (!parsed.dups.length) return res.json({ importados: 0, aviso: 'NF à vista ou sem duplicatas — nada a pagar.' });
 
   const agora = new Date().toISOString();
   let importados = 0;
