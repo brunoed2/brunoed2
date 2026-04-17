@@ -227,7 +227,7 @@ async function syncContasPagar() {
       if (resp.data?.errors?.length) {
         const msg = resp.data.errors[0]?.message || 'Erro GraphQL';
         addLog(`[sync-cp] ⚠️ Railway erro (tentativa ${tentativa}/5): ${msg}`, 'warn');
-        if (tentativa < 5) { await new Promise(r => setTimeout(r, 3000 * tentativa)); continue; }
+        if (tentativa < 5) { await new Promise(r => setTimeout(r, 5000)); continue; }
         lastSyncStatus = { ok: false, ts: Date.now(), erro: msg };
         return { ok: false, erro: msg };
       }
@@ -236,17 +236,45 @@ async function syncContasPagar() {
       return { ok: true };
     } catch (e) {
       addLog(`[sync-cp] ❌ Erro tentativa ${tentativa}/5: ${e.message}`, 'erro');
-      if (tentativa < 5) await new Promise(r => setTimeout(r, 3000 * tentativa));
+      if (tentativa < 5) await new Promise(r => setTimeout(r, 5000));
     }
   }
   lastSyncStatus = { ok: false, ts: Date.now(), erro: 'Falha após 5 tentativas' };
   return { ok: false, erro: 'Falha após 5 tentativas' };
 }
 
-// Sync periódico de segurança: a cada 2 minutos garante que Railway tem o estado atual
+// ── Fila de sync em background ─────────────────────────────────
+// Os endpoints escrevem no disco e chamam agendarSyncContasPagar()
+// sem await — a resposta HTTP volta imediatamente. O sync acontece
+// em background e continua tentando enquanto houver falhas.
+let _syncCpPendente = false;
+let _syncCpRodando  = false;
+
+function agendarSyncContasPagar() {
+  _syncCpPendente = true;
+  if (_syncCpRodando) return; // já tem um rodando, ele vai pegar o pendente
+  _executarFilaSyncCp();
+}
+
+async function _executarFilaSyncCp() {
+  _syncCpRodando = true;
+  while (_syncCpPendente) {
+    _syncCpPendente = false;
+    await syncContasPagar().catch(() => {});
+    // Se sync falhou, agenda retry em 15 segundos
+    if (!lastSyncStatus.ok) {
+      await new Promise(r => setTimeout(r, 15000));
+      _syncCpPendente = true; // tenta de novo
+    }
+  }
+  _syncCpRodando = false;
+}
+
+// Sync periódico de segurança: a cada 3 minutos garante que Railway tem o estado atual
 setInterval(() => {
+  agendarSyncContasPagar();
   syncRailwayEnvVars().catch(() => {});
-}, 2 * 60 * 1000);
+}, 3 * 60 * 1000);
 
 function initFromEnvVars() {
   const data = loadData();
@@ -2640,8 +2668,8 @@ app.post('/api/contas-pagar/xml', uploadMem.single('xml'), async (req, res) => {
   }
 
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
-  const syncResult = await syncContasPagar().catch(e => ({ ok: false, erro: e.message }));
-  res.json({ importados, dup, syncOk: syncResult?.ok === true });
+  agendarSyncContasPagar(); // fire-and-forget — não bloqueia a resposta HTTP
+  res.json({ importados, dup, syncOk: null }); // cliente vai polling /api/sync/status
 });
 
 app.post('/api/contas-pagar/:id/pago', async (req, res) => {
@@ -2653,8 +2681,8 @@ app.post('/api/contas-pagar/:id/pago', async (req, res) => {
   item.pago   = !item.pago;
   item.pagoEm = item.pago ? new Date().toISOString() : null;
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
-  const syncResult2 = await syncContasPagar().catch(e => ({ ok: false, erro: e.message }));
-  res.json({ ok: true, pago: item.pago, syncOk: syncResult2?.ok === true });
+  agendarSyncContasPagar();
+  res.json({ ok: true, pago: item.pago });
 });
 
 app.delete('/api/contas-pagar/:id', async (req, res) => {
@@ -2664,8 +2692,8 @@ app.delete('/api/contas-pagar/:id', async (req, res) => {
     data.contas_pagar[num] = data.contas_pagar[num].filter(c => c.id !== req.params.id);
   }
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
-  const syncResult3 = await syncContasPagar().catch(e => ({ ok: false, erro: e.message }));
-  res.json({ ok: true, syncOk: syncResult3?.ok === true });
+  agendarSyncContasPagar();
+  res.json({ ok: true });
 });
 
 // ── Sync Railway: status e forçar ────────────────────────────────────────────
@@ -2674,9 +2702,9 @@ app.get('/api/sync/status', (req, res) => {
   res.json(lastSyncStatus);
 });
 
-app.post('/api/sync/force', async (req, res) => {
-  const result = await syncContasPagar().catch(e => ({ ok: false, erro: e.message }));
-  res.json(result);
+app.post('/api/sync/force', (req, res) => {
+  agendarSyncContasPagar();
+  res.json({ ok: true, msg: 'Sync agendado — acompanhe /api/sync/status' });
 });
 
 // ── Notas de Entrada (SEFAZ NF-e) ────────────────────────────────────────────

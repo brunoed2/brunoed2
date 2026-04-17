@@ -162,15 +162,19 @@ function contasPagarExibirSyncStatus(el, d) {
 
 function _syncRetryIniciar() {
   if (_syncRetryTimer) return; // já em andamento
+  const el = document.getElementById('contas-sync-status');
+  if (el) el.innerHTML = '<span style="color:#64748b;font-size:12px">Sincronizando com Railway…</span>';
   _syncRetryTimer = setInterval(async () => {
     try {
-      const d = await fetch('/api/sync/force', { method: 'POST' }).then(r => r.json());
-      const el = document.getElementById('contas-sync-status');
-      if (d.ok) {
-        if (el) contasPagarExibirSyncStatus(el, d); // para o timer via _syncRetryParar
+      const d = await fetch('/api/sync/status').then(r => r.json());
+      if (d.ok === true) {
+        if (el) contasPagarExibirSyncStatus(el, d); // chama _syncRetryParar internamente
+      } else if (d.ok === false) {
+        if (el) contasPagarExibirSyncStatus(el, d);
       }
+      // ok===null = sync ainda não rodou, continua aguardando
     } catch {}
-  }, 15000);
+  }, 3000);
 }
 
 function _syncRetryParar() {
@@ -179,14 +183,9 @@ function _syncRetryParar() {
 
 async function contasPagarForcSync(evt) {
   if (evt) evt.preventDefault();
-  const el = document.getElementById('contas-sync-status');
-  if (el) el.innerHTML = '<span style="color:#64748b;font-size:12px">Sincronizando…</span>';
-  try {
-    const d = await fetch('/api/sync/force', { method: 'POST' }).then(r => r.json());
-    if (el) contasPagarExibirSyncStatus(el, d);
-  } catch {
-    if (el) el.innerHTML = '<span style="color:#dc2626;font-size:12px">⚠️ Erro ao conectar com o servidor</span>';
-  }
+  await fetch('/api/sync/force', { method: 'POST' }).catch(() => {});
+  _syncRetryParar();
+  _syncRetryIniciar(); // reinicia polling
 }
 
 // ── Importar XML ───────────────────────────────────────────────
@@ -203,7 +202,6 @@ async function contasPagarImportarXML() {
   let importados = 0;
   let duplicados = 0;
   let erros      = 0;
-  let syncOk     = true;
 
   for (const file of files) {
     try {
@@ -215,8 +213,7 @@ async function contasPagarImportarXML() {
       if (d.error)      { erros++; }
       else if (d.dup)   { duplicados += d.dup; importados += d.importados || 0; }
       else              { importados += d.importados || 0; }
-      if (d.syncOk === false) syncOk = false;
-    } catch { erros++; syncOk = false; }
+    } catch { erros++; }
   }
 
   if (status) {
@@ -224,29 +221,30 @@ async function contasPagarImportarXML() {
     if (importados) partes.push(`${importados} parcela${importados > 1 ? 's' : ''} importada${importados > 1 ? 's' : ''}`);
     if (duplicados) partes.push(`${duplicados} já existia${duplicados > 1 ? 'm' : ''}`);
     if (erros)      partes.push(`${erros} erro${erros > 1 ? 's' : ''}`);
-    let msg = partes.length ? partes.join(' · ') : 'Nenhuma parcela encontrada nos XMLs.';
-    if (!syncOk) msg += ' — ⚠️ falha ao sincronizar com Railway';
-    status.style.color = (erros && !importados) || !syncOk ? '#dc2626' : '#16a34a';
-    status.textContent = msg;
+    status.style.color = erros && !importados ? '#dc2626' : '#16a34a';
+    status.textContent = partes.length ? partes.join(' · ') : 'Nenhuma parcela encontrada nos XMLs.';
   }
 
   input.value = '';
   if (btn) btn.disabled = false;
   await contasPagarCarregar(); // recarrega lista
+  // Inicia polling do sync status — vai mostrar quando Railway confirmar
+  _syncRetryIniciar();
   contasPagarAtualizarSyncStatus();
 }
 
 // ── Marcar como pago / reabrir ─────────────────────────────────
 async function contasPagarTogglePago(id) {
   try {
-    const d = await fetch(`/api/contas-pagar/${id}/pago`, { method: 'POST' }).then(r => r.json());
+    await fetch(`/api/contas-pagar/${id}/pago`, { method: 'POST' });
     const item = contasPagarLista.find(c => c.id === id);
     if (item) {
       item.pago   = !item.pago;
       item.pagoEm = item.pago ? new Date().toISOString() : null;
     }
     contasPagarRenderizar();
-    if (d.syncOk === false) contasPagarMostrarAvisoSync();
+    _syncRetryIniciar();
+    contasPagarAtualizarSyncStatus();
   } catch { alert('Erro ao salvar. Tente novamente.'); }
 }
 
@@ -254,19 +252,14 @@ async function contasPagarTogglePago(id) {
 async function contasPagarRemover(id) {
   if (!confirm('Remover esta conta a pagar?')) return;
   try {
-    const d = await fetch(`/api/contas-pagar/${id}`, { method: 'DELETE' }).then(r => r.json());
+    await fetch(`/api/contas-pagar/${id}`, { method: 'DELETE' });
     contasPagarLista = contasPagarLista.filter(c => c.id !== id);
     contasPagarRenderizar();
-    if (d.syncOk === false) contasPagarMostrarAvisoSync();
+    _syncRetryIniciar();
+    contasPagarAtualizarSyncStatus();
   } catch { alert('Erro ao remover. Tente novamente.'); }
 }
 
-function contasPagarMostrarAvisoSync() {
-  const el = document.getElementById('contas-sync-status');
-  if (el) {
-    el.innerHTML = `<span style="color:#dc2626;font-size:12px">⚠️ Falha ao sincronizar com Railway — <a href="#" onclick="contasPagarForcSync(event)" style="color:#dc2626">tentar novamente</a></span>`;
-  }
-}
 
 // ── Helpers ────────────────────────────────────────────────────
 function fmtBRL(v) {
