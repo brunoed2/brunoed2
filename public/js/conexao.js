@@ -170,6 +170,22 @@ function cxLimparLog() {
   if (lista) lista.innerHTML = '';
 }
 
+async function cxTestarTelegram() {
+  const btn = document.getElementById('btn-telegram-teste');
+  if (btn) btn.disabled = true;
+  try {
+    const d = await fetch('/api/telegram/teste', { method: 'POST' }).then(r => r.json());
+    if (d.ok) {
+      alert('✅ Mensagem enviada! Verifique o Telegram.');
+    } else {
+      alert('⚠️ Falha: ' + (d.erro || 'Erro desconhecido.\nVerifique TELEGRAM_TOKEN e TELEGRAM_CHAT_ID no Railway.'));
+    }
+  } catch {
+    alert('⚠️ Erro ao conectar com o servidor.');
+  }
+  if (btn) btn.disabled = false;
+}
+
 // ── Helpers ───────────────────────────────────────────────────
 
 function cxMostrarMsg(texto, tipo) {

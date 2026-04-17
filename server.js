@@ -2603,6 +2603,18 @@ async function verificarNovosShipmentsTelegram() {
   telegramPrimeiraVerificacao = false;
 }
 
+app.post('/api/telegram/teste', async (req, res) => {
+  if (!TELEGRAM_TOKEN || !TELEGRAM_CHAT_ID) {
+    return res.json({ ok: false, erro: 'TELEGRAM_TOKEN ou TELEGRAM_CHAT_ID não configurados' });
+  }
+  try {
+    await enviarTelegram('🧪 <b>Teste de notificação</b>\n\nSeu bot está funcionando! Você receberá avisos quando entrar um novo pedido.');
+    res.json({ ok: true });
+  } catch (e) {
+    res.json({ ok: false, erro: e.message });
+  }
+});
+
 // ── Contas a Pagar ────────────────────────────────────────────────────────────
 
 // Helper: extrai texto de uma tag XML (ignora prefixo de namespace)
