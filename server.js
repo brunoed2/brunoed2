@@ -2610,6 +2610,86 @@ async function verificarNovosShipmentsTelegram() {
   telegramPrimeiraVerificacao = false;
 }
 
+// ── Polling em background: anúncios pausados ──────────────────
+async function verificarAnunciosPausadosTelegram() {
+  if (!TELEGRAM_TOKEN || !TELEGRAM_CHAT_ID) return;
+  const data = loadData();
+  for (const num of ['1', '2']) {
+    const c = data.contas[num];
+    if (!c || !c.access_token) continue;
+    try {
+      const pauseDates = c.pause_dates || {};
+      let pauseChanged = false;
+
+      // Busca apenas anúncios pausados + ativos para detectar mudanças
+      const idsAtivos   = await buscarIdsStatus(c, 'active');
+      const idsPausados = await buscarIdsStatus(c, 'paused');
+
+      // Anúncios que ficaram pausados agora (não estavam em pauseDates)
+      const novamentePausados = idsPausados.filter(id => !pauseDates[id]);
+
+      if (novamentePausados.length) {
+        // Busca detalhes dos novos pausados para pegar o título
+        const chunks = [];
+        for (let i = 0; i < novamentePausados.length; i += 20) chunks.push(novamentePausados.slice(i, i + 20));
+        for (const chunk of chunks) {
+          try {
+            const resp = await axios.get('https://api.mercadolibre.com/items', {
+              params: { ids: chunk.join(','), attributes: 'id,title' },
+              headers: { Authorization: `Bearer ${c.access_token}` },
+              timeout: 10000,
+            });
+            const itens = resp.data || [];
+            for (const item of itens) {
+              if (item.code !== 200) continue;
+              const mlb    = item.body.id;
+              const titulo = item.body.title || mlb;
+              const conta  = c.nickname || `Conta ${num}`;
+              pauseDates[mlb] = new Date().toISOString();
+              pauseChanged = true;
+              enviarTelegram(`⏸ <b>Anúncio pausado — ${conta}</b>\n\n${titulo}\n<code>${mlb}</code>`).catch(() => {});
+              addLog(`Telegram: anúncio pausado notificado — ${mlb}`, 'info');
+            }
+          } catch {}
+        }
+      }
+
+      // Remove do pauseDates anúncios que voltaram a ficar ativos
+      for (const id of idsAtivos) {
+        if (pauseDates[id]) { delete pauseDates[id]; pauseChanged = true; }
+      }
+
+      if (pauseChanged) {
+        c.pause_dates = pauseDates;
+        saveData(data);
+      }
+    } catch (err) {
+      addLog(`Telegram monitor pausados conta ${num}: ${err.message}`, 'warn');
+    }
+  }
+}
+
+async function buscarIdsStatus(c, status) {
+  const ids = [];
+  let offset = 0;
+  const limit = 100;
+  while (true) {
+    try {
+      const resp = await axios.get(`https://api.mercadolibre.com/users/${c.user_id}/items/search`, {
+        params: { status, offset, limit },
+        headers: { Authorization: `Bearer ${c.access_token}` },
+        timeout: 10000,
+      });
+      const results = resp.data.results || [];
+      ids.push(...results);
+      if (results.length < limit) break;
+      offset += limit;
+      if (offset >= 2000) break;
+    } catch { break; }
+  }
+  return ids;
+}
+
 // ── Notificação diária: contas a pagar vencendo hoje ──────────
 async function notificarContasVencendoHoje() {
   if (!TELEGRAM_TOKEN || !TELEGRAM_CHAT_ID) return;
@@ -3090,11 +3170,17 @@ app.listen(PORT, () => {
   console.log(`Servidor rodando em http://localhost:${PORT}`);
   // Inicia monitoramento Telegram 10s após subir, depois a cada 60s
   if (TELEGRAM_TOKEN && TELEGRAM_CHAT_ID) {
-    addLog('Telegram: monitoramento de pedidos ativado', 'info');
+    addLog('Telegram: monitoramento de pedidos e anúncios ativado', 'info');
+    // Pedidos novos: verifica a cada 60s
     setTimeout(() => {
       verificarNovosShipmentsTelegram();
       setInterval(verificarNovosShipmentsTelegram, 60_000);
     }, 10_000);
+    // Anúncios pausados: verifica a cada 5 minutos
+    setTimeout(() => {
+      verificarAnunciosPausadosTelegram();
+      setInterval(verificarAnunciosPausadosTelegram, 5 * 60_000);
+    }, 30_000);
   } else {
     addLog('Telegram: TELEGRAM_TOKEN ou TELEGRAM_CHAT_ID não configurados', 'warn');
   }
