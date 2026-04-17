@@ -2539,27 +2539,39 @@ app.get('/api/shopee/orders', async (req, res) => {
 const TELEGRAM_TOKEN   = process.env.TELEGRAM_TOKEN;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
+// Número 1: contas a pagar + anúncios pausados
 const CALLMEBOT_PHONE  = process.env.CALLMEBOT_PHONE;
 const CALLMEBOT_APIKEY = process.env.CALLMEBOT_APIKEY;
+// Número 2: pedidos novos
+const CALLMEBOT_PHONE_PEDIDOS  = process.env.CALLMEBOT_PHONE_PEDIDOS;
+const CALLMEBOT_APIKEY_PEDIDOS = process.env.CALLMEBOT_APIKEY_PEDIDOS;
 
-async function enviarWhatsApp(texto) {
-  if (!CALLMEBOT_PHONE || !CALLMEBOT_APIKEY) return;
+async function enviarWhatsApp(phone, apikey, texto) {
+  if (!phone || !apikey) return;
   try {
-    const msg = encodeURIComponent(texto.replace(/<[^>]+>/g, '')); // remove HTML tags
-    await axios.get(`https://api.callmebot.com/whatsapp.php`, {
-      params: { phone: CALLMEBOT_PHONE, text: msg, apikey: CALLMEBOT_APIKEY },
+    const msg = encodeURIComponent(texto.replace(/<[^>]+>/g, ''));
+    await axios.get('https://api.callmebot.com/whatsapp.php', {
+      params: { phone, text: msg, apikey },
       timeout: 10000,
     });
   } catch (err) {
-    addLog(`WhatsApp: falha ao enviar mensagem — ${err.message}`, 'warn');
+    addLog(`WhatsApp: falha ao enviar para ${phone} — ${err.message}`, 'warn');
   }
 }
 
-// Envia para todos os canais configurados
+// Notificações de contas a pagar e anúncios pausados
 async function notificar(texto) {
   await Promise.allSettled([
     enviarTelegram(texto),
-    enviarWhatsApp(texto),
+    enviarWhatsApp(CALLMEBOT_PHONE, CALLMEBOT_APIKEY, texto),
+  ]);
+}
+
+// Notificações de pedidos novos (número diferente)
+async function notificarPedido(texto) {
+  await Promise.allSettled([
+    enviarTelegram(texto),
+    enviarWhatsApp(CALLMEBOT_PHONE_PEDIDOS, CALLMEBOT_APIKEY_PEDIDOS, texto),
   ]);
 }
 
@@ -2624,7 +2636,7 @@ async function verificarNovosShipmentsTelegram() {
             `Pedido: #${order.id}\n` +
             `Comprador: ${order.buyer?.nickname || '—'}\n` +
             `Status: ${status}\n\n${itens}`;
-          await notificar(texto);
+          await notificarPedido(texto);
         } catch {}
       }
     } catch (err) {
@@ -3194,7 +3206,10 @@ app.listen(PORT, () => {
   console.log(`Servidor rodando em http://localhost:${PORT}`);
   // Inicia monitoramento Telegram 10s após subir, depois a cada 60s
   if (CALLMEBOT_PHONE && CALLMEBOT_APIKEY) {
-    addLog('WhatsApp (CallMeBot): notificações ativadas ✅', 'ok');
+    addLog(`WhatsApp: contas/anúncios → ${CALLMEBOT_PHONE} ✅`, 'ok');
+  }
+  if (CALLMEBOT_PHONE_PEDIDOS && CALLMEBOT_APIKEY_PEDIDOS) {
+    addLog(`WhatsApp: pedidos novos → ${CALLMEBOT_PHONE_PEDIDOS} ✅`, 'ok');
   }
   if (TELEGRAM_TOKEN && TELEGRAM_CHAT_ID) {
     addLog('Telegram: monitoramento de pedidos e anúncios ativado', 'info');
