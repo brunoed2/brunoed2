@@ -222,23 +222,23 @@ function initFromEnvVars() {
     if (!data.lucro_contas[num] && process.env[`LUCRO_CONFIG_${num}`]) {
       try { data.lucro_contas[num] = JSON.parse(process.env[`LUCRO_CONFIG_${num}`]); changed = true; } catch {}
     }
-    // Gastos mensais — var separada (restaura sempre para não perder novos meses)
-    if (process.env[`GASTOS_DATA_${num}`]) {
+    // Gastos mensais — Railway é fonte verdade (sempre sobrescreve)
+    if (process.env[`GASTOS_DATA_${num}`] !== undefined) {
       try {
         data.lucro_contas[num] = data.lucro_contas[num] || {};
         data.lucro_contas[num].gastos = JSON.parse(process.env[`GASTOS_DATA_${num}`]);
         changed = true;
       } catch {}
     }
-    // Gastos fixos (tipos + valores)
-    if (process.env[`GASTOS_FIXOS_TIPOS_${num}`]) {
+    // Gastos fixos (tipos + valores) — Railway é fonte verdade (sempre sobrescreve)
+    if (process.env[`GASTOS_FIXOS_TIPOS_${num}`] !== undefined) {
       try {
         data.lucro_contas[num] = data.lucro_contas[num] || {};
         data.lucro_contas[num].gastos_fixos_tipos = JSON.parse(process.env[`GASTOS_FIXOS_TIPOS_${num}`]);
         changed = true;
       } catch {}
     }
-    if (process.env[`GASTOS_FIXOS_VALS_${num}`]) {
+    if (process.env[`GASTOS_FIXOS_VALS_${num}`] !== undefined) {
       try {
         data.lucro_contas[num] = data.lucro_contas[num] || {};
         data.lucro_contas[num].gastos_fixos_valores = JSON.parse(process.env[`GASTOS_FIXOS_VALS_${num}`]);
@@ -273,24 +273,22 @@ function initFromEnvVars() {
     }
     data.notas_contas[num] = nc;
 
-    // Restaura IDs de pedidos atendidos (flagados)
-    const c = data.contas[num] || {};
-    if (!c.atendidas_dados?.length && process.env[`ATENDIDAS_SIDS_${num}`]) {
+    // Restaura IDs de pedidos atendidos — Railway é fonte verdade (sempre sobrescreve)
+    if (process.env[`ATENDIDAS_SIDS_${num}`] !== undefined) {
       try {
+        const c2 = data.contas[num] || {};
         const sids = JSON.parse(process.env[`ATENDIDAS_SIDS_${num}`]);
-        c.atendidas_dados = sids.map(sid => ({ shipmentId: sid, atendida: true, atendidaEm: null }));
-        data.contas[num] = c;
+        c2.atendidas_dados = sids.map(sid => ({ shipmentId: sid, atendida: true, atendidaEm: null }));
+        data.contas[num] = c2;
         changed = true;
       } catch {}
     }
-    // Restaura contas a pagar
-    if (process.env[`CONTAS_PAGAR_${num}`]) {
+    // Restaura contas a pagar — Railway é fonte verdade (sempre sobrescreve)
+    if (process.env[`CONTAS_PAGAR_${num}`] !== undefined) {
       try {
         data.contas_pagar = data.contas_pagar || {};
-        if (!data.contas_pagar[num]?.length) {
-          data.contas_pagar[num] = JSON.parse(process.env[`CONTAS_PAGAR_${num}`]);
-          changed = true;
-        }
+        data.contas_pagar[num] = JSON.parse(process.env[`CONTAS_PAGAR_${num}`]);
+        changed = true;
       } catch {}
     }
   }
