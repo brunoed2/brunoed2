@@ -892,7 +892,7 @@ app.get('/api/ml/estoque', async (req, res) => {
             // Notifica Telegram quando anúncio é pausado pela primeira vez
             const titulo = r.body.title || mlb;
             const conta  = (data.contas[num] || {}).nickname || `Conta ${num}`;
-            enviarTelegram(`⏸ <b>Anúncio pausado — ${conta}</b>\n\n${titulo}\n<code>${mlb}</code>`).catch(() => {});
+            notificar(`⏸ <b>Anúncio pausado — ${conta}</b>\n\n${titulo}\n<code>${mlb}</code>`).catch(() => {});
           }
         } else {
           if (pauseDates[mlb]) { delete pauseDates[mlb]; pauseChanged = true; }
@@ -2539,6 +2539,30 @@ app.get('/api/shopee/orders', async (req, res) => {
 const TELEGRAM_TOKEN   = process.env.TELEGRAM_TOKEN;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
+const CALLMEBOT_PHONE  = process.env.CALLMEBOT_PHONE;
+const CALLMEBOT_APIKEY = process.env.CALLMEBOT_APIKEY;
+
+async function enviarWhatsApp(texto) {
+  if (!CALLMEBOT_PHONE || !CALLMEBOT_APIKEY) return;
+  try {
+    const msg = encodeURIComponent(texto.replace(/<[^>]+>/g, '')); // remove HTML tags
+    await axios.get(`https://api.callmebot.com/whatsapp.php`, {
+      params: { phone: CALLMEBOT_PHONE, text: msg, apikey: CALLMEBOT_APIKEY },
+      timeout: 10000,
+    });
+  } catch (err) {
+    addLog(`WhatsApp: falha ao enviar mensagem — ${err.message}`, 'warn');
+  }
+}
+
+// Envia para todos os canais configurados
+async function notificar(texto) {
+  await Promise.allSettled([
+    enviarTelegram(texto),
+    enviarWhatsApp(texto),
+  ]);
+}
+
 async function enviarTelegram(texto) {
   if (!TELEGRAM_TOKEN || !TELEGRAM_CHAT_ID) return;
   try {
@@ -2600,7 +2624,7 @@ async function verificarNovosShipmentsTelegram() {
             `Pedido: #${order.id}\n` +
             `Comprador: ${order.buyer?.nickname || '—'}\n` +
             `Status: ${status}\n\n${itens}`;
-          await enviarTelegram(texto);
+          await notificar(texto);
         } catch {}
       }
     } catch (err) {
@@ -2647,8 +2671,8 @@ async function verificarAnunciosPausadosTelegram() {
               const conta  = c.nickname || `Conta ${num}`;
               pauseDates[mlb] = new Date().toISOString();
               pauseChanged = true;
-              enviarTelegram(`⏸ <b>Anúncio pausado — ${conta}</b>\n\n${titulo}\n<code>${mlb}</code>`).catch(() => {});
-              addLog(`Telegram: anúncio pausado notificado — ${mlb}`, 'info');
+              notificar(`⏸ <b>Anúncio pausado — ${conta}</b>\n\n${titulo}\n<code>${mlb}</code>`).catch(() => {});
+              addLog(`Notificação: anúncio pausado — ${mlb}`, 'info');
             }
           } catch {}
         }
@@ -2710,8 +2734,8 @@ async function notificarContasVencendoHoje() {
 
   const dataFmt = hoje.split('-').reverse().join('/');
   const texto = `📅 <b>Contas a pagar — vencimento hoje (${dataFmt})</b>\n\n` + linhas.join('\n');
-  await enviarTelegram(texto).catch(() => {});
-  addLog(`Telegram: notificação de ${linhas.length} conta(s) vencendo hoje enviada`, 'info');
+  await notificar(texto).catch(() => {});
+  addLog(`Notificação: ${linhas.length} conta(s) vencendo hoje`, 'info');
 }
 
 // Executa check de contas a vencer todo dia às 8h (verifica a cada hora)
@@ -2725,7 +2749,7 @@ app.post('/api/telegram/teste', async (req, res) => {
     return res.json({ ok: false, erro: 'TELEGRAM_TOKEN ou TELEGRAM_CHAT_ID não configurados' });
   }
   try {
-    await enviarTelegram('🧪 <b>Teste de notificação</b>\n\nSeu bot está funcionando! Você receberá:\n• 🛍 Novos pedidos para embalar\n• ⏸ Anúncios pausados\n• 📅 Contas a pagar vencendo no dia (às 8h)');
+    await notificar('🧪 *Teste de notificação*\n\nSeu app está funcionando! Você receberá:\n• 🛍 Novos pedidos para embalar\n• ⏸ Anúncios pausados\n• 📅 Contas a pagar vencendo no dia (às 8h)');
     res.json({ ok: true });
   } catch (e) {
     res.json({ ok: false, erro: e.message });
@@ -3169,6 +3193,9 @@ app.get('/api/notas/buscar', async (req, res) => {
 app.listen(PORT, () => {
   console.log(`Servidor rodando em http://localhost:${PORT}`);
   // Inicia monitoramento Telegram 10s após subir, depois a cada 60s
+  if (CALLMEBOT_PHONE && CALLMEBOT_APIKEY) {
+    addLog('WhatsApp (CallMeBot): notificações ativadas ✅', 'ok');
+  }
   if (TELEGRAM_TOKEN && TELEGRAM_CHAT_ID) {
     addLog('Telegram: monitoramento de pedidos e anúncios ativado', 'info');
     // Pedidos novos: verifica a cada 60s
