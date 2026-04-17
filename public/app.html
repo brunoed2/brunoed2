@@ -362,7 +362,7 @@
               <button class="filtro-btn"        data-cf="pago"    onclick="contasFiltrar('pago',this)">Pagos</button>
               <button class="filtro-btn"        data-cf="todos"   onclick="contasFiltrar('todos',this)">Todos</button>
             </div>
-            <span id="contas-total-label" style="font-size:13px;color:#64748b"></span>
+            <div style="display:flex;align-items:center;gap:12px"><span id="contas-total-label" style="font-size:13px;color:#64748b"></span><button class="btn-secondary" onclick="contasPagarCarregar()" id="btn-atualizar-contas">↻ Atualizar</button></div>
           </div>
           <div id="contas-loading" class="loading" style="display:none">Carregando...</div>
           <div id="contas-vazio" style="display:none;color:#94a3b8;padding:30px 0;text-align:center;font-size:14px">Nenhuma conta cadastrada. Importe um XML de NF-e acima.</div>
@@ -659,6 +659,6 @@
   <script src="/js/shopee.js?v=118"></script>
   <script src="/js/contas-pagar.js?v=1"></script>
   <script src="/js/promocoes.js?v=1"></script>
-  <div id="version-badge">v197</div>
+  <div id="version-badge">v198</div>
 </body>
 </html>
