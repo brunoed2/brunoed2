@@ -2550,10 +2550,12 @@ async function enviarWhatsApp(phone, apikey, texto) {
   if (!phone || !apikey) return;
   try {
     const msg = encodeURIComponent(texto.replace(/<[^>]+>/g, ''));
-    await axios.get('https://api.callmebot.com/whatsapp.php', {
+    const resp = await axios.get('https://api.callmebot.com/whatsapp.php', {
       params: { phone, text: msg, apikey },
       timeout: 10000,
     });
+    const body = String(resp.data || '').trim();
+    addLog(`WhatsApp → ${phone}: ${body || 'sem resposta'}`, body.toLowerCase().includes('error') || body.toLowerCase().includes('wrong') ? 'warn' : 'ok');
   } catch (err) {
     addLog(`WhatsApp: falha ao enviar para ${phone} — ${err.message}`, 'warn');
   }
