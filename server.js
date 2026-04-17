@@ -89,13 +89,17 @@ function contaAtiva(data) {
 
 // ── Persistência via Railway Environment Variables ────────────
 
-async function syncRailwayEnvVars(data) {
+async function syncRailwayEnvVars(_dataIgnorado) {
   const token = process.env.RAILWAY_TOKEN;
   if (!token) { console.warn('[sync] RAILWAY_TOKEN não configurado — tokens não serão persistidos entre deploys'); return; }
   const projectId     = process.env.RAILWAY_PROJECT_ID;
   const environmentId = process.env.RAILWAY_ENVIRONMENT_ID;
   const serviceId     = process.env.RAILWAY_SERVICE_ID;
   if (!projectId || !environmentId || !serviceId) { console.warn('[sync] RAILWAY_PROJECT_ID/ENVIRONMENT_ID/SERVICE_ID ausentes'); return; }
+
+  // Sempre relê do disco para pegar o estado mais recente, evitando race conditions
+  // entre requests concorrentes que poderiam mandar dados antigos pro Railway
+  const data = loadData();
 
   const variables = { ML_CONTA_ATIVA: data.conta_ativa || '1' };
   for (const num of ['1', '2']) {
