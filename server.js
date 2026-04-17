@@ -89,13 +89,16 @@ function contaAtiva(data) {
 
 // ── Persistência via Railway Environment Variables ────────────
 
+// Estado do último sync — visível via /api/sync/status
+let lastSyncStatus = { ok: null, ts: null, erro: null };
+
 async function syncRailwayEnvVars(_dataIgnorado) {
   const token = process.env.RAILWAY_TOKEN;
-  if (!token) { console.warn('[sync] RAILWAY_TOKEN não configurado — tokens não serão persistidos entre deploys'); return; }
+  if (!token) { addLog('[sync] RAILWAY_TOKEN não configurado — dados não serão persistidos entre restarts', 'warn'); return { ok: false, erro: 'RAILWAY_TOKEN ausente' }; }
   const projectId     = process.env.RAILWAY_PROJECT_ID;
   const environmentId = process.env.RAILWAY_ENVIRONMENT_ID;
   const serviceId     = process.env.RAILWAY_SERVICE_ID;
-  if (!projectId || !environmentId || !serviceId) { console.warn('[sync] RAILWAY_PROJECT_ID/ENVIRONMENT_ID/SERVICE_ID ausentes'); return; }
+  if (!projectId || !environmentId || !serviceId) { addLog('[sync] RAILWAY IDs ausentes (PROJECT_ID/ENVIRONMENT_ID/SERVICE_ID)', 'warn'); return { ok: false, erro: 'Railway IDs ausentes' }; }
 
   // Sempre relê do disco para pegar o estado mais recente, evitando race conditions
   // entre requests concorrentes que poderiam mandar dados antigos pro Railway
@@ -149,10 +152,17 @@ async function syncRailwayEnvVars(_dataIgnorado) {
     variables[`CONTAS_PAGAR_${num}`] = JSON.stringify((data.contas_pagar || {})[num] || []);
   }
 
+  // Avisa se alguma variável está muito grande (limite Railway ~32 KB por var)
+  for (const [k, v] of Object.entries(variables)) {
+    if (typeof v === 'string' && v.length > 28000) {
+      addLog(`[sync] ⚠️ Variável ${k} grande (${Math.round(v.length/1024)}KB) — pode falhar no Railway`, 'warn');
+    }
+  }
+
   // Retry até 3 vezes com backoff simples
   for (let tentativa = 1; tentativa <= 3; tentativa++) {
     try {
-      await axios.post(
+      const resp = await axios.post(
         'https://backboard.railway.app/graphql/v2',
         {
           query: `mutation Upsert($input: VariableCollectionUpsertInput!) {
@@ -160,16 +170,32 @@ async function syncRailwayEnvVars(_dataIgnorado) {
           }`,
           variables: { input: { projectId, environmentId, serviceId, variables } },
         },
-        { headers: { Authorization: `Bearer ${token}` }, timeout: 10000 }
+        { headers: { Authorization: `Bearer ${token}` }, timeout: 15000 }
       );
-      console.log(`[sync] Env vars salvas no Railway (tentativa ${tentativa}).`);
-      return;
+      // Railway retorna errors no body mesmo com HTTP 200
+      if (resp.data?.errors?.length) {
+        const msg = resp.data.errors[0]?.message || 'Erro GraphQL';
+        addLog(`[sync] ⚠️ Railway retornou erro (tentativa ${tentativa}/3): ${msg}`, 'warn');
+        if (tentativa < 3) { await new Promise(r => setTimeout(r, 2000 * tentativa)); continue; }
+        lastSyncStatus = { ok: false, ts: Date.now(), erro: msg };
+        return { ok: false, erro: msg };
+      }
+      addLog(`[sync] ✅ Dados salvos no Railway (tentativa ${tentativa})`, 'ok');
+      lastSyncStatus = { ok: true, ts: Date.now(), erro: null };
+      return { ok: true };
     } catch (e) {
-      console.error(`[sync] Erro tentativa ${tentativa}/3: ${e.message}`);
+      addLog(`[sync] ❌ Erro tentativa ${tentativa}/3: ${e.message}`, 'erro');
       if (tentativa < 3) await new Promise(r => setTimeout(r, 2000 * tentativa));
     }
   }
+  lastSyncStatus = { ok: false, ts: Date.now(), erro: 'Falha após 3 tentativas' };
+  return { ok: false, erro: 'Falha após 3 tentativas' };
 }
+
+// Sync periódico de segurança: a cada 2 minutos garante que Railway tem o estado atual
+setInterval(() => {
+  syncRailwayEnvVars().catch(() => {});
+}, 2 * 60 * 1000);
 
 function initFromEnvVars() {
   const data = loadData();
@@ -2563,8 +2589,8 @@ app.post('/api/contas-pagar/xml', uploadMem.single('xml'), async (req, res) => {
   }
 
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
-  await syncRailwayEnvVars(data).catch(e => console.error('[contas-pagar] sync erro:', e.message));
-  res.json({ importados, dup });
+  const syncResult = await syncRailwayEnvVars().catch(e => ({ ok: false, erro: e.message }));
+  res.json({ importados, dup, syncOk: syncResult?.ok === true });
 });
 
 app.post('/api/contas-pagar/:id/pago', async (req, res) => {
@@ -2576,8 +2602,8 @@ app.post('/api/contas-pagar/:id/pago', async (req, res) => {
   item.pago   = !item.pago;
   item.pagoEm = item.pago ? new Date().toISOString() : null;
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
-  await syncRailwayEnvVars(data).catch(e => console.error('[contas-pagar] sync erro:', e.message));
-  res.json({ ok: true, pago: item.pago });
+  const syncResult2 = await syncRailwayEnvVars().catch(e => ({ ok: false, erro: e.message }));
+  res.json({ ok: true, pago: item.pago, syncOk: syncResult2?.ok === true });
 });
 
 app.delete('/api/contas-pagar/:id', async (req, res) => {
@@ -2587,8 +2613,19 @@ app.delete('/api/contas-pagar/:id', async (req, res) => {
     data.contas_pagar[num] = data.contas_pagar[num].filter(c => c.id !== req.params.id);
   }
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
-  await syncRailwayEnvVars(data).catch(e => console.error('[contas-pagar] sync erro:', e.message));
-  res.json({ ok: true });
+  const syncResult3 = await syncRailwayEnvVars().catch(e => ({ ok: false, erro: e.message }));
+  res.json({ ok: true, syncOk: syncResult3?.ok === true });
+});
+
+// ── Sync Railway: status e forçar ────────────────────────────────────────────
+
+app.get('/api/sync/status', (req, res) => {
+  res.json(lastSyncStatus);
+});
+
+app.post('/api/sync/force', async (req, res) => {
+  const result = await syncRailwayEnvVars().catch(e => ({ ok: false, erro: e.message }));
+  res.json(result);
 });
 
 // ── Notas de Entrada (SEFAZ NF-e) ────────────────────────────────────────────
