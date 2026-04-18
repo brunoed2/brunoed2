@@ -2632,6 +2632,7 @@ async function verificarNovosShipmentsTelegram() {
             headers: { Authorization: `Bearer ${c.access_token}` }, timeout: 8000,
           });
           const shipment = sr.data;
+          const isFull = (shipment.logistic_type || '').includes('fulfillment');
           const orderDate = new Date(order.date_created || 0);
           const isNovo = orderDate > SERVER_START_TIME;
           addLog(`[pedido] #${order.id} status=${shipment.status} full=${isFull} novo=${isNovo}`, 'info');
