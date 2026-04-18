@@ -607,6 +607,15 @@
               <button class="btn-sm" onclick="verificarBling()">↻</button>
             </div>
 
+            <div class="card" style="margin-top:12px">
+              <h2>Bling ERP</h2>
+              <p class="card-desc">Conecte sua conta Bling para emissão de notas fiscais.</p>
+              <div class="btn-row">
+                <button class="btn-primary" onclick="location.href='/api/bling/auth'">🔗 Conectar ao Bling</button>
+              </div>
+              <div class="msg" id="bling-msg"></div>
+            </div>
+
             <div class="card">
               <h2>Credenciais</h2>
               <p class="card-desc">
@@ -667,6 +676,6 @@
   <script src="/js/shopee.js?v=118"></script>
   <script src="/js/contas-pagar.js?v=1"></script>
   <script src="/js/promocoes.js?v=1"></script>
-  <div id="version-badge">v219</div>
+  <div id="version-badge">v220</div>
 </body>
 </html>

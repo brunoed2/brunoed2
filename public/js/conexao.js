@@ -10,11 +10,12 @@ let cxEventSource = null;
 
 document.getElementById('cx-callback-url').textContent = `${location.origin}/api/ml/callback`;
 
-// Trata retorno do OAuth (redirect de /api/ml/callback)
+// Trata retorno do OAuth (redirect de /api/ml/callback ou /api/bling/callback)
 (function cxTratarRetornoOAuth() {
   const params = new URLSearchParams(location.search);
   if (params.get('tab') !== 'conexao') return;
 
+  // ML
   if (params.get('connected') === 'true') {
     const conta = params.get('conta') || '1';
     cxMostrarMsg(`✅ Conta ${conta} conectada com sucesso!`, 'ok');
@@ -22,6 +23,14 @@ document.getElementById('cx-callback-url').textContent = `${location.origin}/api
   if (params.get('error')) {
     const detalhe = params.get('detalhe') ? '\n' + decodeURIComponent(params.get('detalhe')) : '';
     cxMostrarMsg(`❌ Falha na autenticação.${detalhe}`, 'erro');
+  }
+
+  // Bling
+  if (params.get('bling_connected') === 'true') {
+    blingMostrarMsg('✅ Bling conectado com sucesso!', 'ok');
+  }
+  if (params.get('bling_error')) {
+    blingMostrarMsg(`❌ Falha na conexão com o Bling: ${decodeURIComponent(params.get('bling_error'))}`, 'erro');
   }
 
   history.replaceState({}, '', '/app.html?tab=conexao');
@@ -212,6 +221,13 @@ async function verificarBling() {
 
 function cxMostrarMsg(texto, tipo) {
   const el = document.getElementById('cx-msg');
+  if (!el) return;
+  el.textContent = texto;
+  el.className   = `msg ${tipo}`;
+}
+
+function blingMostrarMsg(texto, tipo) {
+  const el = document.getElementById('bling-msg');
   if (!el) return;
   el.textContent = texto;
   el.className   = `msg ${tipo}`;

@@ -804,27 +804,98 @@ function extrairSku(body) {
 // Ping simples para testar conectividade frontend→servidor
 app.get('/api/ping', (req, res) => res.json({ ok: true, ts: Date.now() }));
 
-// ── Bling ─────────────────────────────────────────────────────
+// ── Bling OAuth v3 ────────────────────────────────────────────
 
-app.get('/api/bling/status', async (req, res) => {
-  if (!BLING_API_KEY) return res.json({ connected: false, erro: 'BLING_API_KEY não configurada' });
+// Inicia o fluxo OAuth — redireciona para o Bling
+app.get('/api/bling/auth', (req, res) => {
+  if (!BLING_CLIENT_ID) return res.redirect('/app.html?tab=conexao&bling_error=sem_client_id');
+  const proto    = req.get('x-forwarded-proto') || req.protocol;
+  const callback = `${proto}://${req.get('host')}/api/bling/callback`;
+  const url = `https://www.bling.com.br/OAuth/Authorize`
+    + `?response_type=code`
+    + `&client_id=${BLING_CLIENT_ID}`
+    + `&redirect_uri=${encodeURIComponent(callback)}`;
+  addLog(`[bling] OAuth iniciado, callback: ${callback}`, 'info');
+  res.redirect(url);
+});
+
+// Recebe o code e troca pelo access_token
+app.get('/api/bling/callback', async (req, res) => {
+  const { code, error } = req.query;
+  if (error || !code) return res.redirect('/app.html?tab=conexao&bling_error=auth_cancelado');
+  if (!BLING_CLIENT_ID || !BLING_CLIENT_SECRET)
+    return res.redirect('/app.html?tab=conexao&bling_error=sem_credenciais');
+
+  const proto    = req.get('x-forwarded-proto') || req.protocol;
+  const callback = `${proto}://${req.get('host')}/api/bling/callback`;
+  const creds    = Buffer.from(`${BLING_CLIENT_ID}:${BLING_CLIENT_SECRET}`).toString('base64');
+
   try {
-    const resp = await axios.get('https://bling.com.br/Api/v2/situacoes/modulo/notasfiscal/json/', {
-      params: { apikey: BLING_API_KEY },
-      timeout: 10000,
-    });
-    const body = resp.data;
-    // Bling v2 retorna { retorno: { erros: [...] } } em caso de erro
-    if (body?.retorno?.erros) {
-      const msg = body.retorno.erros[0]?.erro?.msg || 'Erro desconhecido';
-      return res.json({ connected: false, erro: msg });
-    }
-    return res.json({ connected: true });
+    const resp = await axios.post(
+      'https://www.bling.com.br/OAuth/Token',
+      new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri: callback }),
+      { headers: { Authorization: `Basic ${creds}`, 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 15000 }
+    );
+    const data = loadData();
+    data.bling = {
+      access_token:  resp.data.access_token,
+      refresh_token: resp.data.refresh_token,
+      expires_at:    Date.now() + ((resp.data.expires_in || 21600) - 300) * 1000,
+    };
+    fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+    addLog(`[bling] ✅ Token obtido e salvo`, 'ok');
+    res.redirect('/app.html?tab=conexao&bling_connected=true');
   } catch (err) {
-    // Loga resposta completa para diagnóstico
-    const detail = err.response ? `HTTP ${err.response.status}: ${JSON.stringify(err.response.data).slice(0, 200)}` : err.message;
+    const detalhe = JSON.stringify(err.response?.data || err.message);
+    addLog(`[bling] ❌ Erro no token exchange: ${detalhe}`, 'erro');
+    res.redirect(`/app.html?tab=conexao&bling_error=${encodeURIComponent(detalhe)}`);
+  }
+});
+
+// Renova o access_token usando o refresh_token
+async function blingRefreshToken() {
+  const data = loadData();
+  if (!data.bling?.refresh_token) throw new Error('Sem refresh_token do Bling');
+  const creds = Buffer.from(`${BLING_CLIENT_ID}:${BLING_CLIENT_SECRET}`).toString('base64');
+  const resp  = await axios.post(
+    'https://www.bling.com.br/OAuth/Token',
+    new URLSearchParams({ grant_type: 'refresh_token', refresh_token: data.bling.refresh_token }),
+    { headers: { Authorization: `Basic ${creds}`, 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 15000 }
+  );
+  data.bling.access_token  = resp.data.access_token;
+  data.bling.refresh_token = resp.data.refresh_token || data.bling.refresh_token;
+  data.bling.expires_at    = Date.now() + ((resp.data.expires_in || 21600) - 300) * 1000;
+  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+  addLog(`[bling] 🔄 Token renovado`, 'ok');
+  return data.bling.access_token;
+}
+
+// Retorna token válido, renovando se necessário
+async function getBlingToken() {
+  const data = loadData();
+  if (!data.bling?.access_token) throw new Error('Bling não conectado');
+  if (Date.now() >= (data.bling.expires_at || 0)) {
+    return blingRefreshToken();
+  }
+  return data.bling.access_token;
+}
+
+// Status de conexão
+app.get('/api/bling/status', async (req, res) => {
+  if (!BLING_CLIENT_ID) return res.json({ connected: false, erro: 'BLING_CLIENT_ID não configurado' });
+  const data = loadData();
+  if (!data.bling?.access_token) return res.json({ connected: false, erro: 'não autorizado' });
+  try {
+    const token = await getBlingToken();
+    const resp  = await axios.get('https://www.bling.com.br/Api/v3/empresas', {
+      headers: { Authorization: `Bearer ${token}` }, timeout: 10000,
+    });
+    const nome = resp.data?.data?.nome || '';
+    return res.json({ connected: true, nome });
+  } catch (err) {
+    const detail = err.response ? `HTTP ${err.response.status}` : err.message;
     addLog(`[bling] status check falhou: ${detail}`, 'warn');
-    return res.json({ connected: false, erro: err.response ? `HTTP ${err.response.status}` : err.message });
+    return res.json({ connected: false, erro: detail });
   }
 });
 
@@ -2572,7 +2643,8 @@ app.get('/api/shopee/orders', async (req, res) => {
 
 const TELEGRAM_TOKEN   = process.env.TELEGRAM_TOKEN;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
-const BLING_API_KEY    = process.env.BLING_API_KEY;
+const BLING_CLIENT_ID     = process.env.BLING_CLIENT_ID;
+const BLING_CLIENT_SECRET = process.env.BLING_CLIENT_SECRET;
 
 // Número 1: contas a pagar + anúncios pausados
 const CALLMEBOT_PHONE  = process.env.CALLMEBOT_PHONE;
