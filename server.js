@@ -883,22 +883,17 @@ async function getBlingToken() {
   return data.bling.access_token;
 }
 
-// Status de conexão
+// Status de conexão — verifica apenas se há token válido, sem chamada extra à API
 app.get('/api/bling/status', async (req, res) => {
   if (!BLING_CLIENT_ID) return res.json({ connected: false, erro: 'BLING_CLIENT_ID não configurado' });
   const data = loadData();
   if (!data.bling?.access_token) return res.json({ connected: false, erro: 'não autorizado' });
+  // Se o token expirou, tenta renovar
   try {
-    const token = await getBlingToken();
-    // Usa endpoint leve para verificar se o token é válido
-    await axios.get('https://www.bling.com.br/Api/v3/contatos?limite=1', {
-      headers: { Authorization: `Bearer ${token}` }, timeout: 10000,
-    });
+    await getBlingToken();
     return res.json({ connected: true });
   } catch (err) {
-    const detail = err.response ? `HTTP ${err.response.status}` : err.message;
-    addLog(`[bling] status check falhou: ${detail}`, 'warn');
-    return res.json({ connected: false, erro: detail });
+    return res.json({ connected: false, erro: err.message });
   }
 });
 
