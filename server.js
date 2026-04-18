@@ -2602,7 +2602,7 @@ async function enviarTelegram(texto) {
 
 // Mantém os shipmentIds já notificados em memória (reseta ao reiniciar)
 const shipmentsNotificados = new Set();
-let telegramPrimeiraVerificacao = true;
+const SERVER_START_TIME = new Date();
 
 async function verificarNovosShipmentsTelegram() {
   if (!TELEGRAM_TOKEN || !TELEGRAM_CHAT_ID) return;
@@ -2632,14 +2632,16 @@ async function verificarNovosShipmentsTelegram() {
             headers: { Authorization: `Bearer ${c.access_token}` }, timeout: 8000,
           });
           const shipment = sr.data;
-          const isFull = (shipment.logistic_type || '').includes('fulfillment');
-          addLog(`[pedido] #${order.id} sid=${sid} status=${shipment.status} sub=${shipment.substatus} full=${isFull}`, 'info');
+          const orderDate = new Date(order.date_created || 0);
+          const isNovo = orderDate > SERVER_START_TIME;
+          addLog(`[pedido] #${order.id} status=${shipment.status} full=${isFull} novo=${isNovo}`, 'info');
+
           if (!LABEL_STATUSES.has(shipment.status) || isFull) {
             shipmentsNotificados.add(sid);
             continue;
           }
           shipmentsNotificados.add(sid);
-          if (telegramPrimeiraVerificacao) continue; // não notifica na inicialização
+          if (!isNovo) continue; // pedido existia antes do servidor subir
 
           const itens = (order.order_items || []).map(i => `• ${i.item.title} (x${i.quantity})`).join('\n');
           const conta = c.nickname || c.nome || `Conta ${num}`;
@@ -2649,7 +2651,7 @@ async function verificarNovosShipmentsTelegram() {
             `Comprador: ${order.buyer?.nickname || '—'}\n` +
             `Status: ${status}\n\n${itens}`;
           await notificarPedido(texto);
-          addLog(`[pedido] Notificação enviada para pedido #${order.id}`, 'ok');
+          addLog(`[pedido] Notificação enviada — #${order.id}`, 'ok');
         } catch (err) {
           addLog(`[pedido] Erro ao processar shipment ${sid}: ${err.message}`, 'warn');
         }
@@ -2658,7 +2660,6 @@ async function verificarNovosShipmentsTelegram() {
       addLog(`Telegram monitor conta ${num}: ${err.message}`, 'warn');
     }
   }
-  telegramPrimeiraVerificacao = false;
 }
 
 // ── Polling em background: anúncios pausados ──────────────────
