@@ -2619,8 +2619,7 @@ async function verificarNovosShipmentsTelegram() {
         timeout: 15000,
       });
       const orders = resp.data.results || [];
-      const LABEL_STATUSES    = new Set(['handling', 'ready_to_ship']);
-      const LABEL_SUBSTATUSES = new Set(['ready_to_print', 'printed']);
+      const LABEL_STATUSES = new Set(['handling', 'ready_to_ship']);
       const STATUS_PT = { handling: 'Preparando', ready_to_ship: 'Aguardando coleta' };
 
       for (const order of orders) {
@@ -2634,22 +2633,26 @@ async function verificarNovosShipmentsTelegram() {
           });
           const shipment = sr.data;
           const isFull = (shipment.logistic_type || '').includes('fulfillment');
-          if (!LABEL_STATUSES.has(shipment.status) || !LABEL_SUBSTATUSES.has(shipment.substatus) || isFull) {
-            shipmentsNotificados.add(sid); // marca para não checar de novo
+          addLog(`[pedido] #${order.id} sid=${sid} status=${shipment.status} sub=${shipment.substatus} full=${isFull}`, 'info');
+          if (!LABEL_STATUSES.has(shipment.status) || isFull) {
+            shipmentsNotificados.add(sid);
             continue;
           }
           shipmentsNotificados.add(sid);
           if (telegramPrimeiraVerificacao) continue; // não notifica na inicialização
 
           const itens = (order.order_items || []).map(i => `• ${i.item.title} (x${i.quantity})`).join('\n');
-          const conta = c.nome || `Conta ${num}`;
+          const conta = c.nickname || c.nome || `Conta ${num}`;
           const status = STATUS_PT[shipment.status] || shipment.status;
           const texto = `🛍 <b>Novo pedido — ${conta}</b>\n` +
             `Pedido: #${order.id}\n` +
             `Comprador: ${order.buyer?.nickname || '—'}\n` +
             `Status: ${status}\n\n${itens}`;
           await notificarPedido(texto);
-        } catch {}
+          addLog(`[pedido] Notificação enviada para pedido #${order.id}`, 'ok');
+        } catch (err) {
+          addLog(`[pedido] Erro ao processar shipment ${sid}: ${err.message}`, 'warn');
+        }
       }
     } catch (err) {
       addLog(`Telegram monitor conta ${num}: ${err.message}`, 'warn');
