@@ -186,6 +186,28 @@ async function cxTestarTelegram() {
   if (btn) btn.disabled = false;
 }
 
+// ── Bling ─────────────────────────────────────────────────────
+
+async function verificarBling() {
+  const dot = document.getElementById('bling-status-dot');
+  const txt = document.getElementById('bling-status-txt');
+  txt.textContent = 'Bling: verificando...';
+  dot.className = 'dot';
+  try {
+    const data = await fetch('/api/bling/status', { signal: AbortSignal.timeout(10000) }).then(r => r.json());
+    if (data.connected) {
+      dot.className = 'dot conectado';
+      txt.textContent = `Bling: conectado${data.nome ? ` — ${data.nome}` : ''}`;
+    } else {
+      dot.className = 'dot desconectado';
+      txt.textContent = `Bling: ${data.erro || 'não conectado'}`;
+    }
+  } catch {
+    dot.className = 'dot desconectado';
+    txt.textContent = 'Bling: servidor não responde';
+  }
+}
+
 // ── Helpers ───────────────────────────────────────────────────
 
 function cxMostrarMsg(texto, tipo) {
@@ -205,6 +227,7 @@ document.querySelectorAll('.nav-btn[data-tab]').forEach(btn => {
     if (btn.dataset.tab === 'conexao') {
       cxIniciarStream();
       verificarConexao();
+      verificarBling();
       cxCarregarCredenciais(cxContaSelecionada);
     } else {
       cxPararStream();
@@ -216,5 +239,6 @@ document.querySelectorAll('.nav-btn[data-tab]').forEach(btn => {
 if (new URLSearchParams(location.search).get('tab') === 'conexao') {
   cxIniciarStream();
   verificarConexao();
+  verificarBling();
   cxCarregarCredenciais(cxContaSelecionada);
 }

@@ -804,6 +804,28 @@ function extrairSku(body) {
 // Ping simples para testar conectividade frontend→servidor
 app.get('/api/ping', (req, res) => res.json({ ok: true, ts: Date.now() }));
 
+// ── Bling ─────────────────────────────────────────────────────
+
+app.get('/api/bling/status', async (req, res) => {
+  if (!BLING_API_KEY) return res.json({ connected: false, erro: 'BLING_API_KEY não configurada' });
+  try {
+    const resp = await axios.get('https://bling.com.br/Api/v2/empresa/json/', {
+      params: { apikey: BLING_API_KEY },
+      timeout: 10000,
+    });
+    const body = resp.data;
+    // Bling v2 retorna { retorno: { erros: [...] } } em caso de erro
+    if (body?.retorno?.erros) {
+      const msg = body.retorno.erros[0]?.erro?.msg || 'Erro desconhecido';
+      return res.json({ connected: false, erro: msg });
+    }
+    const empresa = body?.retorno?.empresa;
+    return res.json({ connected: true, nome: empresa?.nome || '' });
+  } catch (err) {
+    return res.json({ connected: false, erro: err.message });
+  }
+});
+
 app.get('/api/ml/estoque', async (req, res) => {
   const data = loadData();
   const num  = data.conta_ativa;
@@ -2548,6 +2570,7 @@ app.get('/api/shopee/orders', async (req, res) => {
 
 const TELEGRAM_TOKEN   = process.env.TELEGRAM_TOKEN;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+const BLING_API_KEY    = process.env.BLING_API_KEY;
 
 // Número 1: contas a pagar + anúncios pausados
 const CALLMEBOT_PHONE  = process.env.CALLMEBOT_PHONE;
