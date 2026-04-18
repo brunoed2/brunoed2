@@ -809,7 +809,7 @@ app.get('/api/ping', (req, res) => res.json({ ok: true, ts: Date.now() }));
 app.get('/api/bling/status', async (req, res) => {
   if (!BLING_API_KEY) return res.json({ connected: false, erro: 'BLING_API_KEY não configurada' });
   try {
-    const resp = await axios.get('https://bling.com.br/Api/v2/empresa/json/', {
+    const resp = await axios.get('https://bling.com.br/Api/v2/situacoes/modulo/notasfiscal/json/', {
       params: { apikey: BLING_API_KEY },
       timeout: 10000,
     });
@@ -819,10 +819,12 @@ app.get('/api/bling/status', async (req, res) => {
       const msg = body.retorno.erros[0]?.erro?.msg || 'Erro desconhecido';
       return res.json({ connected: false, erro: msg });
     }
-    const empresa = body?.retorno?.empresa;
-    return res.json({ connected: true, nome: empresa?.nome || '' });
+    return res.json({ connected: true });
   } catch (err) {
-    return res.json({ connected: false, erro: err.message });
+    // Loga resposta completa para diagnóstico
+    const detail = err.response ? `HTTP ${err.response.status}: ${JSON.stringify(err.response.data).slice(0, 200)}` : err.message;
+    addLog(`[bling] status check falhou: ${detail}`, 'warn');
+    return res.json({ connected: false, erro: err.response ? `HTTP ${err.response.status}` : err.message });
   }
 });
 
