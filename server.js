@@ -897,52 +897,27 @@ app.get('/api/bling/status', async (req, res) => {
   }
 });
 
-// ── Bling: pedidos ML sem NF ──────────────────────────────────
+// ── Bling: pedidos de venda com situação "Em aberto" ─────────
+// situacao 6 = Em aberto no Bling v3
 
 app.get('/api/bling/pedidos-pendentes', async (req, res) => {
-  const data = loadData();
   try {
-    const blingToken = await getBlingToken();
-
-    // Busca pedidos pagos recentes do ML (conta 1 e 2)
-    const pedidosML = [];
-    for (const num of ['1', '2']) {
-      const c = data.contas[num];
-      if (!c?.access_token) continue;
-      try {
-        const resp = await axios.get('https://api.mercadolibre.com/orders/search', {
-          params: { seller: c.user_id, 'order.status': 'paid', sort: 'date_desc', limit: 50 },
-          headers: { Authorization: `Bearer ${c.access_token}` },
-          timeout: 15000,
-        });
-        for (const o of (resp.data.results || [])) {
-          pedidosML.push({
-            id:           String(o.id),
-            comprador:    o.buyer?.nickname || '—',
-            valor_total:  o.total_amount || 0,
-            data:         o.date_created,
-            itens:        (o.order_items || []).map(i => ({ titulo: i.item?.title || '', quantidade: i.quantity })),
-          });
-        }
-      } catch {}
-    }
-
-    if (pedidosML.length === 0) return res.json({ pedidos: [] });
-
-    // Busca NFs já criadas no Bling para filtrar pedidos que já têm nota
-    const nfsResp = await axios.get('https://www.bling.com.br/Api/v3/nfe', {
-      headers: { Authorization: `Bearer ${blingToken}` },
-      params: { pagina: 1, limite: 100 },
+    const token = await getBlingToken();
+    const resp  = await axios.get('https://www.bling.com.br/Api/v3/pedidos/vendas', {
+      headers: { Authorization: `Bearer ${token}` },
+      params: { pagina: 1, limite: 100, idSituacao: 6 },
       timeout: 15000,
     });
-    const nfs = nfsResp.data?.data || [];
-    // O número do pedido ML costuma aparecer nas informações adicionais ou observações
-    const idsComNF = new Set(
-      nfs.map(n => String(n.numeroOrdemCompra || n.pedidoNumero || '')).filter(Boolean)
-    );
-
-    const pendentes = pedidosML.filter(p => !idsComNF.has(p.id));
-    return res.json({ pedidos: pendentes });
+    const itens = resp.data?.data || [];
+    const pedidos = itens.map(p => ({
+      id:           p.id,
+      numero:       p.numero || '—',
+      comprador:    p.contato?.nome || '—',
+      valor_total:  p.totalProdutos || 0,
+      data:         p.data,
+      situacao:     p.situacao?.valor || 'Em aberto',
+    }));
+    return res.json({ pedidos });
   } catch (err) {
     const detail = err.response ? `HTTP ${err.response.status}: ${JSON.stringify(err.response.data).slice(0, 200)}` : err.message;
     addLog(`[bling] pedidos-pendentes: ${detail}`, 'warn');

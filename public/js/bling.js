@@ -56,14 +56,13 @@ async function blingCarregarPedidos() {
 
     for (const p of pedidos) {
       const tr = document.createElement('tr');
-      const itens = (p.itens || []).map(i => `${i.titulo} (x${i.quantidade})`).join(', ');
-      const valor = (p.valor_total || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+      const valor    = (p.valor_total || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
       const data_str = p.data ? new Date(p.data).toLocaleDateString('pt-BR') : '—';
       tr.innerHTML = `
-        <td><a href="https://www.mercadolivre.com.br/vendas/${p.id}" target="_blank">#${p.id}</a></td>
+        <td>${escapeHtml(p.numero || String(p.id))}</td>
         <td>${escapeHtml(p.comprador || '—')}</td>
-        <td style="font-size:12px">${escapeHtml(itens)}</td>
         <td class="col-num">${valor}</td>
+        <td><span class="badge">${escapeHtml(p.situacao || 'Em aberto')}</span></td>
         <td>${data_str}</td>
         <td><button class="btn-sm" onclick="blingEmitirNF('${p.id}', this)">Emitir NF</button></td>
       `;
