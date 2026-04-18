@@ -443,6 +443,8 @@ process.on('unhandledRejection', (reason) => {
 process.on('uncaughtException', (err) => {
   addLog(`[uncaughtException] ${err.message}`, 'erro');
 });
+// SIGTERM = Railway parando o container para novo deploy — sai com código 0 (sem email de crash)
+process.on('SIGTERM', () => process.exit(0));
 
 // Log de diagnóstico na inicialização
 (function logStartupState() {
