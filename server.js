@@ -2600,9 +2600,19 @@ async function enviarTelegram(texto) {
   }
 }
 
-// Mantém os shipmentIds já notificados em memória (reseta ao reiniciar)
-const shipmentsNotificados = new Set();
-const SERVER_START_TIME = new Date();
+// Mantém os shipmentIds já notificados — carregado do disco, persiste entre restarts
+function carregarShipmentsNotificados() {
+  const data = loadData();
+  return new Set(Array.isArray(data.shipmentsNotificados) ? data.shipmentsNotificados : []);
+}
+function salvarShipmentsNotificados(set) {
+  const data = loadData();
+  // Guarda no máximo os últimos 500 IDs para não crescer indefinidamente
+  const arr = Array.from(set);
+  data.shipmentsNotificados = arr.slice(-500);
+  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+}
+const shipmentsNotificados = carregarShipmentsNotificados();
 
 async function verificarNovosShipmentsTelegram() {
   if (!TELEGRAM_TOKEN || !TELEGRAM_CHAT_ID) return;
@@ -2633,16 +2643,16 @@ async function verificarNovosShipmentsTelegram() {
           });
           const shipment = sr.data;
           const isFull = (shipment.logistic_type || '').includes('fulfillment');
-          const orderDate = new Date(order.date_created || 0);
-          const isNovo = orderDate > SERVER_START_TIME;
-          addLog(`[pedido] #${order.id} status=${shipment.status} full=${isFull} novo=${isNovo}`, 'info');
+          addLog(`[pedido] #${order.id} status=${shipment.status} full=${isFull}`, 'info');
 
           if (!LABEL_STATUSES.has(shipment.status) || isFull) {
             shipmentsNotificados.add(sid);
+            salvarShipmentsNotificados(shipmentsNotificados);
             continue;
           }
+
           shipmentsNotificados.add(sid);
-          if (!isNovo) continue; // pedido existia antes do servidor subir
+          salvarShipmentsNotificados(shipmentsNotificados);
 
           const itens = (order.order_items || []).map(i => `• ${i.item.title} (x${i.quantity})`).join('\n');
           const conta = c.nickname || c.nome || `Conta ${num}`;
