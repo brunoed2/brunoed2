@@ -42,6 +42,7 @@ function abrirAba(nome) {
   if (nome === 'config')       carregarConfig(contaConfigurando);
   if (nome === 'promocoes')    carregarPromocoes();
   if (nome === 'contas-pagar') contasPagarInit();
+  if (nome === 'bling')        blingInit();
 }
 
 navBtns.forEach(btn => {

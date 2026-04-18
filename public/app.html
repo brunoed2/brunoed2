@@ -32,6 +32,7 @@
         <button class="nav-btn" data-tab="shopee">🛒 Shopee</button>
         <button class="nav-btn" data-tab="promocoes">🏷️ Promoções</button>
         <button class="nav-btn" data-tab="contas-pagar">💳 Contas a Pagar</button>
+        <button class="nav-btn" data-tab="bling">🧾 Bling</button>
         <button class="nav-btn" data-tab="config">⚙️ Configurações</button>
         <button class="nav-btn" data-tab="conexao">🔌 Conexão</button>
       </nav>
@@ -569,6 +570,68 @@
         </div>
       </section>
 
+      <!-- ── Aba: Bling ── -->
+      <section id="tab-bling" class="tab">
+        <h1>Bling</h1>
+        <p class="subtitle">Emissão de notas fiscais integrada ao Bling ERP.</p>
+
+        <!-- Sub-abas -->
+        <div style="display:flex;gap:8px;margin-bottom:20px">
+          <button class="filtro-btn active" id="bling-sub-pedidos"  onclick="blingAbrirSub('pedidos')">📋 Pedidos pendentes</button>
+          <button class="filtro-btn"        id="bling-sub-notas"    onclick="blingAbrirSub('notas')">🧾 Notas pendentes de envio</button>
+        </div>
+
+        <!-- Sub-aba: Pedidos pendentes -->
+        <div id="bling-painel-pedidos">
+          <div class="tabela-container">
+            <div class="tabela-topo">
+              <span id="bling-pedidos-total"></span>
+              <button class="btn-secondary" onclick="blingCarregarPedidos()" id="btn-atualizar-bling-pedidos">↻ Atualizar</button>
+            </div>
+            <div id="bling-pedidos-loading" class="loading" style="display:none">Carregando pedidos...</div>
+            <div id="bling-pedidos-erro" class="estoque-erro" style="display:none"></div>
+            <table class="tabela" id="tabela-bling-pedidos" style="display:none">
+              <thead>
+                <tr>
+                  <th>Pedido ML</th>
+                  <th>Comprador</th>
+                  <th>Itens</th>
+                  <th class="col-num">Valor</th>
+                  <th>Data</th>
+                  <th>Ação</th>
+                </tr>
+              </thead>
+              <tbody id="tabela-bling-pedidos-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Sub-aba: Notas pendentes -->
+        <div id="bling-painel-notas" style="display:none">
+          <div class="tabela-container">
+            <div class="tabela-topo">
+              <span id="bling-notas-total"></span>
+              <button class="btn-secondary" onclick="blingCarregarNotas()" id="btn-atualizar-bling-notas">↻ Atualizar</button>
+            </div>
+            <div id="bling-notas-loading" class="loading" style="display:none">Carregando notas...</div>
+            <div id="bling-notas-erro" class="estoque-erro" style="display:none"></div>
+            <table class="tabela" id="tabela-bling-notas" style="display:none">
+              <thead>
+                <tr>
+                  <th>Número</th>
+                  <th>Destinatário</th>
+                  <th class="col-num">Valor</th>
+                  <th>Status</th>
+                  <th>Data</th>
+                  <th>Ação</th>
+                </tr>
+              </thead>
+              <tbody id="tabela-bling-notas-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
       <!-- ── Aba: Promoções ── -->
       <section id="tab-promocoes" class="tab">
         <h1>Promoções</h1>
@@ -676,6 +739,7 @@
   <script src="/js/shopee.js?v=118"></script>
   <script src="/js/contas-pagar.js?v=1"></script>
   <script src="/js/promocoes.js?v=1"></script>
-  <div id="version-badge">v225</div>
+  <script src="/js/bling.js?v=1"></script>
+  <div id="version-badge">v226</div>
 </body>
 </html>
