@@ -809,17 +809,23 @@ app.get('/api/ping', (req, res) => res.json({ ok: true, ts: Date.now() }));
 // Inicia o fluxo OAuth — redireciona para o Bling
 app.get('/api/bling/auth', (req, res) => {
   if (!BLING_CLIENT_ID) return res.redirect('/app.html?tab=conexao&bling_error=sem_client_id');
+  const state = Math.random().toString(36).slice(2);
   const url = `https://www.bling.com.br/Api/v3/oauth/authorize`
     + `?response_type=code`
-    + `&client_id=${BLING_CLIENT_ID}`;
-  addLog(`[bling] OAuth iniciado`, 'info');
+    + `&client_id=${BLING_CLIENT_ID}`
+    + `&state=${state}`;
+  addLog(`[bling] OAuth iniciado, state=${state}`, 'info');
   res.redirect(url);
 });
 
 // Recebe o code e troca pelo access_token
 app.get('/api/bling/callback', async (req, res) => {
+  addLog(`[bling] callback recebido: ${JSON.stringify(req.query)}`, 'info');
   const { code, error } = req.query;
-  if (error || !code) return res.redirect('/app.html?tab=conexao&bling_error=auth_cancelado');
+  if (error || !code) {
+    addLog(`[bling] callback sem code: error=${error}`, 'warn');
+    return res.redirect(`/app.html?tab=conexao&bling_error=${encodeURIComponent(error || 'sem_code')}`);
+  }
   if (!BLING_CLIENT_ID || !BLING_CLIENT_SECRET)
     return res.redirect('/app.html?tab=conexao&bling_error=sem_credenciais');
 
