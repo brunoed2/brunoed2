@@ -811,7 +811,7 @@ app.get('/api/bling/auth', (req, res) => {
   if (!BLING_CLIENT_ID) return res.redirect('/app.html?tab=conexao&bling_error=sem_client_id');
   const proto    = req.get('x-forwarded-proto') || req.protocol;
   const callback = `${proto}://${req.get('host')}/api/bling/callback`;
-  const url = `https://www.bling.com.br/OAuth/Authorize`
+  const url = `https://www.bling.com.br/Api/v3/oauth/authorize`
     + `?response_type=code`
     + `&client_id=${BLING_CLIENT_ID}`
     + `&redirect_uri=${encodeURIComponent(callback)}`;
@@ -832,7 +832,7 @@ app.get('/api/bling/callback', async (req, res) => {
 
   try {
     const resp = await axios.post(
-      'https://www.bling.com.br/OAuth/Token',
+      'https://www.bling.com.br/Api/v3/oauth/token',
       new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri: callback }),
       { headers: { Authorization: `Basic ${creds}`, 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 15000 }
     );
@@ -858,7 +858,7 @@ async function blingRefreshToken() {
   if (!data.bling?.refresh_token) throw new Error('Sem refresh_token do Bling');
   const creds = Buffer.from(`${BLING_CLIENT_ID}:${BLING_CLIENT_SECRET}`).toString('base64');
   const resp  = await axios.post(
-    'https://www.bling.com.br/OAuth/Token',
+    'https://www.bling.com.br/Api/v3/oauth/token',
     new URLSearchParams({ grant_type: 'refresh_token', refresh_token: data.bling.refresh_token }),
     { headers: { Authorization: `Basic ${creds}`, 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 15000 }
   );
