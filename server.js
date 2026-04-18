@@ -809,13 +809,10 @@ app.get('/api/ping', (req, res) => res.json({ ok: true, ts: Date.now() }));
 // Inicia o fluxo OAuth — redireciona para o Bling
 app.get('/api/bling/auth', (req, res) => {
   if (!BLING_CLIENT_ID) return res.redirect('/app.html?tab=conexao&bling_error=sem_client_id');
-  const proto    = req.get('x-forwarded-proto') || req.protocol;
-  const callback = `${proto}://${req.get('host')}/api/bling/callback`;
   const url = `https://www.bling.com.br/Api/v3/oauth/authorize`
     + `?response_type=code`
-    + `&client_id=${BLING_CLIENT_ID}`
-    + `&redirect_uri=${encodeURIComponent(callback)}`;
-  addLog(`[bling] OAuth iniciado, callback: ${callback}`, 'info');
+    + `&client_id=${BLING_CLIENT_ID}`;
+  addLog(`[bling] OAuth iniciado`, 'info');
   res.redirect(url);
 });
 
