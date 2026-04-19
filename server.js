@@ -917,21 +917,18 @@ app.get('/api/bling/pedidos-pendentes', async (req, res) => {
       data:             p.data,
       situacao:         p.situacao?.valor || 'Em aberto',
       numeroPedidoLoja: p.numeroLoja || null,
-      dataSaida:        p.dataSaida || null,
+      dataPrevista:     p.dataPrevista || null,
       temEtiqueta:      false,
     }));
 
-    addLog(`[bling] dataPrevista de cada pedido: ${itens.map(p => `${p.numero}=${p.dataPrevista}`).join(', ')}`, 'info');
-
-    // temEtiqueta: ML abre a janela de etiqueta quando dataSaida está próxima (≤2 dias).
-    // Os pedidos dessa conta ML não são acessíveis via API com os tokens disponíveis,
-    // então usamos dataSaida do Bling como proxy confiável.
-    const hoje  = new Date(); hoje.setHours(0, 0, 0, 0);
-    const limite = new Date(hoje); limite.setDate(limite.getDate() + 2);
+    // temEtiqueta: ML abre a janela de etiqueta quando dataPrevista (entrega) é amanhã ou menos.
+    // Pedidos para entrega amanhã precisam ser despachados hoje → janela já aberta.
+    const hoje   = new Date(); hoje.setHours(0, 0, 0, 0);
+    const amanha = new Date(hoje); amanha.setDate(amanha.getDate() + 1);
     pedidos.forEach(p => {
-      if (!p.dataSaida || !p.numeroPedidoLoja || !/^\d+$/.test(String(p.numeroPedidoLoja))) return;
-      const ds = new Date(p.dataSaida);
-      p.temEtiqueta = ds >= hoje && ds <= limite;
+      if (!p.dataPrevista || !/^\d+$/.test(String(p.numeroPedidoLoja || ''))) return;
+      const dp = new Date(p.dataPrevista);
+      p.temEtiqueta = dp <= amanha;
     });
 
     return res.json({ pedidos });
