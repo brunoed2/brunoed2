@@ -920,11 +920,15 @@ app.get('/api/bling/pedidos-pendentes', async (req, res) => {
       temEtiqueta:      false,
     }));
 
+    const semNumero = pedidos.filter(p => !p.numeroPedidoLoja).length;
+    addLog(`[bling] ${itens.length} pedidos — ${pedidos.length - semNumero} com numeroLoja, ${semNumero} sem`, 'info');
+
     // Para cada pedido com número no marketplace (ML), verifica se a janela de despacho
     // já está aberta (substatus contém 'waiting_te') — só nesses casos a etiqueta ficará
     // disponível logo após emissão da NF.
     const appData  = loadData();
     const mlTokens = ['1', '2'].map(n => appData.contas?.[n]?.access_token).filter(Boolean);
+    addLog(`[bling] mlTokens disponíveis: ${mlTokens.length}`, 'info');
     if (mlTokens.length > 0) {
       await Promise.all(pedidos.map(async p => {
         if (!p.numeroPedidoLoja) return;
