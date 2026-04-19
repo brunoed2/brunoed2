@@ -939,6 +939,7 @@ app.get('/api/bling/pedidos-pendentes', async (req, res) => {
             const shipR   = await axios.get(`https://api.mercadolibre.com/shipments/${shipId}`,
               { headers, timeout: 8000 });
             const sub     = shipR.data?.substatus || '';
+            addLog(`[bling] pedido ${p.numeroPedidoLoja} shipment ${shipId} substatus=${sub} lt=${lt}`, 'info');
             p.temEtiqueta = sub.includes('waiting_te');
             return;
           } catch {}

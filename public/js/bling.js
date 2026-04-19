@@ -45,11 +45,11 @@ async function blingCarregarPedidos() {
       return;
     }
 
-    const pedidos = (data.pedidos || []).filter(p => p.temEtiqueta);
-    total.textContent = `${pedidos.length} pedido${pedidos.length !== 1 ? 's' : ''} com etiqueta disponível após NF`;
+    const pedidos = data.pedidos || [];
+    total.textContent = `${pedidos.length} pedido${pedidos.length !== 1 ? 's' : ''} sem nota fiscal`;
 
     if (pedidos.length === 0) {
-      erro.textContent   = 'Nenhum pedido pendente com etiqueta disponível.';
+      erro.textContent   = 'Nenhum pedido pendente de nota fiscal.';
       erro.style.display = '';
       return;
     }
@@ -58,13 +58,16 @@ async function blingCarregarPedidos() {
       const tr = document.createElement('tr');
       const valor    = (p.valor_total || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
       const data_str = p.data ? new Date(p.data).toLocaleDateString('pt-BR') : '—';
+      const etqIcon  = p.temEtiqueta
+        ? `<span style="color:#22c55e;font-size:18px" title="Etiqueta disponível após NF">&#10003;</span>`
+        : '';
       tr.innerHTML = `
         <td>${escapeHtml(p.numero || String(p.id))}</td>
         <td>${escapeHtml(p.comprador || '—')}</td>
         <td class="col-num">${valor}</td>
         <td><span class="badge">${escapeHtml(p.situacao || 'Em aberto')}</span></td>
         <td>${data_str}</td>
-        <td style="text-align:center"><span style="color:#22c55e;font-size:18px" title="Etiqueta disponível após NF">&#10003;</span></td>
+        <td style="text-align:center">${etqIcon}</td>
         <td><button class="btn-sm" onclick="blingEmitirNF('${p.id}', this)">Emitir NF</button></td>
       `;
       tbody.appendChild(tr);
