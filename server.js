@@ -920,8 +920,9 @@ app.get('/api/bling/pedidos-pendentes', async (req, res) => {
       temEtiqueta:      false,
     }));
 
-    // Para cada pedido com número no marketplace (ML), verifica o logistic_type
-    // temEtiqueta = true apenas para pedidos que gerarão etiqueta após emissão da NF
+    // Para cada pedido com número no marketplace (ML), verifica se a janela de despacho
+    // já está aberta (substatus contém 'waiting_te') — só nesses casos a etiqueta ficará
+    // disponível logo após emissão da NF.
     const appData  = loadData();
     const mlTokens = ['1', '2'].map(n => appData.contas?.[n]?.access_token).filter(Boolean);
     if (mlTokens.length > 0) {
@@ -929,10 +930,16 @@ app.get('/api/bling/pedidos-pendentes', async (req, res) => {
         if (!p.numeroPedidoLoja) return;
         for (const tok of mlTokens) {
           try {
-            const r  = await axios.get(`https://api.mercadolibre.com/orders/${p.numeroPedidoLoja}`,
-              { headers: { Authorization: `Bearer ${tok}` }, timeout: 8000 });
-            const lt = r.data?.shipping?.logistic_type || '';
-            p.temEtiqueta = !!lt && !lt.includes('fulfillment') && lt !== 'self_service';
+            const headers = { Authorization: `Bearer ${tok}` };
+            const orderR  = await axios.get(`https://api.mercadolibre.com/orders/${p.numeroPedidoLoja}`,
+              { headers, timeout: 8000 });
+            const shipId  = orderR.data?.shipping?.id;
+            const lt      = orderR.data?.shipping?.logistic_type || '';
+            if (!shipId || lt.includes('fulfillment') || lt === 'self_service') return;
+            const shipR   = await axios.get(`https://api.mercadolibre.com/shipments/${shipId}`,
+              { headers, timeout: 8000 });
+            const sub     = shipR.data?.substatus || '';
+            p.temEtiqueta = sub.includes('waiting_te');
             return;
           } catch {}
         }
