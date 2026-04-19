@@ -917,41 +917,20 @@ app.get('/api/bling/pedidos-pendentes', async (req, res) => {
       data:             p.data,
       situacao:         p.situacao?.valor || 'Em aberto',
       numeroPedidoLoja: p.numeroLoja || null,
+      dataSaida:        p.dataSaida || null,
       temEtiqueta:      false,
     }));
 
-    const semNumero = pedidos.filter(p => !p.numeroPedidoLoja).length;
-    addLog(`[bling] ${itens.length} pedidos — ${pedidos.length - semNumero} com numeroLoja, ${semNumero} sem`, 'info');
-
-    // Para cada pedido com número no marketplace (ML), verifica se a janela de despacho
-    // já está aberta (substatus contém 'waiting_te') — só nesses casos a etiqueta ficará
-    // disponível logo após emissão da NF.
-    const appData  = loadData();
-    const mlTokens = ['1', '2'].map(n => appData.contas?.[n]?.access_token).filter(Boolean);
-    addLog(`[bling] mlTokens disponíveis: ${mlTokens.length}`, 'info');
-    if (mlTokens.length > 0) {
-      await Promise.all(pedidos.map(async p => {
-        if (!p.numeroPedidoLoja) return;
-        for (const tok of mlTokens) {
-          try {
-            const headers = { Authorization: `Bearer ${tok}` };
-            const orderR  = await axios.get(`https://api.mercadolibre.com/orders/${p.numeroPedidoLoja}`,
-              { headers, timeout: 8000 });
-            const shipId  = orderR.data?.shipping?.id;
-            const lt      = orderR.data?.shipping?.logistic_type || '';
-            if (!shipId || lt.includes('fulfillment') || lt === 'self_service') return;
-            const shipR   = await axios.get(`https://api.mercadolibre.com/shipments/${shipId}`,
-              { headers, timeout: 8000 });
-            const sub     = shipR.data?.substatus || '';
-            addLog(`[bling] pedido ${p.numeroPedidoLoja} shipment ${shipId} substatus=${sub} lt=${lt}`, 'info');
-            p.temEtiqueta = sub.includes('waiting_te');
-            return;
-          } catch (e) {
-            addLog(`[bling] erro ML pedido ${p.numeroPedidoLoja}: ${e.response?.status || e.message}`, 'warn');
-          }
-        }
-      }));
-    }
+    // temEtiqueta: ML abre a janela de etiqueta quando dataSaida está próxima (≤2 dias).
+    // Os pedidos dessa conta ML não são acessíveis via API com os tokens disponíveis,
+    // então usamos dataSaida do Bling como proxy confiável.
+    const hoje  = new Date(); hoje.setHours(0, 0, 0, 0);
+    const limite = new Date(hoje); limite.setDate(limite.getDate() + 2);
+    pedidos.forEach(p => {
+      if (!p.dataSaida || !p.numeroPedidoLoja || !/^\d+$/.test(String(p.numeroPedidoLoja))) return;
+      const ds = new Date(p.dataSaida);
+      p.temEtiqueta = ds >= hoje && ds <= limite;
+    });
 
     return res.json({ pedidos });
   } catch (err) {
