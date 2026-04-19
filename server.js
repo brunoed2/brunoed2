@@ -909,6 +909,12 @@ app.get('/api/bling/pedidos-pendentes', async (req, res) => {
       timeout: 15000,
     });
     const itens = resp.data?.data || [];
+    addLog(`[bling] pedidos-pendentes: ${itens.length} pedidos do Bling`, 'info');
+    if (itens.length > 0) {
+      const sample = itens[0];
+      addLog(`[bling] campos do 1º pedido: ${Object.keys(sample).join(', ')}`, 'info');
+      addLog(`[bling] numeroPedidoLoja=${sample.numeroPedidoLoja} loja=${JSON.stringify(sample.loja).slice(0,100)}`, 'info');
+    }
     const pedidos = itens.map(p => ({
       id:               p.id,
       numero:           p.numero || '—',
@@ -916,7 +922,7 @@ app.get('/api/bling/pedidos-pendentes', async (req, res) => {
       valor_total:      p.totalProdutos || 0,
       data:             p.data,
       situacao:         p.situacao?.valor || 'Em aberto',
-      numeroPedidoLoja: p.numeroPedidoLoja || null,
+      numeroPedidoLoja: p.numeroPedidoLoja || p.loja?.numeroPedido || null,
       temEtiqueta:      false,
     }));
 
