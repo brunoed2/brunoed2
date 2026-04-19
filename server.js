@@ -2788,6 +2788,28 @@ function salvarShipmentsNotificados(set) {
 }
 const shipmentsNotificados = carregarShipmentsNotificados();
 
+// Remove um pedido do controle de notificados (para renotificar quando etiqueta ficar disponível)
+app.delete('/api/telegram/notificado/:orderId', async (req, res) => {
+  const { orderId } = req.params;
+  const data = loadData();
+  let shipmentId = null;
+  for (const num of ['1', '2']) {
+    const c = data.contas?.[num];
+    if (!c?.access_token) continue;
+    try {
+      const r = await axios.get(`https://api.mercadolibre.com/orders/${orderId}`, {
+        headers: { Authorization: `Bearer ${c.access_token}` }, timeout: 8000,
+      });
+      shipmentId = String(r.data?.shipping?.id || '');
+      if (shipmentId) break;
+    } catch {}
+  }
+  if (!shipmentId) return res.json({ error: 'Pedido não encontrado ou sem shipment' });
+  const removido = shipmentsNotificados.delete(shipmentId);
+  if (removido) salvarShipmentsNotificados(shipmentsNotificados);
+  res.json({ ok: true, shipmentId, removido });
+});
+
 async function verificarNovosShipmentsTelegram() {
   if (!TELEGRAM_TOKEN || !TELEGRAM_CHAT_ID) return;
   const data = loadData();
@@ -2803,7 +2825,8 @@ async function verificarNovosShipmentsTelegram() {
         timeout: 15000,
       });
       const orders = resp.data.results || [];
-      const LABEL_STATUSES = new Set(['handling', 'ready_to_ship']);
+      const LABEL_STATUSES    = new Set(['handling', 'ready_to_ship']);
+      const LABEL_SUBSTATUSES = new Set(['ready_to_print', 'printed']);
       const STATUS_PT = { handling: 'Preparando', ready_to_ship: 'Aguardando coleta' };
 
       for (const order of orders) {
@@ -2817,9 +2840,9 @@ async function verificarNovosShipmentsTelegram() {
           });
           const shipment = sr.data;
           const isFull = (shipment.logistic_type || '').includes('fulfillment');
-          addLog(`[pedido] #${order.id} status=${shipment.status} full=${isFull}`, 'info');
+          addLog(`[pedido] #${order.id} status=${shipment.status} substatus=${shipment.substatus} full=${isFull}`, 'info');
 
-          if (!LABEL_STATUSES.has(shipment.status) || isFull) {
+          if (!LABEL_STATUSES.has(shipment.status) || !LABEL_SUBSTATUSES.has(shipment.substatus) || isFull) {
             shipmentsNotificados.add(sid);
             salvarShipmentsNotificados(shipmentsNotificados);
             continue;
