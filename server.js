@@ -946,7 +946,9 @@ app.get('/api/bling/pedidos-pendentes', async (req, res) => {
             addLog(`[bling] pedido ${p.numeroPedidoLoja} shipment ${shipId} substatus=${sub} lt=${lt}`, 'info');
             p.temEtiqueta = sub.includes('waiting_te');
             return;
-          } catch {}
+          } catch (e) {
+            addLog(`[bling] erro ML pedido ${p.numeroPedidoLoja}: ${e.response?.status || e.message}`, 'warn');
+          }
         }
       }));
     }
