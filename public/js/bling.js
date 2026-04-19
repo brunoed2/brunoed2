@@ -45,11 +45,11 @@ async function blingCarregarPedidos() {
       return;
     }
 
-    const pedidos = data.pedidos || [];
-    total.textContent = `${pedidos.length} pedido${pedidos.length !== 1 ? 's' : ''} sem nota fiscal`;
+    const pedidos = (data.pedidos || []).filter(p => p.temEtiqueta);
+    total.textContent = `${pedidos.length} pedido${pedidos.length !== 1 ? 's' : ''} com etiqueta disponível após NF`;
 
     if (pedidos.length === 0) {
-      erro.textContent   = 'Nenhum pedido pendente de nota fiscal.';
+      erro.textContent   = 'Nenhum pedido pendente com etiqueta disponível.';
       erro.style.display = '';
       return;
     }
@@ -64,6 +64,7 @@ async function blingCarregarPedidos() {
         <td class="col-num">${valor}</td>
         <td><span class="badge">${escapeHtml(p.situacao || 'Em aberto')}</span></td>
         <td>${data_str}</td>
+        <td style="text-align:center"><span style="color:#22c55e;font-size:18px" title="Etiqueta disponível após NF">&#10003;</span></td>
         <td><button class="btn-sm" onclick="blingEmitirNF('${p.id}', this)">Emitir NF</button></td>
       `;
       tbody.appendChild(tr);
