@@ -922,8 +922,13 @@ app.get('/api/bling/pedidos-pendentes', async (req, res) => {
     }));
 
     if (itens.length > 0) {
-      const s = itens[0];
-      addLog(`[bling] 1º pedido: data=${s.data} dataSaida=${s.dataSaida} dataPrevista=${s.dataPrevista} numeroLoja=${s.numeroLoja}`, 'info');
+      try {
+        const det = await axios.get(`https://www.bling.com.br/Api/v3/pedidos/vendas/${itens[0].id}`,
+          { headers: { Authorization: `Bearer ${token}` }, timeout: 10000 });
+        const d = det.data?.data || {};
+        addLog(`[bling] detalhe campos: ${Object.keys(d).join(', ')}`, 'info');
+        addLog(`[bling] detalhe dataSaida=${d.dataSaida} dataPrevista=${d.dataPrevista} transporte=${JSON.stringify(d.transporte || {}).slice(0,200)}`, 'info');
+      } catch (e) { addLog(`[bling] detalhe erro: ${e.message}`, 'warn'); }
     }
 
     // temEtiqueta: ML abre a janela de etiqueta quando dataSaida está próxima (≤2 dias).
