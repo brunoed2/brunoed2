@@ -921,6 +921,11 @@ app.get('/api/bling/pedidos-pendentes', async (req, res) => {
       temEtiqueta:      false,
     }));
 
+    if (itens.length > 0) {
+      const s = itens[0];
+      addLog(`[bling] 1º pedido: data=${s.data} dataSaida=${s.dataSaida} dataPrevista=${s.dataPrevista} numeroLoja=${s.numeroLoja}`, 'info');
+    }
+
     // temEtiqueta: ML abre a janela de etiqueta quando dataSaida está próxima (≤2 dias).
     // Os pedidos dessa conta ML não são acessíveis via API com os tokens disponíveis,
     // então usamos dataSaida do Bling como proxy confiável.
