@@ -921,15 +921,7 @@ app.get('/api/bling/pedidos-pendentes', async (req, res) => {
       temEtiqueta:      false,
     }));
 
-    if (itens.length > 0) {
-      try {
-        const det = await axios.get(`https://www.bling.com.br/Api/v3/pedidos/vendas/${itens[0].id}`,
-          { headers: { Authorization: `Bearer ${token}` }, timeout: 10000 });
-        const d = det.data?.data || {};
-        addLog(`[bling] detalhe campos: ${Object.keys(d).join(', ')}`, 'info');
-        addLog(`[bling] detalhe dataSaida=${d.dataSaida} dataPrevista=${d.dataPrevista} transporte=${JSON.stringify(d.transporte || {}).slice(0,200)}`, 'info');
-      } catch (e) { addLog(`[bling] detalhe erro: ${e.message}`, 'warn'); }
-    }
+    addLog(`[bling] dataPrevista de cada pedido: ${itens.map(p => `${p.numero}=${p.dataPrevista}`).join(', ')}`, 'info');
 
     // temEtiqueta: ML abre a janela de etiqueta quando dataSaida está próxima (≤2 dias).
     // Os pedidos dessa conta ML não são acessíveis via API com os tokens disponíveis,
