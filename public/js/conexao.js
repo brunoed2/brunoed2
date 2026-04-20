@@ -27,7 +27,9 @@ document.getElementById('cx-callback-url').textContent = `${location.origin}/api
 
   // Bling
   if (params.get('bling_connected') === 'true') {
-    blingMostrarMsg('✅ Bling conectado com sucesso!', 'ok');
+    const bc = params.get('bling_conta') || '1';
+    blingMostrarMsg(`✅ Bling Conta ${bc} conectado com sucesso!`, 'ok');
+    verificarBling();
   }
   if (params.get('bling_error')) {
     blingMostrarMsg(`❌ Falha na conexão com o Bling: ${decodeURIComponent(params.get('bling_error'))}`, 'erro');
@@ -204,12 +206,18 @@ async function verificarBling() {
   dot.className = 'dot';
   try {
     const data = await fetch('/api/bling/status', { signal: AbortSignal.timeout(10000) }).then(r => r.json());
-    if (data.connected) {
-      dot.className = 'dot conectado';
-      txt.textContent = `Bling: conectado${data.nome ? ` — ${data.nome}` : ''}`;
-    } else {
-      dot.className = 'dot desconectado';
-      txt.textContent = `Bling: ${data.erro || 'não conectado'}`;
+    const c1 = data['1']?.connected;
+    const c2 = data['2']?.connected;
+    const partes = [
+      `Conta 1: ${c1 ? '✅' : '❌'}`,
+      `Conta 2: ${c2 ? '✅' : '❌'}`,
+    ];
+    dot.className = `dot ${(c1 || c2) ? 'conectado' : 'desconectado'}`;
+    txt.textContent = `Bling — ${partes.join(' | ')}`;
+    // Atualiza botões
+    for (const c of ['1', '2']) {
+      const btn = document.getElementById(`btn-bling-conectar-${c}`);
+      if (btn) btn.textContent = data[c]?.connected ? `✅ Bling Conta ${c} (reconectar)` : `🔗 Conectar Bling Conta ${c}`;
     }
   } catch {
     dot.className = 'dot desconectado';

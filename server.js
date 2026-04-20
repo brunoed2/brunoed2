@@ -464,6 +464,15 @@ process.on('SIGTERM', () => process.exit(0));
       : 'expires_at ausente';
     addLog(`Conta ${num}: access_token=${temToken ? 'presente' : 'AUSENTE'}, refresh_token=${temRefresh ? 'presente' : 'AUSENTE'}, ${expiraInfo}`, temToken ? 'ok' : 'warn');
   }
+  for (const num of ['1', '2']) {
+    const b = data[`bling_${num}`] || (num === '1' && data.bling) || null;
+    if (b?.access_token) {
+      const min = b.expires_at ? Math.round((b.expires_at - Date.now()) / 60000) : null;
+      addLog(`Bling Conta ${num}: conectado, expira em ${min ?? '?'} min`, 'ok');
+    } else {
+      addLog(`Bling Conta ${num}: não conectado`, 'warn');
+    }
+  }
 })();
 
 // Busca nickname das contas conectadas que ainda não têm o campo salvo
@@ -806,22 +815,30 @@ app.get('/api/ping', (req, res) => res.json({ ok: true, ts: Date.now() }));
 
 // ── Bling OAuth v3 ────────────────────────────────────────────
 
+// Helper: retorna dados bling da conta (com fallback legado para conta 1)
+function getBlingDataConta(data, conta) {
+  return data[`bling_${conta}`] || (conta === '1' ? data.bling : null) || null;
+}
+
 // Inicia o fluxo OAuth — redireciona para o Bling
+// ?conta=1 ou ?conta=2 define qual conta será vinculada
 app.get('/api/bling/auth', (req, res) => {
   if (!BLING_CLIENT_ID) return res.redirect('/app.html?tab=conexao&bling_error=sem_client_id');
-  const state = Math.random().toString(36).slice(2);
+  const conta = req.query.conta || '1';
+  const state = `${conta}_${Math.random().toString(36).slice(2)}`;
   const url = `https://www.bling.com.br/Api/v3/oauth/authorize`
     + `?response_type=code`
     + `&client_id=${BLING_CLIENT_ID}`
     + `&state=${state}`;
-  addLog(`[bling] OAuth iniciado, state=${state}`, 'info');
+  addLog(`[bling] OAuth iniciado, conta=${conta}, state=${state}`, 'info');
   res.redirect(url);
 });
 
 // Recebe o code e troca pelo access_token
 app.get('/api/bling/callback', async (req, res) => {
   addLog(`[bling] callback recebido: ${JSON.stringify(req.query)}`, 'info');
-  const { code, error } = req.query;
+  const { code, error, state } = req.query;
+  const conta = state?.split('_')[0] || '1';
   if (error || !code) {
     addLog(`[bling] callback sem code: error=${error}`, 'warn');
     return res.redirect(`/app.html?tab=conexao&bling_error=${encodeURIComponent(error || 'sem_code')}`);
@@ -840,14 +857,16 @@ app.get('/api/bling/callback', async (req, res) => {
       { headers: { Authorization: `Basic ${creds}`, 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 15000 }
     );
     const data = loadData();
-    data.bling = {
+    const token = {
       access_token:  resp.data.access_token,
       refresh_token: resp.data.refresh_token,
       expires_at:    Date.now() + ((resp.data.expires_in || 21600) - 300) * 1000,
     };
+    data[`bling_${conta}`] = token;
+    if (conta === '1') data.bling = token; // compatibilidade legada
     fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
-    addLog(`[bling] ✅ Token obtido e salvo`, 'ok');
-    res.redirect('/app.html?tab=conexao&bling_connected=true');
+    addLog(`[bling] ✅ Token conta ${conta} obtido e salvo`, 'ok');
+    res.redirect(`/app.html?tab=conexao&bling_connected=true&bling_conta=${conta}`);
   } catch (err) {
     const detalhe = JSON.stringify(err.response?.data || err.message);
     addLog(`[bling] ❌ Erro no token exchange: ${detalhe}`, 'erro');
@@ -856,45 +875,59 @@ app.get('/api/bling/callback', async (req, res) => {
 });
 
 // Renova o access_token usando o refresh_token
-async function blingRefreshToken() {
+async function blingRefreshToken(conta) {
   const data = loadData();
-  if (!data.bling?.refresh_token) throw new Error('Sem refresh_token do Bling');
+  const b = getBlingDataConta(data, conta);
+  if (!b?.refresh_token) throw new Error(`Sem refresh_token do Bling (conta ${conta})`);
   const creds = Buffer.from(`${BLING_CLIENT_ID}:${BLING_CLIENT_SECRET}`).toString('base64');
   const resp  = await axios.post(
     'https://www.bling.com.br/Api/v3/oauth/token',
-    new URLSearchParams({ grant_type: 'refresh_token', refresh_token: data.bling.refresh_token }),
+    new URLSearchParams({ grant_type: 'refresh_token', refresh_token: b.refresh_token }),
     { headers: { Authorization: `Basic ${creds}`, 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 15000 }
   );
-  data.bling.access_token  = resp.data.access_token;
-  data.bling.refresh_token = resp.data.refresh_token || data.bling.refresh_token;
-  data.bling.expires_at    = Date.now() + ((resp.data.expires_in || 21600) - 300) * 1000;
+  const updated = {
+    access_token:  resp.data.access_token,
+    refresh_token: resp.data.refresh_token || b.refresh_token,
+    expires_at:    Date.now() + ((resp.data.expires_in || 21600) - 300) * 1000,
+  };
+  data[`bling_${conta}`] = updated;
+  if (conta === '1') data.bling = updated;
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
-  addLog(`[bling] 🔄 Token renovado`, 'ok');
-  return data.bling.access_token;
+  addLog(`[bling] 🔄 Token conta ${conta} renovado`, 'ok');
+  return updated.access_token;
 }
 
 // Retorna token válido, renovando se necessário
-async function getBlingToken() {
+async function getBlingToken(conta) {
   const data = loadData();
-  if (!data.bling?.access_token) throw new Error('Bling não conectado');
-  if (Date.now() >= (data.bling.expires_at || 0)) {
-    return blingRefreshToken();
-  }
-  return data.bling.access_token;
+  const b = getBlingDataConta(data, conta);
+  if (!b?.access_token) throw new Error(`Bling conta ${conta} não conectado`);
+  if (Date.now() >= (b.expires_at || 0)) return blingRefreshToken(conta);
+  return b.access_token;
 }
 
-// Status de conexão — verifica apenas se há token válido, sem chamada extra à API
-app.get('/api/bling/status', async (req, res) => {
-  if (!BLING_CLIENT_ID) return res.json({ connected: false, erro: 'BLING_CLIENT_ID não configurado' });
+// Helper: retorna a conta bling a usar para um request (query param ou conta_ativa)
+function blingContaReq(req) {
   const data = loadData();
-  if (!data.bling?.access_token) return res.json({ connected: false, erro: 'não autorizado' });
-  // Se o token expirou, tenta renovar
-  try {
-    await getBlingToken();
-    return res.json({ connected: true });
-  } catch (err) {
-    return res.json({ connected: false, erro: err.message });
+  return req.query.conta || data.conta_ativa || '1';
+}
+
+// Status de conexão — retorna status das duas contas
+app.get('/api/bling/status', async (req, res) => {
+  if (!BLING_CLIENT_ID) return res.json({ '1': { connected: false, erro: 'BLING_CLIENT_ID não configurado' }, '2': { connected: false } });
+  const data = loadData();
+  const result = {};
+  for (const c of ['1', '2']) {
+    const b = getBlingDataConta(data, c);
+    if (!b?.access_token) { result[c] = { connected: false }; continue; }
+    try {
+      await getBlingToken(c);
+      result[c] = { connected: true };
+    } catch (err) {
+      result[c] = { connected: false, erro: err.message };
+    }
   }
+  return res.json(result);
 });
 
 // ── Bling: pedidos de venda com situação "Em aberto" ─────────
@@ -902,7 +935,8 @@ app.get('/api/bling/status', async (req, res) => {
 
 app.get('/api/bling/pedidos-pendentes', async (req, res) => {
   try {
-    const token = await getBlingToken();
+    const conta = blingContaReq(req);
+    const token = await getBlingToken(conta);
 
     // rastreamento=8 como parâmetro extra faz a lista retornar (idSituacao:6 sozinho retorna 0)
     const respLista = await axios.get('https://www.bling.com.br/Api/v3/pedidos/vendas', {
@@ -971,7 +1005,8 @@ app.get('/api/bling/pedidos-pendentes', async (req, res) => {
 
 app.get('/api/bling/notas-pendentes', async (req, res) => {
   try {
-    const token = await getBlingToken();
+    const conta = blingContaReq(req);
+    const token = await getBlingToken(conta);
     const resp  = await axios.get('https://www.bling.com.br/Api/v3/nfe', {
       headers: { Authorization: `Bearer ${token}` },
       params: { pagina: 1, limite: 100, situacao: 3 }, // situacao 3 = Em processamento / não enviada
@@ -1004,7 +1039,8 @@ app.post('/api/bling/emitir-nf/:pedidoId', async (req, res) => {
 
 app.post('/api/bling/enviar-nf/:notaId', async (req, res) => {
   try {
-    const token   = await getBlingToken();
+    const conta = blingContaReq(req);
+    const token = await getBlingToken(conta);
     const { notaId } = req.params;
     await axios.post(`https://www.bling.com.br/Api/v3/nfe/${notaId}/enviar`, {},
       { headers: { Authorization: `Bearer ${token}` }, timeout: 15000 }

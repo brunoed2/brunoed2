@@ -672,9 +672,10 @@
 
             <div class="card" style="margin-top:12px">
               <h2>Bling ERP</h2>
-              <p class="card-desc">Conecte sua conta Bling para emissão de notas fiscais.</p>
-              <div class="btn-row">
-                <button class="btn-primary" onclick="location.href='/api/bling/auth'">🔗 Conectar ao Bling</button>
+              <p class="card-desc">Conecte cada conta do Bling separadamente.</p>
+              <div class="btn-row" style="flex-direction:column;gap:8px;align-items:flex-start">
+                <button id="btn-bling-conectar-1" class="btn-primary" onclick="location.href='/api/bling/auth?conta=1'">🔗 Conectar Bling Conta 1</button>
+                <button id="btn-bling-conectar-2" class="btn-primary" onclick="location.href='/api/bling/auth?conta=2'">🔗 Conectar Bling Conta 2</button>
               </div>
               <div class="msg" id="bling-msg"></div>
             </div>
@@ -740,6 +741,6 @@
   <script src="/js/contas-pagar.js?v=1"></script>
   <script src="/js/promocoes.js?v=1"></script>
   <script src="/js/bling.js?v=1"></script>
-  <div id="version-badge">v245</div>
+  <div id="version-badge">v246</div>
 </body>
 </html>
