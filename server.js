@@ -969,8 +969,11 @@ app.get('/api/bling/pedidos-pendentes', async (req, res) => {
 
     const pedidos = itens.map((p, i) => {
       const det = detalhes[i];
-      // Etiqueta disponível = ML gerou o volume (id > 0) e ainda não foi despachado (codigoRastreamento vazio)
       const vol = det?.transporte?.volumes?.[0];
+      // Log para diagnóstico: comprador + servico + codigoRastreamento + intermediador
+      const comprador = (p.contato?.nome || '?').slice(0, 25);
+      addLog(`[bling] ${p.numero} (${comprador}) servico="${vol?.servico || '—'}" codRastr="${vol?.codigoRastreamento ?? '—'}" intermediador=${JSON.stringify(det?.intermediador)}`, 'info');
+      // Etiqueta disponível = ML gerou o volume (id > 0) e ainda não foi despachado (codigoRastreamento vazio)
       const temEtiqueta = !!(vol?.id) && !vol?.codigoRastreamento;
       return {
         id:               p.id,
