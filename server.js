@@ -1042,7 +1042,22 @@ app.get('/api/bling/notas-pendentes', async (req, res) => {
 // ── Bling: emitir NF para pedido ML ──────────────────────────
 
 app.post('/api/bling/emitir-nf/:pedidoId', async (req, res) => {
-  res.json({ ok: false, erro: 'Funcionalidade de emissão ainda não configurada — configure os dados fiscais no Bling primeiro.' });
+  try {
+    const conta = blingContaReq(req);
+    const token = await getBlingToken(conta);
+    const { pedidoId } = req.params;
+    const resp = await axios.post('https://www.bling.com.br/Api/v3/nfe',
+      { pedido: { id: Number(pedidoId) } },
+      { headers: { Authorization: `Bearer ${token}` }, timeout: 15000 }
+    );
+    const nfId = resp.data?.data?.id;
+    addLog(`[bling] NF gerada para pedido ${pedidoId} — NF id=${nfId}`, 'ok');
+    return res.json({ ok: true, nfId });
+  } catch (err) {
+    const detail = err.response ? JSON.stringify(err.response.data).slice(0, 300) : err.message;
+    addLog(`[bling] emitir-nf pedido ${req.params.pedidoId}: ${detail}`, 'warn');
+    return res.json({ ok: false, erro: detail });
+  }
 });
 
 // ── Bling: enviar NF (transmitir para SEFAZ) ──────────────────
