@@ -948,48 +948,32 @@ app.get('/api/bling/pedidos-pendentes', async (req, res) => {
     const conta = blingContaReq(req);
     const token = await getBlingToken(conta);
 
-    // rastreamento=8 como parâmetro extra faz a lista retornar (idSituacao:6 sozinho retorna 0)
-    const respLista = await axios.get('https://www.bling.com.br/Api/v3/pedidos/vendas', {
-      headers: { Authorization: `Bearer ${token}` },
-      params: { pagina: 1, limite: 100, idSituacao: 6, rastreamento: 8 },
-      timeout: 15000,
-    });
-    const itens = respLista.data?.data || [];
-    addLog(`[bling] lista=${itens.length} pedidos`, 'info');
+    // Duas chamadas em paralelo: todos os "Em aberto" + só "Etiqueta disponível" (rastreamento=8)
+    const headers = { Authorization: `Bearer ${token}` };
+    const [respTodos, respEtiqueta] = await Promise.all([
+      axios.get('https://www.bling.com.br/Api/v3/pedidos/vendas', {
+        headers, params: { pagina: 1, limite: 100, idSituacao: 6, rastreamento: 8 }, timeout: 15000,
+      }),
+      axios.get('https://www.bling.com.br/Api/v3/pedidos/vendas', {
+        headers, params: { pagina: 1, limite: 100, idSituacao: 6, idSituacaoRastreamento: 8 }, timeout: 15000,
+      }).catch(() => ({ data: { data: [] } })),
+    ]);
+    const itens = respTodos.data?.data || [];
+    const etiquetaItens = respEtiqueta.data?.data || [];
+    const idsComEtiqueta = new Set(etiquetaItens.map(p => p.id));
+    addLog(`[bling] total=${itens.length} etiqueta=${idsComEtiqueta.size} nums=[${etiquetaItens.map(p=>p.numero).join(',')}]`, 'info');
 
-    // Busca detalhes de cada pedido em paralelo para obter campo rastreamento
-    const detalhes = await Promise.all(
-      itens.map(p =>
-        axios.get(`https://www.bling.com.br/Api/v3/pedidos/vendas/${p.id}`, {
-          headers: { Authorization: `Bearer ${token}` },
-          timeout: 10000,
-        }).then(r => r.data?.data).catch(() => null)
-      )
-    );
-
-    const pedidos = itens.map((p, i) => {
-      const det = detalhes[i];
-      const vol = det?.transporte?.volumes?.[0];
-      // Log para diagnóstico: comprador + servico + codigoRastreamento + intermediador
-      const comprador = (p.contato?.nome || '?').slice(0, 25);
-      addLog(`[bling] ${p.numero} (${comprador}) servico="${vol?.servico || '—'}" codRastr="${vol?.codigoRastreamento ?? '—'}" intermediador=${JSON.stringify(det?.intermediador)}`, 'info');
-      // Etiqueta disponível = ML gerou o volume (id > 0) e ainda não foi despachado (codigoRastreamento vazio)
-      const temEtiqueta = !!(vol?.id) && !vol?.codigoRastreamento;
-      return {
-        id:               p.id,
-        numero:           p.numero || '—',
-        comprador:        p.contato?.nome || '—',
-        valor_total:      p.totalProdutos || 0,
-        data:             p.data,
-        situacao:         p.situacao?.valor || 'Em aberto',
-        numeroPedidoLoja: p.numeroLoja || null,
-        dataPrevista:     p.dataPrevista || null,
-        temEtiqueta,
-      };
-    });
-
-    const comEtiqueta = pedidos.filter(p => p.temEtiqueta).length;
-    addLog(`[bling] ${pedidos.length} pedidos, ${comEtiqueta} com etiqueta disponível`, 'info');
+    const pedidos = itens.map(p => ({
+      id:               p.id,
+      numero:           p.numero || '—',
+      comprador:        p.contato?.nome || '—',
+      valor_total:      p.totalProdutos || 0,
+      data:             p.data,
+      situacao:         p.situacao?.valor || 'Em aberto',
+      numeroPedidoLoja: p.numeroLoja || null,
+      dataPrevista:     p.dataPrevista || null,
+      temEtiqueta:      idsComEtiqueta.has(p.id),
+    }));
 
     // Ordenar: "etiqueta disponível" primeiro
     pedidos.sort((a, b) => (b.temEtiqueta ? 1 : 0) - (a.temEtiqueta ? 1 : 0));
