@@ -948,20 +948,44 @@ app.get('/api/bling/pedidos-pendentes', async (req, res) => {
     const conta = blingContaReq(req);
     const token = await getBlingToken(conta);
 
-    // Duas chamadas em paralelo: todos os "Em aberto" + só "Etiqueta disponível" (rastreamento=8)
-    const headers = { Authorization: `Bearer ${token}` };
-    const [respTodos, respEtiqueta] = await Promise.all([
-      axios.get('https://www.bling.com.br/Api/v3/pedidos/vendas', {
-        headers, params: { pagina: 1, limite: 100, idSituacao: 6, rastreamento: 8 }, timeout: 15000,
-      }),
-      axios.get('https://www.bling.com.br/Api/v3/pedidos/vendas', {
-        headers, params: { pagina: 1, limite: 100, idSituacao: 6, idSituacaoRastreamento: 8 }, timeout: 15000,
-      }).catch(() => ({ data: { data: [] } })),
-    ]);
-    const itens = respTodos.data?.data || [];
-    const etiquetaItens = respEtiqueta.data?.data || [];
-    const idsComEtiqueta = new Set(etiquetaItens.map(p => p.id));
-    addLog(`[bling] total=${itens.length} etiqueta=${idsComEtiqueta.size} nums=[${etiquetaItens.map(p=>p.numero).join(',')}]`, 'info');
+    // Lista todos pedidos Em aberto (rastreamento=8 como param extra — sem ele retorna 0)
+    const resp = await axios.get('https://www.bling.com.br/Api/v3/pedidos/vendas', {
+      headers: { Authorization: `Bearer ${token}` },
+      params: { pagina: 1, limite: 100, idSituacao: 6, rastreamento: 8 },
+      timeout: 15000,
+    });
+    const itens = resp.data?.data || [];
+
+    // Para cada pedido, verificar substatus no ML (fonte de verdade do "Etiqueta disponível")
+    const data = loadData();
+    const mlToken = await getToken(data, conta).catch(() => null);
+    let idsComEtiqueta = new Set();
+
+    if (mlToken) {
+      // Busca shipment de cada pedido ML em paralelo via numeroLoja
+      const mlOrders = await Promise.all(
+        itens.map(p => p.numeroLoja
+          ? axios.get(`https://api.mercadolibre.com/orders/${p.numeroLoja}`, {
+              headers: { Authorization: `Bearer ${mlToken}` }, timeout: 6000,
+            }).then(r => ({ blingId: p.id, shippingId: r.data?.shipping?.id })).catch(() => null)
+          : null
+        )
+      );
+      const shippingEntries = mlOrders.filter(o => o?.shippingId);
+      const shipments = await Promise.all(
+        shippingEntries.map(o =>
+          axios.get(`https://api.mercadolibre.com/shipments/${o.shippingId}`, {
+            headers: { Authorization: `Bearer ${mlToken}` }, timeout: 6000,
+          }).then(r => ({ blingId: o.blingId, substatus: r.data?.substatus })).catch(() => null)
+        )
+      );
+      shipments.forEach(s => {
+        if (s?.substatus === 'ready_to_print') idsComEtiqueta.add(s.blingId);
+      });
+      addLog(`[bling] ML check: ${itens.length} pedidos, ${idsComEtiqueta.size} com etiqueta (ready_to_print)`, 'info');
+    } else {
+      addLog('[bling] ML token indisponível — temEtiqueta desativado', 'warn');
+    }
 
     const pedidos = itens.map(p => ({
       id:               p.id,
