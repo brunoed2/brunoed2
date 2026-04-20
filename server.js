@@ -904,51 +904,55 @@ app.get('/api/bling/pedidos-pendentes', async (req, res) => {
   try {
     const token = await getBlingToken();
 
-    // Busca 1: todos os pedidos em aberto
-    // Busca 2: tenta filtrar por "Etiqueta disponível" usando possíveis parâmetros do Bling
-    const mkCall = (extra) => axios.get('https://www.bling.com.br/Api/v3/pedidos/vendas', {
+    // rastreamento=8 como parâmetro extra faz a lista retornar (idSituacao:6 sozinho retorna 0)
+    const respLista = await axios.get('https://www.bling.com.br/Api/v3/pedidos/vendas', {
       headers: { Authorization: `Bearer ${token}` },
-      params: { pagina: 1, limite: 100, idSituacao: 6, ...extra },
+      params: { pagina: 1, limite: 100, idSituacao: 6, rastreamento: 8 },
       timeout: 15000,
-    }).catch(e => ({ data: { data: [] }, _erro: e.message }));
+    });
+    const itens = respLista.data?.data || [];
+    addLog(`[bling] lista=${itens.length} pedidos`, 'info');
 
-    const [respTodos, respR8, respR1, respIdR8] = await Promise.all([
-      mkCall({}),
-      mkCall({ rastreamento: 8 }),
-      mkCall({ rastreamento: 1 }),
-      mkCall({ idSituacaoRastreamento: 8 }),
-    ]);
+    // Busca detalhes de cada pedido em paralelo para obter campo rastreamento
+    const detalhes = await Promise.all(
+      itens.map(p =>
+        axios.get(`https://www.bling.com.br/Api/v3/pedidos/vendas/${p.id}`, {
+          headers: { Authorization: `Bearer ${token}` },
+          timeout: 10000,
+        }).then(r => r.data?.data).catch(() => null)
+      )
+    );
 
-    const itens = respTodos.data?.data || [];
-    addLog(`[bling] todos=${itens.length} | r=8→${respR8.data?.data?.length ?? 'err'} | r=1→${respR1.data?.data?.length ?? 'err'} | idSitR=8→${respIdR8.data?.data?.length ?? 'err'}`, 'info');
-
-    // Escolhe o filtro que retorna < total (= está funcionando)
-    let itensEtq = [];
-    const total = itens.length;
-    if ((respIdR8.data?.data?.length ?? total) < total) {
-      itensEtq = respIdR8.data.data;
-      addLog(`[bling] filtro ativo: idSituacaoRastreamento=8`, 'info');
-    } else if ((respR8.data?.data?.length ?? total) < total) {
-      itensEtq = respR8.data.data;
-      addLog(`[bling] filtro ativo: rastreamento=8`, 'info');
-    } else {
-      addLog(`[bling] nenhum filtro de rastreamento funcionou — parâmetro ignorado pelo Bling`, 'warn');
+    // Log estrutura do rastreamento no primeiro detalhe válido
+    const primeiroValido = detalhes.find(d => d != null);
+    if (primeiroValido) {
+      addLog(`[bling] detalhe campos: ${JSON.stringify(Object.keys(primeiroValido))}`, 'info');
+      addLog(`[bling] rastreamento detalhe: ${JSON.stringify(primeiroValido.rastreamento ?? 'ausente')}`, 'info');
     }
 
-    // IDs com etiqueta disponível segundo o filtro da Bling
-    const idsComEtiqueta = new Set(itensEtq.map(x => x.id));
+    const pedidos = itens.map((p, i) => {
+      const det = detalhes[i];
+      const rastrValor = det?.rastreamento?.situacao?.valor
+                      ?? det?.rastreamento?.valor
+                      ?? (typeof det?.rastreamento === 'string' ? det.rastreamento : null);
+      return {
+        id:               p.id,
+        numero:           p.numero || '—',
+        comprador:        p.contato?.nome || '—',
+        valor_total:      p.totalProdutos || 0,
+        data:             p.data,
+        situacao:         p.situacao?.valor || 'Em aberto',
+        numeroPedidoLoja: p.numeroLoja || null,
+        dataPrevista:     p.dataPrevista || null,
+        rastreamento:     rastrValor,
+        temEtiqueta:      typeof rastrValor === 'string' && rastrValor.toLowerCase().includes('etiqueta dispon'),
+      };
+    });
 
-    const pedidos = itens.map(p => ({
-      id:               p.id,
-      numero:           p.numero || '—',
-      comprador:        p.contato?.nome || '—',
-      valor_total:      p.totalProdutos || 0,
-      data:             p.data,
-      situacao:         p.situacao?.valor || 'Em aberto',
-      numeroPedidoLoja: p.numeroLoja || null,
-      dataPrevista:     p.dataPrevista || null,
-      temEtiqueta:      idsComEtiqueta.has(p.id),
-    }));
+    // Log distribuição dos status de rastreamento
+    const dist = {};
+    pedidos.forEach(p => { const k = p.rastreamento || '(vazio)'; dist[k] = (dist[k] || 0) + 1; });
+    addLog(`[bling] rastreamento dist: ${JSON.stringify(dist)}`, 'info');
 
     // Ordenar: "etiqueta disponível" primeiro
     pedidos.sort((a, b) => (b.temEtiqueta ? 1 : 0) - (a.temEtiqueta ? 1 : 0));
