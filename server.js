@@ -961,6 +961,12 @@ app.get('/api/bling/pedidos-pendentes', async (req, res) => {
     const mlToken = await getToken(data, conta).catch(() => null);
     let idsComEtiqueta = new Set();
 
+    // Log transporte da lista (sem detail call) para diagnóstico Bling-only
+    itens.forEach(p => {
+      const vol = p.transporte?.volumes?.[0];
+      addLog(`[bling-diag] ${p.numero} numLoja="${p.numeroLoja||''}" listaServico="${vol?.servico||'—'}" listaVolId=${vol?.id||0}`, 'info');
+    });
+
     if (mlToken) {
       // Busca shipment de cada pedido ML em paralelo via numeroLoja
       const mlOrders = await Promise.all(
@@ -976,10 +982,11 @@ app.get('/api/bling/pedidos-pendentes', async (req, res) => {
         shippingEntries.map(o =>
           axios.get(`https://api.mercadolibre.com/shipments/${o.shippingId}`, {
             headers: { Authorization: `Bearer ${mlToken}` }, timeout: 6000,
-          }).then(r => ({ blingId: o.blingId, substatus: r.data?.substatus })).catch(() => null)
+          }).then(r => ({ blingId: o.blingId, substatus: r.data?.substatus, status: r.data?.status })).catch(() => null)
         )
       );
       shipments.forEach(s => {
+        if (s) addLog(`[bling-ml] blingId=${s.blingId} status=${s.status} substatus=${s.substatus}`, 'info');
         if (s?.substatus === 'ready_to_print') idsComEtiqueta.add(s.blingId);
       });
       addLog(`[bling] ML check: ${itens.length} pedidos, ${idsComEtiqueta.size} com etiqueta (ready_to_print)`, 'info');
