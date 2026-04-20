@@ -1019,18 +1019,26 @@ app.get('/api/bling/notas-pendentes', async (req, res) => {
     const token = await getBlingToken(conta);
     const resp  = await axios.get('https://www.bling.com.br/Api/v3/nfe', {
       headers: { Authorization: `Bearer ${token}` },
-      params: { pagina: 1, limite: 100, situacao: 3 }, // situacao 3 = Em processamento / não enviada
+      params: { pagina: 1, limite: 100 },
       timeout: 15000,
     });
     const nfs = resp.data?.data || [];
-    const notas = nfs.map(n => ({
-      id:           n.id,
-      numero:       n.numero || '—',
-      destinatario: n.contato?.nome || '—',
-      valor_total:  n.totalProdutos || 0,
-      situacao:     n.situacao?.valor || '—',
-      data:         n.data,
-    }));
+    // Log situações para calibrar o filtro correto
+    const dist = {};
+    nfs.forEach(n => { const k = `${n.situacao?.id}=${n.situacao?.valor}`; dist[k] = (dist[k]||0)+1; });
+    addLog(`[bling] notas situações: ${JSON.stringify(dist)}`, 'info');
+    // Mostra apenas NFs não transmitidas (exclui Autorizada=4, Cancelada=5, Denegada=7)
+    const excluir = new Set([4, 5, 7]);
+    const notas = nfs
+      .filter(n => !excluir.has(n.situacao?.id))
+      .map(n => ({
+        id:           n.id,
+        numero:       n.numero || '—',
+        destinatario: n.contato?.nome || '—',
+        valor_total:  n.totalProdutos || 0,
+        situacao:     n.situacao?.valor || '—',
+        data:         n.data,
+      }));
     return res.json({ notas });
   } catch (err) {
     const detail = err.response ? `HTTP ${err.response.status}: ${JSON.stringify(err.response.data).slice(0, 200)}` : err.message;
