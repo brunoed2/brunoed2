@@ -205,7 +205,7 @@ async function cxTestarWhatsappPedidos() {
     if (d.ok) {
       alert('✅ Mensagem enviada! Verifique o WhatsApp do número de pedidos.');
     } else {
-      alert('⚠️ Falha: ' + (d.erro || 'Verifique CALLMEBOT_PHONE_PEDIDOS e CALLMEBOT_APIKEY_PEDIDOS no Railway.'));
+      alert('⚠️ Falha: ' + (d.resposta || d.erro || 'Verifique CALLMEBOT_PHONE_PEDIDOS e CALLMEBOT_APIKEY_PEDIDOS no Railway.'));
     }
   } catch {
     alert('⚠️ Erro ao conectar com o servidor.');

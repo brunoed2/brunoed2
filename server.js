@@ -3087,8 +3087,14 @@ app.post('/api/whatsapp/teste-pedidos', async (req, res) => {
     return res.json({ ok: false, erro: 'CALLMEBOT_PHONE_PEDIDOS ou CALLMEBOT_APIKEY_PEDIDOS não configurados' });
   }
   try {
-    await notificarPedido('🧪 Teste — notificações de pedidos novos ativas!');
-    res.json({ ok: true });
+    const resp = await axios.get('https://api.callmebot.com/whatsapp.php', {
+      params: { phone: CALLMEBOT_PHONE_PEDIDOS, text: '🧪 Teste — notificações de pedidos novos ativas!', apikey: CALLMEBOT_APIKEY_PEDIDOS },
+      timeout: 10000,
+    });
+    const body = String(resp.data || '').trim();
+    const erro = body.toLowerCase().includes('error') || body.toLowerCase().includes('wrong');
+    addLog(`WhatsApp teste-pedidos → ${CALLMEBOT_PHONE_PEDIDOS}: ${body}`, erro ? 'warn' : 'ok');
+    res.json({ ok: !erro, resposta: body });
   } catch (e) {
     res.json({ ok: false, erro: e.message });
   }
