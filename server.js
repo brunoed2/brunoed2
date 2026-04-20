@@ -909,27 +909,40 @@ app.get('/api/bling/pedidos-pendentes', async (req, res) => {
       timeout: 15000,
     });
     const itens = resp.data?.data || [];
-    const pedidos = itens.map(p => ({
-      id:               p.id,
-      numero:           p.numero || '—',
-      comprador:        p.contato?.nome || '—',
-      valor_total:      p.totalProdutos || 0,
-      data:             p.data,
-      situacao:         p.situacao?.valor || 'Em aberto',
-      numeroPedidoLoja: p.numeroLoja || null,
-      dataPrevista:     p.dataPrevista || null,
-      temEtiqueta:      false,
-    }));
 
-    // temEtiqueta: ML abre a janela de etiqueta quando dataPrevista (entrega) é amanhã ou menos.
-    // Pedidos para entrega amanhã precisam ser despachados hoje → janela já aberta.
-    const hoje   = new Date(); hoje.setHours(0, 0, 0, 0);
-    const amanha = new Date(hoje); amanha.setDate(amanha.getDate() + 1);
-    pedidos.forEach(p => {
-      if (!p.dataPrevista || !/^\d+$/.test(String(p.numeroPedidoLoja || ''))) return;
-      const dp = new Date(p.dataPrevista);
-      p.temEtiqueta = dp <= amanha;
+    // Log estrutura do primeiro pedido para diagnosticar campos de rastreamento
+    if (itens.length > 0) {
+      addLog(`[bling] campos do pedido: ${JSON.stringify(Object.keys(itens[0]))}`, 'info');
+      addLog(`[bling] rastreamento[0]: ${JSON.stringify(itens[0].rastreamento ?? itens[0].situacaoRastreamento ?? 'N/A')}`, 'info');
+    }
+
+    const pedidos = itens.map(p => {
+      const rastrValor = p.rastreamento?.situacao?.valor
+                      ?? p.rastreamento?.valor
+                      ?? p.rastreamento
+                      ?? null;
+      return {
+        id:               p.id,
+        numero:           p.numero || '—',
+        comprador:        p.contato?.nome || '—',
+        valor_total:      p.totalProdutos || 0,
+        data:             p.data,
+        situacao:         p.situacao?.valor || 'Em aberto',
+        numeroPedidoLoja: p.numeroLoja || null,
+        dataPrevista:     p.dataPrevista || null,
+        rastreamento:     rastrValor,
+        // "Etiqueta disponível" = ML autorizou → emitir NF libera a etiqueta
+        temEtiqueta:      typeof rastrValor === 'string' && rastrValor.toLowerCase().includes('etiqueta dispon'),
+      };
     });
+
+    // Log distribuição dos status de rastreamento para calibrar
+    const dist = {};
+    pedidos.forEach(p => { const k = p.rastreamento || '(vazio)'; dist[k] = (dist[k] || 0) + 1; });
+    addLog(`[bling] rastreamento dist: ${JSON.stringify(dist)}`, 'info');
+
+    // Ordenar: "etiqueta disponível" primeiro
+    pedidos.sort((a, b) => (b.temEtiqueta ? 1 : 0) - (a.temEtiqueta ? 1 : 0));
 
     return res.json({ pedidos });
   } catch (err) {

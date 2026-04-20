@@ -56,18 +56,18 @@ async function blingCarregarPedidos() {
 
     for (const p of pedidos) {
       const tr = document.createElement('tr');
+      if (p.temEtiqueta) tr.style.background = 'rgba(34,197,94,0.07)';
       const valor    = (p.valor_total || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
       const data_str = p.data ? new Date(p.data).toLocaleDateString('pt-BR') : '—';
-      const etqIcon  = p.temEtiqueta
-        ? `<span style="color:#22c55e;font-size:18px" title="Etiqueta disponível após NF">&#10003;</span>`
-        : '';
+      const etqBadge = p.temEtiqueta
+        ? `<span style="background:#16a34a;color:#fff;padding:2px 7px;border-radius:4px;font-size:11px;white-space:nowrap" title="ML autorizou — emitir NF libera a etiqueta">Etiqueta disponível</span>`
+        : `<span style="color:#9ca3af;font-size:11px">${escapeHtml(p.rastreamento || 'Aguardando ML')}</span>`;
       tr.innerHTML = `
         <td>${escapeHtml(p.numero || String(p.id))}</td>
         <td>${escapeHtml(p.comprador || '—')}</td>
         <td class="col-num">${valor}</td>
-        <td><span class="badge">${escapeHtml(p.situacao || 'Em aberto')}</span></td>
         <td>${data_str}</td>
-        <td style="text-align:center">${etqIcon}</td>
+        <td style="text-align:center">${etqBadge}</td>
         <td><button class="btn-sm" onclick="blingEmitirNF('${p.id}', this)">Emitir NF</button></td>
       `;
       tbody.appendChild(tr);
