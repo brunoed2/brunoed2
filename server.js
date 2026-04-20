@@ -1046,8 +1046,9 @@ app.post('/api/bling/emitir-nf/:pedidoId', async (req, res) => {
     const conta = blingContaReq(req);
     const token = await getBlingToken(conta);
     const { pedidoId } = req.params;
-    const resp = await axios.post('https://www.bling.com.br/Api/v3/nfe',
-      { pedido: { id: Number(pedidoId) } },
+    const resp = await axios.post(
+      `https://www.bling.com.br/Api/v3/pedidos/vendas/${pedidoId}/gerar-nfe`,
+      {},
       { headers: { Authorization: `Bearer ${token}` }, timeout: 15000 }
     );
     const nfId = resp.data?.data?.id;
