@@ -967,18 +967,11 @@ app.get('/api/bling/pedidos-pendentes', async (req, res) => {
       )
     );
 
-    // Log transporte de cada pedido para encontrar campo de rastreamento
-    itens.forEach((p, i) => {
-      const det = detalhes[i];
-      const comprador = (p.contato?.nome || '?').slice(0, 30);
-      addLog(`[bling] pedido ${p.numero || p.id} (${comprador}) transporte: ${JSON.stringify(det?.transporte)}`, 'info');
-    });
-
     const pedidos = itens.map((p, i) => {
       const det = detalhes[i];
-      const rastrValor = det?.rastreamento?.situacao?.valor
-                      ?? det?.rastreamento?.valor
-                      ?? (typeof det?.rastreamento === 'string' ? det.rastreamento : null);
+      // Etiqueta disponível = ML gerou o volume (id > 0) e ainda não foi despachado (codigoRastreamento vazio)
+      const vol = det?.transporte?.volumes?.[0];
+      const temEtiqueta = !!(vol?.id) && !vol?.codigoRastreamento;
       return {
         id:               p.id,
         numero:           p.numero || '—',
@@ -988,15 +981,12 @@ app.get('/api/bling/pedidos-pendentes', async (req, res) => {
         situacao:         p.situacao?.valor || 'Em aberto',
         numeroPedidoLoja: p.numeroLoja || null,
         dataPrevista:     p.dataPrevista || null,
-        rastreamento:     rastrValor,
-        temEtiqueta:      typeof rastrValor === 'string' && rastrValor.toLowerCase().includes('etiqueta dispon'),
+        temEtiqueta,
       };
     });
 
-    // Log distribuição dos status de rastreamento
-    const dist = {};
-    pedidos.forEach(p => { const k = p.rastreamento || '(vazio)'; dist[k] = (dist[k] || 0) + 1; });
-    addLog(`[bling] rastreamento dist: ${JSON.stringify(dist)}`, 'info');
+    const comEtiqueta = pedidos.filter(p => p.temEtiqueta).length;
+    addLog(`[bling] ${pedidos.length} pedidos, ${comEtiqueta} com etiqueta disponível`, 'info');
 
     // Ordenar: "etiqueta disponível" primeiro
     pedidos.sort((a, b) => (b.temEtiqueta ? 1 : 0) - (a.temEtiqueta ? 1 : 0));

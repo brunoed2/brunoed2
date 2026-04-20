@@ -61,7 +61,7 @@ async function blingCarregarPedidos() {
       const data_str = p.data ? new Date(p.data).toLocaleDateString('pt-BR') : '—';
       const etqBadge = p.temEtiqueta
         ? `<span style="background:#16a34a;color:#fff;padding:2px 7px;border-radius:4px;font-size:11px;white-space:nowrap" title="ML autorizou — emitir NF libera a etiqueta">Etiqueta disponível</span>`
-        : `<span style="color:#9ca3af;font-size:11px">${escapeHtml(p.rastreamento || 'Aguardando ML')}</span>`;
+        : `<span style="color:#9ca3af;font-size:11px">Aguardando ML</span>`;
       tr.innerHTML = `
         <td>${escapeHtml(p.numero || String(p.id))}</td>
         <td>${escapeHtml(p.comprador || '—')}</td>
