@@ -820,15 +820,23 @@ function getBlingDataConta(data, conta) {
   return data[`bling_${conta}`] || (conta === '1' ? data.bling : null) || null;
 }
 
+// Helper: retorna client_id e client_secret da conta correta
+function getBlingCreds(conta) {
+  if (conta === '2' && BLING_CLIENT_ID_2 && BLING_CLIENT_SECRET_2)
+    return { id: BLING_CLIENT_ID_2, secret: BLING_CLIENT_SECRET_2 };
+  return { id: BLING_CLIENT_ID, secret: BLING_CLIENT_SECRET };
+}
+
 // Inicia o fluxo OAuth — redireciona para o Bling
 // ?conta=1 ou ?conta=2 define qual conta será vinculada
 app.get('/api/bling/auth', (req, res) => {
-  if (!BLING_CLIENT_ID) return res.redirect('/app.html?tab=conexao&bling_error=sem_client_id');
   const conta = req.query.conta || '1';
+  const { id: clientId } = getBlingCreds(conta);
+  if (!clientId) return res.redirect('/app.html?tab=conexao&bling_error=sem_client_id');
   const state = `${conta}_${Math.random().toString(36).slice(2)}`;
   const url = `https://www.bling.com.br/Api/v3/oauth/authorize`
     + `?response_type=code`
-    + `&client_id=${BLING_CLIENT_ID}`
+    + `&client_id=${clientId}`
     + `&state=${state}`;
   addLog(`[bling] OAuth iniciado, conta=${conta}, state=${state}`, 'info');
   res.redirect(url);
@@ -843,12 +851,13 @@ app.get('/api/bling/callback', async (req, res) => {
     addLog(`[bling] callback sem code: error=${error}`, 'warn');
     return res.redirect(`/app.html?tab=conexao&bling_error=${encodeURIComponent(error || 'sem_code')}`);
   }
-  if (!BLING_CLIENT_ID || !BLING_CLIENT_SECRET)
+  const { id: clientId, secret: clientSecret } = getBlingCreds(conta);
+  if (!clientId || !clientSecret)
     return res.redirect('/app.html?tab=conexao&bling_error=sem_credenciais');
 
   const proto    = req.get('x-forwarded-proto') || req.protocol;
   const callback = `${proto}://${req.get('host')}/api/bling/callback`;
-  const creds    = Buffer.from(`${BLING_CLIENT_ID}:${BLING_CLIENT_SECRET}`).toString('base64');
+  const creds    = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
 
   try {
     const resp = await axios.post(
@@ -879,7 +888,8 @@ async function blingRefreshToken(conta) {
   const data = loadData();
   const b = getBlingDataConta(data, conta);
   if (!b?.refresh_token) throw new Error(`Sem refresh_token do Bling (conta ${conta})`);
-  const creds = Buffer.from(`${BLING_CLIENT_ID}:${BLING_CLIENT_SECRET}`).toString('base64');
+  const { id: clientId, secret: clientSecret } = getBlingCreds(conta);
+  const creds = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
   const resp  = await axios.post(
     'https://www.bling.com.br/Api/v3/oauth/token',
     new URLSearchParams({ grant_type: 'refresh_token', refresh_token: b.refresh_token }),
@@ -2800,6 +2810,8 @@ const TELEGRAM_TOKEN   = process.env.TELEGRAM_TOKEN;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 const BLING_CLIENT_ID     = process.env.BLING_CLIENT_ID;
 const BLING_CLIENT_SECRET = process.env.BLING_CLIENT_SECRET;
+const BLING_CLIENT_ID_2     = process.env.BLING_CLIENT_ID_2;
+const BLING_CLIENT_SECRET_2 = process.env.BLING_CLIENT_SECRET_2;
 
 // Número 1: contas a pagar + anúncios pausados
 const CALLMEBOT_PHONE  = process.env.CALLMEBOT_PHONE;
