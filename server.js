@@ -906,25 +906,34 @@ app.get('/api/bling/pedidos-pendentes', async (req, res) => {
 
     // Busca 1: todos os pedidos em aberto
     // Busca 2: tenta filtrar por "Etiqueta disponível" usando possíveis parâmetros do Bling
-    const [respTodos, respEtq] = await Promise.all([
-      axios.get('https://www.bling.com.br/Api/v3/pedidos/vendas', {
-        headers: { Authorization: `Bearer ${token}` },
-        params: { pagina: 1, limite: 100, idSituacao: 6 },
-        timeout: 15000,
-      }),
-      axios.get('https://www.bling.com.br/Api/v3/pedidos/vendas', {
-        headers: { Authorization: `Bearer ${token}` },
-        // Tenta o parâmetro "rastreamento" com valor 8 (posição "Etiqueta disponível" no dropdown)
-        params: { pagina: 1, limite: 100, idSituacao: 6, rastreamento: 8 },
-        timeout: 15000,
-      }).catch(e => ({ data: { data: [] }, _erro: e.message })),
+    const mkCall = (extra) => axios.get('https://www.bling.com.br/Api/v3/pedidos/vendas', {
+      headers: { Authorization: `Bearer ${token}` },
+      params: { pagina: 1, limite: 100, idSituacao: 6, ...extra },
+      timeout: 15000,
+    }).catch(e => ({ data: { data: [] }, _erro: e.message }));
+
+    const [respTodos, respR8, respR1, respIdR8] = await Promise.all([
+      mkCall({}),
+      mkCall({ rastreamento: 8 }),
+      mkCall({ rastreamento: 1 }),
+      mkCall({ idSituacaoRastreamento: 8 }),
     ]);
 
-    const itens    = respTodos.data?.data || [];
-    const itensEtq = respEtq.data?.data   || [];
+    const itens = respTodos.data?.data || [];
+    addLog(`[bling] todos=${itens.length} | r=8→${respR8.data?.data?.length ?? 'err'} | r=1→${respR1.data?.data?.length ?? 'err'} | idSitR=8→${respIdR8.data?.data?.length ?? 'err'}`, 'info');
 
-    addLog(`[bling] todos=${itens.length} | rastreamento=8 retornou=${itensEtq.length} | erro=${respEtq._erro || 'nenhum'}`, 'info');
-    if (itensEtq.length > 0) addLog(`[bling] etq IDs: ${itensEtq.map(x => x.id).join(',')}`, 'info');
+    // Escolhe o filtro que retorna < total (= está funcionando)
+    let itensEtq = [];
+    const total = itens.length;
+    if ((respIdR8.data?.data?.length ?? total) < total) {
+      itensEtq = respIdR8.data.data;
+      addLog(`[bling] filtro ativo: idSituacaoRastreamento=8`, 'info');
+    } else if ((respR8.data?.data?.length ?? total) < total) {
+      itensEtq = respR8.data.data;
+      addLog(`[bling] filtro ativo: rastreamento=8`, 'info');
+    } else {
+      addLog(`[bling] nenhum filtro de rastreamento funcionou — parâmetro ignorado pelo Bling`, 'warn');
+    }
 
     // IDs com etiqueta disponível segundo o filtro da Bling
     const idsComEtiqueta = new Set(itensEtq.map(x => x.id));
