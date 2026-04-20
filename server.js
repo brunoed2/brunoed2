@@ -3082,6 +3082,18 @@ app.post('/api/telegram/teste', async (req, res) => {
   }
 });
 
+app.post('/api/whatsapp/teste-pedidos', async (req, res) => {
+  if (!CALLMEBOT_PHONE_PEDIDOS || !CALLMEBOT_APIKEY_PEDIDOS) {
+    return res.json({ ok: false, erro: 'CALLMEBOT_PHONE_PEDIDOS ou CALLMEBOT_APIKEY_PEDIDOS não configurados' });
+  }
+  try {
+    await notificarPedido('🧪 Teste — notificações de pedidos novos ativas!');
+    res.json({ ok: true });
+  } catch (e) {
+    res.json({ ok: false, erro: e.message });
+  }
+});
+
 // ── Contas a Pagar ────────────────────────────────────────────────────────────
 
 // Helper: extrai texto de uma tag XML (ignora prefixo de namespace)

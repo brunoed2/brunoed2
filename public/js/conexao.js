@@ -197,6 +197,22 @@ async function cxTestarTelegram() {
   if (btn) btn.disabled = false;
 }
 
+async function cxTestarWhatsappPedidos() {
+  const btn = document.getElementById('btn-whatsapp-pedidos-teste');
+  if (btn) btn.disabled = true;
+  try {
+    const d = await fetch('/api/whatsapp/teste-pedidos', { method: 'POST' }).then(r => r.json());
+    if (d.ok) {
+      alert('✅ Mensagem enviada! Verifique o WhatsApp do número de pedidos.');
+    } else {
+      alert('⚠️ Falha: ' + (d.erro || 'Verifique CALLMEBOT_PHONE_PEDIDOS e CALLMEBOT_APIKEY_PEDIDOS no Railway.'));
+    }
+  } catch {
+    alert('⚠️ Erro ao conectar com o servidor.');
+  }
+  if (btn) btn.disabled = false;
+}
+
 // ── Bling ─────────────────────────────────────────────────────
 
 async function verificarBling() {
