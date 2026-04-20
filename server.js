@@ -1023,10 +1023,8 @@ app.get('/api/bling/notas-pendentes', async (req, res) => {
       timeout: 15000,
     });
     const nfs = resp.data?.data || [];
-    // Log situações para calibrar o filtro correto
-    const dist = {};
-    nfs.forEach(n => { const k = `${n.situacao?.id}=${n.situacao?.valor}`; dist[k] = (dist[k]||0)+1; });
-    addLog(`[bling] notas situações: ${JSON.stringify(dist)}`, 'info');
+    // Log primeiro item para ver estrutura real
+    if (nfs[0]) addLog(`[bling] nf[0] keys: ${JSON.stringify(Object.keys(nfs[0]))} situacao=${JSON.stringify(nfs[0].situacao)} tipo=${typeof nfs[0].situacao}`, 'info');
     // Mostra apenas NFs não transmitidas (exclui Autorizada=4, Cancelada=5, Denegada=7)
     const excluir = new Set([4, 5, 7]);
     const notas = nfs
