@@ -1023,21 +1023,16 @@ app.get('/api/bling/notas-pendentes', async (req, res) => {
       timeout: 15000,
     });
     const nfs = resp.data?.data || [];
-    // Log distribuição de situação
-    const dist = {};
-    nfs.forEach(n => { const k = n.situacao ?? 'null'; dist[k] = (dist[k]||0)+1; });
-    addLog(`[bling] nfe situacao dist: ${JSON.stringify(dist)}`, 'info');
-    // Mostra apenas NFs não transmitidas (exclui Autorizada=4, Cancelada=5, Denegada=7)
-    const excluir = new Set([4, 5, 7]);
+    // situacao=1: pendente/digitação; situacao=5: autorizada — mostrar só pendentes
     const notas = nfs
-      .filter(n => !excluir.has(n.situacao?.id))
+      .filter(n => n.situacao === 1)
       .map(n => ({
         id:           n.id,
         numero:       n.numero || '—',
         destinatario: n.contato?.nome || '—',
         valor_total:  n.totalProdutos || 0,
-        situacao:     n.situacao?.valor || '—',
-        data:         n.data,
+        situacao:     'Pendente',
+        data:         n.dataEmissao || n.data,
       }));
     return res.json({ notas });
   } catch (err) {
