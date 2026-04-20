@@ -967,14 +967,12 @@ app.get('/api/bling/pedidos-pendentes', async (req, res) => {
       )
     );
 
-    // Log campos-chave do primeiro detalhe para encontrar status de etiqueta
-    const primeiroValido = detalhes.find(d => d != null);
-    if (primeiroValido) {
-      addLog(`[bling] situacao: ${JSON.stringify(primeiroValido.situacao)}`, 'info');
-      addLog(`[bling] transporte: ${JSON.stringify(primeiroValido.transporte)}`, 'info');
-      addLog(`[bling] intermediador: ${JSON.stringify(primeiroValido.intermediador)}`, 'info');
-      addLog(`[bling] loja: ${JSON.stringify(primeiroValido.loja)}`, 'info');
-    }
+    // Log transporte de cada pedido para encontrar campo de rastreamento
+    itens.forEach((p, i) => {
+      const det = detalhes[i];
+      const comprador = (p.contato?.nome || '?').slice(0, 30);
+      addLog(`[bling] pedido ${p.numero || p.id} (${comprador}) transporte: ${JSON.stringify(det?.transporte)}`, 'info');
+    });
 
     const pedidos = itens.map((p, i) => {
       const det = detalhes[i];
