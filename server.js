@@ -964,24 +964,53 @@ app.get('/api/bling/pedidos-pendentes', async (req, res) => {
     const itens7 = resp7.data?.data || [];
     const itens8 = resp8.data?.data || [];
     addLog(`[bling-diag] rastreamento=7: ${itens7.map(p => p.numero).join(',')||'nenhum'} | rastreamento=8: ${itens8.map(p => p.numero).join(',')||'nenhum'}`, 'info');
-    // Busca detalhe dos 2 primeiros pedidos para comparar campos de rastreamento
-    const detalhes = await Promise.all(
-      itens8.slice(0, 2).map(p =>
+    const itens = itens8;
+    // Busca detalhe de cada pedido para obter o numeroLoja correto (o endpoint de lista retorna ID diferente)
+    const itensDetalhados = await Promise.all(
+      itens.map(p =>
         axios.get(`https://www.bling.com.br/Api/v3/pedidos/vendas/${p.id}`, {
           headers: { Authorization: `Bearer ${token}` }, timeout: 10000,
-        }).then(r => ({ numero: p.numero, data: r.data?.data })).catch(e => ({ numero: p.numero, erro: e.message }))
+        }).then(r => ({ ...p, numeroLoja: r.data?.data?.numeroLoja || p.numeroLoja })).catch(() => p)
       )
     );
-    detalhes.forEach(d => addLog(`[bling-diag] detalhe ${d.numero}: ${JSON.stringify(d.data || d.erro)}`, 'info'));
-
-    // Combina sem duplicatas; pedidos em itens7 marcados separadamente para debug
-    const itensMap = new Map();
-    itens8.forEach(p => itensMap.set(p.id, { ...p, _rtq: 8 }));
-    itens7.forEach(p => itensMap.set(p.id, { ...p, _rtq: 7 }));
-    const itens = [...itensMap.values()];
     addLog(`[bling] ${itens.length} pedidos encontrados`, 'info');
 
-    const pedidos = itens.map(p => ({
+    // Verifica no ML quais têm shipment ready_to_ship + invoice_pending (etiqueta disponível ao emitir NF)
+    const data = loadData();
+    const mlTokens = (await Promise.all(
+      ['1', '2'].map(c => getToken(data, c).catch(() => null))
+    )).filter(Boolean);
+
+    const idsComEtiqueta = new Set();
+    if (mlTokens.length > 0) {
+      const mlOrders = await Promise.all(
+        itensDetalhados.map(async p => {
+          if (!p.numeroLoja) return null;
+          for (const tok of mlTokens) {
+            const res = await axios.get(`https://api.mercadolibre.com/orders/${p.numeroLoja}`, {
+              headers: { Authorization: `Bearer ${tok}` }, timeout: 6000,
+            }).catch(() => null);
+            if (res?.data?.shipping?.id) return { blingId: p.id, shippingId: res.data.shipping.id, tok };
+          }
+          return null;
+        })
+      );
+      const shippingEntries = mlOrders.filter(o => o?.shippingId);
+      addLog(`[bling] ${shippingEntries.length}/${itens.length} pedidos com shipping ML encontrado`, 'info');
+      const shipments = await Promise.all(
+        shippingEntries.map(o =>
+          axios.get(`https://api.mercadolibre.com/shipments/${o.shippingId}`, {
+            headers: { Authorization: `Bearer ${o.tok}` }, timeout: 6000,
+          }).then(r => ({ blingId: o.blingId, status: r.data?.status, substatus: r.data?.substatus })).catch(() => null)
+        )
+      );
+      shipments.forEach(s => {
+        if (s?.status === 'ready_to_ship' && s?.substatus === 'invoice_pending') idsComEtiqueta.add(s.blingId);
+      });
+      addLog(`[bling] ${idsComEtiqueta.size} pedidos com etiqueta disponível`, 'info');
+    }
+
+    const pedidos = itensDetalhados.map(p => ({
       id:               p.id,
       numero:           p.numero || '—',
       comprador:        p.contato?.nome || '—',
@@ -990,8 +1019,10 @@ app.get('/api/bling/pedidos-pendentes', async (req, res) => {
       situacao:         p.situacao?.valor || 'Em aberto',
       numeroPedidoLoja: p.numeroLoja || null,
       dataPrevista:     p.dataPrevista || null,
-      temEtiqueta:      true,
+      temEtiqueta:      mlTokens.length > 0 ? idsComEtiqueta.has(p.id) : true,
     }));
+
+    pedidos.sort((a, b) => (b.temEtiqueta ? 1 : 0) - (a.temEtiqueta ? 1 : 0));
 
     return res.json({ pedidos });
   } catch (err) {

@@ -59,7 +59,9 @@ async function blingCarregarPedidos() {
       if (p.temEtiqueta) tr.style.background = 'rgba(34,197,94,0.07)';
       const valor    = (p.valor_total || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
       const data_str = p.data ? new Date(p.data).toLocaleDateString('pt-BR') : '—';
-      const etqBadge = `<span style="background:#16a34a;color:#fff;padding:2px 7px;border-radius:4px;font-size:11px;white-space:nowrap" title="Emitir NF libera a etiqueta de envio">Emitir NF → Etiqueta</span>`;
+      const etqBadge = p.temEtiqueta
+        ? `<span style="background:#16a34a;color:#fff;padding:2px 7px;border-radius:4px;font-size:11px;white-space:nowrap" title="Emitir NF libera a etiqueta de envio">Emitir NF → Etiqueta</span>`
+        : `<span style="color:#9ca3af;font-size:11px">Aguardando ML</span>`;
       tr.innerHTML = `
         <td>${escapeHtml(p.numero || String(p.id))}</td>
         <td>${escapeHtml(p.comprador || '—')}</td>
