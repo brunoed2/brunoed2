@@ -964,7 +964,7 @@ app.get('/api/bling/pedidos-pendentes', async (req, res) => {
     const itens7 = resp7.data?.data || [];
     const itens8 = resp8.data?.data || [];
     addLog(`[bling-diag] rastreamento=7: ${itens7.map(p => p.numero).join(',')||'nenhum'} | rastreamento=8: ${itens8.map(p => p.numero).join(',')||'nenhum'}`, 'info');
-    if (itens8.length > 0) addLog(`[bling-diag] primeiro pedido completo: ${JSON.stringify(itens8[0])}`, 'info');
+    addLog(`[bling-diag] situacao.valor por pedido: ${itens8.map(p => `${p.numero}=${p.situacao?.valor}`).join(' | ')}`, 'info');
 
     // Combina sem duplicatas; pedidos em itens7 marcados separadamente para debug
     const itensMap = new Map();
