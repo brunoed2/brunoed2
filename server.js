@@ -956,8 +956,10 @@ app.get('/api/bling/pedidos-pendentes', async (req, res) => {
     });
     const itens = resp.data?.data || [];
 
-    // rastreamento=8 no Bling = "Etiqueta disponível" — todos os pedidos retornados já estão nesse estado
-    addLog(`[bling] ${itens.length} pedidos com etiqueta disponível (rastreamento=8)`, 'info');
+    if (itens.length > 0) {
+      addLog(`[bling-diag] estrutura rastreamento: ${JSON.stringify(itens.map(p => ({ id: p.id, numero: p.numero, rastreamento: p.rastreamento })))}`, 'info');
+    }
+    addLog(`[bling] ${itens.length} pedidos encontrados`, 'info');
 
     const pedidos = itens.map(p => ({
       id:               p.id,
