@@ -55,6 +55,9 @@ const USA_VOLUME   = DATA_DIR === '/data'; // true = volume persistente Railway
 const logBuffer = [];          // últimas 300 entradas em memória
 const sseClients = new Set();  // clientes SSE conectados
 
+// Cache do count de pedidos com etiqueta (atualizado pela aba Bling, lido pelo dashboard)
+const blingPedidosCache = { '1': null, '2': null }; // null = nunca carregado
+
 function addLog(msg, tipo = 'info') {
   const entry = { ts: Date.now(), msg, tipo };
   logBuffer.push(entry);
@@ -821,19 +824,25 @@ app.get('/api/dashboard', async (req, res) => {
   async function blingResumo(conta) {
     try {
       const token = await getBlingToken(conta);
-      const [rPedidos, rNotas] = await Promise.all([
-        axios.get('https://www.bling.com.br/Api/v3/pedidos/vendas', {
+      const rNotas = await axios.get('https://www.bling.com.br/Api/v3/nfe', {
+        headers: { Authorization: `Bearer ${token}` },
+        params: { pagina: 1, limite: 100 }, timeout: 10000,
+      }).catch(() => null);
+      const notas = (rNotas?.data?.data || []).filter(n => n.situacao === 1);
+
+      // Usa cache da aba Bling se disponível (count filtrado por ML); senão conta bruto
+      let pedidos;
+      if (blingPedidosCache[conta] !== null) {
+        pedidos = blingPedidosCache[conta].count;
+      } else {
+        const rPedidos = await axios.get('https://www.bling.com.br/Api/v3/pedidos/vendas', {
           headers: { Authorization: `Bearer ${token}` },
-          params: { pagina: 1, limite: 100, idSituacao: 6, rastreamento: 8 }, timeout: 10000,
-        }).catch(() => null),
-        axios.get('https://www.bling.com.br/Api/v3/nfe', {
-          headers: { Authorization: `Bearer ${token}` },
-          params: { pagina: 1, limite: 100 }, timeout: 10000,
-        }).catch(() => null),
-      ]);
-      const pedidos = rPedidos?.data?.data || [];
-      const notas   = (rNotas?.data?.data || []).filter(n => n.situacao === 1);
-      return { pedidos: pedidos.length, notas: notas.length };
+          params: { pagina: 1, limite: 100, idSituacao: 6 }, timeout: 10000,
+        }).catch(() => null);
+        pedidos = (rPedidos?.data?.data || []).length;
+      }
+
+      return { pedidos, notas: notas.length };
     } catch { return { pedidos: 0, notas: 0 }; }
   }
 
@@ -1105,6 +1114,9 @@ app.get('/api/bling/pedidos-pendentes', async (req, res) => {
       });
       addLog(`[bling] ${idsComEtiqueta.size}/${itens.length} com etiqueta disponível`, 'info');
     }
+
+    // Atualiza cache para o dashboard
+    blingPedidosCache[conta] = { count: idsComEtiqueta.size, ts: Date.now() };
 
     const pedidos = itensDetalhados.map(p => ({
       id:               p.id,
