@@ -948,17 +948,28 @@ app.get('/api/bling/pedidos-pendentes', async (req, res) => {
     const conta = blingContaReq(req);
     const token = await getBlingToken(conta);
 
-    // Lista todos pedidos Em aberto (rastreamento=8 como param extra — sem ele retorna 0)
-    const resp = await axios.get('https://www.bling.com.br/Api/v3/pedidos/vendas', {
-      headers: { Authorization: `Bearer ${token}` },
-      params: { pagina: 1, limite: 100, idSituacao: 6, rastreamento: 8 },
-      timeout: 15000,
-    });
-    const itens = resp.data?.data || [];
+    // Busca pedidos Em aberto com dois filtros de rastreamento para identificar qual = "Etiqueta disponível"
+    const [resp7, resp8] = await Promise.all([
+      axios.get('https://www.bling.com.br/Api/v3/pedidos/vendas', {
+        headers: { Authorization: `Bearer ${token}` },
+        params: { pagina: 1, limite: 100, idSituacao: 6, rastreamento: 7 },
+        timeout: 15000,
+      }).catch(() => ({ data: { data: [] } })),
+      axios.get('https://www.bling.com.br/Api/v3/pedidos/vendas', {
+        headers: { Authorization: `Bearer ${token}` },
+        params: { pagina: 1, limite: 100, idSituacao: 6, rastreamento: 8 },
+        timeout: 15000,
+      }).catch(() => ({ data: { data: [] } })),
+    ]);
+    const itens7 = resp7.data?.data || [];
+    const itens8 = resp8.data?.data || [];
+    addLog(`[bling-diag] rastreamento=7: ${itens7.map(p => p.numero).join(',')||'nenhum'} | rastreamento=8: ${itens8.map(p => p.numero).join(',')||'nenhum'}`, 'info');
 
-    if (itens.length > 0) {
-      addLog(`[bling-diag] estrutura rastreamento: ${JSON.stringify(itens.map(p => ({ id: p.id, numero: p.numero, rastreamento: p.rastreamento })))}`, 'info');
-    }
+    // Combina sem duplicatas; pedidos em itens7 marcados separadamente para debug
+    const itensMap = new Map();
+    itens8.forEach(p => itensMap.set(p.id, { ...p, _rtq: 8 }));
+    itens7.forEach(p => itensMap.set(p.id, { ...p, _rtq: 7 }));
+    const itens = [...itensMap.values()];
     addLog(`[bling] ${itens.length} pedidos encontrados`, 'info');
 
     const pedidos = itens.map(p => ({
