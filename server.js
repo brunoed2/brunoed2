@@ -822,17 +822,7 @@ app.get('/api/ml/pesquisa', async (req, res) => {
   if (!q) return res.status(400).json({ erro: 'Termo de busca obrigatório' });
 
   try {
-    const data = loadData();
-    // Tenta conta 1, fallback conta 2
-    let tok = null;
-    for (const num of ['1', '2']) {
-      tok = await getToken(data, num).catch(() => null);
-      if (tok) break;
-    }
-    if (!tok) return res.status(401).json({ erro: 'Nenhuma conta ML conectada' });
-
     const resp = await axios.get('https://api.mercadolibre.com/sites/MLB/search', {
-      headers: { Authorization: `Bearer ${tok}` },
       params: { q, limit: 50, sort: 'sold_quantity' },
       timeout: 15000,
     });
