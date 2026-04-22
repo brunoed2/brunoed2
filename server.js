@@ -964,7 +964,15 @@ app.get('/api/bling/pedidos-pendentes', async (req, res) => {
     const itens7 = resp7.data?.data || [];
     const itens8 = resp8.data?.data || [];
     addLog(`[bling-diag] rastreamento=7: ${itens7.map(p => p.numero).join(',')||'nenhum'} | rastreamento=8: ${itens8.map(p => p.numero).join(',')||'nenhum'}`, 'info');
-    addLog(`[bling-diag] situacao.valor por pedido: ${itens8.map(p => `${p.numero}=${p.situacao?.valor}`).join(' | ')}`, 'info');
+    // Busca detalhe dos 2 primeiros pedidos para comparar campos de rastreamento
+    const detalhes = await Promise.all(
+      itens8.slice(0, 2).map(p =>
+        axios.get(`https://www.bling.com.br/Api/v3/pedidos/vendas/${p.id}`, {
+          headers: { Authorization: `Bearer ${token}` }, timeout: 10000,
+        }).then(r => ({ numero: p.numero, data: r.data?.data })).catch(e => ({ numero: p.numero, erro: e.message }))
+      )
+    );
+    detalhes.forEach(d => addLog(`[bling-diag] detalhe ${d.numero}: ${JSON.stringify(d.data || d.erro)}`, 'info'));
 
     // Combina sem duplicatas; pedidos em itens7 marcados separadamente para debug
     const itensMap = new Map();
