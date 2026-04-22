@@ -1004,7 +1004,8 @@ app.get('/api/bling/pedidos-pendentes', async (req, res) => {
           }).then(r => ({ blingId: o.blingId, status: r.data?.status, substatus: r.data?.substatus })).catch(() => null)
         )
       );
-      shipments.forEach(s => {
+      shipments.filter(Boolean).forEach(s => {
+        addLog(`[bling-diag] shipment ${s.blingId}: status=${s.status} substatus=${s.substatus}`, 'info');
         if (s?.status === 'ready_to_ship' && s?.substatus === 'invoice_pending') idsComEtiqueta.add(s.blingId);
       });
       addLog(`[bling] ${idsComEtiqueta.size} pedidos com etiqueta disponível`, 'info');
