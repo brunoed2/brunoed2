@@ -62,6 +62,9 @@ async function blingCarregarPedidos() {
       const etqBadge = p.temEtiqueta
         ? `<span style="background:#16a34a;color:#fff;padding:2px 7px;border-radius:4px;font-size:11px;white-space:nowrap" title="Emitir NF libera a etiqueta de envio">Emitir NF → Etiqueta</span>`
         : `<span style="color:#9ca3af;font-size:11px">Aguardando ML</span>`;
+      const btnSuper = p.temEtiqueta
+        ? `<button class="btn-sm btn-super" data-bling-super-id="${p.id}" onclick="blingSuperEnvio('${p.id}', this)" style="background:#7c3aed;color:#fff;margin-left:4px" title="Gerar NF e enviar em um clique">⚡ Super</button>`
+        : '';
       tr.innerHTML = `
         <td><input type="checkbox" class="bling-check-pedido" data-id="${p.id}" onchange="blingAtualizarBotaoLote()"></td>
         <td>${escapeHtml(p.numero || String(p.id))}</td>
@@ -69,7 +72,7 @@ async function blingCarregarPedidos() {
         <td class="col-num">${valor}</td>
         <td>${data_str}</td>
         <td style="text-align:center">${etqBadge}</td>
-        <td><button class="btn-sm" data-bling-id="${p.id}" onclick="blingEmitirNF('${p.id}', this)">Emitir NF</button></td>
+        <td style="white-space:nowrap"><button class="btn-sm" data-bling-id="${p.id}" onclick="blingEmitirNF('${p.id}', this)">Emitir NF</button>${btnSuper}</td>
       `;
       tbody.appendChild(tr);
     }
@@ -123,6 +126,35 @@ async function blingEmitirSelecionadas() {
   if (checkAll) checkAll.checked = false;
   if (erros === 0) setTimeout(() => blingCarregarPedidos(), 1500);
   else alert(`${ok} NF(s) emitida(s) com sucesso. ${erros} erro(s).`);
+}
+
+async function blingSuperEnvio(pedidoId, btn) {
+  btn.disabled    = true;
+  btn.textContent = '⚡ Gerando NF...';
+  try {
+    const emissao = await fetch(`/api/bling/emitir-nf/${pedidoId}`, { method: 'POST' }).then(r => r.json());
+    if (!emissao.ok) {
+      btn.disabled    = false;
+      btn.textContent = '⚡ Super';
+      alert('Erro ao gerar NF: ' + (emissao.erro || 'Erro desconhecido'));
+      return;
+    }
+    btn.textContent = '⚡ Enviando NF...';
+    const envio = await fetch(`/api/bling/enviar-nf/${emissao.nfId}`, { method: 'POST' }).then(r => r.json());
+    if (envio.ok) {
+      btn.textContent = '✅ Enviada';
+      btn.style.background = '#16a34a';
+      setTimeout(() => blingCarregarPedidos(), 1500);
+    } else {
+      btn.disabled    = false;
+      btn.textContent = '⚡ Super';
+      alert('NF gerada mas erro ao enviar: ' + (envio.erro || 'Erro desconhecido'));
+    }
+  } catch (err) {
+    btn.disabled    = false;
+    btn.textContent = '⚡ Super';
+    alert('Erro: ' + err.message);
+  }
 }
 
 async function blingEmitirNF(pedidoId, btn) {
