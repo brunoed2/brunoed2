@@ -948,48 +948,32 @@ app.get('/api/bling/pedidos-pendentes', async (req, res) => {
     const conta = blingContaReq(req);
     const token = await getBlingToken(conta);
 
-    // rastreamento=8 traz todos os pedidos com pendência de etiqueta
-    const resp = await axios.get('https://www.bling.com.br/Api/v3/pedidos/vendas', {
-      headers: { Authorization: `Bearer ${token}` },
-      params: { pagina: 1, limite: 100, idSituacao: 6, rastreamento: 8 },
-      timeout: 15000,
-    });
-    const itens = resp.data?.data || [];
-    if (itens.length > 0) addLog(`[bling-diag] lista campos: ${JSON.stringify(itens[0])}`, 'info');
+    // Testa três valores de rastreamento para identificar qual corresponde a "Etiqueta disponível"
+    const [resp6, resp7, resp8] = await Promise.all([6, 7, 8].map(r =>
+      axios.get('https://www.bling.com.br/Api/v3/pedidos/vendas', {
+        headers: { Authorization: `Bearer ${token}` },
+        params: { pagina: 1, limite: 100, idSituacao: 6, rastreamento: r },
+        timeout: 15000,
+      }).then(res => res.data?.data || []).catch(() => [])
+    ));
+    addLog(`[bling-diag] rtq=6: ${resp6.map(p=>p.numero).join(',')||'nenhum'} | rtq=7: ${resp7.map(p=>p.numero).join(',')||'nenhum'} | rtq=8: ${resp8.map(p=>p.numero).join(',')||'nenhum'}`, 'info');
+
+    // Usa rastreamento=8 como base; ids em rtq=7 mas não em rtq=6 serão "Etiqueta disponível"
+    const itens = resp8;
+    const idsRtq6 = new Set(resp6.map(p => p.id));
+    const idsRtq7 = new Set(resp7.map(p => p.id));
     addLog(`[bling] ${itens.length} pedidos encontrados`, 'info');
 
-    // Busca detalhe de cada pedido — procura situacaoEtiqueta ou campo equivalente
-    const itensDetalhados = await Promise.all(
-      itens.map(p =>
-        axios.get(`https://www.bling.com.br/Api/v3/pedidos/vendas/${p.id}`, {
-          headers: { Authorization: `Bearer ${token}` }, timeout: 10000,
-        }).then(r => {
-          const d = r.data?.data || {};
-          return { ...p, _detalhe: d };
-        }).catch(() => ({ ...p, _detalhe: {} }))
-      )
-    );
-    if (itensDetalhados.length > 0) {
-      addLog(`[bling-diag] detalhe campos extras: ${JSON.stringify({
-        situacaoEtiqueta:          itensDetalhados[0]._detalhe.situacaoEtiqueta,
-        situacaoImpressaoEtiqueta: itensDetalhados[0]._detalhe.situacaoImpressaoEtiqueta,
-        transporte_situacao:       itensDetalhados[0]._detalhe.transporte?.situacao,
-        transporte_etiquetaSit:    itensDetalhados[0]._detalhe.transporte?.situacaoEtiqueta,
-        loja_extra:                itensDetalhados[0]._detalhe.loja,
-      })}`, 'info');
-    }
-
-    // Por ora marca todos como temEtiqueta=true (sem diferenciação até achar o campo certo no Bling)
-    const pedidos = itensDetalhados.map(p => ({
+    const pedidos = itens.map(p => ({
       id:               p.id,
       numero:           p.numero || '—',
       comprador:        p.contato?.nome || '—',
       valor_total:      p.totalProdutos || 0,
       data:             p.data,
       situacao:         p.situacao?.valor || 'Em aberto',
-      numeroPedidoLoja: p._detalhe.numeroLoja || p.numeroLoja || null,
+      numeroPedidoLoja: p.numeroLoja || null,
       dataPrevista:     p.dataPrevista || null,
-      temEtiqueta:      true,
+      temEtiqueta:      idsRtq7.has(p.id) && !idsRtq6.has(p.id),
     }));
 
     pedidos.sort((a, b) => (b.temEtiqueta ? 1 : 0) - (a.temEtiqueta ? 1 : 0));
