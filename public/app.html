@@ -615,13 +615,17 @@
           <div class="tabela-container">
             <div class="tabela-topo">
               <span id="bling-notas-total"></span>
-              <button class="btn-secondary" onclick="blingCarregarNotas()" id="btn-atualizar-bling-notas">↻ Atualizar</button>
+              <div style="display:flex;gap:8px;align-items:center">
+                <button class="btn-primary" id="btn-enviar-selecionadas" onclick="blingEnviarSelecionadas()" style="display:none">Enviar selecionadas</button>
+                <button class="btn-secondary" onclick="blingCarregarNotas()" id="btn-atualizar-bling-notas">↻ Atualizar</button>
+              </div>
             </div>
             <div id="bling-notas-loading" class="loading" style="display:none">Carregando notas...</div>
             <div id="bling-notas-erro" class="estoque-erro" style="display:none"></div>
             <table class="tabela" id="tabela-bling-notas" style="display:none">
               <thead>
                 <tr>
+                  <th><input type="checkbox" id="bling-check-all-notas" onchange="blingToggleAllNotas(this)"></th>
                   <th>Número</th>
                   <th>Destinatário</th>
                   <th class="col-num">Valor</th>
@@ -746,6 +750,6 @@
   <script src="/js/contas-pagar.js?v=1"></script>
   <script src="/js/promocoes.js?v=1"></script>
   <script src="/js/bling.js?v=1"></script>
-  <div id="version-badge">v280</div>
+  <div id="version-badge">v281</div>
 </body>
 </html>

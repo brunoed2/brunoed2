@@ -185,21 +185,66 @@ async function blingCarregarNotas() {
       const valor = (n.valor_total || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
       const data_str = n.data ? new Date(n.data).toLocaleDateString('pt-BR') : '—';
       tr.innerHTML = `
+        <td><input type="checkbox" class="bling-check-nota" data-id="${n.id}" onchange="blingAtualizarBotaoLoteNotas()"></td>
         <td>${escapeHtml(n.numero || '—')}</td>
         <td>${escapeHtml(n.destinatario || '—')}</td>
         <td class="col-num">${valor}</td>
         <td><span class="badge">${escapeHtml(n.situacao || '—')}</span></td>
         <td>${data_str}</td>
-        <td><button class="btn-sm" onclick="blingEnviarNF('${n.id}', this)">Enviar</button></td>
+        <td><button class="btn-sm" data-bling-nota-id="${n.id}" onclick="blingEnviarNF('${n.id}', this)">Enviar</button></td>
       `;
       tbody.appendChild(tr);
     }
     tabela.style.display = '';
+    blingAtualizarBotaoLoteNotas();
   } catch (err) {
     loading.style.display = 'none';
     erro.textContent      = 'Erro ao carregar notas: ' + err.message;
     erro.style.display    = '';
   }
+}
+
+function blingToggleAllNotas(chk) {
+  document.querySelectorAll('.bling-check-nota').forEach(c => c.checked = chk.checked);
+  blingAtualizarBotaoLoteNotas();
+}
+
+function blingAtualizarBotaoLoteNotas() {
+  const selecionados = document.querySelectorAll('.bling-check-nota:checked').length;
+  const btn = document.getElementById('btn-enviar-selecionadas');
+  if (!btn) return;
+  btn.style.display = selecionados > 0 ? '' : 'none';
+  btn.textContent   = `Enviar selecionadas (${selecionados})`;
+}
+
+async function blingEnviarSelecionadas() {
+  const checks = [...document.querySelectorAll('.bling-check-nota:checked')];
+  if (checks.length === 0) return;
+  const btn = document.getElementById('btn-enviar-selecionadas');
+  btn.disabled    = true;
+  btn.textContent = `Enviando 0/${checks.length}...`;
+  let ok = 0, erros = 0;
+  for (const chk of checks) {
+    const id      = chk.dataset.id;
+    const btnLinha = document.querySelector(`button[data-bling-nota-id="${id}"]`);
+    if (btnLinha) { btnLinha.disabled = true; btnLinha.textContent = 'Enviando...'; }
+    const res = await fetch(`/api/bling/enviar-nf/${id}`, { method: 'POST' }).then(r => r.json()).catch(() => ({ ok: false }));
+    if (res.ok) {
+      ok++;
+      if (btnLinha) { btnLinha.textContent = '✅ Enviada'; btnLinha.style.color = 'green'; }
+      chk.checked = false;
+    } else {
+      erros++;
+      if (btnLinha) { btnLinha.disabled = false; btnLinha.textContent = 'Enviar'; }
+    }
+    btn.textContent = `Enviando ${ok + erros}/${checks.length}...`;
+  }
+  btn.disabled = false;
+  blingAtualizarBotaoLoteNotas();
+  const checkAll = document.getElementById('bling-check-all-notas');
+  if (checkAll) checkAll.checked = false;
+  if (erros === 0) setTimeout(() => blingCarregarNotas(), 1500);
+  else alert(`${ok} nota(s) enviada(s) com sucesso. ${erros} erro(s).`);
 }
 
 async function blingEnviarNF(notaId, btn) {
