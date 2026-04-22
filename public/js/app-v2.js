@@ -43,6 +43,7 @@ function abrirAba(nome) {
   if (nome === 'promocoes')    carregarPromocoes();
   if (nome === 'contas-pagar') contasPagarInit();
   if (nome === 'bling')        blingInit();
+  if (nome === 'home')         homeInit();
 }
 
 navBtns.forEach(btn => {
@@ -51,7 +52,7 @@ navBtns.forEach(btn => {
 
 (function () {
   const params = new URLSearchParams(location.search);
-  const tab    = params.get('tab') || 'loja';
+  const tab    = params.get('tab') || 'home';
   abrirAba(tab);
 
   if (params.get('connected') === 'true') {

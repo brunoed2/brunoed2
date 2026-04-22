@@ -1334,6 +1334,99 @@ tr.lucro-sub-item td {
   .cx-status-box { font-size: 13px; }
 }
 
+/* ── Home / Dashboard ────────────────────────────────────────── */
+
+.home-loading {
+  padding: 48px;
+  text-align: center;
+  color: #888;
+  font-size: 15px;
+}
+
+.home-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.home-atualizado {
+  font-size: 13px;
+  color: #888;
+}
+
+.home-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.home-card {
+  background: #fff;
+  border-radius: 12px;
+  padding: 20px 20px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-left: 5px solid #e5e7eb;
+  box-shadow: 0 1px 4px rgba(0,0,0,.07);
+  transition: box-shadow .15s;
+}
+
+.home-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,.12); }
+
+.home-card-verde  { border-left-color: #22c55e; }
+.home-card-amarelo { border-left-color: #f59e0b; }
+.home-card-vermelho { border-left-color: #ef4444; }
+
+.home-card-icon {
+  font-size: 22px;
+  margin-bottom: 4px;
+}
+
+.home-card-titulo {
+  font-size: 13px;
+  font-weight: 600;
+  color: #555;
+  text-transform: uppercase;
+  letter-spacing: .4px;
+}
+
+.home-card-valor {
+  font-size: 36px;
+  font-weight: 700;
+  color: #111;
+  line-height: 1.1;
+  margin: 4px 0;
+}
+
+.home-card-vermelho .home-card-valor { color: #dc2626; }
+.home-card-amarelo  .home-card-valor { color: #d97706; }
+
+.home-card-detalhe {
+  font-size: 12px;
+  color: #888;
+  margin-bottom: 8px;
+}
+
+.home-card-btn {
+  margin-top: auto;
+  background: none;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  color: #374151;
+  transition: background .12s, border-color .12s;
+  align-self: flex-start;
+}
+
+.home-card-btn:hover {
+  background: #f3f4f6;
+  border-color: #9ca3af;
+}
+
 /* Topbar mobile — oculto no desktop */
 .mobile-topbar { display: none; }
 .mobile-conta-seletor { display: none; }

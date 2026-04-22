@@ -25,7 +25,8 @@
         <button class="conta-btn" data-conta="2" onclick="trocarConta('2')">Conta 2</button>
       </div>
       <nav>
-        <button class="nav-btn active" data-tab="loja">🏪 Loja</button>
+        <button class="nav-btn active" data-tab="home">🏠 Painel</button>
+        <button class="nav-btn" data-tab="loja">🏪 Loja</button>
         <button class="nav-btn" data-tab="estoque">📦 Estoque</button>
         <button class="nav-btn" data-tab="ads">📊 Ads</button>
         <button class="nav-btn" data-tab="lucro">💰 Lucro</button>
@@ -51,6 +52,13 @@
         </div>
         <button class="btn-sair" onclick="sair()" style="width:auto;padding:7px 14px;font-size:13px">Sair</button>
       </div>
+
+      <!-- ── Aba: Home / Painel ── -->
+      <section id="tab-home" class="tab">
+        <h1>Painel</h1>
+        <p class="subtitle">Visão geral do dia — itens que precisam da sua atenção.</p>
+        <div id="home-grid"></div>
+      </section>
 
       <!-- ── Aba: Lucro ── -->
       <section id="tab-lucro" class="tab">
@@ -750,6 +758,7 @@
   <script src="/js/contas-pagar.js?v=1"></script>
   <script src="/js/promocoes.js?v=1"></script>
   <script src="/js/bling.js?v=1"></script>
-  <div id="version-badge">v282</div>
+  <script src="/js/home.js?v=1"></script>
+  <div id="version-badge">v283</div>
 </body>
 </html>

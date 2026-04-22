@@ -813,6 +813,106 @@ function extrairSku(body) {
 // Ping simples para testar conectividade frontend→servidor
 app.get('/api/ping', (req, res) => res.json({ ok: true, ts: Date.now() }));
 
+// ── Dashboard: resumo geral ───────────────────────────────────
+app.get('/api/dashboard', async (req, res) => {
+  const data  = loadData();
+  const contas = ['1', '2'];
+
+  async function blingResumo(conta) {
+    try {
+      const token = await getBlingToken(conta);
+      const [rPedidos, rNotas] = await Promise.all([
+        axios.get('https://www.bling.com.br/Api/v3/pedidos/vendas', {
+          headers: { Authorization: `Bearer ${token}` },
+          params: { pagina: 1, limite: 100, idSituacao: 6, rastreamento: 8 }, timeout: 10000,
+        }).catch(() => null),
+        axios.get('https://www.bling.com.br/Api/v3/nfe', {
+          headers: { Authorization: `Bearer ${token}` },
+          params: { pagina: 1, limite: 100 }, timeout: 10000,
+        }).catch(() => null),
+      ]);
+      const pedidos = rPedidos?.data?.data || [];
+      const notas   = (rNotas?.data?.data || []).filter(n => n.situacao === 1);
+      return { pedidos: pedidos.length, notas: notas.length };
+    } catch { return { pedidos: 0, notas: 0 }; }
+  }
+
+  async function mlResumo(conta) {
+    try {
+      const tok = await getToken(data, conta);
+      const c   = data.contas[conta];
+      if (!c?.user_id) {
+        const me = await axios.get('https://api.mercadolibre.com/users/me', {
+          headers: { Authorization: `Bearer ${tok}` }, timeout: 8000,
+        }).catch(() => null);
+        if (me?.data?.id) { c.user_id = me.data.id; saveData(data); }
+      }
+      const uid = c?.user_id;
+      const hoje   = new Date(); hoje.setHours(0,0,0,0);
+      const semana = new Date(hoje); semana.setDate(semana.getDate() - semana.getDay());
+
+      const [rPerguntas, rReclamacoes, rVendasHoje, rVendasSemana] = await Promise.all([
+        axios.get('https://api.mercadolibre.com/my/questions/search', {
+          headers: { Authorization: `Bearer ${tok}` },
+          params: { role: 'SELLER', status: 'UNANSWERED', limit: 1 }, timeout: 8000,
+        }).catch(() => null),
+        axios.get('https://api.mercadolibre.com/post/v2/claims', {
+          headers: { Authorization: `Bearer ${tok}` },
+          params: { role: 'respondent', status: 'opened', limit: 1 }, timeout: 8000,
+        }).catch(() => null),
+        uid ? axios.get('https://api.mercadolibre.com/orders/search', {
+          headers: { Authorization: `Bearer ${tok}` },
+          params: { seller: uid, 'order.status': 'paid', 'order.date_created.from': hoje.toISOString(), limit: 1 }, timeout: 8000,
+        }).catch(() => null) : null,
+        uid ? axios.get('https://api.mercadolibre.com/orders/search', {
+          headers: { Authorization: `Bearer ${tok}` },
+          params: { seller: uid, 'order.status': 'paid', 'order.date_created.from': semana.toISOString(), limit: 1 }, timeout: 8000,
+        }).catch(() => null) : null,
+      ]);
+
+      return {
+        perguntas:    rPerguntas?.data?.total  ?? rPerguntas?.data?.questions?.length ?? 0,
+        reclamacoes:  rReclamacoes?.data?.paging?.total ?? 0,
+        vendasHoje:   rVendasHoje?.data?.paging?.total  ?? 0,
+        vendasSemana: rVendasSemana?.data?.paging?.total ?? 0,
+      };
+    } catch { return { perguntas: 0, reclamacoes: 0, vendasHoje: 0, vendasSemana: 0 }; }
+  }
+
+  function contasPagarResumo() {
+    try {
+      const hoje    = new Date(); hoje.setHours(0,0,0,0);
+      const amanha  = new Date(hoje); amanha.setDate(amanha.getDate() + 1);
+      const semana  = new Date(hoje); semana.setDate(semana.getDate() + 7);
+      let vencidas = 0, venceHoje = 0, venceSemana = 0;
+      for (const num of contas) {
+        const cp = (data.contas_pagar || {})[num] || [];
+        for (const c of cp) {
+          if (c.pago) continue;
+          const venc = new Date(c.vencimento + 'T00:00:00');
+          if (venc < hoje)   vencidas++;
+          else if (venc < amanha) venceHoje++;
+          else if (venc < semana) venceSemana++;
+        }
+      }
+      return { vencidas, venceHoje, venceSemana };
+    } catch { return { vencidas: 0, venceHoje: 0, venceSemana: 0 }; }
+  }
+
+  const [bling1, bling2, ml1, ml2, cp] = await Promise.all([
+    blingResumo('1'), blingResumo('2'),
+    mlResumo('1'),    mlResumo('2'),
+    Promise.resolve(contasPagarResumo()),
+  ]);
+
+  res.json({
+    bling: { '1': bling1, '2': bling2 },
+    ml:    { '1': ml1,    '2': ml2    },
+    contasPagar: cp,
+    ts: Date.now(),
+  });
+});
+
 // ── Bling OAuth v3 ────────────────────────────────────────────
 
 // Helper: retorna dados bling da conta (com fallback legado para conta 1)
