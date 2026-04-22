@@ -958,7 +958,10 @@ app.get('/api/bling/pedidos-pendentes', async (req, res) => {
 
     // Para cada pedido, verificar substatus no ML (fonte de verdade do "Etiqueta disponível")
     const data = loadData();
-    const mlToken = await getToken(data, conta).catch(() => null);
+    const mlToken = await getToken(data, conta).catch(e => {
+      addLog(`[bling] ML token conta ${conta} indisponível: ${e.message}`, 'warn');
+      return null;
+    });
     let idsComEtiqueta = new Set();
 
     if (mlToken) {
