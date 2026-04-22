@@ -956,46 +956,8 @@ app.get('/api/bling/pedidos-pendentes', async (req, res) => {
     });
     const itens = resp.data?.data || [];
 
-    // Para cada pedido, verificar substatus no ML (fonte de verdade do "Etiqueta disponível")
-    // Usa tokens de ambas as contas ML pois os pedidos do Bling podem pertencer a qualquer conta ML
-    const data = loadData();
-    const mlTokens = (await Promise.all(
-      ['1', '2'].map(c => getToken(data, c).catch(() => null))
-    )).filter(Boolean);
-    let idsComEtiqueta = new Set();
-
-    if (mlTokens.length > 0) {
-      // Tenta cada pedido em todos os tokens ML disponíveis, usa o primeiro que responder com sucesso
-      const mlOrders = await Promise.all(
-        itens.map(async p => {
-          if (!p.numeroLoja) return null;
-          for (const tok of mlTokens) {
-            const res = await axios.get(`https://api.mercadolibre.com/orders/${p.numeroLoja}`, {
-              headers: { Authorization: `Bearer ${tok}` }, timeout: 6000,
-            }).catch(() => null);
-            if (res?.data?.shipping?.id) return { blingId: p.id, shippingId: res.data.shipping.id, tok };
-          }
-          return null;
-        })
-      );
-      const shippingEntries = mlOrders.filter(o => o?.shippingId);
-      addLog(`[bling-diag] orders resolvidos: ${shippingEntries.length}/${itens.length} — sem shipping: ${mlOrders.filter(o => !o).length} nulos`, 'info');
-      const shipments = await Promise.all(
-        shippingEntries.map(o =>
-          axios.get(`https://api.mercadolibre.com/shipments/${o.shippingId}`, {
-            headers: { Authorization: `Bearer ${o.tok}` }, timeout: 6000,
-          }).then(r => ({ blingId: o.blingId, status: r.data?.status, substatus: r.data?.substatus })).catch(() => null)
-        )
-      );
-      addLog(`[bling-diag] shipments: ${shipments.filter(Boolean).map(s => `${s.blingId}=${s.status}/${s.substatus}`).join(' | ') || 'nenhum'}`, 'info');
-      // ready_to_ship + invoice_pending = ML autorizou o despacho, aguardando NF para liberar etiqueta
-      shipments.forEach(s => {
-        if (s?.status === 'ready_to_ship' && s?.substatus === 'invoice_pending') idsComEtiqueta.add(s.blingId);
-      });
-      addLog(`[bling] ${itens.length} pedidos, ${idsComEtiqueta.size} com etiqueta disponível`, 'info');
-    } else {
-      addLog('[bling] ML tokens indisponíveis — temEtiqueta desativado', 'warn');
-    }
+    // rastreamento=8 no Bling = "Etiqueta disponível" — todos os pedidos retornados já estão nesse estado
+    addLog(`[bling] ${itens.length} pedidos com etiqueta disponível (rastreamento=8)`, 'info');
 
     const pedidos = itens.map(p => ({
       id:               p.id,
@@ -1006,11 +968,8 @@ app.get('/api/bling/pedidos-pendentes', async (req, res) => {
       situacao:         p.situacao?.valor || 'Em aberto',
       numeroPedidoLoja: p.numeroLoja || null,
       dataPrevista:     p.dataPrevista || null,
-      temEtiqueta:      idsComEtiqueta.has(p.id),
+      temEtiqueta:      true,
     }));
-
-    // Ordenar: "etiqueta disponível" primeiro
-    pedidos.sort((a, b) => (b.temEtiqueta ? 1 : 0) - (a.temEtiqueta ? 1 : 0));
 
     return res.json({ pedidos });
   } catch (err) {
