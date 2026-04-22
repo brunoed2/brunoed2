@@ -948,23 +948,60 @@ app.get('/api/bling/pedidos-pendentes', async (req, res) => {
     const conta = blingContaReq(req);
     const token = await getBlingToken(conta);
 
-    // Testa três valores de rastreamento para identificar qual corresponde a "Etiqueta disponível"
-    const [resp6, resp7, resp8] = await Promise.all([6, 7, 8].map(r =>
-      axios.get('https://www.bling.com.br/Api/v3/pedidos/vendas', {
-        headers: { Authorization: `Bearer ${token}` },
-        params: { pagina: 1, limite: 100, idSituacao: 6, rastreamento: r },
-        timeout: 15000,
-      }).then(res => res.data?.data || []).catch(() => [])
-    ));
-    addLog(`[bling-diag] rtq=6: ${resp6.map(p=>p.numero).join(',')||'nenhum'} | rtq=7: ${resp7.map(p=>p.numero).join(',')||'nenhum'} | rtq=8: ${resp8.map(p=>p.numero).join(',')||'nenhum'}`, 'info');
-
-    // Usa rastreamento=8 como base; ids em rtq=7 mas não em rtq=6 serão "Etiqueta disponível"
-    const itens = resp8;
-    const idsRtq6 = new Set(resp6.map(p => p.id));
-    const idsRtq7 = new Set(resp7.map(p => p.id));
+    // Lista pedidos Em aberto com rastreamento pendente de etiqueta
+    const resp = await axios.get('https://www.bling.com.br/Api/v3/pedidos/vendas', {
+      headers: { Authorization: `Bearer ${token}` },
+      params: { pagina: 1, limite: 100, idSituacao: 6, rastreamento: 8 },
+      timeout: 15000,
+    });
+    const itens = resp.data?.data || [];
     addLog(`[bling] ${itens.length} pedidos encontrados`, 'info');
 
-    const pedidos = itens.map(p => ({
+    // Busca detalhe de cada pedido para obter o numeroLoja correto (lista retorna ID diferente do real)
+    const itensDetalhados = await Promise.all(
+      itens.map(p =>
+        axios.get(`https://www.bling.com.br/Api/v3/pedidos/vendas/${p.id}`, {
+          headers: { Authorization: `Bearer ${token}` }, timeout: 10000,
+        }).then(r => ({ ...p, numeroLoja: r.data?.data?.numeroLoja || p.numeroLoja })).catch(() => p)
+      )
+    );
+
+    // Verifica no ML quais têm shipment ready_to_ship (etiqueta disponível ao emitir NF)
+    const mlData = loadData();
+    const mlTokens = (await Promise.all(
+      ['1', '2'].map(c => getToken(mlData, c).catch(() => null))
+    )).filter(Boolean);
+
+    const idsComEtiqueta = new Set();
+    if (mlTokens.length > 0) {
+      const mlOrders = await Promise.all(
+        itensDetalhados.map(async p => {
+          if (!p.numeroLoja) return null;
+          for (const tok of mlTokens) {
+            const res = await axios.get(`https://api.mercadolibre.com/orders/${p.numeroLoja}`, {
+              headers: { Authorization: `Bearer ${tok}` }, timeout: 6000,
+            }).catch(() => null);
+            if (res?.data?.shipping?.id) return { blingId: p.id, shippingId: res.data.shipping.id, tok };
+          }
+          return null;
+        })
+      );
+      const shippingEntries = mlOrders.filter(o => o?.shippingId);
+      const shipments = await Promise.all(
+        shippingEntries.map(o =>
+          axios.get(`https://api.mercadolibre.com/shipments/${o.shippingId}`, {
+            headers: { Authorization: `Bearer ${o.tok}` }, timeout: 6000,
+          }).then(r => ({ blingId: o.blingId, status: r.data?.status, substatus: r.data?.substatus })).catch(() => null)
+        )
+      );
+      shipments.filter(Boolean).forEach(s => {
+        addLog(`[bling] shipment ${s.blingId}: ${s.status}/${s.substatus}`, 'info');
+        if (s?.status === 'ready_to_ship' && s?.substatus === 'invoice_pending') idsComEtiqueta.add(s.blingId);
+      });
+      addLog(`[bling] ${idsComEtiqueta.size}/${itens.length} com etiqueta disponível`, 'info');
+    }
+
+    const pedidos = itensDetalhados.map(p => ({
       id:               p.id,
       numero:           p.numero || '—',
       comprador:        p.contato?.nome || '—',
@@ -973,7 +1010,7 @@ app.get('/api/bling/pedidos-pendentes', async (req, res) => {
       situacao:         p.situacao?.valor || 'Em aberto',
       numeroPedidoLoja: p.numeroLoja || null,
       dataPrevista:     p.dataPrevista || null,
-      temEtiqueta:      idsRtq7.has(p.id) && !idsRtq6.has(p.id),
+      temEtiqueta:      mlTokens.length > 0 ? idsComEtiqueta.has(p.id) : true,
     }));
 
     pedidos.sort((a, b) => (b.temEtiqueta ? 1 : 0) - (a.temEtiqueta ? 1 : 0));
