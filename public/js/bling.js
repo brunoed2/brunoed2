@@ -63,21 +63,66 @@ async function blingCarregarPedidos() {
         ? `<span style="background:#16a34a;color:#fff;padding:2px 7px;border-radius:4px;font-size:11px;white-space:nowrap" title="Emitir NF libera a etiqueta de envio">Emitir NF → Etiqueta</span>`
         : `<span style="color:#9ca3af;font-size:11px">Aguardando ML</span>`;
       tr.innerHTML = `
+        <td><input type="checkbox" class="bling-check-pedido" data-id="${p.id}" onchange="blingAtualizarBotaoLote()"></td>
         <td>${escapeHtml(p.numero || String(p.id))}</td>
         <td>${escapeHtml(p.comprador || '—')}</td>
         <td class="col-num">${valor}</td>
         <td>${data_str}</td>
         <td style="text-align:center">${etqBadge}</td>
-        <td><button class="btn-sm" onclick="blingEmitirNF('${p.id}', this)">Emitir NF</button></td>
+        <td><button class="btn-sm" data-bling-id="${p.id}" onclick="blingEmitirNF('${p.id}', this)">Emitir NF</button></td>
       `;
       tbody.appendChild(tr);
     }
     tabela.style.display = '';
+    blingAtualizarBotaoLote();
   } catch (err) {
     loading.style.display = 'none';
     erro.textContent      = 'Erro ao carregar pedidos: ' + err.message;
     erro.style.display    = '';
   }
+}
+
+function blingToggleAll(chk) {
+  document.querySelectorAll('.bling-check-pedido').forEach(c => c.checked = chk.checked);
+  blingAtualizarBotaoLote();
+}
+
+function blingAtualizarBotaoLote() {
+  const selecionados = document.querySelectorAll('.bling-check-pedido:checked').length;
+  const btn = document.getElementById('btn-emitir-selecionadas');
+  if (!btn) return;
+  btn.style.display = selecionados > 0 ? '' : 'none';
+  btn.textContent   = `Emitir NF selecionadas (${selecionados})`;
+}
+
+async function blingEmitirSelecionadas() {
+  const checks = [...document.querySelectorAll('.bling-check-pedido:checked')];
+  if (checks.length === 0) return;
+  const btn = document.getElementById('btn-emitir-selecionadas');
+  btn.disabled    = true;
+  btn.textContent = `Emitindo 0/${checks.length}...`;
+  let ok = 0, erros = 0;
+  for (const chk of checks) {
+    const id   = chk.dataset.id;
+    const btnLinha = document.querySelector(`button[data-bling-id="${id}"]`);
+    if (btnLinha) { btnLinha.disabled = true; btnLinha.textContent = 'Emitindo...'; }
+    const res = await fetch(`/api/bling/emitir-nf/${id}`, { method: 'POST' }).then(r => r.json()).catch(() => ({ ok: false }));
+    if (res.ok) {
+      ok++;
+      if (btnLinha) { btnLinha.textContent = '✅ Emitida'; btnLinha.style.color = 'green'; }
+      chk.checked = false;
+    } else {
+      erros++;
+      if (btnLinha) { btnLinha.disabled = false; btnLinha.textContent = 'Emitir NF'; }
+    }
+    btn.textContent = `Emitindo ${ok + erros}/${checks.length}...`;
+  }
+  btn.disabled = false;
+  blingAtualizarBotaoLote();
+  const checkAll = document.getElementById('bling-check-all');
+  if (checkAll) checkAll.checked = false;
+  if (erros === 0) setTimeout(() => blingCarregarPedidos(), 1500);
+  else alert(`${ok} NF(s) emitida(s) com sucesso. ${erros} erro(s).`);
 }
 
 async function blingEmitirNF(pedidoId, btn) {
