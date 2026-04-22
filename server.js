@@ -957,14 +957,18 @@ app.get('/api/bling/pedidos-pendentes', async (req, res) => {
     const itens = resp.data?.data || [];
     addLog(`[bling] ${itens.length} pedidos encontrados`, 'info');
 
-    // Busca detalhe de cada pedido em sequência para obter o numeroLoja correto
-    // (lista retorna ID diferente do real; paralelo causa rate limit no Bling)
+    // Busca detalhe de cada pedido para obter o numeroLoja correto (lista retorna ID diferente)
+    // Tenta até 3 vezes antes de desistir e usar o valor da lista
     const itensDetalhados = [];
     for (const p of itens) {
-      const det = await axios.get(`https://www.bling.com.br/Api/v3/pedidos/vendas/${p.id}`, {
-        headers: { Authorization: `Bearer ${token}` }, timeout: 10000,
-      }).then(r => ({ ...p, numeroLoja: r.data?.data?.numeroLoja || p.numeroLoja })).catch(() => p);
-      itensDetalhados.push(det);
+      let numeroLojaCorreto = null;
+      for (let tentativa = 0; tentativa < 3 && !numeroLojaCorreto; tentativa++) {
+        if (tentativa > 0) await new Promise(r => setTimeout(r, 600 * tentativa));
+        numeroLojaCorreto = await axios.get(`https://www.bling.com.br/Api/v3/pedidos/vendas/${p.id}`, {
+          headers: { Authorization: `Bearer ${token}` }, timeout: 10000,
+        }).then(r => r.data?.data?.numeroLoja || null).catch(() => null);
+      }
+      itensDetalhados.push({ ...p, numeroLoja: numeroLojaCorreto || p.numeroLoja });
     }
 
     // Verifica no ML quais têm shipment ready_to_ship (etiqueta disponível ao emitir NF)
