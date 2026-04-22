@@ -965,16 +965,18 @@ app.get('/api/bling/pedidos-pendentes', async (req, res) => {
     let idsComEtiqueta = new Set();
 
     if (mlToken) {
+      addLog(`[bling-diag] pedidos com numeroLoja: ${itens.filter(p => p.numeroLoja).map(p => `${p.id}=${p.numeroLoja}`).join(', ') || 'nenhum'}`, 'info');
       // Busca shipment de cada pedido via ML para verificar substatus
       const mlOrders = await Promise.all(
         itens.map(p => p.numeroLoja
           ? axios.get(`https://api.mercadolibre.com/orders/${p.numeroLoja}`, {
               headers: { Authorization: `Bearer ${mlToken}` }, timeout: 6000,
-            }).then(r => ({ blingId: p.id, shippingId: r.data?.shipping?.id })).catch(() => null)
+            }).then(r => ({ blingId: p.id, shippingId: r.data?.shipping?.id })).catch(e => { addLog(`[bling-diag] order ${p.numeroLoja} erro: ${e.response?.status || e.message}`, 'warn'); return null; })
           : null
         )
       );
       const shippingEntries = mlOrders.filter(o => o?.shippingId);
+      addLog(`[bling-diag] shippings encontrados: ${shippingEntries.map(o => o.shippingId).join(', ') || 'nenhum'}`, 'info');
       const shipments = await Promise.all(
         shippingEntries.map(o =>
           axios.get(`https://api.mercadolibre.com/shipments/${o.shippingId}`, {
@@ -982,6 +984,7 @@ app.get('/api/bling/pedidos-pendentes', async (req, res) => {
           }).then(r => ({ blingId: o.blingId, status: r.data?.status, substatus: r.data?.substatus })).catch(() => null)
         )
       );
+      addLog(`[bling-diag] shipments status: ${shipments.filter(Boolean).map(s => `${s.blingId}=${s.status}/${s.substatus}`).join(', ') || 'nenhum'}`, 'info');
       // ready_to_ship + invoice_pending = ML autorizou o despacho, aguardando NF para liberar etiqueta
       shipments.forEach(s => {
         if (s?.status === 'ready_to_ship' && s?.substatus === 'invoice_pending') idsComEtiqueta.add(s.blingId);
