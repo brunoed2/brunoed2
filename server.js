@@ -957,14 +957,15 @@ app.get('/api/bling/pedidos-pendentes', async (req, res) => {
     const itens = resp.data?.data || [];
     addLog(`[bling] ${itens.length} pedidos encontrados`, 'info');
 
-    // Busca detalhe de cada pedido para obter o numeroLoja correto (lista retorna ID diferente do real)
-    const itensDetalhados = await Promise.all(
-      itens.map(p =>
-        axios.get(`https://www.bling.com.br/Api/v3/pedidos/vendas/${p.id}`, {
-          headers: { Authorization: `Bearer ${token}` }, timeout: 10000,
-        }).then(r => ({ ...p, numeroLoja: r.data?.data?.numeroLoja || p.numeroLoja })).catch(() => p)
-      )
-    );
+    // Busca detalhe de cada pedido em sequência para obter o numeroLoja correto
+    // (lista retorna ID diferente do real; paralelo causa rate limit no Bling)
+    const itensDetalhados = [];
+    for (const p of itens) {
+      const det = await axios.get(`https://www.bling.com.br/Api/v3/pedidos/vendas/${p.id}`, {
+        headers: { Authorization: `Bearer ${token}` }, timeout: 10000,
+      }).then(r => ({ ...p, numeroLoja: r.data?.data?.numeroLoja || p.numeroLoja })).catch(() => p);
+      itensDetalhados.push(det);
+    }
 
     // Verifica no ML quais têm shipment ready_to_ship (etiqueta disponível ao emitir NF)
     const mlData = loadData();
