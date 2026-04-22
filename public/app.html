@@ -34,6 +34,7 @@
         <button class="nav-btn" data-tab="promocoes">🏷️ Promoções</button>
         <button class="nav-btn" data-tab="contas-pagar">💳 Contas a Pagar</button>
         <button class="nav-btn" data-tab="bling">🧾 Bling</button>
+        <button class="nav-btn" data-tab="pesquisa">🔍 Pesquisa</button>
         <button class="nav-btn" data-tab="config">⚙️ Configurações</button>
         <button class="nav-btn" data-tab="conexao">🔌 Conexão</button>
       </nav>
@@ -748,6 +749,40 @@
         </div>
       </section>
 
+      <!-- ── Aba: Pesquisa ML ── -->
+      <section id="tab-pesquisa" class="tab">
+        <h1>Pesquisa de Mercado</h1>
+        <p class="subtitle">Busque um produto no Mercado Livre e veja os mais vendidos, preços e tendências.</p>
+
+        <div class="pesquisa-form">
+          <input type="text" id="pesquisa-input" class="pesquisa-input" placeholder="Ex: caixa de som bluetooth, suporte celular moto..." onkeydown="if(event.key==='Enter') pesquisarML()">
+          <button class="btn-primary" onclick="pesquisarML()" id="btn-pesquisar">Pesquisar</button>
+        </div>
+
+        <div id="pesquisa-erro" class="estoque-erro" style="display:none"></div>
+        <div id="pesquisa-loading" class="loading" style="display:none">Buscando no Mercado Livre...</div>
+        <div id="pesquisa-resultado" style="display:none">
+          <div id="pesquisa-stats" class="pesquisa-stats"></div>
+          <div class="tabela-container" style="margin-top:16px">
+            <table class="tabela" id="tabela-pesquisa">
+              <thead>
+                <tr>
+                  <th class="col-num">#</th>
+                  <th></th>
+                  <th>Título</th>
+                  <th class="col-num">Preço</th>
+                  <th class="col-num">Vendas</th>
+                  <th>Vendedor</th>
+                  <th>Envio</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="tabela-pesquisa-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
     </main>
   </div>
 
@@ -759,6 +794,7 @@
   <script src="/js/contas-pagar.js?v=1"></script>
   <script src="/js/promocoes.js?v=1"></script>
   <script src="/js/bling.js?v=1"></script>
-  <div id="version-badge">v284</div>
+  <script src="/js/pesquisa.js?v=1"></script>
+  <div id="version-badge">v286</div>
 </body>
 </html>

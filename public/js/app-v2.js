@@ -44,6 +44,7 @@ function abrirAba(nome) {
   if (nome === 'contas-pagar') contasPagarInit();
   if (nome === 'bling')        blingInit();
   if (nome === 'home')         homeInit();
+  if (nome === 'pesquisa')     pesquisaInit();
 }
 
 navBtns.forEach(btn => {

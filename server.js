@@ -816,6 +816,66 @@ function extrairSku(body) {
 // Ping simples para testar conectividade frontend→servidor
 app.get('/api/ping', (req, res) => res.json({ ok: true, ts: Date.now() }));
 
+// ── Pesquisa de mercado ML ────────────────────────────────────
+app.get('/api/ml/pesquisa', async (req, res) => {
+  const q = (req.query.q || '').trim();
+  if (!q) return res.status(400).json({ erro: 'Termo de busca obrigatório' });
+
+  try {
+    const data = loadData();
+    // Tenta conta 1, fallback conta 2
+    let tok = null;
+    for (const num of ['1', '2']) {
+      tok = await getToken(data, num).catch(() => null);
+      if (tok) break;
+    }
+    if (!tok) return res.status(401).json({ erro: 'Nenhuma conta ML conectada' });
+
+    const resp = await axios.get('https://api.mercadolibre.com/sites/MLB/search', {
+      headers: { Authorization: `Bearer ${tok}` },
+      params: { q, limit: 50, sort: 'sold_quantity' },
+      timeout: 15000,
+    });
+
+    const total  = resp.data?.paging?.total ?? 0;
+    const itens  = resp.data?.results || [];
+
+    const precos = itens.map(i => i.price).filter(p => p > 0);
+    const soma   = precos.reduce((a, b) => a + b, 0);
+    const stats  = {
+      total,
+      retornados: itens.length,
+      precoMedio: precos.length ? soma / precos.length : 0,
+      precoMin:   precos.length ? Math.min(...precos) : 0,
+      precoMax:   precos.length ? Math.max(...precos) : 0,
+      totalVendas: itens.reduce((a, i) => a + (i.sold_quantity || 0), 0),
+    };
+
+    const produtos = itens.map((i, idx) => ({
+      rank:        idx + 1,
+      id:          i.id,
+      titulo:      i.title,
+      preco:       i.price,
+      moeda:       i.currency_id,
+      vendas:      i.sold_quantity || 0,
+      estoque:     i.available_quantity || 0,
+      condicao:    i.condition,
+      vendedor:    i.seller?.nickname || '—',
+      fretegratis: !!i.shipping?.free_shipping,
+      fulfillment: i.shipping?.logistic_type === 'fulfillment',
+      link:        i.permalink,
+      thumb:       i.thumbnail,
+    }));
+
+    res.json({ stats, produtos });
+  } catch (err) {
+    const detail = err.response
+      ? `HTTP ${err.response.status}: ${JSON.stringify(err.response.data).slice(0, 200)}`
+      : err.message;
+    res.status(500).json({ erro: detail });
+  }
+});
+
 // ── Dashboard: resumo geral ───────────────────────────────────
 app.get('/api/dashboard', async (req, res) => {
   const data  = loadData();
