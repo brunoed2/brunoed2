@@ -3454,9 +3454,10 @@ app.post('/api/fiscal/sync', (req, res) => {
   const db = loadFiscalNotas();
   let novas = 0;
   for (const n of notas) {
-    if (!n.chave) continue;
-    if (!db[n.chave]) novas++;
-    db[n.chave] = n;
+    const key = n.chave || `${n.filial}-${n.emitid}-${n.num}-${n.serie}`;
+    if (!key) continue;
+    if (!db[key]) novas++;
+    db[key] = n;
   }
   saveFiscalNotas(db);
   addLog(`Fiscal sync: ${notas.length} recebidas, ${novas} novas`, 'info');
