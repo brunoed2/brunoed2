@@ -46,9 +46,11 @@ function detectarDirDados() {
     return __dirname; // Fallback: diretório do app
   }
 }
-const DATA_DIR     = detectarDirDados();
-const DATA_FILE    = path.join(DATA_DIR, 'data.json');
-const USA_VOLUME   = DATA_DIR === '/data'; // true = volume persistente Railway
+const DATA_DIR      = detectarDirDados();
+const DATA_FILE     = path.join(DATA_DIR, 'data.json');
+const FISCAL_FILE   = path.join(DATA_DIR, 'fiscal-notas.json');
+const USA_VOLUME    = DATA_DIR === '/data'; // true = volume persistente Railway
+const FISCAL_TOKEN  = process.env.FISCAL_TOKEN || 'fiscal-sync-2025';
 
 // ── Log ao vivo (aba Conexão) ─────────────────────────────────
 
@@ -3432,6 +3434,49 @@ app.post('/api/whatsapp/teste-estoque-baixo', async (req, res) => {
   } catch (e) {
     res.json({ ok: false, erro: e.message });
   }
+});
+
+// ── Notas Fiscais de Compra (Fiscal.io) ───────────────────────────────────────
+
+function loadFiscalNotas() {
+  try { return JSON.parse(fs.readFileSync(FISCAL_FILE, 'utf8')); } catch { return {}; }
+}
+function saveFiscalNotas(notas) {
+  fs.writeFileSync(FISCAL_FILE, JSON.stringify(notas, null, 2));
+}
+
+// Recebe notas do agente local e faz upsert por chave
+app.post('/api/fiscal/sync', (req, res) => {
+  const { notas, token } = req.body;
+  if (token !== FISCAL_TOKEN) return res.status(403).json({ ok: false, erro: 'Token inválido' });
+  if (!Array.isArray(notas)) return res.json({ ok: false, erro: 'notas deve ser array' });
+
+  const db = loadFiscalNotas();
+  let novas = 0;
+  for (const n of notas) {
+    if (!n.chave) continue;
+    if (!db[n.chave]) novas++;
+    db[n.chave] = n;
+  }
+  saveFiscalNotas(db);
+  addLog(`Fiscal sync: ${notas.length} recebidas, ${novas} novas`, 'info');
+  res.json({ ok: true, novas, total: Object.keys(db).length });
+});
+
+// Retorna notas agrupadas por CNPJ
+app.get('/api/fiscal/notas', (req, res) => {
+  const db = loadFiscalNotas();
+  const grupos = {};
+  for (const n of Object.values(db)) {
+    const cnpj = n.filial || 'desconhecido';
+    if (!grupos[cnpj]) grupos[cnpj] = { cnpj, nome: n.tomanome || cnpj, notas: [] };
+    grupos[cnpj].notas.push(n);
+  }
+  // Ordena notas de cada grupo por data decrescente
+  for (const g of Object.values(grupos)) {
+    g.notas.sort((a, b) => (b.dtemi || '').localeCompare(a.dtemi || ''));
+  }
+  res.json(Object.values(grupos));
 });
 
 // ── Contas a Pagar ────────────────────────────────────────────────────────────

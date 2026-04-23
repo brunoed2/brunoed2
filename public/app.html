@@ -34,6 +34,7 @@
         <button class="nav-btn" data-tab="promocoes">🏷️ Promoções</button>
         <button class="nav-btn" data-tab="contas-pagar">💳 Contas a Pagar</button>
         <button class="nav-btn" data-tab="bling">🧾 Bling</button>
+        <button class="nav-btn" data-tab="fiscal">🗂️ NF Compras</button>
         <button class="nav-btn" data-tab="pesquisa">🔍 Pesquisa</button>
         <button class="nav-btn" data-tab="config">⚙️ Configurações</button>
         <button class="nav-btn" data-tab="conexao">🔌 Conexão</button>
@@ -751,6 +752,19 @@
       </section>
 
       <!-- ── Aba: Pesquisa ML ── -->
+      <section id="tab-fiscal" class="tab">
+        <h1>NF de Compras</h1>
+        <p class="subtitle">Notas fiscais de compra recebidas, importadas do Fiscal.io.</p>
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:16px">
+          <button class="btn-primary" onclick="fiscalSincronizar()" id="btn-fiscal-sync">⬇️ Atualizar</button>
+          <span id="fiscal-status" style="font-size:13px;color:#888"></span>
+        </div>
+        <div id="fiscal-agente-erro" style="display:none;background:#fff3cd;color:#856404;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:13px">
+          ⚠️ Agente local não encontrado em <b>localhost:4001</b>. Abra o arquivo <b>C:\fiscal-agente\iniciar.bat</b> para iniciar.
+        </div>
+        <div id="fiscal-container"></div>
+      </section>
+
       <section id="tab-pesquisa" class="tab">
         <h1>Pesquisa de Mercado</h1>
         <p class="subtitle">Busque um produto no Mercado Livre e veja os mais vendidos, preços e tendências.</p>
@@ -796,6 +810,7 @@
   <script src="/js/promocoes.js?v=1"></script>
   <script src="/js/bling.js?v=1"></script>
   <script src="/js/pesquisa.js?v=1"></script>
-  <div id="version-badge">v290</div>
+  <script src="/js/fiscal.js?v=1"></script>
+  <div id="version-badge">v291</div>
 </body>
 </html>
