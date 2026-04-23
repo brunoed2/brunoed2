@@ -3245,6 +3245,105 @@ async function buscarIdsStatus(c, status) {
   return ids;
 }
 
+// ── Polling em background: estoque baixo (<15 dias) ───────────
+async function verificarEstoqueBaixo() {
+  const data = loadData();
+  const hoje = new Date().toISOString().split('T')[0];
+
+  for (const num of ['1', '2']) {
+    const c = data.contas[num];
+    if (!c || !c.access_token || !c.user_id) continue;
+
+    try {
+      const idsAtivos = await buscarIdsStatus(c, 'active');
+      if (!idsAtivos.length) continue;
+
+      // Busca estoque dos ativos em chunks de 20
+      const itensMapa = {};
+      for (let i = 0; i < idsAtivos.length; i += 20) {
+        const chunk = idsAtivos.slice(i, i + 20);
+        try {
+          const resp = await axios.get('https://api.mercadolibre.com/items', {
+            params: { ids: chunk.join(','), attributes: 'id,title,available_quantity,variations' },
+            headers: { Authorization: `Bearer ${c.access_token}` },
+            timeout: 10000,
+          });
+          for (const item of (resp.data || [])) {
+            if (item.code !== 200) continue;
+            const estoque = item.body.variations?.length
+              ? item.body.variations.reduce((s, v) => s + (v.available_quantity ?? 0), 0)
+              : (item.body.available_quantity ?? 0);
+            itensMapa[item.body.id] = { titulo: item.body.title, estoque };
+          }
+        } catch {}
+      }
+
+      // Busca vendas dos últimos 30 dias
+      const vendasPorItem = {};
+      const from = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      let offset = 0;
+      while (true) {
+        try {
+          const resp = await axios.get('https://api.mercadolibre.com/orders/search', {
+            params: { seller: c.user_id, 'order.status': 'paid', 'order.date_created.from': from, sort: 'date_desc', offset, limit: 50 },
+            headers: { Authorization: `Bearer ${c.access_token}` },
+            timeout: 10000,
+          });
+          const orders = resp.data.results || [];
+          const total  = resp.data.paging?.total || 0;
+          for (const order of orders) {
+            for (const oi of (order.order_items || [])) {
+              vendasPorItem[oi.item.id] = (vendasPorItem[oi.item.id] || 0) + (oi.quantity || 1);
+            }
+          }
+          if (orders.length < 50) break;
+          offset += 50;
+          if (offset >= total || offset >= 2000) break;
+        } catch { break; }
+      }
+
+      // Calcula dias de estoque e filtra < 15 dias
+      const alertaDates = c.estoque_alerta_dates || {};
+      let alertaChanged = false;
+      const conta = c.nickname || `Conta ${num}`;
+      const alertas = [];
+
+      for (const [mlb, { titulo, estoque }] of Object.entries(itensMapa)) {
+        if (estoque <= 0) continue;
+        const vendas30 = vendasPorItem[mlb] || 0;
+        if (vendas30 === 0) continue; // sem histórico de vendas, ignora
+        const diasEstoque = Math.floor(estoque / (vendas30 / 30));
+
+        if (diasEstoque < 15) {
+          if (alertaDates[mlb] !== hoje) {
+            alertaDates[mlb] = hoje;
+            alertaChanged = true;
+            alertas.push({ mlb, titulo, estoque, diasEstoque });
+          }
+        } else {
+          if (alertaDates[mlb]) { delete alertaDates[mlb]; alertaChanged = true; }
+        }
+      }
+
+      if (alertas.length) {
+        const linhas = alertas
+          .sort((a, b) => a.diasEstoque - b.diasEstoque)
+          .map(a => `• ${a.titulo}\n  <code>${a.mlb}</code> — ${a.estoque} un. (~${a.diasEstoque} dias)`)
+          .join('\n\n');
+        notificar(`📦 <b>Estoque baixo — ${conta}</b>\n\n${linhas}`).catch(() => {});
+        addLog(`Notificação: estoque baixo — ${alertas.length} item(s) — conta ${num}`, 'info');
+      }
+
+      if (alertaChanged) {
+        c.estoque_alerta_dates = alertaDates;
+        saveData(data);
+      }
+    } catch (err) {
+      addLog(`Monitor estoque baixo conta ${num}: ${err.message}`, 'warn');
+    }
+  }
+}
+
 // ── Notificação diária: contas a pagar vencendo hoje ──────────
 async function notificarContasVencendoHoje() {
   if (!TELEGRAM_TOKEN || !TELEGRAM_CHAT_ID) return;
@@ -3300,6 +3399,18 @@ app.post('/api/whatsapp/teste-pedidos', async (req, res) => {
     const erro = body.toLowerCase().includes('error') || body.toLowerCase().includes('wrong');
     addLog(`WhatsApp teste-pedidos → ${CALLMEBOT_PHONE_PEDIDOS}: ${body}`, erro ? 'warn' : 'ok');
     res.json({ ok: !erro, resposta: body });
+  } catch (e) {
+    res.json({ ok: false, erro: e.message });
+  }
+});
+
+app.post('/api/whatsapp/teste-estoque-baixo', async (req, res) => {
+  if (!CALLMEBOT_PHONE || !CALLMEBOT_APIKEY) {
+    return res.json({ ok: false, erro: 'CALLMEBOT_PHONE ou CALLMEBOT_APIKEY não configurados' });
+  }
+  try {
+    await verificarEstoqueBaixo();
+    res.json({ ok: true, mensagem: 'Rotina executada — veja o log para detalhes' });
   } catch (e) {
     res.json({ ok: false, erro: e.message });
   }
@@ -3744,6 +3855,11 @@ app.listen(PORT, () => {
   // Inicia monitoramento Telegram 10s após subir, depois a cada 60s
   if (CALLMEBOT_PHONE && CALLMEBOT_APIKEY) {
     addLog(`WhatsApp: contas/anúncios → ${CALLMEBOT_PHONE} ✅`, 'ok');
+    // Estoque baixo: verifica a cada 6 horas
+    setTimeout(() => {
+      verificarEstoqueBaixo().catch(() => {});
+      setInterval(() => verificarEstoqueBaixo().catch(() => {}), 6 * 60 * 60_000);
+    }, 90_000);
   }
   if (CALLMEBOT_PHONE_PEDIDOS && CALLMEBOT_APIKEY_PEDIDOS) {
     addLog(`WhatsApp: pedidos novos → ${CALLMEBOT_PHONE_PEDIDOS} ✅`, 'ok');
