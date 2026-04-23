@@ -755,8 +755,15 @@
       <section id="tab-fiscal" class="tab">
         <h1>NF de Compras</h1>
         <p class="subtitle">Notas fiscais de compra recebidas, importadas do Fiscal.io.</p>
-        <div style="display:flex;gap:8px;align-items:center;margin-bottom:16px">
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:16px;flex-wrap:wrap">
           <button class="btn-primary" onclick="fiscalSincronizar()" id="btn-fiscal-sync">⬇️ Atualizar</button>
+          <select id="fiscal-periodo" onchange="fiscalFiltrar()" style="padding:6px 10px;border-radius:6px;border:1px solid #ddd;font-size:13px">
+            <option value="1">Último mês</option>
+            <option value="3" selected>Últimos 3 meses</option>
+            <option value="6">Últimos 6 meses</option>
+            <option value="12">Último ano</option>
+            <option value="0">Tudo</option>
+          </select>
           <span id="fiscal-status" style="font-size:13px;color:#888"></span>
         </div>
         <div id="fiscal-agente-erro" style="display:none;background:#fff3cd;color:#856404;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:13px">
@@ -811,6 +818,6 @@
   <script src="/js/bling.js?v=1"></script>
   <script src="/js/pesquisa.js?v=1"></script>
   <script src="/js/fiscal.js?v=1"></script>
-  <div id="version-badge">v294</div>
+  <div id="version-badge">v295</div>
 </body>
 </html>

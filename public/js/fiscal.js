@@ -1,5 +1,7 @@
 const AGENTE_URL = 'http://localhost:4001';
 
+let fiscalGruposCache = [];
+
 async function fiscalSincronizar() {
   const btn    = document.getElementById('btn-fiscal-sync');
   const status = document.getElementById('fiscal-status');
@@ -28,16 +30,43 @@ async function fiscalSincronizar() {
   }
 }
 
+function fiscalDataCorte(meses) {
+  if (!meses) return null;
+  const d = new Date();
+  d.setMonth(d.getMonth() - meses);
+  // Formato dtemi: YYYY.MM.DD
+  return d.toISOString().slice(0, 10).replace(/-/g, '.');
+}
+
+function fiscalFiltrar() {
+  const sel   = document.getElementById('fiscal-periodo');
+  const meses = sel ? parseInt(sel.value) : 3;
+  const corte = fiscalDataCorte(meses);
+  const container = document.getElementById('fiscal-container');
+  if (!fiscalGruposCache.length) return;
+
+  const html = fiscalGruposCache.map(g => {
+    const notasFiltradas = corte
+      ? g.notas.filter(n => (n.dtemi || '') >= corte)
+      : g.notas;
+    if (!notasFiltradas.length) return '';
+    return fiscalRenderGrupo({ ...g, notas: notasFiltradas });
+  }).filter(Boolean).join('');
+
+  container.innerHTML = html || '<p style="color:#888;font-size:14px">Nenhuma nota no período selecionado.</p>';
+}
+
 async function fiscalCarregar() {
   const container = document.getElementById('fiscal-container');
   if (!container) return;
   try {
     const grupos = await fetch('/api/fiscal/notas').then(r => r.json());
+    fiscalGruposCache = grupos;
     if (!grupos.length) {
       container.innerHTML = '<p style="color:#888;font-size:14px">Nenhuma nota importada ainda. Clique em Atualizar para sincronizar.</p>';
       return;
     }
-    container.innerHTML = grupos.map(g => fiscalRenderGrupo(g)).join('');
+    fiscalFiltrar();
   } catch {
     container.innerHTML = '<p style="color:#c00;font-size:14px">Erro ao carregar notas.</p>';
   }
@@ -45,7 +74,10 @@ async function fiscalCarregar() {
 
 function fiscalRenderGrupo(g) {
   const cnpjFmt = (g.cnpj || '').replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
-  const linhas  = g.notas.map(n => {
+  const total   = g.notas.reduce((s, n) => s + parseFloat((n.valor || '0').replace(',', '.')), 0);
+  const totalFmt = total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+  const linhas = g.notas.map(n => {
     const data  = (n.dtemi || '').replace(/(\d{4})\.(\d{2})\.(\d{2})/, '$3/$2/$1');
     const valor = parseFloat((n.valor || '0').replace(',', '.'));
     const vFmt  = valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -63,10 +95,11 @@ function fiscalRenderGrupo(g) {
 
   return `
     <div style="margin-bottom:28px">
-      <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:8px">
+      <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:8px;flex-wrap:wrap">
         <h2 style="margin:0;font-size:16px">${g.nome || g.cnpj}</h2>
         <span style="font-size:12px;color:#888">${cnpjFmt}</span>
-        <span style="font-size:12px;color:#888;margin-left:auto">${g.notas.length} nota(s)</span>
+        <span style="font-size:12px;color:#888">${g.notas.length} nota(s)</span>
+        <span style="font-size:12px;font-weight:600;margin-left:auto">${totalFmt}</span>
       </div>
       <div class="tabela-container">
         <table class="tabela">
