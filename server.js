@@ -3326,11 +3326,29 @@ async function verificarEstoqueBaixo() {
       }
 
       if (alertas.length) {
+        const header = `📦 <b>Estoque baixo — ${conta}</b>`;
         const linhas = alertas
           .sort((a, b) => a.diasEstoque - b.diasEstoque)
-          .map(a => `• ${a.titulo}\n  <code>${a.mlb}</code> — ${a.estoque} un. (~${a.diasEstoque} dias)`)
-          .join('\n\n');
-        notificar(`📦 <b>Estoque baixo — ${conta}</b>\n\n${linhas}`).catch(() => {});
+          .map(a => `• ${a.titulo}\n  <code>${a.mlb}</code> — ${a.estoque} un. (~${a.diasEstoque} dias)`);
+        // Divide em blocos de até 1400 chars para não cortar no CallMeBot
+        const blocos = [];
+        let bloco = [];
+        let tamanho = header.length + 2;
+        for (const linha of linhas) {
+          const add = linha.length + 2;
+          if (tamanho + add > 1400 && bloco.length) {
+            blocos.push(bloco);
+            bloco = [];
+            tamanho = header.length + 2;
+          }
+          bloco.push(linha);
+          tamanho += add;
+        }
+        if (bloco.length) blocos.push(bloco);
+        for (let i = 0; i < blocos.length; i++) {
+          const sufixo = blocos.length > 1 ? ` (${i + 1}/${blocos.length})` : '';
+          notificar(`${header}${sufixo}\n\n${blocos[i].join('\n\n')}`).catch(() => {});
+        }
         addLog(`Notificação: estoque baixo — ${alertas.length} item(s) — conta ${num}`, 'info');
       }
 
