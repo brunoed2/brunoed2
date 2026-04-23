@@ -74,7 +74,7 @@ function addLog(msg, tipo = 'info') {
 
 // ── Middleware ────────────────────────────────────────────────
 app.set('trust proxy', 1);
-app.use(express.json());
+app.use(express.json({ limit: '5mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ── Helpers de persistência ───────────────────────────────────
