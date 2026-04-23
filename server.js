@@ -3469,7 +3469,8 @@ app.get('/api/fiscal/notas', (req, res) => {
   const db = loadFiscalNotas();
   const grupos = {};
   for (const n of Object.values(db)) {
-    const cnpj = n.filial || 'desconhecido';
+    const cnpj = n.filial || '';
+    if (!/^\d{14}$/.test(cnpj)) continue; // ignora entradas inválidas
     if (!grupos[cnpj]) grupos[cnpj] = { cnpj, nome: n.tomanome || cnpj, notas: [] };
     grupos[cnpj].notas.push(n);
   }
