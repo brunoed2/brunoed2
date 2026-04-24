@@ -81,7 +81,8 @@ function fiscalRenderGrupo(g) {
     const data  = (n.dtemi || '').replace(/(\d{4})\.(\d{2})\.(\d{2})/, '$3/$2/$1');
     const valor = parseFloat((n.valor || '0').replace(',', '.'));
     const vFmt  = valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-    const chave = n.chave ? `<span title="${n.chave}" style="cursor:pointer;color:#aaa;font-size:11px" onclick="navigator.clipboard.writeText('${n.chave}')">📋</span>` : '';
+    const chave  = n.chave ? `<span title="${n.chave}" style="cursor:pointer;color:#aaa;font-size:11px" onclick="navigator.clipboard.writeText('${n.chave}')">📋</span>` : '';
+    const xmlBadge = n.temXml ? `<span title="XML baixado" style="background:#16a34a;color:#fff;padding:1px 5px;border-radius:3px;font-size:10px;font-weight:600">XML</span>` : '';
     return `<tr>
       <td>${data}</td>
       <td>${n.num || '—'}-${n.serie || ''}</td>
@@ -89,6 +90,7 @@ function fiscalRenderGrupo(g) {
       <td style="font-size:11px;color:#888">${(n.emitid || '').replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5')}</td>
       <td style="text-align:right;font-weight:600">${vFmt}</td>
       <td style="font-size:11px;color:#888;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${n.natoper || ''}">${n.natoper || '—'}</td>
+      <td style="text-align:center">${xmlBadge}</td>
       <td>${chave}</td>
     </tr>`;
   }).join('');
@@ -105,7 +107,7 @@ function fiscalRenderGrupo(g) {
         <table class="tabela">
           <thead><tr>
             <th>Data</th><th>NF / Série</th><th>Fornecedor</th><th>CNPJ Forn.</th>
-            <th style="text-align:right">Valor</th><th>Natureza</th><th></th>
+            <th style="text-align:right">Valor</th><th>Natureza</th><th style="text-align:center">XML</th><th></th>
           </tr></thead>
           <tbody>${linhas}</tbody>
         </table>

@@ -3504,7 +3504,7 @@ app.get('/api/fiscal/notas', (req, res) => {
     const cnpj = n.filial || '';
     if (!/^\d{14}$/.test(cnpj)) continue; // ignora entradas inválidas
     if (!grupos[cnpj]) grupos[cnpj] = { cnpj, nome: n.tomanome || cnpj, notas: [] };
-    grupos[cnpj].notas.push(n);
+    grupos[cnpj].notas.push({ ...n, zip: undefined, temXml: !!n.zip });
   }
   // Ordena notas de cada grupo por data decrescente
   for (const g of Object.values(grupos)) {
