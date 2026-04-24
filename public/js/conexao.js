@@ -13,7 +13,7 @@ document.getElementById('cx-callback-url').textContent = `${location.origin}/api
 // Trata retorno do OAuth (redirect de /api/ml/callback ou /api/bling/callback)
 (function cxTratarRetornoOAuth() {
   const params = new URLSearchParams(location.search);
-  if (params.get('tab') !== 'conexao') return;
+  if (params.get('tab') !== 'conexao' && params.get('tab') !== 'configuracoes') return;
 
   // ML
   if (params.get('connected') === 'true') {
@@ -35,7 +35,7 @@ document.getElementById('cx-callback-url').textContent = `${location.origin}/api
     blingMostrarMsg(`❌ Falha na conexão com o Bling: ${decodeURIComponent(params.get('bling_error'))}`, 'erro');
   }
 
-  history.replaceState({}, '', '/app.html?tab=conexao');
+  history.replaceState({}, '', '/app.html');
 })();
 
 // ── Seleção de conta ──────────────────────────────────────────
@@ -278,23 +278,9 @@ function blingMostrarMsg(texto, tipo) {
 
 const _abrirAbaOriginal = typeof abrirAba === 'function' ? abrirAba : null;
 
+// Stream é iniciado/parado via abrirSubConfig('conexao') chamado de app-v2.js
 document.querySelectorAll('.nav-btn[data-tab]').forEach(btn => {
   btn.addEventListener('click', () => {
-    if (btn.dataset.tab === 'conexao') {
-      cxIniciarStream();
-      verificarConexao();
-      verificarBling();
-      cxCarregarCredenciais(cxContaSelecionada);
-    } else {
-      cxPararStream();
-    }
+    if (btn.dataset.tab !== 'configuracoes') cxPararStream();
   });
 });
-
-// Se a página já abriu na aba conexao (ex: retorno do OAuth)
-if (new URLSearchParams(location.search).get('tab') === 'conexao') {
-  cxIniciarStream();
-  verificarConexao();
-  verificarBling();
-  cxCarregarCredenciais(cxContaSelecionada);
-}

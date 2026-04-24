@@ -26,19 +26,14 @@
         <button class="conta-btn" data-conta="2" onclick="trocarConta('2')">Conta 2</button>
       </div>
       <nav>
-        <button class="nav-btn active" data-tab="home">🏠 Painel</button>
-        <button class="nav-btn" data-tab="loja">🏪 Loja</button>
-        <button class="nav-btn" data-tab="estoque">📦 Estoque</button>
+        <button class="nav-btn active" data-tab="estoque">📦 Estoque</button>
         <button class="nav-btn" data-tab="ads">📊 Ads</button>
         <button class="nav-btn" data-tab="lucro">💰 Lucro</button>
-        <button class="nav-btn" data-tab="shopee">🛒 Shopee</button>
         <button class="nav-btn" data-tab="promocoes">🏷️ Promoções</button>
         <button class="nav-btn" data-tab="contas-pagar">💳 Contas a Pagar</button>
         <button class="nav-btn" data-tab="bling">🧾 Bling</button>
         <button class="nav-btn" data-tab="fiscal">🗂️ NF Compras</button>
-        <button class="nav-btn" data-tab="pesquisa">🔍 Pesquisa</button>
-        <button class="nav-btn" data-tab="config">⚙️ Configurações</button>
-        <button class="nav-btn" data-tab="conexao">🔌 Conexão</button>
+        <button class="nav-btn" data-tab="configuracoes">⚙️ Configurações</button>
       </nav>
       <div class="sidebar-footer">
         <button class="btn-sair" onclick="sair()">Sair</button>
@@ -55,13 +50,6 @@
         </div>
         <button class="btn-sair" onclick="sair()" style="width:auto;padding:7px 14px;font-size:13px">Sair</button>
       </div>
-
-      <!-- ── Aba: Home / Painel ── -->
-      <section id="tab-home" class="tab">
-        <h1>Painel</h1>
-        <p class="subtitle">Visão geral do dia — itens que precisam da sua atenção.</p>
-        <div id="home-grid"></div>
-      </section>
 
       <!-- ── Aba: Lucro ── -->
       <section id="tab-lucro" class="tab">
@@ -396,89 +384,6 @@
         </div>
       </section>
 
-      <!-- ── Aba: Configurações ── -->
-      <section id="tab-config" class="tab">
-        <h1>Configurações</h1>
-        <p class="subtitle">Gerencie as credenciais das duas contas do Mercado Livre.</p>
-
-        <!-- Status da conexão -->
-        <div class="status-bar" id="status-bar">
-          <span class="dot" id="status-dot"></span>
-          <span id="status-text">Verificando conexão...</span>
-        </div>
-
-        <!-- Seletor de qual conta configurar -->
-        <div style="display:flex;gap:10px;margin-bottom:20px">
-          <button class="btn-primary" id="cfg-tab-1" onclick="abrirConfigConta('1')" style="flex:1">Conta 1</button>
-          <button class="btn-secondary" id="cfg-tab-2" onclick="abrirConfigConta('2')" style="flex:1">Conta 2</button>
-        </div>
-
-        <!-- Formulário de credenciais -->
-        <div class="card">
-          <h2 id="cfg-titulo">Credenciais — Conta 1</h2>
-          <p class="card-desc">
-            Obtenha suas credenciais em
-            <a href="https://developers.mercadolivre.com.br/pt_br/api-docs-en" target="_blank">developers.mercadolivre.com.br</a>.
-          </p>
-
-          <form id="form-config" onsubmit="salvarConfig(event)">
-            <div class="field">
-              <label>Client ID</label>
-              <input type="text" id="client_id" placeholder="Ex: 1234567890" autocomplete="off">
-            </div>
-            <div class="field">
-              <label>Client Secret</label>
-              <input type="password" id="client_secret" placeholder="Seu client secret" autocomplete="off">
-            </div>
-            <div class="field">
-              <label>Access Token <span class="opcional">(opcional — preenchido automaticamente via OAuth)</span></label>
-              <input type="password" id="access_token" placeholder="APP_USR-..." autocomplete="off">
-            </div>
-            <div class="field">
-              <label>Refresh Token <span class="opcional">(opcional)</span></label>
-              <input type="password" id="refresh_token" placeholder="TG-..." autocomplete="off">
-            </div>
-
-            <div class="btn-row">
-              <button type="submit" class="btn-primary">💾 Salvar</button>
-              <button type="button" class="btn-secondary" onclick="conectarOAuth()">🔗 Conectar via OAuth</button>
-            </div>
-          </form>
-
-          <div class="msg" id="msg-config"></div>
-        </div>
-
-        <!-- Instruções -->
-        <div class="card card-info">
-          <h2>Como conectar</h2>
-          <ol>
-            <li>Crie um app em <strong>developers.mercadolivre.com.br</strong></li>
-            <li>Copie o <strong>Client ID</strong> e <strong>Client Secret</strong></li>
-            <li>Selecione a conta acima, preencha os campos e clique em <strong>Salvar</strong></li>
-            <li>Clique em <strong>Conectar via OAuth</strong> para autorizar automaticamente</li>
-          </ol>
-          <p class="obs">⚠️ Configure a URL de retorno (Redirect URI) no seu app ML como:<br>
-            <code id="callback-url"></code>
-          </p>
-        </div>
-      </section>
-
-      <!-- ── Aba: Loja ── -->
-      <section id="tab-loja" class="tab active">
-        <h1>Loja</h1>
-        <p class="subtitle">Informações da sua loja no Mercado Livre.</p>
-
-        <div class="card" id="card-loja">
-          <div class="loading" id="loja-loading">Carregando...</div>
-          <div id="loja-info" style="display:none">
-            <div class="loja-nome" id="loja-nome">—</div>
-            <div class="loja-detalhe">ID: <span id="loja-id">—</span></div>
-            <div class="loja-detalhe">País: <span id="loja-pais">—</span></div>
-          </div>
-          <div class="erro-loja" id="loja-erro" style="display:none"></div>
-        </div>
-      </section>
-
       <!-- ── Aba: Estoque ── -->
       <section id="tab-estoque" class="tab">
         <h1>Estoque</h1>
@@ -529,55 +434,6 @@
             <tbody id="tabela-estoque-body"></tbody>
           </table>
 
-        </div>
-      </section>
-
-      <!-- ── Aba: Shopee ── -->
-      <section id="tab-shopee" class="tab">
-        <h1>Shopee</h1>
-        <p class="subtitle">Pedidos prontos para envio na Shopee.</p>
-
-        <div id="shopee-status-box" class="cx-status-box" style="margin-bottom:20px">
-          <span id="shopee-status-dot" class="dot"></span>
-          <span id="shopee-status-txt">Verificando...</span>
-        </div>
-
-        <div class="card" style="margin-bottom:24px">
-          <h2>Credenciais</h2>
-          <p class="card-desc">Obtenha em <a href="https://open.shopee.com" target="_blank">open.shopee.com</a> → My Apps.</p>
-          <div class="field">
-            <label>Partner ID</label>
-            <input type="text" id="shopee-partner-id" placeholder="Ex: 123456" autocomplete="off">
-          </div>
-          <div class="field">
-            <label>Partner Key</label>
-            <input type="password" id="shopee-partner-key" placeholder="Sua partner key" autocomplete="off">
-          </div>
-          <div class="btn-row">
-            <button class="btn-primary" onclick="shopeeSalvarEConectar()">🔗 Salvar e Conectar</button>
-          </div>
-          <div class="msg" id="shopee-msg"></div>
-        </div>
-
-        <div class="tabela-container">
-          <div class="tabela-topo">
-            <span id="shopee-total"></span>
-            <button class="btn-secondary" onclick="carregarShopeeOrders()">↻ Atualizar</button>
-          </div>
-          <div id="shopee-loading" class="loading" style="display:none">Carregando pedidos...</div>
-          <div id="shopee-erro" class="estoque-erro" style="display:none"></div>
-          <table class="tabela" id="tabela-shopee" style="display:none">
-            <thead>
-              <tr>
-                <th>Pedido</th>
-                <th>Comprador</th>
-                <th class="col-num">Qtd</th>
-                <th>Itens</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody id="tabela-shopee-body"></tbody>
-          </table>
         </div>
       </section>
 
@@ -669,92 +525,144 @@
         </div>
       </section>
 
-      <!-- ── Aba: Conexão ── -->
-      <section id="tab-conexao" class="tab">
-        <h1>Conexão</h1>
-        <p class="subtitle">Configure e monitore a autenticação com o Mercado Livre.</p>
+      <!-- ── Aba: Configurações (sub-abas: ML + Conexão) ── -->
+      <section id="tab-configuracoes" class="tab">
+        <div style="display:flex;gap:8px;margin-bottom:20px;border-bottom:1px solid #334155;padding-bottom:12px">
+          <button class="filtro-btn active" id="subtab-btn-ml" onclick="abrirSubConfig('ml')">⚙️ Mercado Livre</button>
+          <button class="filtro-btn" id="subtab-btn-conexao" onclick="abrirSubConfig('conexao')">🔌 Conexão</button>
+        </div>
 
-        <div class="cx-layout">
+        <!-- Sub-aba: Mercado Livre (conteúdo de config) -->
+        <div id="subtab-ml">
+          <!-- Status da conexão -->
+          <div class="status-bar" id="status-bar">
+            <span class="dot" id="status-dot"></span>
+            <span id="status-text">Verificando conexão...</span>
+          </div>
 
-          <!-- Coluna esquerda: form + status -->
-          <div class="cx-form-col">
+          <div style="display:flex;gap:10px;margin-bottom:20px">
+            <button class="btn-primary" id="cfg-tab-1" onclick="abrirConfigConta('1')" style="flex:1">Conta 1</button>
+            <button class="btn-secondary" id="cfg-tab-2" onclick="abrirConfigConta('2')" style="flex:1">Conta 2</button>
+          </div>
 
-            <div id="cx-status-box" class="cx-status-box">
-              <span id="cx-status-dot" class="dot"></span>
-              <span id="cx-status-txt">Verificando...</span>
-              <button class="btn-sm" onclick="verificarConexao()">↻</button>
-            </div>
-
-            <div id="bling-status-box" class="cx-status-box" style="margin-top:8px">
-              <span id="bling-status-dot" class="dot"></span>
-              <span id="bling-status-txt">Bling: verificando...</span>
-              <button class="btn-sm" onclick="verificarBling()">↻</button>
-            </div>
-
-            <div class="card" style="margin-top:12px">
-              <h2>Bling ERP</h2>
-              <p class="card-desc">Conecte cada conta do Bling separadamente.</p>
-              <div class="btn-row" style="flex-direction:column;gap:8px;align-items:flex-start">
-                <button id="btn-bling-conectar-1" class="btn-primary" onclick="location.href='/api/bling/auth?conta=1'">🔗 Conectar Bling Conta 1</button>
-                <button id="btn-bling-conectar-2" class="btn-primary" onclick="location.href='/api/bling/auth?conta=2'">🔗 Conectar Bling Conta 2</button>
-              </div>
-              <div class="msg" id="bling-msg"></div>
-            </div>
-
-            <div class="card">
-              <h2>Credenciais</h2>
-              <p class="card-desc">
-                Crie um app em <a href="https://developers.mercadolivre.com.br" target="_blank">developers.mercadolivre.com.br</a>
-                e configure o Redirect URI abaixo.
-              </p>
-              <div class="field">
-                <label>Conta</label>
-                <div style="display:flex;gap:8px">
-                  <button class="filtro-btn active" id="cx-conta-1" onclick="selecionarContaCx('1')">Conta 1</button>
-                  <button class="filtro-btn" id="cx-conta-2" onclick="selecionarContaCx('2')">Conta 2</button>
-                </div>
-              </div>
+          <div class="card">
+            <h2 id="cfg-titulo">Credenciais — Conta 1</h2>
+            <p class="card-desc">
+              Obtenha suas credenciais em
+              <a href="https://developers.mercadolivre.com.br/pt_br/api-docs-en" target="_blank">developers.mercadolivre.com.br</a>.
+            </p>
+            <form id="form-config" onsubmit="salvarConfig(event)">
               <div class="field">
                 <label>Client ID</label>
-                <input type="text" id="cx-client-id" placeholder="Ex: 1234567890" autocomplete="off">
+                <input type="text" id="client_id" placeholder="Ex: 1234567890" autocomplete="off">
               </div>
               <div class="field">
                 <label>Client Secret</label>
-                <input type="password" id="cx-client-secret" placeholder="Seu client secret" autocomplete="off">
+                <input type="password" id="client_secret" placeholder="Seu client secret" autocomplete="off">
+              </div>
+              <div class="field">
+                <label>Access Token <span class="opcional">(opcional — preenchido automaticamente via OAuth)</span></label>
+                <input type="password" id="access_token" placeholder="APP_USR-..." autocomplete="off">
+              </div>
+              <div class="field">
+                <label>Refresh Token <span class="opcional">(opcional)</span></label>
+                <input type="password" id="refresh_token" placeholder="TG-..." autocomplete="off">
               </div>
               <div class="btn-row">
-                <button class="btn-primary" onclick="cxSalvarEConectar()">🔗 Salvar e Conectar via OAuth</button>
+                <button type="submit" class="btn-primary">💾 Salvar</button>
+                <button type="button" class="btn-secondary" onclick="conectarOAuth()">🔗 Conectar via OAuth</button>
               </div>
-              <div class="msg" id="cx-msg"></div>
-            </div>
-
-            <div class="card card-info">
-              <h2>Redirect URI</h2>
-              <p>Configure este endereço no seu app do ML:</p>
-              <code id="cx-callback-url" style="word-break:break-all;font-size:13px"></code>
-            </div>
-
+            </form>
+            <div class="msg" id="msg-config"></div>
           </div>
 
-          <!-- Coluna direita: log ao vivo -->
-          <div class="cx-log-col">
-            <div class="cx-log-header">
-              <span>📋 Log ao vivo</span>
-              <div style="display:flex;gap:6px">
-                <button class="btn-sm" onclick="cxPing()">🏓 Ping</button>
-                <button class="btn-sm" onclick="cxTestarTelegram()" id="btn-telegram-teste" title="Envia mensagem de teste no Telegram">📱 Telegram</button>
-                <button class="btn-sm" onclick="cxTestarWhatsappPedidos()" id="btn-whatsapp-pedidos-teste" title="Envia mensagem de teste para o número de pedidos">📲 WA Pedidos</button>
-                <button class="btn-sm" onclick="cxTestarEstoqueBaixo()" id="btn-estoque-baixo-teste" title="Roda agora a verificação de estoque baixo (<15 dias)">📦 WA Estoque</button>
-                <button class="btn-sm" onclick="cxLimparLog()">Limpar</button>
+          <div class="card card-info">
+            <h2>Como conectar</h2>
+            <ol>
+              <li>Crie um app em <strong>developers.mercadolivre.com.br</strong></li>
+              <li>Copie o <strong>Client ID</strong> e <strong>Client Secret</strong></li>
+              <li>Selecione a conta acima, preencha os campos e clique em <strong>Salvar</strong></li>
+              <li>Clique em <strong>Conectar via OAuth</strong> para autorizar automaticamente</li>
+            </ol>
+            <p class="obs">⚠️ Configure a URL de retorno (Redirect URI) no seu app ML como:<br>
+              <code id="callback-url"></code>
+            </p>
+          </div>
+        </div>
+
+        <!-- Sub-aba: Conexão -->
+        <div id="subtab-conexao" style="display:none">
+          <div class="cx-layout">
+            <div class="cx-form-col">
+              <div id="cx-status-box" class="cx-status-box">
+                <span id="cx-status-dot" class="dot"></span>
+                <span id="cx-status-txt">Verificando...</span>
+                <button class="btn-sm" onclick="verificarConexao()">↻</button>
+              </div>
+              <div id="bling-status-box" class="cx-status-box" style="margin-top:8px">
+                <span id="bling-status-dot" class="dot"></span>
+                <span id="bling-status-txt">Bling: verificando...</span>
+                <button class="btn-sm" onclick="verificarBling()">↻</button>
+              </div>
+              <div class="card" style="margin-top:12px">
+                <h2>Bling ERP</h2>
+                <p class="card-desc">Conecte cada conta do Bling separadamente.</p>
+                <div class="btn-row" style="flex-direction:column;gap:8px;align-items:flex-start">
+                  <button id="btn-bling-conectar-1" class="btn-primary" onclick="location.href='/api/bling/auth?conta=1'">🔗 Conectar Bling Conta 1</button>
+                  <button id="btn-bling-conectar-2" class="btn-primary" onclick="location.href='/api/bling/auth?conta=2'">🔗 Conectar Bling Conta 2</button>
+                </div>
+                <div class="msg" id="bling-msg"></div>
+              </div>
+              <div class="card">
+                <h2>Credenciais ML</h2>
+                <p class="card-desc">
+                  Crie um app em <a href="https://developers.mercadolivre.com.br" target="_blank">developers.mercadolivre.com.br</a>
+                  e configure o Redirect URI abaixo.
+                </p>
+                <div class="field">
+                  <label>Conta</label>
+                  <div style="display:flex;gap:8px">
+                    <button class="filtro-btn active" id="cx-conta-1" onclick="selecionarContaCx('1')">Conta 1</button>
+                    <button class="filtro-btn" id="cx-conta-2" onclick="selecionarContaCx('2')">Conta 2</button>
+                  </div>
+                </div>
+                <div class="field">
+                  <label>Client ID</label>
+                  <input type="text" id="cx-client-id" placeholder="Ex: 1234567890" autocomplete="off">
+                </div>
+                <div class="field">
+                  <label>Client Secret</label>
+                  <input type="password" id="cx-client-secret" placeholder="Seu client secret" autocomplete="off">
+                </div>
+                <div class="btn-row">
+                  <button class="btn-primary" onclick="cxSalvarEConectar()">🔗 Salvar e Conectar via OAuth</button>
+                </div>
+                <div class="msg" id="cx-msg"></div>
+              </div>
+              <div class="card card-info">
+                <h2>Redirect URI</h2>
+                <p>Configure este endereço no seu app do ML:</p>
+                <code id="cx-callback-url" style="word-break:break-all;font-size:13px"></code>
               </div>
             </div>
-            <div id="cx-log-lista" class="cx-log-lista"></div>
+            <div class="cx-log-col">
+              <div class="cx-log-header">
+                <span>📋 Log ao vivo</span>
+                <div style="display:flex;gap:6px">
+                  <button class="btn-sm" onclick="cxPing()">🏓 Ping</button>
+                  <button class="btn-sm" onclick="cxTestarTelegram()" id="btn-telegram-teste" title="Envia mensagem de teste no Telegram">📱 Telegram</button>
+                  <button class="btn-sm" onclick="cxTestarWhatsappPedidos()" id="btn-whatsapp-pedidos-teste" title="Envia mensagem de teste para o número de pedidos">📲 WA Pedidos</button>
+                  <button class="btn-sm" onclick="cxTestarEstoqueBaixo()" id="btn-estoque-baixo-teste" title="Roda agora a verificação de estoque baixo (<15 dias)">📦 WA Estoque</button>
+                  <button class="btn-sm" onclick="cxLimparLog()">Limpar</button>
+                </div>
+              </div>
+              <div id="cx-log-lista" class="cx-log-lista"></div>
+            </div>
           </div>
-
         </div>
       </section>
 
-      <!-- ── Aba: Pesquisa ML ── -->
+      <!-- ── Aba: NF Compras ── -->
       <section id="tab-fiscal" class="tab">
         <h1>NF de Compras</h1>
         <p class="subtitle">Notas fiscais de compra recebidas, importadas do Fiscal.io.</p>
@@ -799,52 +707,17 @@
         <div id="fiscal-container"></div>
       </section>
 
-      <section id="tab-pesquisa" class="tab">
-        <h1>Pesquisa de Mercado</h1>
-        <p class="subtitle">Busque um produto no Mercado Livre e veja os mais vendidos, preços e tendências.</p>
-
-        <div class="pesquisa-form">
-          <input type="text" id="pesquisa-input" class="pesquisa-input" placeholder="Ex: caixa de som bluetooth, suporte celular moto..." onkeydown="if(event.key==='Enter') pesquisarML()">
-          <button class="btn-primary" onclick="pesquisarML()" id="btn-pesquisar">Pesquisar</button>
-        </div>
-
-        <div id="pesquisa-erro" class="estoque-erro" style="display:none"></div>
-        <div id="pesquisa-loading" class="loading" style="display:none">Buscando no Mercado Livre...</div>
-        <div id="pesquisa-resultado" style="display:none">
-          <div id="pesquisa-stats" class="pesquisa-stats"></div>
-          <div class="tabela-container" style="margin-top:16px">
-            <table class="tabela" id="tabela-pesquisa">
-              <thead>
-                <tr>
-                  <th class="col-num">#</th>
-                  <th></th>
-                  <th>Título</th>
-                  <th class="col-num">Preço</th>
-                  <th class="col-num">Vendas</th>
-                  <th>Vendedor</th>
-                  <th>Envio</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody id="tabela-pesquisa-body"></tbody>
-            </table>
-          </div>
-        </div>
-      </section>
 
     </main>
   </div>
 
   <script src="/js/lucro.js"></script>
-  <script src="/js/home.js?v=1"></script>
   <script src="/js/app-v2.js"></script>
   <script src="/js/conexao.js"></script>
-  <script src="/js/shopee.js?v=118"></script>
   <script src="/js/contas-pagar.js?v=1"></script>
   <script src="/js/promocoes.js?v=1"></script>
   <script src="/js/bling.js?v=1"></script>
-  <script src="/js/pesquisa.js?v=1"></script>
   <script src="/js/fiscal.js?v=1"></script>
-  <div id="version-badge">v309</div>
+  <div id="version-badge">v310</div>
 </body>
 </html>

@@ -35,16 +35,35 @@ function abrirAba(nome) {
   tabs.forEach(t => t.classList.toggle('active', t.id === `tab-${nome}`));
   clog(`abrirAba(${nome}) trocandoConta=${trocandoConta} contaGen=${contaGen}`);
   if (trocandoConta) { clog(`abrirAba bloqueado por trocandoConta`, 'warn'); return; }
-  if (nome === 'loja')    carregarLoja();
-  if (nome === 'estoque') carregarEstoque(true);
-  if (nome === 'ads')     carregarAds();
-  if (nome === 'lucro')   lucroInit();
-  if (nome === 'config')       carregarConfig(contaConfigurando);
-  if (nome === 'promocoes')    carregarPromocoes();
-  if (nome === 'contas-pagar') contasPagarInit();
-  if (nome === 'bling')        blingInit();
-  if (nome === 'home')         homeInit();
-  if (nome === 'pesquisa')     pesquisaInit();
+  if (nome === 'estoque')       carregarEstoque(true);
+  if (nome === 'ads')           carregarAds();
+  if (nome === 'lucro')         lucroInit();
+  if (nome === 'promocoes')     carregarPromocoes();
+  if (nome === 'contas-pagar')  contasPagarInit();
+  if (nome === 'bling')         blingInit();
+  if (nome === 'configuracoes') { carregarConfig(contaConfigurando); }
+  // compatibilidade: ?tab=config ou ?tab=conexao redireciona para configuracoes
+  if (nome === 'config' || nome === 'conexao') {
+    abrirAba('configuracoes');
+    if (nome === 'conexao') setTimeout(() => abrirSubConfig('conexao'), 0);
+    return;
+  }
+}
+
+function abrirSubConfig(sub) {
+  document.getElementById('subtab-btn-ml').classList.toggle('active', sub === 'ml');
+  document.getElementById('subtab-btn-conexao').classList.toggle('active', sub === 'conexao');
+  document.getElementById('subtab-ml').style.display      = sub === 'ml'      ? '' : 'none';
+  document.getElementById('subtab-conexao').style.display = sub === 'conexao' ? '' : 'none';
+  if (sub === 'ml') carregarConfig(contaConfigurando);
+  if (sub === 'conexao') {
+    if (typeof cxIniciarStream    === 'function') cxIniciarStream();
+    if (typeof verificarConexao   === 'function') verificarConexao();
+    if (typeof verificarBling     === 'function') verificarBling();
+    if (typeof cxCarregarCredenciais === 'function') cxCarregarCredenciais(typeof cxContaSelecionada !== 'undefined' ? cxContaSelecionada : '1');
+  } else {
+    if (typeof cxPararStream === 'function') cxPararStream();
+  }
 }
 
 navBtns.forEach(btn => {
@@ -53,7 +72,7 @@ navBtns.forEach(btn => {
 
 (function () {
   const params = new URLSearchParams(location.search);
-  const tab    = params.get('tab') || 'home';
+  const tab    = params.get('tab') || 'estoque';
   abrirAba(tab);
 
   if (params.get('connected') === 'true') {

@@ -572,7 +572,7 @@ app.get('/api/ml/auth', (req, res) => {
   const data  = loadData();
   const num   = req.query.conta || data.conta_ativa;
   const c     = data.contas[num] || {};
-  if (!c.client_id) return res.redirect('/app.html?tab=conexao&error=sem_client_id');
+  if (!c.client_id) return res.redirect('/app.html?tab=configuracoes&error=sem_client_id');
   const proto    = req.get('x-forwarded-proto') || req.protocol;
   const callback = `${proto}://${req.get('host')}/api/ml/callback`;
 
@@ -595,7 +595,7 @@ app.get('/api/ml/auth', (req, res) => {
 
 app.get('/api/ml/callback', async (req, res) => {
   const { code, error, state } = req.query;
-  if (error || !code) return res.redirect('/app.html?tab=config&error=auth_cancelado');
+  if (error || !code) return res.redirect('/app.html?tab=configuracoes&error=auth_cancelado');
 
   const data     = loadData();
   const num      = state || data.conta_ativa;
@@ -607,7 +607,7 @@ app.get('/api/ml/callback', async (req, res) => {
   addLog(`OAuth callback recebido — conta ${num}, redirect_uri: ${callback}`, 'info');
 
   if (!c.client_secret) {
-    return res.redirect('/app.html?tab=config&error=auth_falhou&detalhe=' +
+    return res.redirect('/app.html?tab=configuracoes&error=auth_falhou&detalhe=' +
       encodeURIComponent('Client Secret não encontrado. Salve as credenciais antes de conectar.'));
   }
 
@@ -650,11 +650,11 @@ app.get('/api/ml/callback', async (req, res) => {
     data.contas[num] = c;
     saveData(data);
     addLog(`💾 Credenciais salvas — redirecionando para o painel`, 'ok');
-    res.redirect(`/app.html?tab=conexao&connected=true&conta=${num}`);
+    res.redirect(`/app.html?tab=configuracoes&connected=true&conta=${num}`);
   } catch (err) {
     const detalhe = JSON.stringify(err.response?.data || err.message);
     addLog(`❌ Erro no token exchange: ${detalhe}`, 'erro');
-    res.redirect(`/app.html?tab=conexao&error=auth_falhou&detalhe=${encodeURIComponent(detalhe)}`);
+    res.redirect(`/app.html?tab=configuracoes&error=auth_falhou&detalhe=${encodeURIComponent(detalhe)}`);
   }
 });
 
@@ -1018,7 +1018,7 @@ function getBlingCreds(conta) {
 app.get('/api/bling/auth', (req, res) => {
   const conta = req.query.conta || '1';
   const { id: clientId } = getBlingCreds(conta);
-  if (!clientId) return res.redirect('/app.html?tab=conexao&bling_error=sem_client_id');
+  if (!clientId) return res.redirect('/app.html?tab=configuracoes&bling_error=sem_client_id');
   const state = `${conta}_${Math.random().toString(36).slice(2)}`;
   const url = `https://www.bling.com.br/Api/v3/oauth/authorize`
     + `?response_type=code`
@@ -1035,11 +1035,11 @@ app.get('/api/bling/callback', async (req, res) => {
   const conta = state?.split('_')[0] || '1';
   if (error || !code) {
     addLog(`[bling] callback sem code: error=${error}`, 'warn');
-    return res.redirect(`/app.html?tab=conexao&bling_error=${encodeURIComponent(error || 'sem_code')}`);
+    return res.redirect(`/app.html?tab=configuracoes&bling_error=${encodeURIComponent(error || 'sem_code')}`);
   }
   const { id: clientId, secret: clientSecret } = getBlingCreds(conta);
   if (!clientId || !clientSecret)
-    return res.redirect('/app.html?tab=conexao&bling_error=sem_credenciais');
+    return res.redirect('/app.html?tab=configuracoes&bling_error=sem_credenciais');
 
   const proto    = req.get('x-forwarded-proto') || req.protocol;
   const callback = `${proto}://${req.get('host')}/api/bling/callback`;
@@ -1061,11 +1061,11 @@ app.get('/api/bling/callback', async (req, res) => {
     if (conta === '1') data.bling = token; // compatibilidade legada
     saveData(data);
     addLog(`[bling] ✅ Token conta ${conta} obtido e salvo`, 'ok');
-    res.redirect(`/app.html?tab=conexao&bling_connected=true&bling_conta=${conta}`);
+    res.redirect(`/app.html?tab=configuracoes&bling_connected=true&bling_conta=${conta}`);
   } catch (err) {
     const detalhe = JSON.stringify(err.response?.data || err.message);
     addLog(`[bling] ❌ Erro no token exchange: ${detalhe}`, 'erro');
-    res.redirect(`/app.html?tab=conexao&bling_error=${encodeURIComponent(detalhe)}`);
+    res.redirect(`/app.html?tab=configuracoes&bling_error=${encodeURIComponent(detalhe)}`);
   }
 });
 
