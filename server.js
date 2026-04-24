@@ -1855,12 +1855,15 @@ app.get('/api/ml/promocoes', async (req, res) => {
   try {
     // Busca promoções disponíveis — tenta candidate primeiro, depois started
     // Tenta várias variações do endpoint até encontrar dados
+    // /promotions = promoções criadas pelo vendedor (desconto de preço, frete grátis)
+    // /seller-promotions/promotions = programas gerenciados pelo ML (Oferta Relâmpago, Deal do Dia)
     const tentativas = [
-      { label: 'sem-status',  url: 'https://api.mercadolibre.com/seller-promotions/promotions', params: { seller_id: c.user_id, limit: 50 } },
-      { label: 'candidate',   url: 'https://api.mercadolibre.com/seller-promotions/promotions', params: { seller_id: c.user_id, status: 'candidate', limit: 50 } },
-      { label: 'started',     url: 'https://api.mercadolibre.com/seller-promotions/promotions', params: { seller_id: c.user_id, status: 'started',   limit: 50 } },
-      { label: 'paused',      url: 'https://api.mercadolibre.com/seller-promotions/promotions', params: { seller_id: c.user_id, status: 'paused',    limit: 50 } },
-      { label: 'users-promo', url: `https://api.mercadolibre.com/users/${c.user_id}/seller-promotions`, params: { limit: 50 } },
+      { label: 'promotions-started',   url: 'https://api.mercadolibre.com/promotions', params: { seller_id: c.user_id, status: 'started',   limit: 50 } },
+      { label: 'promotions-candidate', url: 'https://api.mercadolibre.com/promotions', params: { seller_id: c.user_id, status: 'candidate', limit: 50 } },
+      { label: 'promotions-paused',    url: 'https://api.mercadolibre.com/promotions', params: { seller_id: c.user_id, status: 'paused',    limit: 50 } },
+      { label: 'promotions-sem-status',url: 'https://api.mercadolibre.com/promotions', params: { seller_id: c.user_id, limit: 50 } },
+      { label: 'sp-candidate',         url: 'https://api.mercadolibre.com/seller-promotions/promotions', params: { seller_id: c.user_id, status: 'candidate', limit: 50 } },
+      { label: 'sp-started',           url: 'https://api.mercadolibre.com/seller-promotions/promotions', params: { seller_id: c.user_id, status: 'started',   limit: 50 } },
     ];
 
     let promocoes = [];
