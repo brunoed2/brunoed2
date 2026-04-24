@@ -3513,12 +3513,23 @@ app.get('/api/fiscal/debug-campos', (req, res) => {
 // Retorna notas agrupadas por CNPJ
 app.get('/api/fiscal/notas', (req, res) => {
   const db = loadFiscalNotas();
+
+  // Constrói set de chaves NF que têm XML no sistema DF-e (notas_contas)
+  const data = loadData();
+  const chavesComXml = new Set();
+  for (const num of ['1', '2']) {
+    const lista = (data.notas_contas || {})[num]?.lista || [];
+    for (const item of lista) {
+      if (item.zip && item.chNFe) chavesComXml.add(item.chNFe);
+    }
+  }
+
   const grupos = {};
   for (const n of Object.values(db)) {
     const cnpj = n.filial || '';
     if (!/^\d{14}$/.test(cnpj)) continue; // ignora entradas inválidas
     if (!grupos[cnpj]) grupos[cnpj] = { cnpj, nome: n.tomanome || cnpj, notas: [] };
-    grupos[cnpj].notas.push({ ...n, zip: undefined, temXml: !!n.zip });
+    grupos[cnpj].notas.push({ ...n, zip: undefined, temXml: !!(n.chave && chavesComXml.has(n.chave)) });
   }
   // Ordena notas de cada grupo por data decrescente
   for (const g of Object.values(grupos)) {
