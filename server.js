@@ -589,7 +589,7 @@ app.get('/api/ml/auth', (req, res) => {
     + `&state=${num}`
     + `&code_challenge=${challenge}`
     + `&code_challenge_method=S256`
-    + `&scope=offline_access+read_listings+write_listings+read_orders+write_orders+read_shipping+write_shipping+read_product_ads+seller_promotions+read_billing`;
+    + `&scope=offline_access+read_listings+write_listings+read_orders+write_orders+read_shipping+write_shipping+read_product_ads+seller_promotions+promotions+read_billing`;
   res.redirect(url);
 });
 
@@ -1882,8 +1882,10 @@ app.get('/api/ml/promocoes', async (req, res) => {
         const httpStatus = e.response?.status;
         const msg = e.response?.data?.message || e.response?.data?.error || e.message;
         errosApi.push(`[${t.label}] HTTP ${httpStatus}: ${msg}`);
-        rawRespostas[t.label] = { httpStatus, erro: msg };
-        addLog(`[promos] ${t.label} erro: HTTP ${httpStatus} — ${msg}`, 'warn');
+        const body = e.response?.data;
+        const fullMsg = (typeof body === 'object' ? JSON.stringify(body) : String(body || '')) || msg;
+        rawRespostas[t.label] = { httpStatus, erro: fullMsg };
+        addLog(`[promos] ${t.label} erro: HTTP ${httpStatus} — ${fullMsg}`, 'warn');
       }
     }
 
