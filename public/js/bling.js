@@ -140,6 +140,7 @@ async function blingSuperEnvio(pedidoId, btn) {
       return;
     }
     btn.textContent = '⚡ Enviando NF...';
+    await new Promise(r => setTimeout(r, 2000)); // aguarda Bling processar a NF
     const envio = await fetch(`/api/bling/enviar-nf/${emissao.nfId}`, { method: 'POST' }).then(r => r.json());
     if (envio.ok) {
       btn.textContent = '✅ Enviada';

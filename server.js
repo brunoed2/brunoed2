@@ -1261,7 +1261,8 @@ app.post('/api/bling/emitir-nf/:pedidoId', async (req, res) => {
       { headers: { Authorization: `Bearer ${token}` }, timeout: 15000 }
     );
     const nfId = resp.data?.data?.id;
-    addLog(`[bling] NF gerada para pedido ${pedidoId} — NF id=${nfId}`, 'ok');
+    addLog(`[bling] NF gerada para pedido ${pedidoId} — NF id=${nfId} | resp=${JSON.stringify(resp.data).slice(0, 200)}`, 'ok');
+    if (!nfId) return res.json({ ok: false, erro: `gerar-nfe não retornou ID da NF. Resposta: ${JSON.stringify(resp.data).slice(0, 300)}` });
     return res.json({ ok: true, nfId });
   } catch (err) {
     const detail = err.response ? JSON.stringify(err.response.data).slice(0, 300) : err.message;
