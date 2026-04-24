@@ -1129,91 +1129,104 @@ app.get('/api/bling/status', async (req, res) => {
 // ── Bling: pedidos de venda com situação "Em aberto" ─────────
 // situacao 6 = Em aberto no Bling v3
 
+async function fetchBlingPedidosPendentes(conta) {
+  const token = await getBlingToken(conta);
+  const resp = await axios.get('https://www.bling.com.br/Api/v3/pedidos/vendas', {
+    headers: { Authorization: `Bearer ${token}` },
+    params: { pagina: 1, limite: 100, idSituacao: 6, rastreamento: 8 },
+    timeout: 15000,
+  });
+  const itens = resp.data?.data || [];
+  addLog(`[bling] conta ${conta}: ${itens.length} pedidos encontrados`, 'info');
+
+  // Busca detalhe de cada pedido para obter o numeroLoja correto
+  const itensDetalhados = [];
+  for (const p of itens) {
+    let numeroLojaCorreto = null;
+    for (let tentativa = 0; tentativa < 3 && !numeroLojaCorreto; tentativa++) {
+      if (tentativa > 0) await new Promise(r => setTimeout(r, 600 * tentativa));
+      numeroLojaCorreto = await axios.get(`https://www.bling.com.br/Api/v3/pedidos/vendas/${p.id}`, {
+        headers: { Authorization: `Bearer ${token}` }, timeout: 10000,
+      }).then(r => r.data?.data?.numeroLoja || null).catch(() => null);
+    }
+    itensDetalhados.push({ ...p, numeroLoja: numeroLojaCorreto || p.numeroLoja });
+  }
+
+  // Verifica no ML quais têm shipment ready_to_ship (etiqueta disponível ao emitir NF)
+  const mlData = loadData();
+  const mlTokens = (await Promise.all(
+    ['1', '2'].map(c => getToken(mlData, c).catch(() => null))
+  )).filter(Boolean);
+
+  const idsComEtiqueta = new Set();
+  if (mlTokens.length > 0) {
+    const mlOrders = await Promise.all(
+      itensDetalhados.map(async p => {
+        if (!p.numeroLoja) return null;
+        for (const tok of mlTokens) {
+          const res = await axios.get(`https://api.mercadolibre.com/orders/${p.numeroLoja}`, {
+            headers: { Authorization: `Bearer ${tok}` }, timeout: 6000,
+          }).catch(() => null);
+          if (res?.data?.shipping?.id) return { blingId: p.id, shippingId: res.data.shipping.id, tok };
+        }
+        return null;
+      })
+    );
+    const shippingEntries = mlOrders.filter(o => o?.shippingId);
+    const shipments = await Promise.all(
+      shippingEntries.map(o =>
+        axios.get(`https://api.mercadolibre.com/shipments/${o.shippingId}`, {
+          headers: { Authorization: `Bearer ${o.tok}` }, timeout: 6000,
+        }).then(r => ({ blingId: o.blingId, status: r.data?.status, substatus: r.data?.substatus })).catch(() => null)
+      )
+    );
+    shipments.filter(Boolean).forEach(s => {
+      addLog(`[bling] conta ${conta} shipment ${s.blingId}: ${s.status}/${s.substatus}`, 'info');
+      if (s?.status === 'ready_to_ship' && s?.substatus === 'invoice_pending') idsComEtiqueta.add(s.blingId);
+    });
+    addLog(`[bling] conta ${conta}: ${idsComEtiqueta.size}/${itens.length} com etiqueta`, 'info');
+  }
+
+  blingPedidosCache[conta] = { count: idsComEtiqueta.size, ts: Date.now() };
+
+  return itensDetalhados.map(p => ({
+    id:               p.id,
+    numero:           p.numero || '—',
+    comprador:        p.contato?.nome || '—',
+    valor_total:      p.totalProdutos || 0,
+    data:             p.data,
+    situacao:         p.situacao?.valor || 'Em aberto',
+    numeroPedidoLoja: p.numeroLoja || null,
+    dataPrevista:     p.dataPrevista || null,
+    temEtiqueta:      mlTokens.length > 0 ? idsComEtiqueta.has(p.id) : true,
+    conta,
+  }));
+}
+
 app.get('/api/bling/pedidos-pendentes', async (req, res) => {
   try {
     const conta = blingContaReq(req);
-    const token = await getBlingToken(conta);
-
-    // Lista pedidos Em aberto com rastreamento pendente de etiqueta
-    const resp = await axios.get('https://www.bling.com.br/Api/v3/pedidos/vendas', {
-      headers: { Authorization: `Bearer ${token}` },
-      params: { pagina: 1, limite: 100, idSituacao: 6, rastreamento: 8 },
-      timeout: 15000,
-    });
-    const itens = resp.data?.data || [];
-    addLog(`[bling] ${itens.length} pedidos encontrados`, 'info');
-
-    // Busca detalhe de cada pedido para obter o numeroLoja correto (lista retorna ID diferente)
-    // Tenta até 3 vezes antes de desistir e usar o valor da lista
-    const itensDetalhados = [];
-    for (const p of itens) {
-      let numeroLojaCorreto = null;
-      for (let tentativa = 0; tentativa < 3 && !numeroLojaCorreto; tentativa++) {
-        if (tentativa > 0) await new Promise(r => setTimeout(r, 600 * tentativa));
-        numeroLojaCorreto = await axios.get(`https://www.bling.com.br/Api/v3/pedidos/vendas/${p.id}`, {
-          headers: { Authorization: `Bearer ${token}` }, timeout: 10000,
-        }).then(r => r.data?.data?.numeroLoja || null).catch(() => null);
-      }
-      itensDetalhados.push({ ...p, numeroLoja: numeroLojaCorreto || p.numeroLoja });
-    }
-
-    // Verifica no ML quais têm shipment ready_to_ship (etiqueta disponível ao emitir NF)
-    const mlData = loadData();
-    const mlTokens = (await Promise.all(
-      ['1', '2'].map(c => getToken(mlData, c).catch(() => null))
-    )).filter(Boolean);
-
-    const idsComEtiqueta = new Set();
-    if (mlTokens.length > 0) {
-      const mlOrders = await Promise.all(
-        itensDetalhados.map(async p => {
-          if (!p.numeroLoja) return null;
-          for (const tok of mlTokens) {
-            const res = await axios.get(`https://api.mercadolibre.com/orders/${p.numeroLoja}`, {
-              headers: { Authorization: `Bearer ${tok}` }, timeout: 6000,
-            }).catch(() => null);
-            if (res?.data?.shipping?.id) return { blingId: p.id, shippingId: res.data.shipping.id, tok };
-          }
-          return null;
-        })
-      );
-      const shippingEntries = mlOrders.filter(o => o?.shippingId);
-      const shipments = await Promise.all(
-        shippingEntries.map(o =>
-          axios.get(`https://api.mercadolibre.com/shipments/${o.shippingId}`, {
-            headers: { Authorization: `Bearer ${o.tok}` }, timeout: 6000,
-          }).then(r => ({ blingId: o.blingId, status: r.data?.status, substatus: r.data?.substatus })).catch(() => null)
-        )
-      );
-      shipments.filter(Boolean).forEach(s => {
-        addLog(`[bling] shipment ${s.blingId}: ${s.status}/${s.substatus}`, 'info');
-        if (s?.status === 'ready_to_ship' && s?.substatus === 'invoice_pending') idsComEtiqueta.add(s.blingId);
-      });
-      addLog(`[bling] ${idsComEtiqueta.size}/${itens.length} com etiqueta disponível`, 'info');
-    }
-
-    // Atualiza cache para o dashboard
-    blingPedidosCache[conta] = { count: idsComEtiqueta.size, ts: Date.now() };
-
-    const pedidos = itensDetalhados.map(p => ({
-      id:               p.id,
-      numero:           p.numero || '—',
-      comprador:        p.contato?.nome || '—',
-      valor_total:      p.totalProdutos || 0,
-      data:             p.data,
-      situacao:         p.situacao?.valor || 'Em aberto',
-      numeroPedidoLoja: p.numeroLoja || null,
-      dataPrevista:     p.dataPrevista || null,
-      temEtiqueta:      mlTokens.length > 0 ? idsComEtiqueta.has(p.id) : true,
-    }));
-
+    const pedidos = await fetchBlingPedidosPendentes(conta);
     pedidos.sort((a, b) => (b.temEtiqueta ? 1 : 0) - (a.temEtiqueta ? 1 : 0));
-
     return res.json({ pedidos });
   } catch (err) {
     const detail = err.response ? `HTTP ${err.response.status}: ${JSON.stringify(err.response.data).slice(0, 200)}` : err.message;
     addLog(`[bling] pedidos-pendentes: ${detail}`, 'warn');
     return res.json({ erro: detail });
+  }
+});
+
+app.get('/api/bling/pedidos-pendentes-todas', async (req, res) => {
+  try {
+    const data = loadData();
+    const contasAtivas = ['1', '2'].filter(c => !!(getBlingDataConta(data, c)?.access_token));
+    const resultados = await Promise.allSettled(contasAtivas.map(c => fetchBlingPedidosPendentes(c)));
+    const pedidos = [];
+    resultados.forEach(r => { if (r.status === 'fulfilled') pedidos.push(...r.value); });
+    pedidos.sort((a, b) => (b.temEtiqueta ? 1 : 0) - (a.temEtiqueta ? 1 : 0));
+    return res.json({ pedidos });
+  } catch (err) {
+    return res.json({ erro: err.message });
   }
 });
 

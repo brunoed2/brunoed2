@@ -36,7 +36,7 @@ async function blingCarregarPedidos() {
   total.textContent     = '';
 
   try {
-    const data = await fetch('/api/bling/pedidos-pendentes').then(r => r.json());
+    const data = await fetch('/api/bling/pedidos-pendentes-todas').then(r => r.json());
     loading.style.display = 'none';
 
     if (data.erro) {
@@ -59,20 +59,23 @@ async function blingCarregarPedidos() {
       if (p.temEtiqueta) tr.style.background = 'rgba(34,197,94,0.07)';
       const valor    = (p.valor_total || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
       const data_str = p.data ? new Date(p.data).toLocaleDateString('pt-BR') : '—';
+      const contaCor = p.conta === '1' ? '#2563eb' : '#7c3aed';
+      const contaBadge = `<span style="background:${contaCor};color:#fff;padding:1px 7px;border-radius:4px;font-size:11px">C${p.conta}</span>`;
       const etqBadge = p.temEtiqueta
         ? `<span style="background:#16a34a;color:#fff;padding:2px 7px;border-radius:4px;font-size:11px;white-space:nowrap" title="Emitir NF libera a etiqueta de envio">Emitir NF → Etiqueta</span>`
         : `<span style="color:#9ca3af;font-size:11px">Aguardando ML</span>`;
       const btnSuper = p.temEtiqueta
-        ? `<button class="btn-sm btn-super" data-bling-super-id="${p.id}" onclick="blingSuperEnvio('${p.id}', this)" style="background:#7c3aed;color:#fff;margin-left:4px" title="Gerar NF e enviar em um clique">⚡ Super</button>`
+        ? `<button class="btn-sm btn-super" data-bling-super-id="${p.id}" onclick="blingSuperEnvio('${p.id}', this, '${p.conta}')" style="background:#7c3aed;color:#fff;margin-left:4px" title="Gerar NF e enviar em um clique">⚡ Super</button>`
         : '';
       tr.innerHTML = `
-        <td><input type="checkbox" class="bling-check-pedido" data-id="${p.id}" onchange="blingAtualizarBotaoLote()"></td>
+        <td><input type="checkbox" class="bling-check-pedido" data-id="${p.id}" data-conta="${p.conta}" data-tem-etiqueta="${p.temEtiqueta}" onchange="blingAtualizarBotaoLote()"></td>
+        <td>${contaBadge}</td>
         <td>${escapeHtml(p.numero || String(p.id))}</td>
         <td>${escapeHtml(p.comprador || '—')}</td>
         <td class="col-num">${valor}</td>
         <td>${data_str}</td>
         <td style="text-align:center">${etqBadge}</td>
-        <td style="white-space:nowrap"><button class="btn-sm" data-bling-id="${p.id}" onclick="blingEmitirNF('${p.id}', this)">Emitir NF</button>${btnSuper}</td>
+        <td style="white-space:nowrap"><button class="btn-sm" data-bling-id="${p.id}" onclick="blingEmitirNF('${p.id}', this, '${p.conta}')">Emitir NF</button>${btnSuper}</td>
       `;
       tbody.appendChild(tr);
     }
@@ -91,11 +94,20 @@ function blingToggleAll(chk) {
 }
 
 function blingAtualizarBotaoLote() {
-  const selecionados = document.querySelectorAll('.bling-check-pedido:checked').length;
-  const btn = document.getElementById('btn-emitir-selecionadas');
-  if (!btn) return;
-  btn.style.display = selecionados > 0 ? '' : 'none';
-  btn.textContent   = `Emitir NF selecionadas (${selecionados})`;
+  const todos        = [...document.querySelectorAll('.bling-check-pedido:checked')];
+  const comEtiqueta  = todos.filter(c => c.dataset.temEtiqueta === 'true');
+
+  const btnEmitir = document.getElementById('btn-emitir-selecionadas');
+  if (btnEmitir) {
+    btnEmitir.style.display = todos.length > 0 ? '' : 'none';
+    btnEmitir.textContent   = `Emitir NF selecionadas (${todos.length})`;
+  }
+
+  const btnSuper = document.getElementById('btn-super-selecionadas');
+  if (btnSuper) {
+    btnSuper.style.display = comEtiqueta.length > 0 ? '' : 'none';
+    btnSuper.textContent   = `⚡ Super selecionadas (${comEtiqueta.length})`;
+  }
 }
 
 async function blingEmitirSelecionadas() {
@@ -106,10 +118,11 @@ async function blingEmitirSelecionadas() {
   btn.textContent = `Emitindo 0/${checks.length}...`;
   let ok = 0, erros = 0;
   for (const chk of checks) {
-    const id   = chk.dataset.id;
+    const id    = chk.dataset.id;
+    const conta = chk.dataset.conta || '1';
     const btnLinha = document.querySelector(`button[data-bling-id="${id}"]`);
     if (btnLinha) { btnLinha.disabled = true; btnLinha.textContent = 'Emitindo...'; }
-    const res = await fetch(`/api/bling/emitir-nf/${id}`, { method: 'POST' }).then(r => r.json()).catch(() => ({ ok: false }));
+    const res = await fetch(`/api/bling/emitir-nf/${id}?conta=${conta}`, { method: 'POST' }).then(r => r.json()).catch(() => ({ ok: false }));
     if (res.ok) {
       ok++;
       if (btnLinha) { btnLinha.textContent = '✅ Emitida'; btnLinha.style.color = 'green'; }
@@ -128,11 +141,52 @@ async function blingEmitirSelecionadas() {
   else alert(`${ok} NF(s) emitida(s) com sucesso. ${erros} erro(s).`);
 }
 
-async function blingSuperEnvio(pedidoId, btn) {
+async function blingSuperSelecionadas() {
+  const checks = [...document.querySelectorAll('.bling-check-pedido:checked')].filter(c => c.dataset.temEtiqueta === 'true');
+  if (checks.length === 0) return;
+  const btn = document.getElementById('btn-super-selecionadas');
+  btn.disabled = true;
+  let ok = 0, erros = 0;
+  for (const chk of checks) {
+    const id    = chk.dataset.id;
+    const conta = chk.dataset.conta || '1';
+    const btnSuper = document.querySelector(`button[data-bling-super-id="${id}"]`);
+    btn.textContent = `⚡ Super ${ok + erros + 1}/${checks.length}...`;
+
+    if (btnSuper) { btnSuper.disabled = true; btnSuper.textContent = '⚡ Gerando...'; }
+    const emissao = await fetch(`/api/bling/emitir-nf/${id}?conta=${conta}`, { method: 'POST' }).then(r => r.json()).catch(() => ({ ok: false }));
+    if (!emissao.ok) {
+      erros++;
+      if (btnSuper) { btnSuper.disabled = false; btnSuper.textContent = '⚡ Super'; }
+      continue;
+    }
+
+    if (btnSuper) btnSuper.textContent = '⚡ Enviando...';
+    await new Promise(r => setTimeout(r, 2000));
+    const envio = await fetch(`/api/bling/enviar-nf/${emissao.nfId}?conta=${conta}`, { method: 'POST' }).then(r => r.json()).catch(() => ({ ok: false }));
+    if (envio.ok) {
+      ok++;
+      chk.checked = false;
+      if (btnSuper) { btnSuper.textContent = '✅ Enviada'; btnSuper.style.background = '#16a34a'; }
+    } else {
+      erros++;
+      if (btnSuper) { btnSuper.disabled = false; btnSuper.textContent = '⚡ Super'; }
+    }
+  }
+  btn.disabled = false;
+  blingAtualizarBotaoLote();
+  const checkAll = document.getElementById('bling-check-all');
+  if (checkAll) checkAll.checked = false;
+  if (erros === 0) setTimeout(() => blingCarregarPedidos(), 1500);
+  else alert(`${ok} NF(s) enviada(s) com sucesso. ${erros} erro(s).`);
+}
+
+async function blingSuperEnvio(pedidoId, btn, conta) {
+  conta = conta || '1';
   btn.disabled    = true;
   btn.textContent = '⚡ Gerando NF...';
   try {
-    const emissao = await fetch(`/api/bling/emitir-nf/${pedidoId}`, { method: 'POST' }).then(r => r.json());
+    const emissao = await fetch(`/api/bling/emitir-nf/${pedidoId}?conta=${conta}`, { method: 'POST' }).then(r => r.json());
     if (!emissao.ok) {
       btn.disabled    = false;
       btn.textContent = '⚡ Super';
@@ -140,8 +194,8 @@ async function blingSuperEnvio(pedidoId, btn) {
       return;
     }
     btn.textContent = '⚡ Enviando NF...';
-    await new Promise(r => setTimeout(r, 2000)); // aguarda Bling processar a NF
-    const envio = await fetch(`/api/bling/enviar-nf/${emissao.nfId}`, { method: 'POST' }).then(r => r.json());
+    await new Promise(r => setTimeout(r, 2000));
+    const envio = await fetch(`/api/bling/enviar-nf/${emissao.nfId}?conta=${conta}`, { method: 'POST' }).then(r => r.json());
     if (envio.ok) {
       btn.textContent = '✅ Enviada';
       btn.style.background = '#16a34a';
@@ -158,11 +212,12 @@ async function blingSuperEnvio(pedidoId, btn) {
   }
 }
 
-async function blingEmitirNF(pedidoId, btn) {
+async function blingEmitirNF(pedidoId, btn, conta) {
+  conta = conta || '1';
   btn.disabled    = true;
   btn.textContent = 'Emitindo...';
   try {
-    const data = await fetch(`/api/bling/emitir-nf/${pedidoId}`, { method: 'POST' }).then(r => r.json());
+    const data = await fetch(`/api/bling/emitir-nf/${pedidoId}?conta=${conta}`, { method: 'POST' }).then(r => r.json());
     if (data.ok) {
       btn.textContent = '✅ Emitida';
       btn.style.color = 'green';

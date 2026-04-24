@@ -597,7 +597,8 @@
           <div class="tabela-container">
             <div class="tabela-topo">
               <span id="bling-pedidos-total"></span>
-              <div style="display:flex;gap:8px;align-items:center">
+              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                <button class="btn-primary" id="btn-super-selecionadas" onclick="blingSuperSelecionadas()" style="display:none;background:#7c3aed">⚡ Super selecionadas</button>
                 <button class="btn-primary" id="btn-emitir-selecionadas" onclick="blingEmitirSelecionadas()" style="display:none">Emitir NF selecionadas</button>
                 <button class="btn-secondary" onclick="blingCarregarPedidos()" id="btn-atualizar-bling-pedidos">↻ Atualizar</button>
               </div>
@@ -608,6 +609,7 @@
               <thead>
                 <tr>
                   <th><input type="checkbox" id="bling-check-all" onchange="blingToggleAll(this)"></th>
+                  <th>Conta</th>
                   <th>Nº Pedido</th>
                   <th>Cliente</th>
                   <th class="col-num">Valor</th>
@@ -819,6 +821,6 @@
   <script src="/js/bling.js?v=1"></script>
   <script src="/js/pesquisa.js?v=1"></script>
   <script src="/js/fiscal.js?v=1"></script>
-  <div id="version-badge">v299</div>
+  <div id="version-badge">v300</div>
 </body>
 </html>
