@@ -1857,14 +1857,18 @@ app.get('/api/ml/promocoes', async (req, res) => {
     // Tenta várias variações até encontrar dados
     const headersJson = { ...headers, Accept: 'application/json' };
     const uid = c.user_id;
+    const token = c.access_token;
     const tentativas = [
-      { label: 'sp-active-site',    url: 'https://api.mercadolibre.com/seller-promotions/promotions', params: { seller_id: uid, status: 'active',    site_id: 'MLB', limit: 50 }, h: headersJson },
-      { label: 'sp-candidate-site', url: 'https://api.mercadolibre.com/seller-promotions/promotions', params: { seller_id: uid, status: 'candidate', site_id: 'MLB', limit: 50 }, h: headersJson },
-      { label: 'sp-started-site',   url: 'https://api.mercadolibre.com/seller-promotions/promotions', params: { seller_id: uid, status: 'started',   site_id: 'MLB', limit: 50 }, h: headersJson },
-      { label: 'sp-sem-status-site',url: 'https://api.mercadolibre.com/seller-promotions/promotions', params: { seller_id: uid,                      site_id: 'MLB', limit: 50 }, h: headersJson },
-      { label: 'sp-active',         url: 'https://api.mercadolibre.com/seller-promotions/promotions', params: { seller_id: uid, status: 'active',    limit: 50 }, h: headersJson },
-      { label: 'sp-candidate',      url: 'https://api.mercadolibre.com/seller-promotions/promotions', params: { seller_id: uid, status: 'candidate', limit: 50 }, h: headersJson },
-      { label: 'sp-sem-status',     url: 'https://api.mercadolibre.com/seller-promotions/promotions', params: { seller_id: uid,                      limit: 50 }, h: headersJson },
+      // com Authorization header
+      { label: 'candidate',      url: 'https://api.mercadolibre.com/seller-promotions/promotions', params: { seller_id: uid, status: 'candidate', limit: 50 } },
+      { label: 'started',        url: 'https://api.mercadolibre.com/seller-promotions/promotions', params: { seller_id: uid, status: 'started',   limit: 50 } },
+      { label: 'active',         url: 'https://api.mercadolibre.com/seller-promotions/promotions', params: { seller_id: uid, status: 'active',    limit: 50 } },
+      { label: 'sem-status',     url: 'https://api.mercadolibre.com/seller-promotions/promotions', params: { seller_id: uid,                      limit: 50 } },
+      // token como query param (alguns endpoints ML antigos exigem)
+      { label: 'qp-candidate',   url: 'https://api.mercadolibre.com/seller-promotions/promotions', params: { seller_id: uid, status: 'candidate', access_token: token, limit: 50 }, h: {} },
+      { label: 'qp-sem-status',  url: 'https://api.mercadolibre.com/seller-promotions/promotions', params: { seller_id: uid,                      access_token: token, limit: 50 }, h: {} },
+      // items elegíveis (endpoint diferente)
+      { label: 'items-candidate',url: 'https://api.mercadolibre.com/seller-promotions/items',      params: { seller_id: uid, status: 'candidate', limit: 50 } },
     ];
 
     let promocoes = [];
@@ -1873,20 +1877,24 @@ app.get('/api/ml/promocoes', async (req, res) => {
 
     for (const t of tentativas) {
       try {
-        const rPromo = await axios.get(t.url, { params: t.params, headers: t.h || headers, timeout: 15000 });
-        const d = rPromo.data;
-        rawRespostas[t.label] = typeof d === 'string' ? `(string vazia: "${d}")` : d;
+        const h = t.h !== undefined ? t.h : headersJson;
+        const rPromo = await axios.get(t.url, { params: t.params, headers: h, timeout: 15000, responseType: 'text', validateStatus: () => true });
+        const statusHttp = rPromo.status;
+        const ct = rPromo.headers['content-type'] || '';
+        const rawText = rPromo.data || '';
+        let d;
+        try { d = JSON.parse(rawText); } catch { d = rawText; }
+        rawRespostas[t.label] = { status: statusHttp, ct: ct.split(';')[0], raw: typeof d === 'string' ? (d.slice(0, 200) || '(vazio)') : d };
+        addLog(`[promos] ${t.label} → HTTP ${statusHttp} ct=${ct.split(';')[0]} len=${rawText.length}`, 'info');
+        if (statusHttp !== 200) continue;
         const lista = (d && d.results) || (Array.isArray(d) ? d : []);
-        addLog(`[promos] ${t.label} → ${lista.length} resultados (keys: ${Object.keys(d || {}).join(',')})`, 'info');
         if (lista.length) { promocoes = lista; break; }
       } catch (e) {
         const httpStatus = e.response?.status;
-        const msg = e.response?.data?.message || e.response?.data?.error || e.message;
-        errosApi.push(`[${t.label}] HTTP ${httpStatus}: ${msg}`);
-        const body = e.response?.data;
-        const fullMsg = (typeof body === 'object' ? JSON.stringify(body) : String(body || '')) || msg;
-        rawRespostas[t.label] = { httpStatus, erro: fullMsg };
-        addLog(`[promos] ${t.label} erro: HTTP ${httpStatus} — ${fullMsg}`, 'warn');
+        const msg = e.message;
+        errosApi.push(`[${t.label}] ${httpStatus}: ${msg}`);
+        rawRespostas[t.label] = { httpStatus, erro: msg };
+        addLog(`[promos] ${t.label} erro: ${msg}`, 'warn');
       }
     }
 
