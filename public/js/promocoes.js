@@ -45,7 +45,8 @@ async function carregarPromocoes() {
       const msg = d.erroApi
         ? `Erro da API ML: ${d.erroApi}`
         : 'Nenhuma promoção disponível no momento para seus anúncios.';
-      erroEl.textContent   = msg;
+      erroEl.innerHTML = msg
+        + (d.rawRespostas ? `<details style="margin-top:8px;font-size:11px"><summary style="cursor:pointer">Ver resposta bruta da API</summary><pre style="overflow:auto;max-height:200px;background:#1e293b;padding:8px;border-radius:4px;color:#94a3b8">${JSON.stringify(d.rawRespostas, null, 2)}</pre></details>` : '');
       erroEl.style.color   = d.erroApi ? '#c00' : '#64748b';
       erroEl.style.display = 'block';
       return;

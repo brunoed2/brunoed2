@@ -1856,24 +1856,28 @@ app.get('/api/ml/promocoes', async (req, res) => {
     // Busca promoções disponíveis — tenta candidate primeiro, depois started
     let promocoes = [];
     const errosApi = [];
+    const rawRespostas = {};
     for (const status of ['candidate', 'started']) {
       try {
         const rPromo = await axios.get('https://api.mercadolibre.com/seller-promotions/promotions', {
           params: { seller_id: c.user_id, status, limit: 50 },
           headers, timeout: 15000,
         });
+        rawRespostas[status] = rPromo.data;
         const lista = rPromo.data.results || (Array.isArray(rPromo.data) ? rPromo.data : []);
         promocoes = promocoes.concat(lista);
+        addLog(`[promos] status=${status} → ${lista.length} promoções. raw keys: ${Object.keys(rPromo.data || {}).join(',')}`, 'info');
       } catch (e) {
         const httpStatus = e.response?.status;
         const msg = e.response?.data?.message || e.response?.data?.error || e.message;
         errosApi.push(`[${status}] HTTP ${httpStatus}: ${msg}`);
+        rawRespostas[status] = { httpStatus, erro: msg, body: e.response?.data };
         addLog(`[promos] status=${status} erro: HTTP ${httpStatus} — ${msg}`, 'warn');
       }
     }
     if (!promocoes.length) {
       const detalhe = errosApi.length ? errosApi.join(' | ') : null;
-      return res.json({ promocoes: [], erroApi: detalhe });
+      return res.json({ promocoes: [], erroApi: detalhe, rawRespostas });
     }
 
     // Para cada promoção, busca os itens elegíveis
