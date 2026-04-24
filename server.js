@@ -1854,27 +1854,36 @@ app.get('/api/ml/promocoes', async (req, res) => {
 
   try {
     // Busca promoções disponíveis — tenta candidate primeiro, depois started
+    // Tenta várias variações do endpoint até encontrar dados
+    const tentativas = [
+      { label: 'sem-status',  url: 'https://api.mercadolibre.com/seller-promotions/promotions', params: { seller_id: c.user_id, limit: 50 } },
+      { label: 'candidate',   url: 'https://api.mercadolibre.com/seller-promotions/promotions', params: { seller_id: c.user_id, status: 'candidate', limit: 50 } },
+      { label: 'started',     url: 'https://api.mercadolibre.com/seller-promotions/promotions', params: { seller_id: c.user_id, status: 'started',   limit: 50 } },
+      { label: 'paused',      url: 'https://api.mercadolibre.com/seller-promotions/promotions', params: { seller_id: c.user_id, status: 'paused',    limit: 50 } },
+      { label: 'users-promo', url: `https://api.mercadolibre.com/users/${c.user_id}/seller-promotions`, params: { limit: 50 } },
+    ];
+
     let promocoes = [];
-    const errosApi = [];
     const rawRespostas = {};
-    for (const status of ['candidate', 'started']) {
+    const errosApi = [];
+
+    for (const t of tentativas) {
       try {
-        const rPromo = await axios.get('https://api.mercadolibre.com/seller-promotions/promotions', {
-          params: { seller_id: c.user_id, status, limit: 50 },
-          headers, timeout: 15000,
-        });
-        rawRespostas[status] = rPromo.data;
-        const lista = rPromo.data.results || (Array.isArray(rPromo.data) ? rPromo.data : []);
-        promocoes = promocoes.concat(lista);
-        addLog(`[promos] status=${status} → ${lista.length} promoções. raw keys: ${Object.keys(rPromo.data || {}).join(',')}`, 'info');
+        const rPromo = await axios.get(t.url, { params: t.params, headers, timeout: 15000 });
+        const d = rPromo.data;
+        rawRespostas[t.label] = typeof d === 'string' ? `(string vazia: "${d}")` : d;
+        const lista = (d && d.results) || (Array.isArray(d) ? d : []);
+        addLog(`[promos] ${t.label} → ${lista.length} resultados (keys: ${Object.keys(d || {}).join(',')})`, 'info');
+        if (lista.length) { promocoes = lista; break; }
       } catch (e) {
         const httpStatus = e.response?.status;
         const msg = e.response?.data?.message || e.response?.data?.error || e.message;
-        errosApi.push(`[${status}] HTTP ${httpStatus}: ${msg}`);
-        rawRespostas[status] = { httpStatus, erro: msg, body: e.response?.data };
-        addLog(`[promos] status=${status} erro: HTTP ${httpStatus} — ${msg}`, 'warn');
+        errosApi.push(`[${t.label}] HTTP ${httpStatus}: ${msg}`);
+        rawRespostas[t.label] = { httpStatus, erro: msg };
+        addLog(`[promos] ${t.label} erro: HTTP ${httpStatus} — ${msg}`, 'warn');
       }
     }
+
     if (!promocoes.length) {
       const detalhe = errosApi.length ? errosApi.join(' | ') : null;
       return res.json({ promocoes: [], erroApi: detalhe, rawRespostas });
