@@ -1854,16 +1854,17 @@ app.get('/api/ml/promocoes', async (req, res) => {
 
   try {
     // Busca promoções disponíveis — tenta candidate primeiro, depois started
-    // Tenta várias variações do endpoint até encontrar dados
-    // /promotions = promoções criadas pelo vendedor (desconto de preço, frete grátis)
-    // /seller-promotions/promotions = programas gerenciados pelo ML (Oferta Relâmpago, Deal do Dia)
+    // Tenta várias variações até encontrar dados
+    const headersJson = { ...headers, Accept: 'application/json' };
+    const uid = c.user_id;
     const tentativas = [
-      { label: 'promotions-started',   url: 'https://api.mercadolibre.com/promotions', params: { seller_id: c.user_id, status: 'started',   limit: 50 } },
-      { label: 'promotions-candidate', url: 'https://api.mercadolibre.com/promotions', params: { seller_id: c.user_id, status: 'candidate', limit: 50 } },
-      { label: 'promotions-paused',    url: 'https://api.mercadolibre.com/promotions', params: { seller_id: c.user_id, status: 'paused',    limit: 50 } },
-      { label: 'promotions-sem-status',url: 'https://api.mercadolibre.com/promotions', params: { seller_id: c.user_id, limit: 50 } },
-      { label: 'sp-candidate',         url: 'https://api.mercadolibre.com/seller-promotions/promotions', params: { seller_id: c.user_id, status: 'candidate', limit: 50 } },
-      { label: 'sp-started',           url: 'https://api.mercadolibre.com/seller-promotions/promotions', params: { seller_id: c.user_id, status: 'started',   limit: 50 } },
+      { label: 'sp-active',      url: 'https://api.mercadolibre.com/seller-promotions/promotions', params: { seller_id: uid, status: 'active',    limit: 50 }, h: headersJson },
+      { label: 'sp-candidate',   url: 'https://api.mercadolibre.com/seller-promotions/promotions', params: { seller_id: uid, status: 'candidate', limit: 50 }, h: headersJson },
+      { label: 'sp-started',     url: 'https://api.mercadolibre.com/seller-promotions/promotions', params: { seller_id: uid, status: 'started',   limit: 50 }, h: headersJson },
+      { label: 'sp-paused',      url: 'https://api.mercadolibre.com/seller-promotions/promotions', params: { seller_id: uid, status: 'paused',    limit: 50 }, h: headersJson },
+      { label: 'sp-sem-status',  url: 'https://api.mercadolibre.com/seller-promotions/promotions', params: { seller_id: uid,                      limit: 50 }, h: headersJson },
+      { label: 'sp-sem-seller',  url: 'https://api.mercadolibre.com/seller-promotions/promotions', params: {                                      limit: 50 }, h: headersJson },
+      { label: 'campaigns',      url: 'https://api.mercadolibre.com/seller-promotions/campaigns',  params: { seller_id: uid,                      limit: 50 }, h: headersJson },
     ];
 
     let promocoes = [];
@@ -1872,7 +1873,7 @@ app.get('/api/ml/promocoes', async (req, res) => {
 
     for (const t of tentativas) {
       try {
-        const rPromo = await axios.get(t.url, { params: t.params, headers, timeout: 15000 });
+        const rPromo = await axios.get(t.url, { params: t.params, headers: t.h || headers, timeout: 15000 });
         const d = rPromo.data;
         rawRespostas[t.label] = typeof d === 'string' ? `(string vazia: "${d}")` : d;
         const lista = (d && d.results) || (Array.isArray(d) ? d : []);
