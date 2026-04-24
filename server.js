@@ -1070,26 +1070,56 @@ app.get('/api/bling/callback', async (req, res) => {
 });
 
 // Renova o access_token usando o refresh_token
+// Mutex por conta: evita dois refreshes simultâneos com o mesmo refresh_token
+// (Bling rotaciona o refresh_token — uso duplicado invalida a sessão inteira)
+const blingRefreshEmAndamento = {};
+
 async function blingRefreshToken(conta) {
+  if (blingRefreshEmAndamento[conta]) {
+    addLog(`[bling] refresh conta ${conta} já em andamento — aguardando`, 'info');
+    try { return await blingRefreshEmAndamento[conta]; } catch { /* cai no throw abaixo */ }
+    // Se o refresh em andamento falhou, relança o erro (lido do disco)
+    const dataPos = loadData();
+    const bPos = getBlingDataConta(dataPos, conta);
+    if (bPos?.access_token) return bPos.access_token;
+    throw new Error(`Bling conta ${conta} — refresh anterior falhou`);
+  }
+
+  const p = _executarRefreshBling(conta);
+  blingRefreshEmAndamento[conta] = p;
+  p.finally(() => { blingRefreshEmAndamento[conta] = null; });
+  return p;
+}
+
+async function _executarRefreshBling(conta) {
   const data = loadData();
   const b = getBlingDataConta(data, conta);
   if (!b?.refresh_token) throw new Error(`Sem refresh_token do Bling (conta ${conta})`);
   const { id: clientId, secret: clientSecret } = getBlingCreds(conta);
   const creds = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
-  const resp  = await axios.post(
-    'https://www.bling.com.br/Api/v3/oauth/token',
-    new URLSearchParams({ grant_type: 'refresh_token', refresh_token: b.refresh_token }),
-    { headers: { Authorization: `Basic ${creds}`, 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 15000 }
-  );
+  let resp;
+  try {
+    resp = await axios.post(
+      'https://www.bling.com.br/Api/v3/oauth/token',
+      new URLSearchParams({ grant_type: 'refresh_token', refresh_token: b.refresh_token }),
+      { headers: { Authorization: `Basic ${creds}`, 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 15000 }
+    );
+  } catch (err) {
+    const detalhe = err.response?.data ? JSON.stringify(err.response.data) : err.message;
+    addLog(`[bling] ❌ Falha ao renovar token conta ${conta}: ${detalhe}`, 'erro');
+    throw new Error(`Falha ao renovar token Bling conta ${conta}: ${detalhe}`);
+  }
   const updated = {
     access_token:  resp.data.access_token,
     refresh_token: resp.data.refresh_token || b.refresh_token,
     expires_at:    Date.now() + ((resp.data.expires_in || 21600) - 300) * 1000,
   };
-  data[`bling_${conta}`] = updated;
-  if (conta === '1') data.bling = updated;
-  saveData(data);
-  addLog(`[bling] 🔄 Token conta ${conta} renovado`, 'ok');
+  // Re-lê do disco antes de salvar para não sobrescrever dados de outros requests
+  const dataFresh = loadData();
+  dataFresh[`bling_${conta}`] = updated;
+  if (conta === '1') dataFresh.bling = updated;
+  saveData(dataFresh);
+  addLog(`[bling] 🔄 Token conta ${conta} renovado — expira ${new Date(updated.expires_at).toLocaleTimeString('pt-BR')}`, 'ok');
   return updated.access_token;
 }
 
@@ -1101,6 +1131,20 @@ async function getBlingToken(conta) {
   if (Date.now() >= (b.expires_at || 0)) return blingRefreshToken(conta);
   return b.access_token;
 }
+
+// Renovação proativa: verifica a cada 30 min e renova tokens com menos de 2h de vida
+setInterval(async () => {
+  const data = loadData();
+  for (const conta of ['1', '2']) {
+    const b = getBlingDataConta(data, conta);
+    if (!b?.access_token || !b?.refresh_token) continue;
+    const minutosRestantes = Math.round(((b.expires_at || 0) - Date.now()) / 60000);
+    if (minutosRestantes < 120) {
+      addLog(`[bling] Renovação proativa conta ${conta} (${minutosRestantes}min restantes)`, 'info');
+      blingRefreshToken(conta).catch(e => addLog(`[bling] Renovação proativa conta ${conta} falhou: ${e.message}`, 'warn'));
+    }
+  }
+}, 30 * 60 * 1000);
 
 // Helper: retorna a conta bling a usar para um request (query param ou conta_ativa)
 function blingContaReq(req) {
