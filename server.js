@@ -3534,7 +3534,7 @@ app.get('/api/fiscal/notas', (req, res) => {
     const cnpj = n.filial || '';
     if (!/^\d{14}$/.test(cnpj)) continue; // ignora entradas inválidas
     if (!grupos[cnpj]) grupos[cnpj] = { cnpj, nome: n.tomanome || cnpj, notas: [] };
-    grupos[cnpj].notas.push({ ...n, zip: undefined, temXml: !!(n.chave && chavesComXml.has(n.chave)) });
+    grupos[cnpj].notas.push({ ...n, zip: undefined, temXml: !!(n.zip || (n.chave && chavesComXml.has(n.chave))) });
   }
   // Ordena notas de cada grupo por data decrescente
   for (const g of Object.values(grupos)) {
@@ -3719,6 +3719,51 @@ function extrairCnpjDoCert(pfxBuffer, senha) {
   if (!cnpj) throw new Error('CNPJ não encontrado no certificado. Certifique-se de usar um certificado e-CNPJ ICP-Brasil válido.');
   return { cnpj, titular };
 }
+
+async function queryNFeByChave(pfxBuffer, senha, cnpj, cUF, chNFe) {
+  const soapBody = `<?xml version="1.0" encoding="UTF-8"?><soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:nfe="http://www.portalfiscal.inf.br/nfe/wsdl/NFeDistribuicaoDFe"><soapenv:Header/><soapenv:Body><nfe:nfeDistDFeInteresse><nfe:nfeDadosMsg><distDFeInt xmlns="http://www.portalfiscal.inf.br/nfe" versao="1.01"><tpAmb>1</tpAmb><cUFAutor>${cUF}</cUFAutor><CNPJ>${cnpj}</CNPJ><consChNFe><chNFe>${chNFe}</chNFe></consChNFe></distDFeInt></nfe:nfeDadosMsg></nfe:nfeDistDFeInteresse></soapenv:Body></soapenv:Envelope>`;
+  return new Promise((resolve, reject) => {
+    const req = https.request({
+      hostname: 'www1.nfe.fazenda.gov.br', port: 443,
+      path: '/NFeDistribuicaoDFe/NFeDistribuicaoDFe.asmx', method: 'POST',
+      pfx: pfxBuffer, passphrase: senha,
+      headers: { 'Content-Type': 'text/xml;charset=UTF-8', 'SOAPAction': '"http://www.portalfiscal.inf.br/nfe/wsdl/NFeDistribuicaoDFe/nfeDistDFeInteresse"', 'Content-Length': Buffer.byteLength(soapBody, 'utf8') },
+      rejectUnauthorized: false, timeout: 30000,
+    }, (res) => { let d = ''; res.on('data', c => d += c); res.on('end', () => resolve(d)); });
+    req.on('error', reject);
+    req.on('timeout', () => { req.destroy(); reject(new Error('Timeout SEFAZ (30s)')); });
+    req.write(soapBody); req.end();
+  });
+}
+
+// Baixa XML de uma NF fiscal pela chave e salva no fiscal-notas.json
+app.post('/api/fiscal/baixar-xml', async (req, res) => {
+  const { chave } = req.body;
+  if (!chave || chave.length !== 44) return res.json({ ok: false, erro: 'Chave inválida (deve ter 44 dígitos)' });
+  const cUF  = chave.slice(0, 2);
+  const data = loadData();
+  let pfxBuffer, senha, cnpj;
+  for (const num of ['1', '2']) {
+    const nc = (data.notas_contas || {})[num] || {};
+    if (nc.cert_b64 && nc.senha && nc.cnpj) {
+      pfxBuffer = Buffer.from(nc.cert_b64, 'base64'); senha = nc.senha; cnpj = nc.cnpj; break;
+    }
+  }
+  if (!pfxBuffer) return res.json({ ok: false, erro: 'Nenhum certificado digital configurado. Configure em NF Entrada.' });
+  try {
+    const xmlResp = await queryNFeByChave(pfxBuffer, senha, cnpj, cUF, chave);
+    const { cStat, xMotivo, docs } = parsearRespostaSefaz(xmlResp);
+    if (!docs.length) return res.json({ ok: false, erro: `SEFAZ: ${cStat} - ${xMotivo}` });
+    const db  = loadFiscalNotas();
+    const key = Object.keys(db).find(k => db[k].chave === chave);
+    if (key) { db[key].zip = docs[0].zip; saveFiscalNotas(db); }
+    addLog(`[fiscal] XML baixado para chave ${chave.slice(0,10)}...`, 'ok');
+    return res.json({ ok: true });
+  } catch (err) {
+    addLog(`[fiscal] baixar-xml erro: ${err.message}`, 'warn');
+    return res.json({ ok: false, erro: err.message });
+  }
+});
 
 async function queryNFeDistribuicao(pfxBuffer, senha, cnpj, cUF, ultNSU) {
   const nsuPad = String(ultNSU || 0).padStart(15, '0');

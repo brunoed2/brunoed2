@@ -81,8 +81,12 @@ function fiscalRenderGrupo(g) {
     const data  = (n.dtemi || '').replace(/(\d{4})\.(\d{2})\.(\d{2})/, '$3/$2/$1');
     const valor = parseFloat((n.valor || '0').replace(',', '.'));
     const vFmt  = valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-    const chave  = n.chave ? `<span title="${n.chave}" style="cursor:pointer;color:#aaa;font-size:11px" onclick="navigator.clipboard.writeText('${n.chave}')">📋</span>` : '';
-    const xmlBadge = n.temXml ? `<span title="XML baixado" style="background:#16a34a;color:#fff;padding:1px 5px;border-radius:3px;font-size:10px;font-weight:600">XML</span>` : '';
+    const chave   = n.chave ? `<span title="${n.chave}" style="cursor:pointer;color:#aaa;font-size:11px" onclick="navigator.clipboard.writeText('${n.chave}')">📋</span>` : '';
+    const xmlCol  = n.temXml
+      ? `<span title="XML baixado" style="background:#16a34a;color:#fff;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:600;cursor:default">XML</span>`
+      : (n.chave
+          ? `<button onclick="fiscalBaixarXml('${n.chave}', this)" style="background:none;border:1px solid #475569;color:#94a3b8;border-radius:4px;padding:1px 6px;font-size:10px;cursor:pointer" title="Baixar XML da SEFAZ">📥</button>`
+          : '');
     return `<tr>
       <td>${data}</td>
       <td>${n.num || '—'}-${n.serie || ''}</td>
@@ -90,7 +94,7 @@ function fiscalRenderGrupo(g) {
       <td style="font-size:11px;color:#888">${(n.emitid || '').replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5')}</td>
       <td style="text-align:right;font-weight:600">${vFmt}</td>
       <td style="font-size:11px;color:#888;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${n.natoper || ''}">${n.natoper || '—'}</td>
-      <td style="text-align:center">${xmlBadge}</td>
+      <td style="text-align:center">${xmlCol}</td>
       <td>${chave}</td>
     </tr>`;
   }).join('');
@@ -113,6 +117,29 @@ function fiscalRenderGrupo(g) {
         </table>
       </div>
     </div>`;
+}
+
+async function fiscalBaixarXml(chave, btn) {
+  btn.disabled = true;
+  btn.textContent = '⏳';
+  try {
+    const r = await fetch('/api/fiscal/baixar-xml', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chave }),
+    }).then(r => r.json());
+    if (r.ok) {
+      btn.outerHTML = `<span title="XML baixado" style="background:#16a34a;color:#fff;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:600">XML</span>`;
+    } else {
+      btn.disabled = false;
+      btn.textContent = '📥';
+      alert('Erro ao baixar XML: ' + (r.erro || 'Erro desconhecido'));
+    }
+  } catch (err) {
+    btn.disabled = false;
+    btn.textContent = '📥';
+    alert('Erro: ' + err.message);
+  }
 }
 
 // Carrega ao entrar na aba
