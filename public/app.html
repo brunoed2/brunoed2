@@ -772,6 +772,30 @@
         <div id="fiscal-agente-erro" style="display:none;background:#fff3cd;color:#856404;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:13px">
           ⚠️ Agente local não encontrado em <b>localhost:4001</b>. Abra o arquivo <b>C:\fiscal-agente\iniciar.bat</b> para iniciar.
         </div>
+        <!-- Configuração de certificado digital para download de XML -->
+        <details id="fiscal-cert-config" style="margin-bottom:16px;background:#1e293b;border-radius:8px;padding:12px 16px">
+          <summary style="cursor:pointer;font-size:13px;color:#94a3b8;user-select:none">🔐 Certificados digitais (para baixar XML da SEFAZ)</summary>
+          <div style="margin-top:12px;display:flex;flex-direction:column;gap:14px">
+            <div id="fiscal-cert-status" style="font-size:12px;color:#64748b"></div>
+            <div style="display:flex;gap:16px;flex-wrap:wrap">
+              <div style="flex:1;min-width:220px">
+                <div style="font-size:12px;color:#94a3b8;margin-bottom:6px">Conta 1</div>
+                <div id="fiscal-cert-info-1" style="font-size:12px;color:#4ade80;margin-bottom:6px;display:none"></div>
+                <input type="file" id="fiscal-cert-file-1" accept=".pfx,.p12" style="font-size:12px;color:#cbd5e1;display:block;margin-bottom:4px">
+                <input type="password" id="fiscal-cert-senha-1" placeholder="Senha do certificado" style="width:100%;padding:5px 8px;border-radius:5px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;font-size:12px;box-sizing:border-box;margin-bottom:6px">
+                <button class="btn-sm" onclick="fiscalSalvarCert('1')">Salvar certificado C1</button>
+              </div>
+              <div style="flex:1;min-width:220px">
+                <div style="font-size:12px;color:#94a3b8;margin-bottom:6px">Conta 2</div>
+                <div id="fiscal-cert-info-2" style="font-size:12px;color:#4ade80;margin-bottom:6px;display:none"></div>
+                <input type="file" id="fiscal-cert-file-2" accept=".pfx,.p12" style="font-size:12px;color:#cbd5e1;display:block;margin-bottom:4px">
+                <input type="password" id="fiscal-cert-senha-2" placeholder="Senha do certificado" style="width:100%;padding:5px 8px;border-radius:5px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;font-size:12px;box-sizing:border-box;margin-bottom:6px">
+                <button class="btn-sm" onclick="fiscalSalvarCert('2')">Salvar certificado C2</button>
+              </div>
+            </div>
+            <div id="fiscal-cert-msg" style="font-size:12px;display:none"></div>
+          </div>
+        </details>
         <div id="fiscal-container"></div>
       </section>
 
@@ -821,6 +845,6 @@
   <script src="/js/bling.js?v=1"></script>
   <script src="/js/pesquisa.js?v=1"></script>
   <script src="/js/fiscal.js?v=1"></script>
-  <div id="version-badge">v306</div>
+  <div id="version-badge">v307</div>
 </body>
 </html>

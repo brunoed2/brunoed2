@@ -142,11 +142,47 @@ async function fiscalBaixarXml(chave, btn) {
   }
 }
 
+async function fiscalCarregarCerts() {
+  for (const num of ['1', '2']) {
+    const s = await fetch(`/api/notas/config?conta=${num}`).then(r => r.json()).catch(() => null);
+    const box = document.getElementById(`fiscal-cert-info-${num}`);
+    if (box && s?.cnpj) {
+      const cnpjFmt = s.cnpj.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
+      box.textContent = `✅ ${s.titular || ''} — CNPJ ${cnpjFmt}`;
+      box.style.display = 'block';
+    }
+  }
+}
+
+async function fiscalSalvarCert(conta) {
+  const fileInput = document.getElementById(`fiscal-cert-file-${conta}`);
+  const senha     = document.getElementById(`fiscal-cert-senha-${conta}`).value;
+  const msg       = document.getElementById('fiscal-cert-msg');
+  msg.style.display = 'none';
+  if (!fileInput.files[0]) { msg.textContent = 'Selecione o arquivo .pfx'; msg.style.color = '#f87171'; msg.style.display = 'block'; return; }
+  if (!senha)              { msg.textContent = 'Informe a senha'; msg.style.color = '#f87171'; msg.style.display = 'block'; return; }
+  msg.textContent = 'Processando...'; msg.style.color = '#94a3b8'; msg.style.display = 'block';
+  const form = new FormData();
+  form.append('cert', fileInput.files[0]);
+  form.append('senha', senha);
+  form.append('conta', conta);
+  try {
+    const d = await fetch('/api/notas/certificado', { method: 'POST', body: form }).then(r => r.json());
+    if (d.error) { msg.textContent = d.error; msg.style.color = '#f87171'; return; }
+    msg.textContent = `✅ Certificado C${conta} salvo — CNPJ: ${d.cnpj}`;
+    msg.style.color = '#4ade80';
+    const box = document.getElementById(`fiscal-cert-info-${conta}`);
+    if (box) { box.textContent = `✅ ${d.titular || d.cnpj} — ${d.cnpj}`; box.style.display = 'block'; }
+    fileInput.value = '';
+    document.getElementById(`fiscal-cert-senha-${conta}`).value = '';
+  } catch { msg.textContent = 'Erro ao salvar certificado.'; msg.style.color = '#f87171'; }
+}
+
 // Carrega ao entrar na aba
 document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('.nav-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      if (btn.dataset.tab === 'fiscal') fiscalCarregar();
+      if (btn.dataset.tab === 'fiscal') { fiscalCarregar(); fiscalCarregarCerts(); }
     });
   });
 });
