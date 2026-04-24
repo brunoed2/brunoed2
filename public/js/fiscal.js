@@ -83,7 +83,8 @@ function fiscalRenderGrupo(g) {
     const vFmt  = valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
     const chave   = n.chave ? `<span title="${n.chave}" style="cursor:pointer;color:#aaa;font-size:11px" onclick="navigator.clipboard.writeText('${n.chave}')">📋</span>` : '';
     const xmlCol  = n.temXml
-      ? `<span title="XML baixado" style="background:#16a34a;color:#fff;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:600;cursor:default">XML</span>`
+      ? `<span title="Clique para ver DANFE" style="background:#16a34a;color:#fff;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:600;cursor:pointer" onclick="fiscalAbrirDanfe('${n.chave}')">XML</span>
+         <button onclick="fiscalLancarCP('${n.chave}', this)" style="background:none;border:1px solid #16a34a;color:#16a34a;border-radius:4px;padding:1px 5px;font-size:10px;cursor:pointer;margin-left:3px" title="Lançar Contas a Pagar">💰</button>`
       : (n.chave
           ? `<button onclick="fiscalBaixarXml('${n.chave}', this)" style="background:none;border:1px solid #475569;color:#94a3b8;border-radius:4px;padding:1px 6px;font-size:10px;cursor:pointer" title="Baixar XML da SEFAZ">📥</button>`
           : '');
@@ -94,7 +95,7 @@ function fiscalRenderGrupo(g) {
       <td style="font-size:11px;color:#888">${(n.emitid || '').replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5')}</td>
       <td style="text-align:right;font-weight:600">${vFmt}</td>
       <td style="font-size:11px;color:#888;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${n.natoper || ''}">${n.natoper || '—'}</td>
-      <td style="text-align:center">${xmlCol}</td>
+      <td style="text-align:center;white-space:nowrap">${xmlCol}</td>
       <td>${chave}</td>
     </tr>`;
   }).join('');
@@ -138,6 +139,39 @@ async function fiscalBaixarXml(chave, btn) {
   } catch (err) {
     btn.disabled = false;
     btn.textContent = '📥';
+    alert('Erro: ' + err.message);
+  }
+}
+
+function fiscalAbrirDanfe(chave) {
+  window.open(`/api/fiscal/danfe/${chave}`, '_blank');
+}
+
+async function fiscalLancarCP(chave, btn) {
+  btn.disabled = true;
+  btn.textContent = '⏳';
+  try {
+    const r = await fetch('/api/fiscal/lancar-cp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chave }),
+    }).then(r => r.json());
+    if (r.ok) {
+      if (r.importados > 0) {
+        btn.outerHTML = `<span title="${r.importados} parcela(s) lançada(s)" style="background:#1d4ed8;color:#fff;padding:1px 5px;border-radius:3px;font-size:10px;font-weight:600">CP✓</span>`;
+      } else {
+        btn.disabled = false;
+        btn.textContent = '💰';
+        alert(r.aviso || `${r.dup ?? 0} parcela(s) já existem em Contas a Pagar.`);
+      }
+    } else {
+      btn.disabled = false;
+      btn.textContent = '💰';
+      alert('Erro: ' + (r.erro || 'Erro desconhecido'));
+    }
+  } catch (err) {
+    btn.disabled = false;
+    btn.textContent = '💰';
     alert('Erro: ' + err.message);
   }
 }

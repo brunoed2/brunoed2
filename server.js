@@ -3774,6 +3774,293 @@ app.post('/api/fiscal/baixar-xml', async (req, res) => {
   }
 });
 
+app.get('/api/fiscal/xml/:chave', (req, res) => {
+  const { chave } = req.params;
+  const db  = loadFiscalNotas();
+  const key = Object.keys(db).find(k => db[k].chave === chave);
+  if (!key || !db[key].zip) return res.status(404).json({ error: 'XML não disponível' });
+  try {
+    const xml = zlib.gunzipSync(Buffer.from(db[key].zip, 'base64'));
+    res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="nfe_${chave}.xml"`);
+    res.send(xml);
+  } catch { res.status(500).json({ error: 'Erro ao descompactar XML' }); }
+});
+
+app.get('/api/fiscal/danfe/:chave', (req, res) => {
+  const { chave } = req.params;
+  const db  = loadFiscalNotas();
+  const key = Object.keys(db).find(k => db[k].chave === chave);
+  if (!key || !db[key].zip) return res.status(404).send('<h2>XML não disponível para esta nota.</h2>');
+  try {
+    const xml = zlib.gunzipSync(Buffer.from(db[key].zip, 'base64')).toString('utf8');
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(gerarHtmlDanfe(xml));
+  } catch (e) { res.status(500).send('<h2>Erro ao processar XML: ' + e.message + '</h2>'); }
+});
+
+app.post('/api/fiscal/lancar-cp', (req, res) => {
+  const { chave } = req.body;
+  if (!chave) return res.json({ ok: false, erro: 'Chave não informada' });
+  const db  = loadFiscalNotas();
+  const key = Object.keys(db).find(k => db[k].chave === chave);
+  if (!key)        return res.json({ ok: false, erro: 'Nota não encontrada' });
+  if (!db[key].zip) return res.json({ ok: false, erro: 'XML não foi baixado para esta nota. Baixe o XML primeiro.' });
+
+  let xml;
+  try { xml = zlib.gunzipSync(Buffer.from(db[key].zip, 'base64')).toString('utf8'); }
+  catch (e) { return res.json({ ok: false, erro: 'Erro ao ler XML: ' + e.message }); }
+
+  let parsed;
+  try { parsed = parseNFeXML(xml); }
+  catch (e) { return res.json({ ok: false, erro: 'Erro ao interpretar XML: ' + e.message }); }
+
+  const data = loadData();
+  // Determina conta pelo CNPJ filial
+  const filialCnpj = db[key].filial || '';
+  let num = String(data.conta_ativa || '1');
+  for (const n of ['1', '2']) {
+    const nc = (data.notas_contas || {})[n] || {};
+    if (nc.cnpj && nc.cnpj === filialCnpj) { num = n; break; }
+  }
+
+  data.contas_pagar = data.contas_pagar || {};
+  data.contas_pagar[num] = data.contas_pagar[num] || [];
+
+  if (!parsed.dups.length) return res.json({ ok: true, importados: 0, aviso: 'NF à vista ou sem duplicatas — nada a pagar.' });
+
+  const agora = new Date().toISOString();
+  let importados = 0, dup = 0;
+  for (const d of parsed.dups) {
+    const chaveCP = parsed.chNFe
+      ? `${parsed.chNFe}-${d.nDup}`
+      : `${parsed.cnpj}-${parsed.nNF}-${d.nDup}-${d.dVenc}`;
+    if (data.contas_pagar[num].find(c => c.chave === chaveCP)) { dup++; continue; }
+    data.contas_pagar[num].push({
+      id:          Date.now().toString() + Math.random().toString(36).slice(2, 6),
+      chave:       chaveCP,
+      fornecedor:  parsed.fornecedor,
+      cnpj:        parsed.cnpj,
+      nNF:         parsed.nNF,
+      serie:       parsed.serie,
+      dEmi:        parsed.dEmi,
+      nDup:        d.nDup,
+      dVenc:       d.dVenc,
+      vDup:        d.vDup,
+      pago:        false,
+      pagoEm:      null,
+      adicionadoEm: agora,
+    });
+    importados++;
+  }
+
+  saveData(data);
+  agendarSyncContasPagar();
+  res.json({ ok: true, importados, dup });
+});
+
+function gerarHtmlDanfe(xml) {
+  const v    = (tag) => xmlVal(xml, tag);
+  const blk  = (tag) => xmlBlock(xml, tag);
+
+  const emitBlk  = blk('emit');
+  const destBlk  = blk('dest');
+  const ideBlk   = blk('ide');
+  const totalBlk = blk('ICMSTot');
+  const cobrBlk  = blk('cobr');
+  const protBlk  = blk('protNFe');
+  const transpBlk= blk('transp');
+
+  const fmtCnpj = c => (c || '').replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
+  const fmtDate = d => d ? d.replace(/(\d{4})-(\d{2})-(\d{2}).*/, '$3/$2/$1') : '';
+  const fmtBrl  = v => isNaN(parseFloat(v)) ? 'R$ 0,00' : parseFloat(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  const fmtCep  = c => (c || '').replace(/(\d{5})(\d{3})/, '$1-$2');
+
+  const nNF    = xmlVal(ideBlk, 'nNF') || '';
+  const serie  = xmlVal(ideBlk, 'serie') || '';
+  const dEmi   = xmlVal(ideBlk, 'dEmi') || xmlVal(ideBlk, 'dhEmi') || '';
+  const natOp  = xmlVal(ideBlk, 'natOp') || '';
+  const tpNF   = xmlVal(ideBlk, 'tpNF');  // 0=entrada 1=saída
+  const chNFe  = v('chNFe') || '';
+
+  const eNome  = xmlVal(emitBlk, 'xNome') || '';
+  const eFant  = xmlVal(emitBlk, 'xFant') || '';
+  const eCnpj  = xmlVal(emitBlk, 'CNPJ')  || '';
+  const eIE    = xmlVal(emitBlk, 'IE')    || '';
+  const eEnderBlk = xmlBlock(emitBlk, 'enderEmit');
+  const eLgr   = xmlVal(eEnderBlk, 'xLgr')  || '';
+  const eNro   = xmlVal(eEnderBlk, 'nro')   || '';
+  const eBairro= xmlVal(eEnderBlk, 'xBairro')|| '';
+  const eMun   = xmlVal(eEnderBlk, 'xMun')  || '';
+  const eUF    = xmlVal(eEnderBlk, 'UF')    || '';
+  const eCep   = xmlVal(eEnderBlk, 'CEP')   || '';
+  const eFone  = xmlVal(eEnderBlk, 'fone')  || '';
+
+  const dNome  = xmlVal(destBlk, 'xNome') || '';
+  const dCnpj  = xmlVal(destBlk, 'CNPJ')  || xmlVal(destBlk, 'CPF') || '';
+  const dIE    = xmlVal(destBlk, 'IE')    || '';
+  const dEnderBlk = xmlBlock(destBlk, 'enderDest');
+  const dLgr   = xmlVal(dEnderBlk, 'xLgr')  || '';
+  const dNro   = xmlVal(dEnderBlk, 'nro')   || '';
+  const dBairro= xmlVal(dEnderBlk, 'xBairro')|| '';
+  const dMun   = xmlVal(dEnderBlk, 'xMun')  || '';
+  const dUF    = xmlVal(dEnderBlk, 'UF')    || '';
+  const dCep   = xmlVal(dEnderBlk, 'CEP')   || '';
+
+  const vNF    = xmlVal(totalBlk, 'vNF')    || '0';
+  const vBC    = xmlVal(totalBlk, 'vBC')    || '0';
+  const vICMS  = xmlVal(totalBlk, 'vICMS')  || '0';
+  const vProd  = xmlVal(totalBlk, 'vProd')  || '0';
+  const vDesc  = xmlVal(totalBlk, 'vDesc')  || '0';
+  const vFrete = xmlVal(totalBlk, 'vFrete') || '0';
+  const vIPI   = xmlVal(totalBlk, 'vIPI')   || '0';
+  const vPIS   = xmlVal(totalBlk, 'vPIS')   || '0';
+  const vCOFINS= xmlVal(totalBlk, 'vCOFINS')|| '0';
+
+  const nProt  = xmlVal(protBlk, 'nProt') || '';
+  const dhRecb = xmlVal(protBlk, 'dhRecbto') || '';
+  const modFrete= xmlVal(transpBlk, 'modFrete');
+  const freteModos = { '0':'CIF (Emitente)','1':'FOB (Destinatário)','2':'Terceiro','3':'Próprio Emt','4':'Próprio Dest','9':'Sem transporte' };
+
+  // Produtos
+  const dets = xmlAllBlocks(xml, 'det');
+  const prodRows = dets.map(det => {
+    const prodBlk = xmlBlock(det, 'prod');
+    const xProd = xmlVal(prodBlk, 'xProd') || '';
+    const cProd = xmlVal(prodBlk, 'cProd') || '';
+    const NCM   = xmlVal(prodBlk, 'NCM')   || '';
+    const qCom  = xmlVal(prodBlk, 'qCom')  || '';
+    const uCom  = xmlVal(prodBlk, 'uCom')  || '';
+    const vUnCom= xmlVal(prodBlk, 'vUnCom')|| '';
+    const vProdItem = xmlVal(prodBlk, 'vProd') || '';
+    const vDescItem = xmlVal(prodBlk, 'vDesc') || '';
+    return `<tr>
+      <td>${cProd}</td>
+      <td style="max-width:240px">${xProd}</td>
+      <td>${NCM}</td>
+      <td style="text-align:right">${parseFloat(qCom||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:4})}</td>
+      <td>${uCom}</td>
+      <td style="text-align:right">${fmtBrl(vUnCom)}</td>
+      <td style="text-align:right">${fmtBrl(vDescItem)}</td>
+      <td style="text-align:right;font-weight:600">${fmtBrl(vProdItem)}</td>
+    </tr>`;
+  }).join('');
+
+  // Duplicatas
+  const dupRows = cobrBlk ? xmlAllBlocks(cobrBlk, 'dup').map(dup => {
+    const nDup  = xmlVal(dup, 'nDup') || '001';
+    const dVenc = xmlVal(dup, 'dVenc') || '';
+    const vDup  = xmlVal(dup, 'vDup')  || '0';
+    return `<tr><td>${nDup}</td><td>${fmtDate(dVenc)}</td><td style="text-align:right;font-weight:600">${fmtBrl(vDup)}</td></tr>`;
+  }).join('') : '';
+
+  const chFormatada = chNFe.replace(/(\d{4})/g, '$1 ').trim();
+  const tipoNF = tpNF === '0' ? 'ENTRADA' : 'SAÍDA';
+
+  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>DANFE — NF-e ${nNF}</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:Arial,sans-serif;font-size:10px;color:#111;background:#f3f3f3;padding:12px}
+  .page{background:#fff;max-width:820px;margin:0 auto;padding:16px;border:1px solid #aaa}
+  .header{display:grid;grid-template-columns:1fr 180px 140px;gap:8px;margin-bottom:8px}
+  .box{border:1px solid #888;padding:6px}
+  .box-title{font-size:8px;color:#555;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px}
+  .danfe-title{text-align:center;font-size:15px;font-weight:700;letter-spacing:1px}
+  .danfe-sub{text-align:center;font-size:8px;color:#444;margin:2px 0}
+  .danfe-nf{text-align:center;font-size:13px;font-weight:700;margin:4px 0}
+  .chave{font-size:7.5px;word-break:break-all;font-family:monospace;background:#f5f5f5;padding:3px;border:1px solid #ccc;margin:6px 0}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
+  .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px}
+  .full{margin-bottom:8px}
+  table{width:100%;border-collapse:collapse;font-size:9px}
+  th{background:#e8e8e8;border:1px solid #aaa;padding:3px 4px;text-align:left;font-size:8px}
+  td{border:1px solid #ccc;padding:2px 4px;vertical-align:top}
+  .totals-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-bottom:8px}
+  .tot-item{border:1px solid #ccc;padding:4px}
+  .tot-label{font-size:7.5px;color:#555;text-transform:uppercase}
+  .tot-val{font-size:11px;font-weight:700;margin-top:2px}
+  .print-btn{display:block;margin:16px auto 0;padding:8px 24px;background:#1d4ed8;color:#fff;border:none;border-radius:4px;font-size:13px;cursor:pointer;font-weight:600}
+  @media print{.print-btn{display:none}body{background:#fff;padding:0}.page{border:none;box-shadow:none}}
+  strong{font-weight:700}
+</style></head><body>
+<div class="page">
+  <div class="header">
+    <div class="box">
+      <div class="box-title">Emitente</div>
+      <strong style="font-size:11px">${eNome}</strong>${eFant ? `<br><span style="color:#555">${eFant}</span>` : ''}
+      <br>${eLgr}${eNro ? ', ' + eNro : ''} — ${eBairro}<br>${eMun}/${eUF} &nbsp; CEP ${fmtCep(eCep)}
+      <br>CNPJ: <strong>${fmtCnpj(eCnpj)}</strong> &nbsp; IE: ${eIE}
+      ${eFone ? `<br>Tel: ${eFone}` : ''}
+    </div>
+    <div class="box" style="text-align:center;display:flex;flex-direction:column;justify-content:center">
+      <div class="danfe-title">DANFE</div>
+      <div class="danfe-sub">Documento Auxiliar da<br>Nota Fiscal Eletrônica</div>
+      <div class="danfe-sub" style="margin-top:4px">Tipo: <strong>${tipoNF}</strong></div>
+      <div class="danfe-nf">N° ${nNF.padStart(9,'0')}</div>
+      <div class="danfe-sub">Série ${serie}</div>
+    </div>
+    <div class="box" style="display:flex;flex-direction:column;gap:4px">
+      <div><div class="box-title">Emissão</div><strong>${fmtDate(dEmi)}</strong></div>
+      <div><div class="box-title">Protocolo</div><span style="font-size:8px">${nProt || '—'}</span></div>
+      <div><div class="box-title">Data protocolo</div><span style="font-size:8px">${fmtDate(dhRecb)}</span></div>
+    </div>
+  </div>
+
+  <div class="chave">
+    <span style="color:#555;font-size:7px">CHAVE DE ACESSO: </span>${chFormatada}
+  </div>
+
+  <div class="full box" style="margin-bottom:8px">
+    <div class="box-title">Natureza da Operação</div>
+    <strong>${natOp}</strong>
+    &nbsp;&nbsp; Frete: ${freteModos[modFrete] || modFrete || '—'}
+  </div>
+
+  <div class="row2">
+    <div class="box">
+      <div class="box-title">Destinatário / Remetente</div>
+      <strong style="font-size:11px">${dNome}</strong>
+      <br>CNPJ/CPF: <strong>${fmtCnpj(dCnpj) || dCnpj}</strong> &nbsp; IE: ${dIE || '—'}
+      <br>${dLgr}${dNro ? ', ' + dNro : ''} — ${dBairro}
+      <br>${dMun}/${dUF} &nbsp; CEP ${fmtCep(dCep)}
+    </div>
+    <div class="box">
+      <div class="box-title">Totais</div>
+      <div class="totals-grid" style="grid-template-columns:repeat(3,1fr)">
+        <div class="tot-item"><div class="tot-label">Produtos</div><div class="tot-val">${fmtBrl(vProd)}</div></div>
+        <div class="tot-item"><div class="tot-label">Desconto</div><div class="tot-val">${fmtBrl(vDesc)}</div></div>
+        <div class="tot-item"><div class="tot-label">Frete</div><div class="tot-val">${fmtBrl(vFrete)}</div></div>
+        <div class="tot-item"><div class="tot-label">IPI</div><div class="tot-val">${fmtBrl(vIPI)}</div></div>
+        <div class="tot-item"><div class="tot-label">BC ICMS</div><div class="tot-val">${fmtBrl(vBC)}</div></div>
+        <div class="tot-item"><div class="tot-label">ICMS</div><div class="tot-val">${fmtBrl(vICMS)}</div></div>
+        <div class="tot-item" style="grid-column:1/-1;background:#f0fdf4;border-color:#16a34a"><div class="tot-label">VALOR TOTAL DA NF</div><div class="tot-val" style="font-size:14px;color:#16a34a">${fmtBrl(vNF)}</div></div>
+      </div>
+    </div>
+  </div>
+
+  ${dets.length ? `
+  <div class="full">
+    <div class="box-title" style="margin-bottom:4px">Produtos / Serviços</div>
+    <table>
+      <thead><tr><th>Código</th><th>Descrição</th><th>NCM</th><th style="text-align:right">Qtd</th><th>Un</th><th style="text-align:right">Vl Unit</th><th style="text-align:right">Desc</th><th style="text-align:right">Vl Total</th></tr></thead>
+      <tbody>${prodRows}</tbody>
+    </table>
+  </div>` : ''}
+
+  ${dupRows ? `
+  <div class="full" style="margin-top:8px">
+    <div class="box-title" style="margin-bottom:4px">Cobrança / Duplicatas</div>
+    <table style="max-width:360px">
+      <thead><tr><th>Parcela</th><th>Vencimento</th><th style="text-align:right">Valor</th></tr></thead>
+      <tbody>${dupRows}</tbody>
+    </table>
+  </div>` : ''}
+
+</div>
+<button class="print-btn" onclick="window.print()">🖨️ Imprimir / Salvar PDF</button>
+</body></html>`;
+}
+
 async function queryNFeDistribuicao(pfxBuffer, senha, cnpj, cUF, ultNSU) {
   const nsuPad = String(ultNSU || 0).padStart(15, '0');
   const soapBody = `<?xml version="1.0" encoding="UTF-8"?><soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:nfe="http://www.portalfiscal.inf.br/nfe/wsdl/NFeDistribuicaoDFe"><soapenv:Header/><soapenv:Body><nfe:nfeDistDFeInteresse><nfe:nfeDadosMsg><distDFeInt xmlns="http://www.portalfiscal.inf.br/nfe" versao="1.01"><tpAmb>1</tpAmb><cUFAutor>${cUF}</cUFAutor><CNPJ>${cnpj}</CNPJ><distNSU><ultNSU>${nsuPad}</ultNSU></distNSU></distDFeInt></nfe:nfeDadosMsg></nfe:nfeDistDFeInteresse></soapenv:Body></soapenv:Envelope>`;
