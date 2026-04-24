@@ -43,8 +43,8 @@ async function carregarPromocoes() {
 
     if (!promocoes.length || !totalItens) {
       const msg = d.erroApi
-        ? `Erro da API ML: ${d.erroApi}`
-        : 'Nenhuma promoção disponível no momento para seus anúncios.';
+        ? `Nenhuma promoção encontrada. Detalhe: ${d.erroApi}`
+        : 'Nenhuma promoção ativa encontrada nos seus anúncios.';
       erroEl.innerHTML = msg
         + (d.rawRespostas ? `<details style="margin-top:8px;font-size:11px"><summary style="cursor:pointer">Ver resposta bruta da API</summary><pre style="overflow:auto;max-height:200px;background:#1e293b;padding:8px;border-radius:4px;color:#94a3b8">${JSON.stringify(d.rawRespostas, null, 2)}</pre></details>` : '');
       erroEl.style.color   = d.erroApi ? '#c00' : '#64748b';
@@ -52,7 +52,13 @@ async function carregarPromocoes() {
       return;
     }
 
-    totalEl.textContent = `${totalItens} anúncio${totalItens !== 1 ? 's' : ''} elegível${totalItens !== 1 ? 'is' : ''}`;
+    const labelTotal = d.fonte === 'items-scan'
+      ? `${totalItens} anúncio${totalItens !== 1 ? 's' : ''} com promoção ativa`
+      : `${totalItens} anúncio${totalItens !== 1 ? 's' : ''} elegível${totalItens !== 1 ? 'is' : ''}`;
+    totalEl.textContent = labelTotal;
+    if (d.fonte === 'items-scan') {
+      totalEl.title = 'Dados obtidos via scan de itens ativos — mostra promoções em andamento';
+    }
 
     promocoes.forEach(promo => {
       if (!promo.itens.length) return;
