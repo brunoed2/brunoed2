@@ -1847,14 +1847,15 @@ app.get('/api/ml/promocoes/debug', async (req, res) => {
 app.get('/api/ml/promocoes', async (req, res) => {
   const data = loadData();
   const c    = contaAtiva(data);
-  if (!c.access_token) return res.json({ error: 'Não conectado' });
-  if (!c.user_id)      return res.json({ error: 'user_id não encontrado' });
+  if (!c.access_token) return res.json({ error: 'Não conectado ao Mercado Livre' });
+  if (!c.user_id)      return res.json({ error: 'user_id não encontrado — reconecte a conta' });
 
   const headers = { Authorization: `Bearer ${c.access_token}` };
 
   try {
     // Busca promoções disponíveis — tenta candidate primeiro, depois started
     let promocoes = [];
+    const errosApi = [];
     for (const status of ['candidate', 'started']) {
       try {
         const rPromo = await axios.get('https://api.mercadolibre.com/seller-promotions/promotions', {
@@ -1863,9 +1864,17 @@ app.get('/api/ml/promocoes', async (req, res) => {
         });
         const lista = rPromo.data.results || (Array.isArray(rPromo.data) ? rPromo.data : []);
         promocoes = promocoes.concat(lista);
-      } catch {}
+      } catch (e) {
+        const httpStatus = e.response?.status;
+        const msg = e.response?.data?.message || e.response?.data?.error || e.message;
+        errosApi.push(`[${status}] HTTP ${httpStatus}: ${msg}`);
+        addLog(`[promos] status=${status} erro: HTTP ${httpStatus} — ${msg}`, 'warn');
+      }
     }
-    if (!promocoes.length) return res.json({ promocoes: [] });
+    if (!promocoes.length) {
+      const detalhe = errosApi.length ? errosApi.join(' | ') : null;
+      return res.json({ promocoes: [], erroApi: detalhe });
+    }
 
     // Para cada promoção, busca os itens elegíveis
     const resultado = await Promise.all(

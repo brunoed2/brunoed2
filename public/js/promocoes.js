@@ -42,8 +42,11 @@ async function carregarPromocoes() {
     const totalItens = promocoes.reduce((s, p) => s + p.itens.length, 0);
 
     if (!promocoes.length || !totalItens) {
-      erroEl.textContent   = 'Nenhuma promoção disponível no momento para seus anúncios.';
-      erroEl.style.color   = '#64748b';
+      const msg = d.erroApi
+        ? `Erro da API ML: ${d.erroApi}`
+        : 'Nenhuma promoção disponível no momento para seus anúncios.';
+      erroEl.textContent   = msg;
+      erroEl.style.color   = d.erroApi ? '#c00' : '#64748b';
       erroEl.style.display = 'block';
       return;
     }
