@@ -137,6 +137,11 @@ async function syncRailwayEnvVars(_dataIgnorado) {
     if (c.refresh_token)    variables[`ML_REFRESH_TOKEN_${num}`]    = c.refresh_token;
     if (c.user_id)          variables[`ML_USER_ID_${num}`]          = String(c.user_id);
     if (c.token_expires_at) variables[`ML_TOKEN_EXPIRES_AT_${num}`] = String(c.token_expires_at);
+    // Tokens Bling — essenciais para sobreviver a restarts
+    const b = data[`bling_${num}`] || (num === '1' ? data.bling : null) || {};
+    if (b.access_token)  variables[`BLING_ACCESS_TOKEN_${num}`]  = b.access_token;
+    if (b.refresh_token) variables[`BLING_REFRESH_TOKEN_${num}`] = b.refresh_token;
+    if (b.expires_at)    variables[`BLING_EXPIRES_AT_${num}`]    = String(b.expires_at);
   }
   // Configuração de lucro (custos + impostos) — por conta
   for (const num of ['1', '2']) {
@@ -341,6 +346,19 @@ function initFromEnvVars() {
       changed = true;
     }
     data.contas[num] = c;
+    // Restaura tokens Bling da conta
+    const bKey = `bling_${num}`;
+    const bExistente = data[bKey] || (num === '1' ? data.bling : null);
+    if (!bExistente?.access_token && process.env[`BLING_ACCESS_TOKEN_${num}`]) {
+      const bRestored = {
+        access_token:  process.env[`BLING_ACCESS_TOKEN_${num}`],
+        refresh_token: process.env[`BLING_REFRESH_TOKEN_${num}`] || '',
+        expires_at:    parseInt(process.env[`BLING_EXPIRES_AT_${num}`]) || 0,
+      };
+      data[bKey] = bRestored;
+      if (num === '1') data.bling = bRestored;
+      changed = true;
+    }
   }
 
   // Formato antigo (pré-multi-conta): ML_CLIENT_ID, ML_ACCESS_TOKEN, etc. → conta 1
@@ -1041,7 +1059,7 @@ app.get('/api/bling/callback', async (req, res) => {
     };
     data[`bling_${conta}`] = token;
     if (conta === '1') data.bling = token; // compatibilidade legada
-    fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+    saveData(data);
     addLog(`[bling] ✅ Token conta ${conta} obtido e salvo`, 'ok');
     res.redirect(`/app.html?tab=conexao&bling_connected=true&bling_conta=${conta}`);
   } catch (err) {
@@ -1070,7 +1088,7 @@ async function blingRefreshToken(conta) {
   };
   data[`bling_${conta}`] = updated;
   if (conta === '1') data.bling = updated;
-  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+  saveData(data);
   addLog(`[bling] 🔄 Token conta ${conta} renovado`, 'ok');
   return updated.access_token;
 }
