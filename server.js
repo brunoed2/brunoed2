@@ -3496,6 +3496,20 @@ app.post('/api/fiscal/sync', (req, res) => {
   res.json({ ok: true, novas, total: Object.keys(db).length });
 });
 
+// Diagnóstico: inspeciona campos reais de uma nota do fiscal-notas.json
+app.get('/api/fiscal/debug-campos', (req, res) => {
+  const db = loadFiscalNotas();
+  const notas = Object.values(db).slice(0, 3);
+  const amostras = notas.map(n => {
+    const campos = {};
+    for (const [k, v] of Object.entries(n)) {
+      campos[k] = typeof v === 'string' && v.length > 60 ? `[string len=${v.length}]` : v;
+    }
+    return campos;
+  });
+  res.json(amostras);
+});
+
 // Retorna notas agrupadas por CNPJ
 app.get('/api/fiscal/notas', (req, res) => {
   const db = loadFiscalNotas();
