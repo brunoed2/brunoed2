@@ -1858,13 +1858,13 @@ app.get('/api/ml/promocoes', async (req, res) => {
     const headersJson = { ...headers, Accept: 'application/json' };
     const uid = c.user_id;
     const tentativas = [
-      { label: 'sp-active',      url: 'https://api.mercadolibre.com/seller-promotions/promotions', params: { seller_id: uid, status: 'active',    limit: 50 }, h: headersJson },
-      { label: 'sp-candidate',   url: 'https://api.mercadolibre.com/seller-promotions/promotions', params: { seller_id: uid, status: 'candidate', limit: 50 }, h: headersJson },
-      { label: 'sp-started',     url: 'https://api.mercadolibre.com/seller-promotions/promotions', params: { seller_id: uid, status: 'started',   limit: 50 }, h: headersJson },
-      { label: 'sp-paused',      url: 'https://api.mercadolibre.com/seller-promotions/promotions', params: { seller_id: uid, status: 'paused',    limit: 50 }, h: headersJson },
-      { label: 'sp-sem-status',  url: 'https://api.mercadolibre.com/seller-promotions/promotions', params: { seller_id: uid,                      limit: 50 }, h: headersJson },
-      { label: 'sp-sem-seller',  url: 'https://api.mercadolibre.com/seller-promotions/promotions', params: {                                      limit: 50 }, h: headersJson },
-      { label: 'campaigns',      url: 'https://api.mercadolibre.com/seller-promotions/campaigns',  params: { seller_id: uid,                      limit: 50 }, h: headersJson },
+      { label: 'sp-active-site',    url: 'https://api.mercadolibre.com/seller-promotions/promotions', params: { seller_id: uid, status: 'active',    site_id: 'MLB', limit: 50 }, h: headersJson },
+      { label: 'sp-candidate-site', url: 'https://api.mercadolibre.com/seller-promotions/promotions', params: { seller_id: uid, status: 'candidate', site_id: 'MLB', limit: 50 }, h: headersJson },
+      { label: 'sp-started-site',   url: 'https://api.mercadolibre.com/seller-promotions/promotions', params: { seller_id: uid, status: 'started',   site_id: 'MLB', limit: 50 }, h: headersJson },
+      { label: 'sp-sem-status-site',url: 'https://api.mercadolibre.com/seller-promotions/promotions', params: { seller_id: uid,                      site_id: 'MLB', limit: 50 }, h: headersJson },
+      { label: 'sp-active',         url: 'https://api.mercadolibre.com/seller-promotions/promotions', params: { seller_id: uid, status: 'active',    limit: 50 }, h: headersJson },
+      { label: 'sp-candidate',      url: 'https://api.mercadolibre.com/seller-promotions/promotions', params: { seller_id: uid, status: 'candidate', limit: 50 }, h: headersJson },
+      { label: 'sp-sem-status',     url: 'https://api.mercadolibre.com/seller-promotions/promotions', params: { seller_id: uid,                      limit: 50 }, h: headersJson },
     ];
 
     let promocoes = [];
