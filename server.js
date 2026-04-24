@@ -3742,14 +3742,23 @@ app.post('/api/fiscal/baixar-xml', async (req, res) => {
   if (!chave || chave.length !== 44) return res.json({ ok: false, erro: 'Chave inválida (deve ter 44 dígitos)' });
   const cUF  = chave.slice(0, 2);
   const data = loadData();
+
+  // Encontra o filial (CNPJ destinatário) desta nota para usar o cert correto
+  const db        = loadFiscalNotas();
+  const notaKey   = Object.keys(db).find(k => db[k].chave === chave);
+  const filialCnpj = notaKey ? (db[notaKey].filial || '') : '';
+
   let pfxBuffer, senha, cnpj;
+  // Primeiro tenta o certificado cujo CNPJ bate com o filial da nota
   for (const num of ['1', '2']) {
     const nc = (data.notas_contas || {})[num] || {};
     if (nc.cert_b64 && nc.senha && nc.cnpj) {
-      pfxBuffer = Buffer.from(nc.cert_b64, 'base64'); senha = nc.senha; cnpj = nc.cnpj; break;
+      if (!pfxBuffer) { pfxBuffer = Buffer.from(nc.cert_b64, 'base64'); senha = nc.senha; cnpj = nc.cnpj; }
+      if (nc.cnpj === filialCnpj) { pfxBuffer = Buffer.from(nc.cert_b64, 'base64'); senha = nc.senha; cnpj = nc.cnpj; break; }
     }
   }
   if (!pfxBuffer) return res.json({ ok: false, erro: 'Nenhum certificado digital configurado. Configure em NF Entrada.' });
+  if (filialCnpj && cnpj !== filialCnpj) return res.json({ ok: false, erro: `Certificado configurado (${cnpj}) não corresponde ao destinatário desta NF (${filialCnpj}). Configure o certificado correto em NF Entrada.` });
   try {
     const xmlResp = await queryNFeByChave(pfxBuffer, senha, cnpj, cUF, chave);
     const { cStat, xMotivo, docs } = parsearRespostaSefaz(xmlResp);
