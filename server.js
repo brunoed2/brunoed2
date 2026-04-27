@@ -3266,8 +3266,17 @@ app.delete('/api/telegram/notificado/:orderId', async (req, res) => {
   res.json({ ok: true, shipmentId, removido });
 });
 
+// Limpa toda a lista de notificados para reprocessar pedidos pendentes
+app.delete('/api/telegram/notificados/todos', (_req, res) => {
+  shipmentsNotificados.clear();
+  salvarShipmentsNotificados(shipmentsNotificados);
+  res.json({ ok: true, mensagem: 'Lista de notificados limpa — próximo ciclo verifica todos os pedidos' });
+});
+
 async function verificarNovosShipmentsTelegram() {
-  if (!TELEGRAM_TOKEN || !TELEGRAM_CHAT_ID) return;
+  const temTelegram = TELEGRAM_TOKEN && TELEGRAM_CHAT_ID;
+  const temWhatsApp = CALLMEBOT_PHONE_PEDIDOS && CALLMEBOT_APIKEY_PEDIDOS;
+  if (!temTelegram && !temWhatsApp) return;
   const data = loadData();
   // Verifica todas as contas configuradas
   for (const num of ['1', '2']) {
@@ -3298,9 +3307,13 @@ async function verificarNovosShipmentsTelegram() {
           const isFull = (shipment.logistic_type || '').includes('fulfillment');
           addLog(`[pedido] #${order.id} status=${shipment.status} substatus=${shipment.substatus} full=${isFull}`, 'info');
 
-          if (!LABEL_STATUSES.has(shipment.status) || !LABEL_SUBSTATUSES.has(shipment.substatus) || isFull) {
+          if (isFull) {
             shipmentsNotificados.add(sid);
             salvarShipmentsNotificados(shipmentsNotificados);
+            continue;
+          }
+          if (!LABEL_STATUSES.has(shipment.status) || !LABEL_SUBSTATUSES.has(shipment.substatus)) {
+            // etiqueta ainda não disponível — verifica de novo no próximo ciclo
             continue;
           }
 
