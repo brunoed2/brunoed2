@@ -3329,6 +3329,7 @@ async function verificarNovosShipmentsTelegram() {
             `Status: ${status}\n\n${itens}`;
           await notificarPedido(texto);
           addLog(`[pedido] Notificação enviada — #${order.id}`, 'ok');
+          await new Promise(r => setTimeout(r, 4000)); // evita rate limit do CallMeBot entre pedidos
         } catch (err) {
           addLog(`[pedido] Erro ao processar shipment ${sid}: ${err.message}`, 'warn');
         }
