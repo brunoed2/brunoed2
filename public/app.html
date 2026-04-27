@@ -356,11 +356,15 @@
         <!-- Tabela -->
         <div class="tabela-container">
           <div class="tabela-topo">
-            <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
               <button class="filtro-btn active" data-cf="aberto"  onclick="contasFiltrar('aberto',this)">Em aberto</button>
               <button class="filtro-btn"        data-cf="vencido" onclick="contasFiltrar('vencido',this)">Vencidos</button>
               <button class="filtro-btn"        data-cf="pago"    onclick="contasFiltrar('pago',this)">Pagos</button>
               <button class="filtro-btn"        data-cf="todos"   onclick="contasFiltrar('todos',this)">Todos</button>
+              <span style="font-size:12px;color:#94a3b8;margin-left:4px">de</span>
+              <input type="date" id="contas-data-ini" style="font-size:12px;padding:3px 6px;border:1px solid #e2e8f0;border-radius:6px;color:#334155" onchange="contasPagarRenderizar()">
+              <span style="font-size:12px;color:#94a3b8">até</span>
+              <input type="date" id="contas-data-fim" style="font-size:12px;padding:3px 6px;border:1px solid #e2e8f0;border-radius:6px;color:#334155" onchange="contasPagarRenderizar()">
             </div>
             <div style="display:flex;align-items:center;gap:12px"><span id="contas-total-label" style="font-size:13px;color:#64748b"></span><button class="btn-secondary" onclick="contasPagarCarregar()" id="btn-atualizar-contas">↻ Atualizar</button></div>
           </div>
@@ -718,6 +722,6 @@
   <script src="/js/promocoes.js?v=1"></script>
   <script src="/js/bling.js?v=1"></script>
   <script src="/js/fiscal.js?v=1"></script>
-  <div id="version-badge">v322</div>
+  <div id="version-badge">v323</div>
 </body>
 </html>

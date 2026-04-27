@@ -9,8 +9,24 @@ let _syncRetryTimer = null;
 
 // ── Inicialização (chamada ao abrir a aba) ─────────────────────
 function contasPagarInit() {
+  contasPagarIniciarDatas();
   if (!contasPagarCarregado) contasPagarCarregar();
   contasPagarAtualizarSyncStatus();
+}
+
+// Define o intervalo padrão: sábado a sexta da semana atual
+function contasPagarIniciarDatas() {
+  const ini = document.getElementById('contas-data-ini');
+  const fim = document.getElementById('contas-data-fim');
+  if (!ini || !fim || ini.value) return; // já inicializado
+  const hoje = new Date();
+  const diasDesdesSabado = (hoje.getDay() + 1) % 7; // sáb=0, dom=1, seg=2 ... sex=6
+  const sabado = new Date(hoje);
+  sabado.setDate(hoje.getDate() - diasDesdesSabado);
+  const sexta = new Date(sabado);
+  sexta.setDate(sabado.getDate() + 6);
+  ini.value = sabado.toISOString().split('T')[0];
+  fim.value = sexta.toISOString().split('T')[0];
 }
 
 // ── Carrega lista do servidor ──────────────────────────────────
@@ -45,12 +61,16 @@ function contasPagarRenderizar() {
   if (!tbody) return;
 
   const hoje = new Date().toISOString().split('T')[0];
+  const dataIni = document.getElementById('contas-data-ini')?.value || '';
+  const dataFim = document.getElementById('contas-data-fim')?.value || '';
 
   const filtradas = contasPagarLista.filter(c => {
-    if (contasPagarFiltro === 'pago')    return c.pago;
-    if (contasPagarFiltro === 'aberto')  return !c.pago;
-    if (contasPagarFiltro === 'vencido') return !c.pago && c.dVenc < hoje;
-    return true; // todos
+    if (contasPagarFiltro === 'pago')    { if (!c.pago) return false; }
+    else if (contasPagarFiltro === 'aberto')  { if (c.pago) return false; }
+    else if (contasPagarFiltro === 'vencido') { if (c.pago || c.dVenc >= hoje) return false; }
+    if (dataIni && c.dVenc < dataIni) return false;
+    if (dataFim && c.dVenc > dataFim) return false;
+    return true;
   });
 
   // Ordena por data de vencimento
