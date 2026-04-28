@@ -14,7 +14,6 @@ function abrirAba(nome) {
   if (nome === 'estoque')      carregarEstoque(true);
   if (nome === 'vendas')       carregarVendas();
   if (nome === 'historico')    { histIniciarDatas(); carregarHistorico(); }
-  if (nome === 'totalizador')  carregarTotalizador();
 }
 
 navBtns.forEach(btn => {
@@ -50,7 +49,6 @@ async function trocarConta(num) {
     if (abaAtiva === 'estoque')     carregarEstoque(true);
     if (abaAtiva === 'vendas')      carregarVendas();
     if (abaAtiva === 'historico')   carregarHistorico();
-    if (abaAtiva === 'totalizador') carregarTotalizador();
   } finally {
     document.querySelectorAll('.conta-btn').forEach(b => b.disabled = false);
     trocandoConta = false;
@@ -824,121 +822,6 @@ function renderizarHistorico() {
   }
 }
 
-// ── Totalizador de Estoque ────────────────────────────────────
-
-let totDados = []; // grupos por SKU
-let totSort  = { campo: 'sku', direcao: 'asc' };
-
-document.querySelectorAll('.th-sort-tot').forEach(th => {
-  th.addEventListener('click', () => {
-    if (totSort.campo === th.dataset.sortTot) {
-      totSort.direcao = totSort.direcao === 'asc' ? 'desc' : 'asc';
-    } else {
-      totSort.campo   = th.dataset.sortTot;
-      totSort.direcao = 'asc';
-    }
-    renderizarTotalizador();
-  });
-});
-
-async function carregarTotalizador() {
-  const loading = document.getElementById('tot-loading');
-  const vazio   = document.getElementById('tot-vazio');
-  const tabela  = document.getElementById('tabela-tot');
-  if (!tabela) return;
-
-  if (loading) loading.style.display = 'block';
-  if (tabela)  tabela.style.display  = 'none';
-  if (vazio)   vazio.style.display   = 'none';
-
-  try {
-    const d = await apiFetch('/api/ml/estoque');
-    const itens = d.items || [];
-
-    // Agrupa por SKU
-    const porSku = new Map();
-    for (const item of itens) {
-      const sku = (item.sku && item.sku !== '—') ? item.sku : 'Sem SKU';
-      if (!porSku.has(sku)) porSku.set(sku, { sku, anuncios: [], full: 0, proprio: 0 });
-      const g = porSku.get(sku);
-      g.anuncios.push(item);
-      if (item.deposito === 'fulfillment') g.full    += item.estoque || 0;
-      else                                 g.proprio += item.estoque || 0;
-    }
-
-    totDados = [...porSku.values()].sort((a, b) => a.sku.localeCompare(b.sku, 'pt-BR', { numeric: true }));
-  } catch {
-    totDados = [];
-  }
-
-  if (loading) loading.style.display = 'none';
-  renderizarTotalizador();
-}
-
-function renderizarTotalizador() {
-  const vazio   = document.getElementById('tot-vazio');
-  const tabela  = document.getElementById('tabela-tot');
-  const tbody   = document.getElementById('tabela-tot-body');
-  const totalEl = document.getElementById('tot-total');
-  if (!tbody) return;
-
-  const termo = (document.getElementById('tot-busca')?.value || '').toLowerCase().trim();
-
-  const filtrado = (termo ? totDados.filter(g =>
-    g.sku.toLowerCase().includes(termo) ||
-    g.anuncios.some(a => a.titulo.toLowerCase().includes(termo) || (a.mlb || '').toLowerCase().includes(termo))
-  ) : [...totDados]).sort((a, b) => {
-    const campo = totSort.campo;
-    const va = campo === 'sku' ? a.sku : campo === 'qtdAnuncios' ? a.anuncios.length : campo === 'full' ? a.full : campo === 'proprio' ? a.proprio : (a.full + a.proprio);
-    const vb = campo === 'sku' ? b.sku : campo === 'qtdAnuncios' ? b.anuncios.length : campo === 'full' ? b.full : campo === 'proprio' ? b.proprio : (b.full + b.proprio);
-    const cmp = typeof va === 'number' ? va - vb : String(va).localeCompare(String(vb), 'pt-BR', { numeric: true });
-    return totSort.direcao === 'asc' ? cmp : -cmp;
-  });
-
-  // Atualiza ícones dos cabeçalhos
-  document.querySelectorAll('.th-sort-tot').forEach(th => {
-    const icon = th.querySelector('.sort-icon');
-    if (th.dataset.sortTot === totSort.campo) {
-      icon.textContent = totSort.direcao === 'asc' ? ' ▲' : ' ▼';
-      th.classList.add('th-ativo');
-    } else {
-      icon.textContent = '';
-      th.classList.remove('th-ativo');
-    }
-  });
-
-  if (totalEl) totalEl.textContent = filtrado.length ? `${filtrado.length} SKU${filtrado.length !== 1 ? 's' : ''}` : '';
-
-  if (!filtrado.length) {
-    if (tabela) tabela.style.display = 'none';
-    if (vazio)  { vazio.style.display = 'block'; vazio.textContent = 'Nenhum item encontrado.'; }
-    return;
-  }
-
-  if (vazio)  vazio.style.display  = 'none';
-  if (tabela) tabela.style.display = 'table';
-
-  tbody.innerHTML = '';
-  for (const g of filtrado) {
-    const total = g.full + g.proprio;
-    const anunciosHtml = g.anuncios.map(a => {
-      const pausado = a.status === 'paused' ? ' <span style="font-size:10px;color:#f59e0b">(pausado)</span>' : '';
-      const link = a.permalink ? `<a href="${a.permalink}" target="_blank" style="color:#3b82f6;text-decoration:none;flex-shrink:0">${a.mlb}</a>` : `<span style="flex-shrink:0">${a.mlb}</span>`;
-      const titulo = `<span style="color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.titulo}</span>`;
-      return `<div style="display:flex;gap:4px;align-items:baseline;min-width:0">${link}<span style="color:#94a3b8;flex-shrink:0">—</span>${titulo}${pausado}</div>`;
-    }).join('');
-
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td style="font-weight:600;white-space:nowrap;vertical-align:top">${g.sku}</td>
-      <td style="font-size:12px;line-height:1.8;max-width:0;width:100%;vertical-align:top">${anunciosHtml}</td>
-      <td class="col-num" style="font-weight:${g.full > 0 ? '600' : '400'};color:${g.full > 0 ? '#334155' : '#94a3b8'}">${g.full}</td>
-      <td class="col-num" style="font-weight:${g.proprio > 0 ? '600' : '400'};color:${g.proprio > 0 ? '#334155' : '#94a3b8'}">${g.proprio}</td>
-      <td class="col-num" style="font-weight:700;color:${total > 0 ? '#0f172a' : '#94a3b8'}">${total}</td>
-    `;
-    tbody.appendChild(tr);
-  }
-}
 
 // ── Inicialização ─────────────────────────────────────────────
 
