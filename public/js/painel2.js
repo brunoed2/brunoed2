@@ -840,7 +840,7 @@ async function carregarTotalizador() {
 
   try {
     const d = await apiFetch('/api/ml/estoque');
-    const itens = d.itens || [];
+    const itens = d.items || [];
 
     // Agrupa por SKU
     const porSku = new Map();
