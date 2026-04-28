@@ -28,6 +28,7 @@
       <nav>
         <button class="nav-btn" data-tab="estoque">📦 Estoque</button>
         <button class="nav-btn active" data-tab="vendas">🏷️ Vendas</button>
+        <button class="nav-btn" data-tab="historico">📋 Histórico</button>
       </nav>
       <div class="sidebar-footer">
         <button class="btn-sair" onclick="sair()">Sair</button>
@@ -137,10 +138,48 @@
         </div>
       </section>
 
+      <!-- ── Aba: Histórico ── -->
+      <section id="tab-historico" class="tab">
+        <h1>Histórico de Vendas</h1>
+        <p class="subtitle">Todos os pedidos que passaram pela tela, independente de terem sido marcados como atendidos.</p>
+
+        <div class="tabela-container">
+          <div class="tabela-topo">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+              <span style="font-size:12px;color:#94a3b8">de</span>
+              <input type="date" id="hist-data-ini" style="font-size:12px;padding:3px 6px;border:1px solid #e2e8f0;border-radius:6px;color:#334155" onchange="carregarHistorico()">
+              <span style="font-size:12px;color:#94a3b8">até</span>
+              <input type="date" id="hist-data-fim" style="font-size:12px;padding:3px 6px;border:1px solid #e2e8f0;border-radius:6px;color:#334155" onchange="carregarHistorico()">
+            </div>
+            <div style="display:flex;gap:8px;align-items:center">
+              <span id="hist-total" style="font-size:13px;color:#64748b"></span>
+              <button class="btn-secondary" onclick="carregarHistorico()" id="btn-atualizar-hist">↻ Atualizar</button>
+            </div>
+          </div>
+          <div id="hist-loading" class="loading" style="display:none">Carregando histórico...</div>
+          <div id="hist-vazio" style="display:none;color:#94a3b8;padding:30px 0;text-align:center;font-size:14px">Nenhum pedido encontrado neste período.</div>
+          <table class="tabela" id="tabela-hist" style="display:none">
+            <thead>
+              <tr>
+                <th>Data</th>
+                <th>Pedido</th>
+                <th>Comprador</th>
+                <th class="col-num">Qtd</th>
+                <th>SKU</th>
+                <th>Itens</th>
+                <th>Status</th>
+                <th>Atendido</th>
+              </tr>
+            </thead>
+            <tbody id="tabela-hist-body"></tbody>
+          </table>
+        </div>
+      </section>
+
     </main>
   </div>
 
   <script src="/js/painel2.js?v=164"></script>
-  <div id="version-badge">v324</div>
+  <div id="version-badge">v325</div>
 </body>
 </html>

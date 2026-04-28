@@ -11,8 +11,9 @@ function abrirAba(nome) {
   navBtns.forEach(b => b.classList.toggle('active', b.dataset.tab === nome));
   tabs.forEach(t => t.classList.toggle('active', t.id === `tab-${nome}`));
   if (trocandoConta) return; // aguarda trocarConta disparar o reload
-  if (nome === 'estoque') carregarEstoque(true);
-  if (nome === 'vendas')  carregarVendas();
+  if (nome === 'estoque')   carregarEstoque(true);
+  if (nome === 'vendas')    carregarVendas();
+  if (nome === 'historico') { histIniciarDatas(); carregarHistorico(); }
 }
 
 navBtns.forEach(btn => {
@@ -45,8 +46,9 @@ async function trocarConta(num) {
 
     // Recarrega a aba atual só após confirmação do servidor
     const abaAtiva = document.querySelector('.tab.active')?.id?.replace('tab-', '');
-    if (abaAtiva === 'estoque') carregarEstoque(true);
-    if (abaAtiva === 'vendas')  carregarVendas();
+    if (abaAtiva === 'estoque')   carregarEstoque(true);
+    if (abaAtiva === 'vendas')    carregarVendas();
+    if (abaAtiva === 'historico') carregarHistorico();
   } finally {
     document.querySelectorAll('.conta-btn').forEach(b => b.disabled = false);
     trocandoConta = false;
@@ -722,6 +724,85 @@ async function toggleFlag(shipmentId, btn) {
 function sair() {
   sessionStorage.removeItem('auth');
   location.href = '/';
+}
+
+// ── Histórico de vendas ───────────────────────────────────────
+
+function histIniciarDatas() {
+  const ini = document.getElementById('hist-data-ini');
+  const fim = document.getElementById('hist-data-fim');
+  if (!ini || !fim || ini.value) return;
+  const hoje = new Date();
+  const diasDesdesSabado = (hoje.getDay() + 1) % 7;
+  const sabado = new Date(hoje);
+  sabado.setDate(hoje.getDate() - diasDesdesSabado);
+  const sexta = new Date(sabado);
+  sexta.setDate(sabado.getDate() + 6);
+  ini.value = sabado.toISOString().split('T')[0];
+  fim.value = sexta.toISOString().split('T')[0];
+}
+
+async function carregarHistorico() {
+  const loading = document.getElementById('hist-loading');
+  const vazio   = document.getElementById('hist-vazio');
+  const tabela  = document.getElementById('tabela-hist');
+  const tbody   = document.getElementById('tabela-hist-body');
+  const totalEl = document.getElementById('hist-total');
+  if (!tbody) return;
+
+  const ini = document.getElementById('hist-data-ini')?.value || '';
+  const fim = document.getElementById('hist-data-fim')?.value || '';
+
+  if (loading) loading.style.display = 'block';
+  if (tabela)  tabela.style.display  = 'none';
+  if (vazio)   vazio.style.display   = 'none';
+
+  try {
+    const params = new URLSearchParams();
+    if (ini) params.set('de', ini);
+    if (fim) params.set('ate', fim);
+    const d = await apiFetch(`/api/vendas/historico?${params}`);
+    const historico = d.historico || [];
+
+    if (totalEl) totalEl.textContent = historico.length ? `${historico.length} pedido${historico.length !== 1 ? 's' : ''}` : '';
+
+    if (!historico.length) {
+      if (loading) loading.style.display = 'none';
+      if (vazio)   vazio.style.display   = 'block';
+      return;
+    }
+
+    tbody.innerHTML = '';
+    for (const h of historico) {
+      const dataFmt = h.data ? new Date(h.data).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', timeZone: 'America/Sao_Paulo' }) : '—';
+      const qtdTotal = (h.itensLista || []).reduce((s, i) => s + (i.quantidade || 1), 0);
+      const skus  = [...new Set((h.itensLista || []).map(i => i.sku).filter(Boolean))].join(', ') || '—';
+      const itens = (h.itensLista || []).map(i => `${i.titulo}${i.variacao ? ' — ' + i.variacao : ''}${i.quantidade > 1 ? ' (x' + i.quantidade + ')' : ''}`).join('<br>');
+      const atendidoHtml = h.atendida
+        ? `<span style="color:#16a34a;font-size:12px">✔ Sim${h.atendidaEm ? '<br><span style="font-size:11px;color:#94a3b8">' + new Date(h.atendidaEm).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }) + '</span>' : ''}</span>`
+        : '<span style="color:#94a3b8;font-size:12px">—</span>';
+      const statusBadgeClass = { handling: 'badge-pausado', ready_to_ship: 'badge-ativo', shipped: 'badge-encerrado' }[h.status] || '';
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td style="white-space:nowrap">${dataFmt}</td>
+        <td style="white-space:nowrap">#${h.orderId}</td>
+        <td>${h.comprador || '—'}</td>
+        <td class="col-num">${qtdTotal}</td>
+        <td style="font-size:12px;color:#64748b">${skus}</td>
+        <td style="font-size:12px">${itens}</td>
+        <td><span class="badge-deposito ${statusBadgeClass}">${h.statusLabel || h.status || '—'}</span></td>
+        <td>${atendidoHtml}</td>
+      `;
+      tbody.appendChild(tr);
+    }
+
+    if (loading) loading.style.display = 'none';
+    if (tabela)  tabela.style.display  = 'table';
+  } catch {
+    if (loading) loading.style.display = 'none';
+    if (vazio)   vazio.style.display   = 'block';
+    if (vazio)   vazio.textContent     = 'Erro ao carregar histórico.';
+  }
 }
 
 // ── Inicialização ─────────────────────────────────────────────

@@ -1733,11 +1733,54 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
     const atendidas = novaLista.map(v => ({ ...v, atendida: true }));
     const vendas = [...pendentes, ...atendidas];
 
+    // Registra no histórico todos os pedidos vistos agora
+    const agora = new Date().toISOString();
+    const histMap = new Map((c.historico_vendas || []).map(h => [String(h.shipmentId), h]));
+    for (const v of [...porShipment.values()]) {
+      const sid = String(v.shipmentId);
+      const atendidaEntry = atendidasMap.get(sid);
+      const existente = histMap.get(sid);
+      histMap.set(sid, {
+        orderId:      v.orderId,
+        data:         v.data,
+        comprador:    v.comprador,
+        shipmentId:   v.shipmentId,
+        conta:        v.conta,
+        status:       v.status,
+        statusLabel:  v.statusLabel,
+        itensLista:   v.itensLista,
+        atendida:     !!atendidaEntry,
+        atendidaEm:   atendidaEntry?.atendidaEm || null,
+        primeiroVisto: existente?.primeiroVisto || agora,
+        ultimoVisto:  agora,
+      });
+    }
+    const historico = [...histMap.values()]
+      .sort((a, b) => b.primeiroVisto.localeCompare(a.primeiroVisto))
+      .slice(0, 500);
+    if (JSON.stringify(c.historico_vendas) !== JSON.stringify(historico)) {
+      c.historico_vendas = historico;
+      saveData(data);
+    }
+
     res.json({ vendas });
   } catch (err) {
     console.error('Erro ao buscar vendas com etiqueta:', err.response?.data || err.message);
     res.json({ error: 'Erro ao buscar vendas.' });
   }
+});
+
+app.get('/api/vendas/historico', (req, res) => {
+  const data = loadData();
+  const num  = data.conta_ativa;
+  const c    = data.contas[num];
+  if (!c) return res.json({ historico: [] });
+  const { de, ate } = req.query;
+  let historico = c.historico_vendas || [];
+  if (de)  historico = historico.filter(h => (h.data || '').slice(0, 10) >= de);
+  if (ate) historico = historico.filter(h => (h.data || '').slice(0, 10) <= ate);
+  historico = historico.sort((a, b) => b.data.localeCompare(a.data));
+  res.json({ historico });
 });
 
 app.post('/api/vendas/atendida', (req, res) => {
