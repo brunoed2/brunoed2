@@ -827,6 +827,19 @@ function renderizarHistorico() {
 // ── Totalizador de Estoque ────────────────────────────────────
 
 let totDados = []; // grupos por SKU
+let totSort  = { campo: 'sku', direcao: 'asc' };
+
+document.querySelectorAll('.th-sort-tot').forEach(th => {
+  th.addEventListener('click', () => {
+    if (totSort.campo === th.dataset.sortTot) {
+      totSort.direcao = totSort.direcao === 'asc' ? 'desc' : 'asc';
+    } else {
+      totSort.campo   = th.dataset.sortTot;
+      totSort.direcao = 'asc';
+    }
+    renderizarTotalizador();
+  });
+});
 
 async function carregarTotalizador() {
   const loading = document.getElementById('tot-loading');
@@ -871,10 +884,28 @@ function renderizarTotalizador() {
 
   const termo = (document.getElementById('tot-busca')?.value || '').toLowerCase().trim();
 
-  const filtrado = termo ? totDados.filter(g =>
+  const filtrado = (termo ? totDados.filter(g =>
     g.sku.toLowerCase().includes(termo) ||
     g.anuncios.some(a => a.titulo.toLowerCase().includes(termo) || (a.mlb || '').toLowerCase().includes(termo))
-  ) : totDados;
+  ) : [...totDados]).sort((a, b) => {
+    const campo = totSort.campo;
+    const va = campo === 'sku' ? a.sku : campo === 'qtdAnuncios' ? a.anuncios.length : campo === 'full' ? a.full : campo === 'proprio' ? a.proprio : (a.full + a.proprio);
+    const vb = campo === 'sku' ? b.sku : campo === 'qtdAnuncios' ? b.anuncios.length : campo === 'full' ? b.full : campo === 'proprio' ? b.proprio : (b.full + b.proprio);
+    const cmp = typeof va === 'number' ? va - vb : String(va).localeCompare(String(vb), 'pt-BR', { numeric: true });
+    return totSort.direcao === 'asc' ? cmp : -cmp;
+  });
+
+  // Atualiza ícones dos cabeçalhos
+  document.querySelectorAll('.th-sort-tot').forEach(th => {
+    const icon = th.querySelector('.sort-icon');
+    if (th.dataset.sortTot === totSort.campo) {
+      icon.textContent = totSort.direcao === 'asc' ? ' ▲' : ' ▼';
+      th.classList.add('th-ativo');
+    } else {
+      icon.textContent = '';
+      th.classList.remove('th-ativo');
+    }
+  });
 
   if (totalEl) totalEl.textContent = filtrado.length ? `${filtrado.length} SKU${filtrado.length !== 1 ? 's' : ''}` : '';
 
