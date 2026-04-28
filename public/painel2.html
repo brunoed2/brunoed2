@@ -29,6 +29,7 @@
         <button class="nav-btn" data-tab="estoque">📦 Estoque</button>
         <button class="nav-btn active" data-tab="vendas">🏷️ Vendas</button>
         <button class="nav-btn" data-tab="historico">📋 Histórico</button>
+        <button class="nav-btn" data-tab="totalizador">📊 Totalizador</button>
       </nav>
       <div class="sidebar-footer">
         <button class="btn-sair" onclick="sair()">Sair</button>
@@ -177,10 +178,40 @@
         </div>
       </section>
 
+      <!-- ── Aba: Totalizador ── -->
+      <section id="tab-totalizador" class="tab">
+        <h1>Totalizador de Estoque</h1>
+        <p class="subtitle">Estoque agrupado por SKU, somando Full e Próprio de todos os anúncios.</p>
+
+        <div class="tabela-container">
+          <div class="tabela-topo">
+            <input type="text" id="tot-busca" placeholder="Filtrar por SKU ou título..." oninput="renderizarTotalizador()" style="font-size:12px;padding:3px 8px;border:1px solid #e2e8f0;border-radius:6px;color:#334155;width:260px">
+            <div style="display:flex;gap:8px;align-items:center">
+              <span id="tot-total" style="font-size:13px;color:#64748b"></span>
+              <button class="btn-secondary" onclick="carregarTotalizador()" id="btn-atualizar-tot">↻ Atualizar</button>
+            </div>
+          </div>
+          <div id="tot-loading" class="loading" style="display:none">Carregando estoque...</div>
+          <div id="tot-vazio" style="display:none;color:#94a3b8;padding:30px 0;text-align:center;font-size:14px">Nenhum item encontrado.</div>
+          <table class="tabela" id="tabela-tot" style="display:none">
+            <thead>
+              <tr>
+                <th>SKU</th>
+                <th>Anúncios</th>
+                <th class="col-num">Full</th>
+                <th class="col-num">Próprio</th>
+                <th class="col-num">Total</th>
+              </tr>
+            </thead>
+            <tbody id="tabela-tot-body"></tbody>
+          </table>
+        </div>
+      </section>
+
     </main>
   </div>
 
   <script src="/js/painel2.js?v=164"></script>
-  <div id="version-badge">v326</div>
+  <div id="version-badge">v327</div>
 </body>
 </html>

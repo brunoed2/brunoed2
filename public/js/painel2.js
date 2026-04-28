@@ -11,9 +11,10 @@ function abrirAba(nome) {
   navBtns.forEach(b => b.classList.toggle('active', b.dataset.tab === nome));
   tabs.forEach(t => t.classList.toggle('active', t.id === `tab-${nome}`));
   if (trocandoConta) return; // aguarda trocarConta disparar o reload
-  if (nome === 'estoque')   carregarEstoque(true);
-  if (nome === 'vendas')    carregarVendas();
-  if (nome === 'historico') { histIniciarDatas(); carregarHistorico(); }
+  if (nome === 'estoque')      carregarEstoque(true);
+  if (nome === 'vendas')       carregarVendas();
+  if (nome === 'historico')    { histIniciarDatas(); carregarHistorico(); }
+  if (nome === 'totalizador')  carregarTotalizador();
 }
 
 navBtns.forEach(btn => {
@@ -46,9 +47,10 @@ async function trocarConta(num) {
 
     // Recarrega a aba atual só após confirmação do servidor
     const abaAtiva = document.querySelector('.tab.active')?.id?.replace('tab-', '');
-    if (abaAtiva === 'estoque')   carregarEstoque(true);
-    if (abaAtiva === 'vendas')    carregarVendas();
-    if (abaAtiva === 'historico') carregarHistorico();
+    if (abaAtiva === 'estoque')     carregarEstoque(true);
+    if (abaAtiva === 'vendas')      carregarVendas();
+    if (abaAtiva === 'historico')   carregarHistorico();
+    if (abaAtiva === 'totalizador') carregarTotalizador();
   } finally {
     document.querySelectorAll('.conta-btn').forEach(b => b.disabled = false);
     trocandoConta = false;
@@ -817,6 +819,90 @@ function renderizarHistorico() {
       <td style="font-size:12px">${itens}</td>
       <td><span class="badge-deposito ${statusBadgeClass}">${h.statusLabel || h.status || '—'}</span></td>
       <td>${atendidoHtml}</td>
+    `;
+    tbody.appendChild(tr);
+  }
+}
+
+// ── Totalizador de Estoque ────────────────────────────────────
+
+let totDados = []; // grupos por SKU
+
+async function carregarTotalizador() {
+  const loading = document.getElementById('tot-loading');
+  const vazio   = document.getElementById('tot-vazio');
+  const tabela  = document.getElementById('tabela-tot');
+  if (!tabela) return;
+
+  if (loading) loading.style.display = 'block';
+  if (tabela)  tabela.style.display  = 'none';
+  if (vazio)   vazio.style.display   = 'none';
+
+  try {
+    const d = await apiFetch('/api/ml/estoque');
+    const itens = d.itens || [];
+
+    // Agrupa por SKU
+    const porSku = new Map();
+    for (const item of itens) {
+      const sku = (item.sku && item.sku !== '—') ? item.sku : 'Sem SKU';
+      if (!porSku.has(sku)) porSku.set(sku, { sku, anuncios: [], full: 0, proprio: 0 });
+      const g = porSku.get(sku);
+      g.anuncios.push(item);
+      if (item.deposito === 'fulfillment') g.full    += item.estoque || 0;
+      else                                 g.proprio += item.estoque || 0;
+    }
+
+    totDados = [...porSku.values()].sort((a, b) => a.sku.localeCompare(b.sku, 'pt-BR', { numeric: true }));
+  } catch {
+    totDados = [];
+  }
+
+  if (loading) loading.style.display = 'none';
+  renderizarTotalizador();
+}
+
+function renderizarTotalizador() {
+  const vazio   = document.getElementById('tot-vazio');
+  const tabela  = document.getElementById('tabela-tot');
+  const tbody   = document.getElementById('tabela-tot-body');
+  const totalEl = document.getElementById('tot-total');
+  if (!tbody) return;
+
+  const termo = (document.getElementById('tot-busca')?.value || '').toLowerCase().trim();
+
+  const filtrado = termo ? totDados.filter(g =>
+    g.sku.toLowerCase().includes(termo) ||
+    g.anuncios.some(a => a.titulo.toLowerCase().includes(termo) || (a.mlb || '').toLowerCase().includes(termo))
+  ) : totDados;
+
+  if (totalEl) totalEl.textContent = filtrado.length ? `${filtrado.length} SKU${filtrado.length !== 1 ? 's' : ''}` : '';
+
+  if (!filtrado.length) {
+    if (tabela) tabela.style.display = 'none';
+    if (vazio)  { vazio.style.display = 'block'; vazio.textContent = 'Nenhum item encontrado.'; }
+    return;
+  }
+
+  if (vazio)  vazio.style.display  = 'none';
+  if (tabela) tabela.style.display = 'table';
+
+  tbody.innerHTML = '';
+  for (const g of filtrado) {
+    const total = g.full + g.proprio;
+    const anunciosHtml = g.anuncios.map(a => {
+      const pausado = a.status === 'paused' ? ' <span style="font-size:10px;color:#f59e0b">(pausado)</span>' : '';
+      const link = a.permalink ? `<a href="${a.permalink}" target="_blank" style="color:#3b82f6;text-decoration:none">${a.mlb}</a>` : a.mlb;
+      return `<div style="white-space:nowrap">${link} — <span style="color:#64748b">${a.titulo}</span>${pausado}</div>`;
+    }).join('');
+
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td style="font-weight:600;white-space:nowrap">${g.sku}</td>
+      <td style="font-size:12px;line-height:1.6">${anunciosHtml}</td>
+      <td class="col-num" style="font-weight:${g.full > 0 ? '600' : '400'};color:${g.full > 0 ? '#334155' : '#94a3b8'}">${g.full}</td>
+      <td class="col-num" style="font-weight:${g.proprio > 0 ? '600' : '400'};color:${g.proprio > 0 ? '#334155' : '#94a3b8'}">${g.proprio}</td>
+      <td class="col-num" style="font-weight:700;color:${total > 0 ? '#0f172a' : '#94a3b8'}">${total}</td>
     `;
     tbody.appendChild(tr);
   }
