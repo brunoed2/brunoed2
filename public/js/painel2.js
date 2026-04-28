@@ -923,14 +923,15 @@ function renderizarTotalizador() {
     const total = g.full + g.proprio;
     const anunciosHtml = g.anuncios.map(a => {
       const pausado = a.status === 'paused' ? ' <span style="font-size:10px;color:#f59e0b">(pausado)</span>' : '';
-      const link = a.permalink ? `<a href="${a.permalink}" target="_blank" style="color:#3b82f6;text-decoration:none">${a.mlb}</a>` : a.mlb;
-      return `<div style="white-space:nowrap">${link} — <span style="color:#64748b">${a.titulo}</span>${pausado}</div>`;
+      const link = a.permalink ? `<a href="${a.permalink}" target="_blank" style="color:#3b82f6;text-decoration:none;flex-shrink:0">${a.mlb}</a>` : `<span style="flex-shrink:0">${a.mlb}</span>`;
+      const titulo = `<span style="color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.titulo}</span>`;
+      return `<div style="display:flex;gap:4px;align-items:baseline;min-width:0">${link}<span style="color:#94a3b8;flex-shrink:0">—</span>${titulo}${pausado}</div>`;
     }).join('');
 
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td style="font-weight:600;white-space:nowrap">${g.sku}</td>
-      <td style="font-size:12px;line-height:1.6">${anunciosHtml}</td>
+      <td style="font-weight:600;white-space:nowrap;vertical-align:top">${g.sku}</td>
+      <td style="font-size:12px;line-height:1.8;max-width:0;width:100%;vertical-align:top">${anunciosHtml}</td>
       <td class="col-num" style="font-weight:${g.full > 0 ? '600' : '400'};color:${g.full > 0 ? '#334155' : '#94a3b8'}">${g.full}</td>
       <td class="col-num" style="font-weight:${g.proprio > 0 ? '600' : '400'};color:${g.proprio > 0 ? '#334155' : '#94a3b8'}">${g.proprio}</td>
       <td class="col-num" style="font-weight:700;color:${total > 0 ? '#0f172a' : '#94a3b8'}">${total}</td>
