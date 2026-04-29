@@ -3225,13 +3225,9 @@ const BLING_CLIENT_SECRET_2 = process.env.BLING_CLIENT_SECRET_2;
 // Número 1: contas a pagar + anúncios pausados
 const CALLMEBOT_PHONE  = process.env.CALLMEBOT_PHONE;
 const CALLMEBOT_APIKEY = process.env.CALLMEBOT_APIKEY;
-// Número 2: pedidos novos (CallMeBot — legado)
+// Número 2: pedidos novos (CallMeBot)
 const CALLMEBOT_PHONE_PEDIDOS  = process.env.CALLMEBOT_PHONE_PEDIDOS;
 const CALLMEBOT_APIKEY_PEDIDOS = process.env.CALLMEBOT_APIKEY_PEDIDOS;
-// Meta WhatsApp Cloud API — pedidos novos
-const META_WA_TOKEN      = process.env.META_WA_TOKEN;
-const META_WA_PHONE_ID   = process.env.META_WA_PHONE_ID;
-const META_WA_RECIPIENT  = process.env.META_WA_RECIPIENT;
 
 async function enviarWhatsApp(phone, apikey, texto) {
   if (!phone || !apikey) return;
@@ -3256,27 +3252,11 @@ async function notificar(texto) {
   ]);
 }
 
-async function enviarWhatsAppMeta(texto) {
-  if (!META_WA_TOKEN || !META_WA_PHONE_ID || !META_WA_RECIPIENT) return;
-  try {
-    const msg = texto.replace(/<[^>]+>/g, '');
-    const resp = await axios.post(
-      `https://graph.facebook.com/v19.0/${META_WA_PHONE_ID}/messages`,
-      { messaging_product: 'whatsapp', to: META_WA_RECIPIENT, type: 'text', text: { body: msg } },
-      { headers: { Authorization: `Bearer ${META_WA_TOKEN}`, 'Content-Type': 'application/json' }, timeout: 15000 }
-    );
-    addLog(`Meta WA → ${META_WA_RECIPIENT}: message_id=${resp.data?.messages?.[0]?.id || 'ok'}`, 'ok');
-  } catch (err) {
-    const detail = err.response?.data?.error?.message || err.message;
-    addLog(`Meta WA: falha ao enviar — ${detail}`, 'warn');
-  }
-}
-
-// Notificações de pedidos novos — Meta WA + Telegram (CallMeBot legado como fallback)
+// Notificações de pedidos novos — Telegram + CallMeBot
 async function notificarPedido(texto) {
   await Promise.allSettled([
     enviarTelegram(texto),
-    META_WA_TOKEN ? enviarWhatsAppMeta(texto) : enviarWhatsApp(CALLMEBOT_PHONE_PEDIDOS, CALLMEBOT_APIKEY_PEDIDOS, texto),
+    enviarWhatsApp(CALLMEBOT_PHONE_PEDIDOS, CALLMEBOT_APIKEY_PEDIDOS, texto),
   ]);
 }
 
@@ -3643,42 +3623,20 @@ app.post('/api/telegram/teste', async (req, res) => {
 });
 
 app.post('/api/whatsapp/teste-pedidos', async (req, res) => {
-  if (META_WA_TOKEN) {
-    // Usa Meta WhatsApp API
-    if (!META_WA_PHONE_ID || !META_WA_RECIPIENT) {
-      return res.json({ ok: false, erro: 'META_WA_PHONE_ID ou META_WA_RECIPIENT não configurados' });
-    }
-    try {
-      const resp = await axios.post(
-        `https://graph.facebook.com/v19.0/${META_WA_PHONE_ID}/messages`,
-        { messaging_product: 'whatsapp', to: META_WA_RECIPIENT, type: 'text', text: { body: '🧪 Teste — notificações de pedidos novos ativas!' } },
-        { headers: { Authorization: `Bearer ${META_WA_TOKEN}`, 'Content-Type': 'application/json' }, timeout: 15000 }
-      );
-      const msgId = resp.data?.messages?.[0]?.id || 'ok';
-      addLog(`Meta WA teste-pedidos → ${META_WA_RECIPIENT}: ${msgId}`, 'ok');
-      res.json({ ok: true, resposta: `Enviado (${msgId})` });
-    } catch (e) {
-      const detail = e.response?.data?.error?.message || e.message;
-      addLog(`Meta WA teste-pedidos: falha — ${detail}`, 'warn');
-      res.json({ ok: false, erro: detail });
-    }
-  } else {
-    // Fallback CallMeBot
-    if (!CALLMEBOT_PHONE_PEDIDOS || !CALLMEBOT_APIKEY_PEDIDOS) {
-      return res.json({ ok: false, erro: 'META_WA_TOKEN ou CALLMEBOT_PHONE_PEDIDOS não configurados' });
-    }
-    try {
-      const resp = await axios.get('https://api.callmebot.com/whatsapp.php', {
-        params: { phone: CALLMEBOT_PHONE_PEDIDOS, text: '🧪 Teste — notificações de pedidos novos ativas!', apikey: CALLMEBOT_APIKEY_PEDIDOS },
-        timeout: 10000,
-      });
-      const body = String(resp.data || '').trim();
-      const erro = body.toLowerCase().includes('error') || body.toLowerCase().includes('wrong');
-      addLog(`WhatsApp teste-pedidos → ${CALLMEBOT_PHONE_PEDIDOS}: ${body}`, erro ? 'warn' : 'ok');
-      res.json({ ok: !erro, resposta: body });
-    } catch (e) {
-      res.json({ ok: false, erro: e.message });
-    }
+  if (!CALLMEBOT_PHONE_PEDIDOS || !CALLMEBOT_APIKEY_PEDIDOS) {
+    return res.json({ ok: false, erro: 'CALLMEBOT_PHONE_PEDIDOS ou CALLMEBOT_APIKEY_PEDIDOS não configurados' });
+  }
+  try {
+    const resp = await axios.get('https://api.callmebot.com/whatsapp.php', {
+      params: { phone: CALLMEBOT_PHONE_PEDIDOS, text: '🧪 Teste — notificações de pedidos novos ativas!', apikey: CALLMEBOT_APIKEY_PEDIDOS },
+      timeout: 10000,
+    });
+    const body = String(resp.data || '').trim();
+    const erro = body.toLowerCase().includes('error') || body.toLowerCase().includes('wrong');
+    addLog(`WhatsApp teste-pedidos → ${CALLMEBOT_PHONE_PEDIDOS}: ${body}`, erro ? 'warn' : 'ok');
+    res.json({ ok: !erro, resposta: body });
+  } catch (e) {
+    res.json({ ok: false, erro: e.message });
   }
 });
 
