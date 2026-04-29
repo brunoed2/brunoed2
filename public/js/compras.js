@@ -175,6 +175,7 @@ function renderizarPrevisao() {
     if (campo === 'total')         return ((a.total || 0) - (b.total || 0)) * mult;
     if (campo === 'vendasDia')     return ((a.vendasDia || 0) - (b.vendasDia || 0)) * mult;
     if (campo === 'sku')           return a.sku.localeCompare(b.sku) * mult;
+    if (campo === 'fornecedor')    return (a.forn?.nome || '').localeCompare(b.forn?.nome || '') * mult;
     return 0;
   });
 
