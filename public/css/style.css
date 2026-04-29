@@ -563,7 +563,7 @@ code {
 .td-mlb  { font-family: monospace; font-size: 13px; color: #2563eb; }
 .td-titulo { max-width: 480px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .td-titulo:has(.venda-variacao) { white-space: normal; }
-.venda-variacao { display: block; font-size: 11px; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.venda-variacao { display: block; font-size: 13px; font-weight: 700; color: #475569; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .estoque-zero      { color: #dc2626; }
 
