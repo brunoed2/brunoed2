@@ -203,8 +203,8 @@ function renderizarPrevisao() {
           : 'duracao-ok'
         }">${l.diasRestantes}d</span>`;
 
-    const vendHtml = l.vendasDia > 0
-      ? l.vendasDia.toFixed(1)
+    const vendHtml = l.vendas30d > 0
+      ? Math.round(l.vendas30d)
       : '<span style="color:#aaa">—</span>';
 
     const fornHtml = l.forn
