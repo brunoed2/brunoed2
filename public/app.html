@@ -726,7 +726,12 @@
         <!-- Painel: Previsão -->
         <div id="compras-painel-previsao" class="compras-painel">
           <div class="tabela-topo">
-            <span id="previsao-total" style="font-size:13px;color:#64748b"></span>
+            <div style="display:flex;align-items:center;gap:10px">
+              <span id="previsao-total" style="font-size:13px;color:#64748b"></span>
+              <select id="filtro-fornecedor" class="filtro-select-prev" onchange="renderizarPrevisao()">
+                <option value="">Todos os fornecedores</option>
+              </select>
+            </div>
             <button class="btn-secondary" onclick="carregarPrevisao()">↻ Atualizar</button>
           </div>
           <div id="previsao-loading" class="loading" style="display:none">Carregando previsão...</div>
@@ -804,6 +809,6 @@
   <script src="/js/bling.js?v=1"></script>
   <script src="/js/fiscal.js?v=1"></script>
   <script src="/js/compras.js?v=1"></script>
-  <div id="version-badge">v337</div>
+  <div id="version-badge">v338</div>
 </body>
 </html>

@@ -1554,6 +1554,18 @@ tr.lucro-sub-item td {
 
 .td-skus-fornecedor { max-width: 320px; }
 
+.filtro-select-prev {
+  padding: 5px 10px;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #334155;
+  background: #fff;
+  cursor: pointer;
+  outline: none;
+}
+.filtro-select-prev:focus { border-color: #6366f1; }
+
 /* Modal fornecedor */
 .modal-overlay {
   position: fixed;

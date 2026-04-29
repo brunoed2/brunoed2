@@ -152,6 +152,15 @@ async function carregarPrevisao() {
       return { ...s, total, vendasDia, diasRestantes, forn, leadTime, statusNum, statusLabel, statusClass, pedirEm };
     });
 
+    // Preenche filtro de fornecedores
+    const sel = document.getElementById('filtro-fornecedor');
+    if (sel) {
+      const valorAtual = sel.value;
+      sel.innerHTML = '<option value="">Todos os fornecedores</option>'
+        + fornecedores.map(f => `<option value="${f.id}">${esc(f.nome)}</option>`).join('');
+      sel.value = fornecedores.find(f => f.id === valorAtual) ? valorAtual : '';
+    }
+
     loadEl.style.display = 'none';
     renderizarPrevisao();
     tabela.style.display = 'table';
@@ -167,7 +176,12 @@ function renderizarPrevisao() {
   const { campo, direcao } = prevSortState;
   const mult = direcao === 'asc' ? 1 : -1;
 
-  const linhas = [...previsaoLinhas].sort((a, b) => {
+  const filtroForn = document.getElementById('filtro-fornecedor')?.value || '';
+  const base = filtroForn
+    ? previsaoLinhas.filter(l => l.forn?.id === filtroForn)
+    : previsaoLinhas;
+
+  const linhas = [...base].sort((a, b) => {
     if (campo === 'statusNum')     return (a.statusNum - b.statusNum) * mult;
     if (campo === 'diasRestantes') return ((a.diasRestantes ?? 99999) - (b.diasRestantes ?? 99999)) * mult;
     if (campo === 'full')          return ((a.full || 0) - (b.full || 0)) * mult;
