@@ -1503,6 +1503,125 @@ tr.lucro-sub-item td {
 
 .pesquisa-link:hover { text-decoration: underline; }
 
+/* ── Compras — Previsão de Compra ───────────────────────────── */
+
+.compras-sub-bar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.compras-sub-btn {
+  background: none;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 7px 18px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #64748b;
+  cursor: pointer;
+  transition: all .15s;
+}
+.compras-sub-btn:hover  { border-color: #94a3b8; color: #334155; }
+.compras-sub-btn.active { background: #111; border-color: #111; color: #fff; }
+
+.compras-painel { margin-top: 0; }
+
+/* Status badges previsão */
+.badge-prev {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.prev-ok      { background: #dcfce7; color: #15803d; }
+.prev-atencao { background: #fef9c3; color: #854d0e; }
+.prev-urgente { background: #fee2e2; color: #991b1b; }
+
+/* Tags de SKU na coluna de fornecedores */
+.tag-sku {
+  display: inline-block;
+  background: #f1f5f9;
+  color: #475569;
+  font-family: monospace;
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  margin: 1px 2px;
+}
+
+.td-skus-fornecedor { max-width: 320px; }
+
+/* Modal fornecedor */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-card {
+  background: #fff;
+  border-radius: 14px;
+  padding: 32px 28px 24px;
+  width: 420px;
+  max-width: calc(100vw - 32px);
+  box-shadow: 0 8px 32px rgba(0,0,0,.15);
+}
+
+.modal-titulo {
+  font-size: 17px;
+  font-weight: 700;
+  color: #111;
+  margin: 0 0 20px;
+}
+
+.modal-campo {
+  margin-bottom: 14px;
+}
+
+.modal-campo label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+  margin-bottom: 5px;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+}
+
+.input-padrao {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 9px 12px;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 14px;
+  color: #111;
+  outline: none;
+  transition: border-color .15s;
+}
+.input-padrao:focus { border-color: #6366f1; }
+
+.modal-acoes {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 22px;
+}
+
+/* Botão danger pequeno */
+.btn-danger-sm {
+  background: #fee2e2 !important;
+  color: #991b1b !important;
+}
+.btn-danger-sm:hover { background: #fecaca !important; color: #7f1d1d !important; }
+
 /* Topbar mobile — oculto no desktop */
 .mobile-topbar { display: none; }
 .mobile-conta-seletor { display: none; }
