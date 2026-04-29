@@ -108,18 +108,18 @@ async function carregarPrevisao() {
     ]);
     fornecedores = fornData.fornecedores || [];
 
-    // Agrupa por SKU
+    // Agrupa por SKU; produtos sem SKU real ficam como linha individual (chave = MLB)
     const porSku = {};
     for (const item of (estoqueData.items || [])) {
-      if (!item.sku) continue;
-      const sku = item.sku;
-      if (!porSku[sku]) porSku[sku] = { sku, titulo: item.titulo, full: 0, proprio: 0, vendas30d: 0 };
+      const temSku = item.sku && item.sku !== '—';
+      const chave  = temSku ? item.sku : `_mlb_${item.mlb}`;
+      if (!porSku[chave]) porSku[chave] = { sku: temSku ? item.sku : '', titulo: item.titulo, full: 0, proprio: 0, vendas30d: 0 };
       if (item.deposito === 'fulfillment') {
-        porSku[sku].full += item.estoque || 0;
+        porSku[chave].full += item.estoque || 0;
       } else {
-        porSku[sku].proprio += item.estoque || 0;
+        porSku[chave].proprio += item.estoque || 0;
       }
-      porSku[sku].vendas30d += vendas30d[item.mlb] || 0;
+      porSku[chave].vendas30d += vendas30d[item.mlb] || 0;
     }
 
     const hoje = new Date();
@@ -188,7 +188,7 @@ function renderizarPrevisao() {
     if (campo === 'proprio')       return ((a.proprio || 0) - (b.proprio || 0)) * mult;
     if (campo === 'total')         return ((a.total || 0) - (b.total || 0)) * mult;
     if (campo === 'vendasDia')     return ((a.vendasDia || 0) - (b.vendasDia || 0)) * mult;
-    if (campo === 'sku')           return a.sku.localeCompare(b.sku) * mult;
+    if (campo === 'sku')           return (a.sku || 'zzz').localeCompare(b.sku || 'zzz') * mult;
     if (campo === 'fornecedor')    return (a.forn?.nome || '').localeCompare(b.forn?.nome || '') * mult;
     return 0;
   });
@@ -217,7 +217,7 @@ function renderizarPrevisao() {
         : l.pedirEm;
 
     return `<tr>
-      <td class="td-sku">${esc(l.sku)}</td>
+      <td class="td-sku">${l.sku ? esc(l.sku) : '<span style="color:#94a3b8">sem SKU</span>'}</td>
       <td class="td-titulo" title="${esc(l.titulo)}">${esc(l.titulo)}</td>
       <td class="col-num">${l.full}</td>
       <td class="col-num">${l.proprio}</td>
