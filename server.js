@@ -4533,46 +4533,56 @@ app.listen(PORT, () => {
   }
 });
 
-// ── Fornecedores (Previsão de Compra) ─────────────────────────
+// ── Fornecedores (Previsão de Compra) — por conta ─────────────
+
+function getFornecedoresConta(data) {
+  const num = data.conta_ativa || '1';
+  if (!data.fornecedores_por_conta) data.fornecedores_por_conta = {};
+  if (!data.fornecedores_por_conta[num]) data.fornecedores_por_conta[num] = [];
+  return { lista: data.fornecedores_por_conta[num], num };
+}
 
 app.get('/api/fornecedores', (req, res) => {
   const data = loadData();
-  res.json({ fornecedores: data.fornecedores || [] });
+  const { lista } = getFornecedoresConta(data);
+  res.json({ fornecedores: lista });
 });
 
 app.post('/api/fornecedores', (req, res) => {
   const { nome, leadTimeDias, skus } = req.body;
   if (!nome || !leadTimeDias) return res.status(400).json({ error: 'nome e leadTimeDias obrigatórios' });
   const data = loadData();
-  if (!data.fornecedores) data.fornecedores = [];
+  const { lista } = getFornecedoresConta(data);
   const novo = {
     id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
     nome: nome.trim(),
     leadTimeDias: Number(leadTimeDias),
     skus: Array.isArray(skus) ? skus : (skus || '').split(',').map(s => s.trim()).filter(Boolean),
   };
-  data.fornecedores.push(novo);
+  lista.push(novo);
   saveData(data);
   res.json({ ok: true, fornecedor: novo });
 });
 
 app.put('/api/fornecedores/:id', (req, res) => {
   const data = loadData();
-  const idx = (data.fornecedores || []).findIndex(f => f.id === req.params.id);
+  const { lista } = getFornecedoresConta(data);
+  const idx = lista.findIndex(f => f.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'não encontrado' });
   const { nome, leadTimeDias, skus } = req.body;
-  if (nome) data.fornecedores[idx].nome = nome.trim();
-  if (leadTimeDias != null) data.fornecedores[idx].leadTimeDias = Number(leadTimeDias);
-  if (skus != null) data.fornecedores[idx].skus = Array.isArray(skus) ? skus : (skus || '').split(',').map(s => s.trim()).filter(Boolean);
+  if (nome) lista[idx].nome = nome.trim();
+  if (leadTimeDias != null) lista[idx].leadTimeDias = Number(leadTimeDias);
+  if (skus != null) lista[idx].skus = Array.isArray(skus) ? skus : (skus || '').split(',').map(s => s.trim()).filter(Boolean);
   saveData(data);
-  res.json({ ok: true, fornecedor: data.fornecedores[idx] });
+  res.json({ ok: true, fornecedor: lista[idx] });
 });
 
 app.delete('/api/fornecedores/:id', (req, res) => {
   const data = loadData();
-  const antes = (data.fornecedores || []).length;
-  data.fornecedores = (data.fornecedores || []).filter(f => f.id !== req.params.id);
-  if (data.fornecedores.length === antes) return res.status(404).json({ error: 'não encontrado' });
+  const { lista, num } = getFornecedoresConta(data);
+  const antes = lista.length;
+  data.fornecedores_por_conta[num] = lista.filter(f => f.id !== req.params.id);
+  if (data.fornecedores_por_conta[num].length === antes) return res.status(404).json({ error: 'não encontrado' });
   saveData(data);
   res.json({ ok: true });
 });
