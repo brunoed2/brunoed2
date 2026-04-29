@@ -117,7 +117,8 @@ async function carregarPrevisao() {
       if (item.deposito === 'fulfillment') {
         porSku[chave].full += item.estoque || 0;
       } else {
-        porSku[chave].proprio += item.estoque || 0;
+        // Estoque próprio é compartilhado entre anúncios — pega o maior valor
+        porSku[chave].proprio = Math.max(porSku[chave].proprio, item.estoque || 0);
       }
       porSku[chave].vendas30d += vendas30d[item.mlb] || 0;
     }
