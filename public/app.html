@@ -734,16 +734,16 @@
           <table class="tabela" id="tabela-previsao" style="display:none">
             <thead>
               <tr>
-                <th class="th-sort-prev" data-sort="sku">SKU <span class="sort-icon"></span></th>
+                <th class="th-sort-prev" onclick="prevOrdenar('sku')">SKU <span class="sort-icon" data-sort="sku"></span></th>
                 <th>Título</th>
-                <th class="th-sort-prev col-num" data-sort="full">Full <span class="sort-icon"></span></th>
-                <th class="col-num">Próprio</th>
-                <th class="th-sort-prev col-num" data-sort="total">Total <span class="sort-icon"></span></th>
-                <th class="th-sort-prev col-num" data-sort="vendasDia">Vend/dia <span class="sort-icon"></span></th>
-                <th class="th-sort-prev col-num" data-sort="diasRestantes">Dias rest. <span class="sort-icon"></span></th>
+                <th class="th-sort-prev col-num" onclick="prevOrdenar('full')">Full <span class="sort-icon" data-sort="full"></span></th>
+                <th class="th-sort-prev col-num" onclick="prevOrdenar('proprio')">Próprio <span class="sort-icon" data-sort="proprio"></span></th>
+                <th class="th-sort-prev col-num" onclick="prevOrdenar('total')">Total <span class="sort-icon" data-sort="total"></span></th>
+                <th class="th-sort-prev col-num" onclick="prevOrdenar('vendasDia')">Vend/dia <span class="sort-icon" data-sort="vendasDia"></span></th>
+                <th class="th-sort-prev col-num" onclick="prevOrdenar('diasRestantes')">Dias rest. <span class="sort-icon" data-sort="diasRestantes"></span></th>
                 <th>Fornecedor</th>
                 <th class="col-num">Pedir em</th>
-                <th class="th-sort-prev" data-sort="statusNum">Status <span class="sort-icon"></span></th>
+                <th class="th-sort-prev" onclick="prevOrdenar('statusNum')">Status <span class="sort-icon" data-sort="statusNum"></span></th>
               </tr>
             </thead>
             <tbody id="tabela-previsao-body"></tbody>
@@ -804,6 +804,6 @@
   <script src="/js/bling.js?v=1"></script>
   <script src="/js/fiscal.js?v=1"></script>
   <script src="/js/compras.js?v=1"></script>
-  <div id="version-badge">v335</div>
+  <div id="version-badge">v336</div>
 </body>
 </html>

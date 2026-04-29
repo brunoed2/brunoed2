@@ -170,6 +170,8 @@ function renderizarPrevisao() {
   const linhas = [...previsaoLinhas].sort((a, b) => {
     if (campo === 'statusNum')     return (a.statusNum - b.statusNum) * mult;
     if (campo === 'diasRestantes') return ((a.diasRestantes ?? 99999) - (b.diasRestantes ?? 99999)) * mult;
+    if (campo === 'full')          return ((a.full || 0) - (b.full || 0)) * mult;
+    if (campo === 'proprio')       return ((a.proprio || 0) - (b.proprio || 0)) * mult;
     if (campo === 'total')         return ((a.total || 0) - (b.total || 0)) * mult;
     if (campo === 'vendasDia')     return ((a.vendasDia || 0) - (b.vendasDia || 0)) * mult;
     if (campo === 'sku')           return a.sku.localeCompare(b.sku) * mult;
@@ -214,21 +216,13 @@ function renderizarPrevisao() {
   }).join('');
 
   // Ícones de sort
-  document.querySelectorAll('#tabela-previsao .th-sort-prev').forEach(th => {
-    const ic = th.querySelector('.sort-icon');
-    if (!ic) return;
-    ic.textContent = th.dataset.sort === campo ? (direcao === 'asc' ? ' ▲' : ' ▼') : '';
+  document.querySelectorAll('#tabela-previsao .sort-icon[data-sort]').forEach(ic => {
+    ic.textContent = ic.dataset.sort === campo ? (direcao === 'asc' ? ' ▲' : ' ▼') : '';
   });
 }
 
-// Sort ao clicar no cabeçalho
-document.addEventListener('DOMContentLoaded', () => {
-  document.querySelectorAll('#tabela-previsao .th-sort-prev').forEach(th => {
-    th.addEventListener('click', () => {
-      const c = th.dataset.sort;
-      prevSortState.direcao = prevSortState.campo === c && prevSortState.direcao === 'asc' ? 'desc' : 'asc';
-      prevSortState.campo = c;
-      renderizarPrevisao();
-    });
-  });
-});
+function prevOrdenar(campo) {
+  prevSortState.direcao = prevSortState.campo === campo && prevSortState.direcao === 'asc' ? 'desc' : 'asc';
+  prevSortState.campo = campo;
+  renderizarPrevisao();
+}
