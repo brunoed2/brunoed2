@@ -33,6 +33,7 @@
         <button class="nav-btn" data-tab="contas-pagar">💳 Contas a Pagar</button>
         <button class="nav-btn" data-tab="bling">🧾 Bling</button>
         <button class="nav-btn" data-tab="fiscal">🗂️ NF Compras</button>
+        <button class="nav-btn" data-tab="compras">🛒 Compras</button>
         <button class="nav-btn" data-tab="configuracoes">⚙️ Configurações</button>
       </nav>
       <div class="sidebar-footer">
@@ -712,7 +713,87 @@
       </section>
 
 
+      <!-- ── Aba: Compras ── -->
+      <section id="tab-compras" class="tab">
+        <h1>Previsão de Compra</h1>
+        <p class="subtitle">Controle de fornecedores e previsão de quando fazer novos pedidos.</p>
+
+        <div class="compras-sub-bar">
+          <button class="compras-sub-btn active" data-sub="previsao" onclick="comprasAbrirSub('previsao')">📊 Previsão</button>
+          <button class="compras-sub-btn" data-sub="fornecedores" onclick="comprasAbrirSub('fornecedores')">🏭 Fornecedores</button>
+        </div>
+
+        <!-- Painel: Previsão -->
+        <div id="compras-painel-previsao" class="compras-painel">
+          <div class="tabela-topo">
+            <span id="previsao-total" style="font-size:13px;color:#64748b"></span>
+            <button class="btn-secondary" onclick="carregarPrevisao()">↻ Atualizar</button>
+          </div>
+          <div id="previsao-loading" class="loading" style="display:none">Carregando previsão...</div>
+          <div id="previsao-erro" class="estoque-erro" style="display:none"></div>
+          <table class="tabela" id="tabela-previsao" style="display:none">
+            <thead>
+              <tr>
+                <th class="th-sort-prev" data-sort="sku">SKU <span class="sort-icon"></span></th>
+                <th>Título</th>
+                <th class="th-sort-prev col-num" data-sort="full">Full <span class="sort-icon"></span></th>
+                <th class="col-num">Próprio</th>
+                <th class="th-sort-prev col-num" data-sort="total">Total <span class="sort-icon"></span></th>
+                <th class="th-sort-prev col-num" data-sort="vendasDia">Vend/dia <span class="sort-icon"></span></th>
+                <th class="th-sort-prev col-num" data-sort="diasRestantes">Dias rest. <span class="sort-icon"></span></th>
+                <th>Fornecedor</th>
+                <th class="col-num">Pedir em</th>
+                <th class="th-sort-prev" data-sort="statusNum">Status <span class="sort-icon"></span></th>
+              </tr>
+            </thead>
+            <tbody id="tabela-previsao-body"></tbody>
+          </table>
+        </div>
+
+        <!-- Painel: Fornecedores -->
+        <div id="compras-painel-fornecedores" class="compras-painel" style="display:none">
+          <div class="tabela-topo">
+            <span style="font-size:13px;color:#64748b">Fornecedores cadastrados</span>
+            <button class="btn-primary" onclick="abrirModalFornecedor()">+ Novo fornecedor</button>
+          </div>
+          <table class="tabela" id="tabela-fornecedores">
+            <thead>
+              <tr>
+                <th>Nome</th>
+                <th class="col-num">Lead time</th>
+                <th>SKUs fornecidos</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="tabela-fornecedores-body"></tbody>
+          </table>
+        </div>
+      </section>
+
     </main>
+  </div>
+
+  <!-- Modal: Fornecedor -->
+  <div id="modal-fornecedor" class="modal-overlay" style="display:none" onclick="if(event.target===this)fecharModalFornecedor()">
+    <div class="modal-card">
+      <h3 id="modal-forn-titulo" class="modal-titulo">Novo Fornecedor</h3>
+      <div class="modal-campo">
+        <label>Nome do fornecedor</label>
+        <input type="text" id="forn-nome" class="input-padrao" placeholder="Ex: Distribuidora ABC">
+      </div>
+      <div class="modal-campo">
+        <label>Lead time (dias)</label>
+        <input type="number" id="forn-lead" class="input-padrao" placeholder="Ex: 15" min="1">
+      </div>
+      <div class="modal-campo">
+        <label>SKUs fornecidos <span style="color:#94a3b8;font-weight:400">(separados por vírgula)</span></label>
+        <input type="text" id="forn-skus" class="input-padrao" placeholder="Ex: 346, 30, 112">
+      </div>
+      <div class="modal-acoes">
+        <button class="btn-secondary" onclick="fecharModalFornecedor()">Cancelar</button>
+        <button class="btn-primary" onclick="salvarFornecedor()">Salvar</button>
+      </div>
+    </div>
   </div>
 
   <script src="/js/lucro.js"></script>
@@ -722,6 +803,7 @@
   <script src="/js/promocoes.js?v=1"></script>
   <script src="/js/bling.js?v=1"></script>
   <script src="/js/fiscal.js?v=1"></script>
-  <div id="version-badge">v334</div>
+  <script src="/js/compras.js?v=1"></script>
+  <div id="version-badge">v335</div>
 </body>
 </html>

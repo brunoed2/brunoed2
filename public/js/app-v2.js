@@ -41,6 +41,7 @@ function abrirAba(nome) {
   if (nome === 'promocoes')     carregarPromocoes();
   if (nome === 'contas-pagar')  contasPagarInit();
   if (nome === 'bling')         blingInit();
+  if (nome === 'compras')       comprasAbrirSub('previsao');
   if (nome === 'configuracoes') { carregarConfig(contaConfigurando); }
   // compatibilidade: ?tab=config ou ?tab=conexao redireciona para configuracoes
   if (nome === 'config' || nome === 'conexao') {
