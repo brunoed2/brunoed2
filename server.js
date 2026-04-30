@@ -4533,6 +4533,33 @@ app.listen(PORT, () => {
   }
 });
 
+// ── Diagnóstico: horários de corte ML ────────────────────────
+app.get('/api/ml/shipping-schedule-debug', async (req, res) => {
+  const data = loadData();
+  const c = contaAtiva(data);
+  if (!c.access_token) return res.json({ error: 'Não conectado' });
+  const headers = { Authorization: `Bearer ${c.access_token}` };
+  const uid = c.user_id;
+  const resultados = {};
+  const rotas = [
+    `/users/${uid}/shipping_preferences`,
+    `/users/${uid}/me2/preferences`,
+    `/users/${uid}/shipping_cut_off_times`,
+    `/users/${uid}/me2/shipping_cut_off_times`,
+    `/users/${uid}/shipping_schedule`,
+    `/users/${uid}/me2/handling_time`,
+  ];
+  for (const rota of rotas) {
+    try {
+      const r = await axios.get(`https://api.mercadolibre.com${rota}`, { headers, timeout: 8000 });
+      resultados[rota] = { status: r.status, data: r.data };
+    } catch (e) {
+      resultados[rota] = { status: e.response?.status || 'err', data: e.response?.data || e.message };
+    }
+  }
+  res.json(resultados);
+});
+
 // ── Fornecedores (Previsão de Compra) — por conta ─────────────
 
 function getFornecedoresConta(data) {
