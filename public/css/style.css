@@ -1581,6 +1581,12 @@ tr.lucro-sub-item td {
 .select-fornecedor-linha:hover { border-color: #94a3b8; }
 .select-fornecedor-linha:focus { border-color: #6366f1; }
 
+.link-titulo-prev {
+  color: inherit;
+  text-decoration: none;
+}
+.link-titulo-prev:hover { text-decoration: underline; color: #6366f1; }
+
 /* Modal fornecedor */
 .modal-overlay {
   position: fixed;

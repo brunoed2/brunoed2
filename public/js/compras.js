@@ -117,7 +117,7 @@ async function carregarPrevisao() {
     for (const item of (estoqueData.items || [])) {
       const temSku = item.sku && item.sku !== '—';
       const chave  = temSku ? item.sku : `_mlb_${item.mlb}`;
-      if (!porSku[chave]) porSku[chave] = { sku: temSku ? item.sku : '', titulo: item.titulo, full: 0, proprio: 0, vendas30d: 0 };
+      if (!porSku[chave]) porSku[chave] = { sku: temSku ? item.sku : '', titulo: item.titulo, permalink: item.permalink || null, full: 0, proprio: 0, vendas30d: 0 };
       if (item.deposito === 'fulfillment') {
         porSku[chave].full += item.estoque || 0;
       } else {
@@ -244,9 +244,13 @@ function renderizarPrevisao() {
         ? '<strong style="color:#dc2626">Agora!</strong>'
         : l.pedirEm;
 
+    const tituloHtml = l.permalink
+      ? `<a href="${esc(l.permalink)}" target="_blank" rel="noopener" class="link-titulo-prev" title="${esc(l.titulo)}">${esc(l.titulo)}</a>`
+      : `<span title="${esc(l.titulo)}">${esc(l.titulo)}</span>`;
+
     return `<tr>
       <td class="td-sku">${l.sku ? esc(l.sku) : '<span style="color:#94a3b8">sem SKU</span>'}</td>
-      <td class="td-titulo" title="${esc(l.titulo)}">${esc(l.titulo)}</td>
+      <td class="td-titulo">${tituloHtml}</td>
       <td class="col-num">${l.full}</td>
       <td class="col-num">${l.proprio}</td>
       <td class="col-num"><strong>${l.total}</strong></td>
