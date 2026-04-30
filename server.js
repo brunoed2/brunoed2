@@ -1676,11 +1676,14 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
     for (const { order, shipment } of filtradas) {
       const sid = String(shipment.id);
       if (!porShipment.has(sid)) {
+        const scheduleLimit = shipment.shipping_option?.estimated_schedule_limit?.date;
         const handlingHoras = shipment.shipping_option?.estimated_delivery_time?.handling ?? 24;
         const criado        = new Date(shipment.date_created);
-        const prazo         = handlingHoras > 0
-          ? new Date(criado.getTime() + handlingHoras * 3600_000).toISOString()
-          : null;
+        const prazo         = scheduleLimit
+          ? new Date(scheduleLimit).toISOString()
+          : handlingHoras > 0
+            ? new Date(criado.getTime() + handlingHoras * 3600_000).toISOString()
+            : null;
         porShipment.set(sid, {
           orderId:        order.id,
           data:           order.date_created,
@@ -1770,9 +1773,7 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
       saveData(data);
     }
 
-    // Campo _debug_shipment: inclui o objeto bruto do primeiro shipment para inspeção via DevTools
-    const primeiroRaw = filtradas[0]?.shipment || null;
-    res.json({ vendas, _debug_shipment: primeiroRaw });
+    res.json({ vendas });
   } catch (err) {
     console.error('Erro ao buscar vendas com etiqueta:', err.response?.data || err.message);
     res.json({ error: 'Erro ao buscar vendas.' });
