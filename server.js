@@ -1305,21 +1305,35 @@ app.get('/api/bling/notas-pendentes', async (req, res) => {
   }
 });
 
+// ── Bling: helpers de emissão ─────────────────────────────────
+
+async function blingEmitirNFHelper(pedidoId, conta) {
+  const token = await getBlingToken(conta);
+  const resp  = await axios.post(
+    `https://www.bling.com.br/Api/v3/pedidos/vendas/${pedidoId}/gerar-nfe`,
+    {},
+    { headers: { Authorization: `Bearer ${token}` }, timeout: 15000 }
+  );
+  const nfId = resp.data?.data?.idNotaFiscal ?? resp.data?.data?.id;
+  if (!nfId) throw new Error(`gerar-nfe não retornou ID. Resposta: ${JSON.stringify(resp.data).slice(0, 200)}`);
+  addLog(`[bling] NF gerada para pedido ${pedidoId} — NF id=${nfId}`, 'ok');
+  return nfId;
+}
+
+async function blingEnviarNFHelper(nfId, conta) {
+  const token = await getBlingToken(conta);
+  await axios.post(`https://www.bling.com.br/Api/v3/nfe/${nfId}/enviar`, {},
+    { headers: { Authorization: `Bearer ${token}` }, timeout: 15000 }
+  );
+  addLog(`[bling] NF ${nfId} enviada para SEFAZ`, 'ok');
+}
+
 // ── Bling: emitir NF para pedido ML ──────────────────────────
 
 app.post('/api/bling/emitir-nf/:pedidoId', async (req, res) => {
   try {
     const conta = blingContaReq(req);
-    const token = await getBlingToken(conta);
-    const { pedidoId } = req.params;
-    const resp = await axios.post(
-      `https://www.bling.com.br/Api/v3/pedidos/vendas/${pedidoId}/gerar-nfe`,
-      {},
-      { headers: { Authorization: `Bearer ${token}` }, timeout: 15000 }
-    );
-    const nfId = resp.data?.data?.idNotaFiscal ?? resp.data?.data?.id;
-    addLog(`[bling] NF gerada para pedido ${pedidoId} — NF id=${nfId}`, 'ok');
-    if (!nfId) return res.json({ ok: false, erro: `gerar-nfe não retornou ID da NF. Resposta: ${JSON.stringify(resp.data).slice(0, 300)}` });
+    const nfId  = await blingEmitirNFHelper(req.params.pedidoId, conta);
     return res.json({ ok: true, nfId });
   } catch (err) {
     const detail = err.response ? JSON.stringify(err.response.data).slice(0, 300) : err.message;
@@ -1333,17 +1347,113 @@ app.post('/api/bling/emitir-nf/:pedidoId', async (req, res) => {
 app.post('/api/bling/enviar-nf/:notaId', async (req, res) => {
   try {
     const conta = blingContaReq(req);
-    const token = await getBlingToken(conta);
-    const { notaId } = req.params;
-    await axios.post(`https://www.bling.com.br/Api/v3/nfe/${notaId}/enviar`, {},
-      { headers: { Authorization: `Bearer ${token}` }, timeout: 15000 }
-    );
-    addLog(`[bling] NF ${notaId} enviada para SEFAZ`, 'ok');
+    await blingEnviarNFHelper(req.params.notaId, conta);
     return res.json({ ok: true });
   } catch (err) {
     const detail = err.response ? JSON.stringify(err.response.data).slice(0, 300) : err.message;
     addLog(`[bling] enviar-nf: ${detail}`, 'warn');
     return res.json({ ok: false, erro: detail });
+  }
+});
+
+// ── Auto Super: notificação + confirmação via link ─────────────
+
+const APP_URL = (process.env.APP_URL || '').replace(/\/$/, '');
+
+function autoSuperHtml(ok, msg) {
+  const cor   = ok ? '#15803d' : '#dc2626';
+  const bg    = ok ? '#f0fdf4' : '#fff1f2';
+  const icone = ok ? '✅' : '❌';
+  const titulo = ok ? 'NF Emitida!' : 'Erro';
+  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${titulo}</title>
+<style>body{font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;background:${bg};margin:0}
+.box{text-align:center;padding:40px 32px;background:#fff;border-radius:16px;box-shadow:0 4px 24px rgba(0,0,0,.08);max-width:400px;width:90%}
+.icon{font-size:60px;margin-bottom:12px}.title{font-size:22px;font-weight:700;color:${cor}}.msg{color:#64748b;margin-top:12px;line-height:1.6;font-size:15px}</style>
+</head><body><div class="box"><div class="icon">${icone}</div><div class="title">${titulo}</div><p class="msg">${msg}</p></div></body></html>`;
+}
+
+async function autoSuperJob() {
+  if (!APP_URL) {
+    addLog('[auto-super] APP_URL não configurado — job desativado', 'warn');
+    return;
+  }
+  const data = loadData();
+  if (!data.auto_super_notificados) data.auto_super_notificados = {};
+  if (!data.auto_super_emitidos)    data.auto_super_emitidos    = {};
+  if (!data.auto_super_tokens)      data.auto_super_tokens      = {};
+
+  const agora = Date.now();
+  // Limpa tokens expirados
+  for (const tk of Object.keys(data.auto_super_tokens)) {
+    if (agora > data.auto_super_tokens[tk].expiresAt) delete data.auto_super_tokens[tk];
+  }
+
+  const contasBling = ['1', '2'].filter(c => !!(getBlingDataConta(data, c)?.access_token));
+  if (!contasBling.length) { saveData(data); return; }
+
+  let changed = false;
+  for (const conta of contasBling) {
+    let pedidos = [];
+    try { pedidos = await fetchBlingPedidosPendentes(conta); } catch (err) {
+      addLog(`[auto-super] erro conta ${conta}: ${err.message}`, 'warn'); continue;
+    }
+    for (const p of pedidos.filter(p => p.temEtiqueta)) {
+      const chave = `${p.id}_${conta}`;
+      if (data.auto_super_notificados[chave] || data.auto_super_emitidos[chave]) continue;
+
+      const token = crypto.randomBytes(24).toString('hex');
+      data.auto_super_tokens[token] = {
+        pedidoId: String(p.id), conta, comprador: p.comprador,
+        valor: p.valor_total, numero: p.numero,
+        expiresAt: agora + 48 * 3600_000,
+      };
+      data.auto_super_notificados[chave] = agora;
+      changed = true;
+
+      const link   = `${APP_URL}/api/bling/confirmar/${token}`;
+      const valor  = (p.valor_total || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+      const texto  = `⚡ Pedido pronto para NF\n\n#${p.numero} — ${p.comprador} — ${valor}\nConta ${conta}\n\nConfirmar emissão:\n${link}\n\n(Link válido por 48h)`;
+      notificarPedido(texto).catch(() => {});
+      addLog(`[auto-super] notificado pedido ${p.numero} conta ${conta}`, 'ok');
+      await new Promise(r => setTimeout(r, 4000));
+    }
+  }
+  if (changed) saveData(data);
+}
+
+app.get('/api/bling/confirmar/:token', async (req, res) => {
+  const data  = loadData();
+  const info  = (data.auto_super_tokens || {})[req.params.token];
+
+  if (!info)                    return res.send(autoSuperHtml(false, 'Link inválido ou expirado.<br>Emita manualmente na aba Bling.'));
+  if (Date.now() > info.expiresAt) {
+    delete data.auto_super_tokens[req.params.token];
+    saveData(data);
+    return res.send(autoSuperHtml(false, 'Link expirado.<br>Emita manualmente na aba Bling.'));
+  }
+
+  const { pedidoId, conta, comprador, valor, numero } = info;
+  const chave = `${pedidoId}_${conta}`;
+  if ((data.auto_super_emitidos || {})[chave])
+    return res.send(autoSuperHtml(true, `Pedido #${numero} já havia sido emitido.`));
+
+  try {
+    const nfId = await blingEmitirNFHelper(pedidoId, conta);
+    await blingEnviarNFHelper(nfId, conta);
+
+    if (!data.auto_super_emitidos) data.auto_super_emitidos = {};
+    data.auto_super_emitidos[chave] = Date.now();
+    delete data.auto_super_tokens[req.params.token];
+    saveData(data);
+
+    const valorFmt = (valor || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    notificarPedido(`✅ NF emitida automaticamente\n\n#${numero} — ${comprador} — ${valorFmt}\nConta ${conta}`).catch(() => {});
+    addLog(`[auto-super] NF emitida e enviada: pedido ${numero} conta ${conta}`, 'ok');
+    return res.send(autoSuperHtml(true, `Pedido #${numero} — ${comprador}<br>${valorFmt} · Conta ${conta}<br><br>NF gerada e enviada para a SEFAZ.`));
+  } catch (err) {
+    const detail = err.response ? JSON.stringify(err.response.data).slice(0, 200) : err.message;
+    addLog(`[auto-super] erro ao confirmar pedido ${numero}: ${detail}`, 'warn');
+    return res.send(autoSuperHtml(false, `Erro: ${detail}<br><br>Tente novamente ou emita manualmente na aba Bling.`));
   }
 });
 
@@ -3643,6 +3753,9 @@ setInterval(() => {
   const hora = new Date().getHours();
   if (hora === 8) notificarContasVencendoHoje().catch(() => {});
 }, 60 * 60 * 1000);
+
+// Auto Super: verifica pedidos prontos para NF a cada 15 minutos
+setInterval(() => autoSuperJob().catch(err => addLog(`[auto-super] erro no job: ${err.message}`, 'warn')), 15 * 60 * 1000);
 
 app.post('/api/telegram/teste', async (req, res) => {
   if (!TELEGRAM_TOKEN || !TELEGRAM_CHAT_ID) {
