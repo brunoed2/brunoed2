@@ -4542,12 +4542,16 @@ app.get('/api/ml/shipping-schedule-debug', async (req, res) => {
   const uid = c.user_id;
   const resultados = {};
   const rotas = [
-    `/users/${uid}/shipping_preferences`,
-    `/users/${uid}/me2/preferences`,
-    `/users/${uid}/shipping_cut_off_times`,
-    `/users/${uid}/me2/shipping_cut_off_times`,
-    `/users/${uid}/shipping_schedule`,
-    `/users/${uid}/me2/handling_time`,
+    `/users/${uid}/me2/capacity`,
+    `/users/${uid}/me2/cut_off`,
+    `/users/${uid}/me2/cut_off_times`,
+    `/users/${uid}/me2/scheduling`,
+    `/users/${uid}/shipping_time_limits`,
+    `/users/${uid}/me2/time_limits`,
+    `/shipping/carriers/17502440`,
+    `/shipping/carriers/17502440/cut_off`,
+    `/users/${uid}/shipping_carriers`,
+    `/users/${uid}/me2/shipping_schedule`,
   ];
   for (const rota of rotas) {
     try {
