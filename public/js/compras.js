@@ -20,8 +20,12 @@ function comprasAbrirSub(sub) {
 
 // ── Fornecedores ──────────────────────────────────────────────
 
+function getContaAtiva() {
+  return document.querySelector('.conta-btn.active')?.dataset.conta || '1';
+}
+
 async function carregarFornecedores() {
-  const data = await apiFetch('/api/fornecedores');
+  const data = await apiFetch(`/api/fornecedores?conta=${getContaAtiva()}`);
   fornecedores = data.fornecedores || [];
   renderizarFornecedores();
 }
@@ -77,7 +81,7 @@ async function salvarFornecedor() {
 
   const url    = editandoFornId ? `/api/fornecedores/${editandoFornId}` : '/api/fornecedores';
   const method = editandoFornId ? 'PUT' : 'POST';
-  const r = await apiFetch(url, { method, body: JSON.stringify({ nome, leadTimeDias, skus }) });
+  const r = await apiFetch(url, { method, body: JSON.stringify({ nome, leadTimeDias, skus, conta: getContaAtiva() }) });
   if (r.error) { alert(r.error); return; }
   fecharModalFornecedor();
   await carregarFornecedores();
@@ -85,7 +89,7 @@ async function salvarFornecedor() {
 
 async function excluirFornecedor(id) {
   if (!confirm('Excluir este fornecedor?')) return;
-  await apiFetch(`/api/fornecedores/${id}`, { method: 'DELETE' });
+  await apiFetch(`/api/fornecedores/${id}?conta=${getContaAtiva()}`, { method: 'DELETE' });
   await carregarFornecedores();
 }
 
@@ -104,7 +108,7 @@ async function carregarPrevisao() {
     const [estoqueData, vendas30d, fornData] = await Promise.all([
       apiFetch('/api/ml/estoque'),
       apiFetch('/api/ml/vendas30dias'),
-      apiFetch('/api/fornecedores'),
+      apiFetch(`/api/fornecedores?conta=${getContaAtiva()}`),
     ]);
     fornecedores = fornData.fornecedores || [];
 

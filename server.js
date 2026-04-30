@@ -1675,6 +1675,11 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
     for (const { order, shipment } of filtradas) {
       const sid = String(shipment.id);
       if (!porShipment.has(sid)) {
+        const handlingHoras = shipment.shipping_option?.estimated_delivery_time?.handling ?? 24;
+        const criado        = new Date(shipment.date_created);
+        const prazo         = handlingHoras > 0
+          ? new Date(criado.getTime() + handlingHoras * 3600_000).toISOString()
+          : null;
         porShipment.set(sid, {
           orderId:        order.id,
           data:           order.date_created,
@@ -1684,6 +1689,7 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
           status:         shipment.status,
           statusLabel:    STATUS_PT[shipment.status] || shipment.status,
           acaoLabel:      SUBSTATUS_LABEL[shipment.substatus] || 'Baixar',
+          prazoDespacho:  prazo,
           itensLista:     [],
         });
       }
@@ -4535,8 +4541,8 @@ app.listen(PORT, () => {
 
 // ── Fornecedores (Previsão de Compra) — por conta ─────────────
 
-function getFornecedoresConta(data) {
-  const num = data.conta_ativa || '1';
+function getFornecedoresConta(data, contaOverride) {
+  const num = String(contaOverride || data.conta_ativa || '1');
   if (!data.fornecedores_por_conta) data.fornecedores_por_conta = {};
   if (!data.fornecedores_por_conta[num]) data.fornecedores_por_conta[num] = [];
   return { lista: data.fornecedores_por_conta[num], num };
@@ -4544,15 +4550,15 @@ function getFornecedoresConta(data) {
 
 app.get('/api/fornecedores', (req, res) => {
   const data = loadData();
-  const { lista } = getFornecedoresConta(data);
+  const { lista } = getFornecedoresConta(data, req.query.conta);
   res.json({ fornecedores: lista });
 });
 
 app.post('/api/fornecedores', (req, res) => {
-  const { nome, leadTimeDias, skus } = req.body;
+  const { nome, leadTimeDias, skus, conta } = req.body;
   if (!nome || !leadTimeDias) return res.status(400).json({ error: 'nome e leadTimeDias obrigatórios' });
   const data = loadData();
-  const { lista } = getFornecedoresConta(data);
+  const { lista } = getFornecedoresConta(data, conta || req.query.conta);
   const novo = {
     id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
     nome: nome.trim(),
@@ -4566,10 +4572,10 @@ app.post('/api/fornecedores', (req, res) => {
 
 app.put('/api/fornecedores/:id', (req, res) => {
   const data = loadData();
-  const { lista } = getFornecedoresConta(data);
+  const { nome, leadTimeDias, skus, conta } = req.body;
+  const { lista } = getFornecedoresConta(data, conta || req.query.conta);
   const idx = lista.findIndex(f => f.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'não encontrado' });
-  const { nome, leadTimeDias, skus } = req.body;
   if (nome) lista[idx].nome = nome.trim();
   if (leadTimeDias != null) lista[idx].leadTimeDias = Number(leadTimeDias);
   if (skus != null) lista[idx].skus = Array.isArray(skus) ? skus : (skus || '').split(',').map(s => s.trim()).filter(Boolean);
@@ -4579,7 +4585,7 @@ app.put('/api/fornecedores/:id', (req, res) => {
 
 app.delete('/api/fornecedores/:id', (req, res) => {
   const data = loadData();
-  const { lista, num } = getFornecedoresConta(data);
+  const { lista, num } = getFornecedoresConta(data, req.query.conta);
   const antes = lista.length;
   data.fornecedores_por_conta[num] = lista.filter(f => f.id !== req.params.id);
   if (data.fornecedores_por_conta[num].length === antes) return res.status(404).json({ error: 'não encontrado' });

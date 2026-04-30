@@ -139,6 +139,7 @@ async function trocarConta(num) {
     if (abaAtiva === 'loja')    carregarLoja();
     if (abaAtiva === 'estoque') carregarEstoque(true);
     if (abaAtiva === 'lucro')   { lucroCarregado = false; lucroCarregarConfig().then(() => lucroCarregarVendas()); }
+    if (abaAtiva === 'compras') { const sub = document.querySelector('.compras-sub-btn.active')?.dataset.sub || 'previsao'; comprasAbrirSub(sub); }
     atualizarStatus();
     document.dispatchEvent(new CustomEvent('contaMudou', { detail: { conta: num } }));
   } finally {
