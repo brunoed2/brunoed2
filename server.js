@@ -1530,7 +1530,8 @@ app.get('/api/ml/vendas30dias', async (req, res) => {
 });
 
 app.get('/api/ml/vendas-etiquetas', async (req, res) => {
-  const data = loadData();
+  const data   = loadData();
+  const rawMode = req.query.raw === '1'; // ?raw=1 retorna o shipment bruto do primeiro pedido
   const c    = contaAtiva(data);
   if (!c.access_token) return res.json({ error: 'Não conectado' });
   if (!c.user_id)      return res.json({ error: 'user_id não encontrado' });
@@ -1612,6 +1613,11 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
         })
       );
       resultado.push(...detalhes);
+    }
+
+    if (rawMode && resultado.length > 0) {
+      const primeiro = resultado.find(r => r.shipment) || resultado[0];
+      return res.json({ order: primeiro.order, shipment: primeiro.shipment });
     }
 
     const SUBSTATUS_LABEL = { ready_to_print: 'Baixar', printed: 'Baixar novamente' };
