@@ -4533,39 +4533,6 @@ app.listen(PORT, () => {
   }
 });
 
-// ── Diagnóstico: horários de corte ML ────────────────────────
-app.get('/api/ml/shipping-schedule-debug', async (req, res) => {
-  const data = loadData();
-  const c = contaAtiva(data);
-  if (!c.access_token) return res.json({ error: 'Não conectado' });
-  const headers = { Authorization: `Bearer ${c.access_token}` };
-  const uid = c.user_id;
-  const resultados = {};
-  // Busca shipments de pedidos específicos (xd_drop_off)
-  const orderIds = [2000012739442049, 2000012739251979, 2000012739216865];
-  for (const orderId of orderIds) {
-    try {
-      const or = await axios.get(`https://api.mercadolibre.com/orders/${orderId}`, { headers, timeout: 8000 });
-      const sid = or.data.shipping?.id;
-      if (!sid) { resultados[`order_${orderId}`] = 'sem shipment'; continue; }
-      const sr = await axios.get(`https://api.mercadolibre.com/shipments/${sid}`, { headers, timeout: 8000 });
-      const d = sr.data;
-      resultados[`order_${orderId}_shipment_${sid}`] = {
-        logistic_type: d.logistic_type,
-        status: d.status,
-        substatus: d.substatus,
-        status_history: d.status_history,
-        shipping_option: d.shipping_option,
-        date_created: d.date_created,
-        tags: d.tags,
-      };
-    } catch (e) {
-      resultados[`order_${orderId}_error`] = e.response?.data || e.message;
-    }
-  }
-  res.json(resultados);
-});
-
 // ── Fornecedores (Previsão de Compra) — por conta ─────────────
 
 function getFornecedoresConta(data) {
