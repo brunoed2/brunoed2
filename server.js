@@ -1413,7 +1413,7 @@ async function autoSuperJob() {
       const link   = `${APP_URL}/api/bling/confirmar/${token}`;
       const valor  = (p.valor_total || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
       const texto  = `⚡ Pedido pronto para NF\n\n#${p.numero} — ${p.comprador} — ${valor}\nConta ${conta}\n\nConfirmar emissão:\n${link}\n\n(Link válido por 48h)`;
-      notificarPedido(texto).catch(() => {});
+      notificar(texto).catch(() => {});
       addLog(`[auto-super] notificado pedido ${p.numero} conta ${conta}`, 'ok');
       await new Promise(r => setTimeout(r, 4000));
     }
@@ -1447,7 +1447,7 @@ app.get('/api/bling/confirmar/:token', async (req, res) => {
     saveData(data);
 
     const valorFmt = (valor || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-    notificarPedido(`✅ NF emitida automaticamente\n\n#${numero} — ${comprador} — ${valorFmt}\nConta ${conta}`).catch(() => {});
+    notificar(`✅ NF emitida automaticamente\n\n#${numero} — ${comprador} — ${valorFmt}\nConta ${conta}`).catch(() => {});
     addLog(`[auto-super] NF emitida e enviada: pedido ${numero} conta ${conta}`, 'ok');
     return res.send(autoSuperHtml(true, `Pedido #${numero} — ${comprador}<br>${valorFmt} · Conta ${conta}<br><br>NF gerada e enviada para a SEFAZ.`));
   } catch (err) {
