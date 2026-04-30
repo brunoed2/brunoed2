@@ -4541,25 +4541,29 @@ app.get('/api/ml/shipping-schedule-debug', async (req, res) => {
   const headers = { Authorization: `Bearer ${c.access_token}` };
   const uid = c.user_id;
   const resultados = {};
-  const rotas = [
-    `/users/${uid}/me2/capacity`,
-    `/users/${uid}/me2/cut_off`,
-    `/users/${uid}/me2/cut_off_times`,
-    `/users/${uid}/me2/scheduling`,
-    `/users/${uid}/shipping_time_limits`,
-    `/users/${uid}/me2/time_limits`,
-    `/shipping/carriers/17502440`,
-    `/shipping/carriers/17502440/cut_off`,
-    `/users/${uid}/shipping_carriers`,
-    `/users/${uid}/me2/shipping_schedule`,
-  ];
-  for (const rota of rotas) {
-    try {
-      const r = await axios.get(`https://api.mercadolibre.com${rota}`, { headers, timeout: 8000 });
-      resultados[rota] = { status: r.status, data: r.data };
-    } catch (e) {
-      resultados[rota] = { status: e.response?.status || 'err', data: e.response?.data || e.message };
+  // Busca um pedido pronto pra despachar e mostra dados do shipment
+  try {
+    const ordersResp = await axios.get(`https://api.mercadolibre.com/orders/search`, {
+      params: { seller: uid, 'order.status': 'paid', sort: 'date_desc', limit: 5 },
+      headers, timeout: 10000,
+    });
+    const orders = ordersResp.data.results || [];
+    resultados['orders_sample'] = orders.map(o => ({
+      orderId: o.id,
+      status: o.status,
+      shipmentId: o.shipping?.id,
+      date_created: o.date_created,
+    }));
+
+    // Busca o shipment do primeiro pedido que tiver shipmentId
+    const comShipment = orders.find(o => o.shipping?.id);
+    if (comShipment) {
+      const sid = comShipment.shipping.id;
+      const shipResp = await axios.get(`https://api.mercadolibre.com/shipments/${sid}`, { headers, timeout: 8000 });
+      resultados[`shipments/${sid}`] = shipResp.data;
     }
+  } catch (e) {
+    resultados['orders_error'] = e.response?.data || e.message;
   }
   res.json(resultados);
 });
