@@ -129,32 +129,14 @@ async function carregarPrevisao() {
 
     const hoje = new Date();
     previsaoLinhas = Object.values(porSku).map(s => {
-      const total      = s.full + s.proprio;
-      const vendasDia  = s.vendas30d / 30;
+      const total         = s.full + s.proprio;
+      const vendasDia     = s.vendas30d / 30;
       const diasRestantes = vendasDia > 0 ? Math.round(total / vendasDia) : null;
-
-      const forn     = fornecedores.find(f => f.skus.includes(s.sku)) || null;
-      const leadTime = forn ? forn.leadTimeDias : null;
-
-      let statusNum = 3; let statusLabel = 'OK'; let statusClass = 'prev-ok';
-      let pedirEm = null;
-
-      if (diasRestantes !== null && leadTime !== null) {
-        const diasParaPedir = diasRestantes - leadTime;
-        if (diasRestantes <= leadTime) {
-          statusNum = 1; statusLabel = 'Urgente'; statusClass = 'prev-urgente';
-          pedirEm = 'Agora';
-        } else if (diasRestantes <= Math.round(leadTime * 1.5)) {
-          statusNum = 2; statusLabel = 'Atenção'; statusClass = 'prev-atencao';
-          const dt = new Date(hoje); dt.setDate(dt.getDate() + diasParaPedir);
-          pedirEm = dt.toLocaleDateString('pt-BR');
-        } else {
-          const dt = new Date(hoje); dt.setDate(dt.getDate() + diasParaPedir);
-          pedirEm = dt.toLocaleDateString('pt-BR');
-        }
-      }
-
-      return { ...s, total, vendasDia, diasRestantes, forn, leadTime, statusNum, statusLabel, statusClass, pedirEm };
+      const forn          = fornecedores.find(f => f.skus.includes(s.sku)) || null;
+      const leadTime      = forn ? forn.leadTimeDias : null;
+      const linha         = { ...s, total, vendasDia, diasRestantes, forn, leadTime };
+      calcularStatusLinha(linha);
+      return linha;
     });
 
     // Preenche filtro de fornecedores
@@ -175,6 +157,44 @@ async function carregarPrevisao() {
     erroEl.textContent = 'Erro ao carregar previsão.';
     erroEl.style.display = '';
   }
+}
+
+function calcularStatusLinha(l) {
+  const hoje = new Date();
+  l.statusNum = 3; l.statusLabel = 'OK'; l.statusClass = 'prev-ok'; l.pedirEm = null;
+  if (l.diasRestantes !== null && l.leadTime !== null) {
+    const diasParaPedir = l.diasRestantes - l.leadTime;
+    if (l.diasRestantes <= l.leadTime) {
+      l.statusNum = 1; l.statusLabel = 'Urgente'; l.statusClass = 'prev-urgente'; l.pedirEm = 'Agora';
+    } else if (l.diasRestantes <= Math.round(l.leadTime * 1.5)) {
+      l.statusNum = 2; l.statusLabel = 'Atenção'; l.statusClass = 'prev-atencao';
+      const dt = new Date(hoje); dt.setDate(dt.getDate() + diasParaPedir);
+      l.pedirEm = dt.toLocaleDateString('pt-BR');
+    } else {
+      const dt = new Date(hoje); dt.setDate(dt.getDate() + diasParaPedir);
+      l.pedirEm = dt.toLocaleDateString('pt-BR');
+    }
+  }
+}
+
+async function vincularFornecedor(sku, fornecedorId) {
+  await apiFetch('/api/fornecedores/vincular', {
+    method: 'POST',
+    body: JSON.stringify({ sku, fornecedorId, conta: getContaAtiva() }),
+  });
+  // Atualiza estado local
+  fornecedores.forEach(f => { f.skus = f.skus.filter(s => s !== sku); });
+  if (fornecedorId) {
+    const forn = fornecedores.find(f => f.id === fornecedorId);
+    if (forn && !forn.skus.includes(sku)) forn.skus.push(sku);
+  }
+  const linha = previsaoLinhas.find(l => l.sku === sku);
+  if (linha) {
+    linha.forn     = fornecedores.find(f => f.id === fornecedorId) || null;
+    linha.leadTime = linha.forn?.leadTimeDias || null;
+    calcularStatusLinha(linha);
+  }
+  renderizarPrevisao();
 }
 
 function renderizarPrevisao() {
@@ -211,8 +231,11 @@ function renderizarPrevisao() {
       ? Math.round(l.vendas30d)
       : '<span style="color:#aaa">—</span>';
 
-    const fornHtml = l.forn
-      ? `${esc(l.forn.nome)} <span style="color:#94a3b8;font-size:11px">(${l.leadTime}d)</span>`
+    const fornHtml = l.sku
+      ? `<select class="select-fornecedor-linha" onchange="vincularFornecedor('${l.sku.replace(/'/g,"\\'")}', this.value)">
+          <option value="">—</option>
+          ${fornecedores.map(f => `<option value="${f.id}"${l.forn?.id === f.id ? ' selected' : ''}>${esc(f.nome)}</option>`).join('')}
+        </select>`
       : '<span style="color:#94a3b8">—</span>';
 
     const pedirHtml = !l.pedirEm

@@ -4554,6 +4554,20 @@ app.get('/api/fornecedores', (req, res) => {
   res.json({ fornecedores: lista });
 });
 
+app.post('/api/fornecedores/vincular', (req, res) => {
+  const { sku, fornecedorId, conta } = req.body;
+  if (!sku) return res.status(400).json({ error: 'sku obrigatório' });
+  const data = loadData();
+  const { lista } = getFornecedoresConta(data, conta);
+  lista.forEach(f => { f.skus = f.skus.filter(s => s !== sku); });
+  if (fornecedorId) {
+    const forn = lista.find(f => f.id === fornecedorId);
+    if (forn && !forn.skus.includes(sku)) forn.skus.push(sku);
+  }
+  saveData(data);
+  res.json({ ok: true });
+});
+
 app.post('/api/fornecedores', (req, res) => {
   const { nome, leadTimeDias, skus, conta } = req.body;
   if (!nome || !leadTimeDias) return res.status(400).json({ error: 'nome e leadTimeDias obrigatórios' });
