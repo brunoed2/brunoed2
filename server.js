@@ -2733,6 +2733,25 @@ app.get('/api/ml/debug-shipment/:sid', async (req, res) => {
   } catch (err) { res.json({ error: err.message }); }
 });
 
+// Debug — shipment completo + lead_time para encontrar campo de corte/prazo
+app.get('/api/ml/debug-shipment-full/:sid', async (req, res) => {
+  const data = loadData();
+  const num  = req.query.conta || data.conta_ativa;
+  const c    = data.contas[num];
+  if (!c?.access_token) return res.json({ error: 'Não conectado' });
+  const headers = { Authorization: `Bearer ${c.access_token}` };
+  try {
+    const [rShip, rLead] = await Promise.allSettled([
+      axios.get(`https://api.mercadolibre.com/shipments/${req.params.sid}`,           { headers, timeout: 10000 }),
+      axios.get(`https://api.mercadolibre.com/shipments/${req.params.sid}/lead_time`, { headers, timeout: 10000 }),
+    ]);
+    res.json({
+      shipment:  rShip.status  === 'fulfilled' ? rShip.value.data   : { error: rShip.reason?.message },
+      lead_time: rLead.status  === 'fulfilled' ? rLead.value.data   : { error: rLead.reason?.message },
+    });
+  } catch (err) { res.json({ error: err.message }); }
+});
+
 // Debug — inspeciona custo do shipment a partir do order_id
 app.get('/api/ml/debug-order-shipment/:order_id', async (req, res) => {
   const data = loadData();
