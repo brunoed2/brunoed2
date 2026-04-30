@@ -448,6 +448,21 @@ async function carregarEstoque(reiniciar = false) {
 
 // ── Vendas com etiqueta ───────────────────────────────────────
 
+function formatarPrazo(iso) {
+  if (!iso) return '<span style="color:#aaa">—</span>';
+  const prazo = new Date(iso);
+  const diff  = prazo - Date.now();
+  const h     = diff / 3_600_000;
+  const d     = String(prazo.getDate()).padStart(2, '0');
+  const mo    = String(prazo.getMonth() + 1).padStart(2, '0');
+  const hh    = String(prazo.getHours()).padStart(2, '0');
+  const mi    = String(prazo.getMinutes()).padStart(2, '0');
+  const txt   = `${d}/${mo} ${hh}:${mi}`;
+  if (h < 2)  return `<span style="color:#dc2626;font-weight:700">${txt}</span>`;
+  if (h < 6)  return `<span style="color:#d97706;font-weight:600">${txt}</span>`;
+  return txt;
+}
+
 const vendaCache = {}; // shipmentId → dados completos da venda
 
 const BADGE_VENDA_STATUS = {
@@ -653,6 +668,7 @@ async function carregarVendas() {
         <td class="td-sku">${item0.sku || '—'}</td>
         <td class="td-titulo" title="${item0.titulo || ''}${item0.variacao ? ` (${item0.variacao})` : ''}">${item0.titulo || '—'}${item0.variacao ? `<br><span class="venda-variacao">${item0.variacao}</span>` : ''}</td>
         <td><span class="badge-deposito ${bStatus}">${v.statusLabel}</span></td>
+        <td class="col-num" style="white-space:nowrap;font-size:12px">${formatarPrazo(v.prazoDespacho)}</td>
         <td><a class="btn-etiqueta" href="/api/ml/etiqueta/${v.shipmentId}?conta=${v.conta}" target="_blank">${v.acaoLabel}</a></td>
         <td><button class="${flagClass}" data-sid="${v.shipmentId}" title="${flagTitle}" onclick="toggleFlag('${v.shipmentId}', this)">✔</button></td>
       `;
@@ -675,7 +691,7 @@ async function carregarVendas() {
           <td class="col-num venda-qtd">${item.quantidade ?? ''}</td>
           <td class="td-sku">${item.sku || '—'}</td>
           <td class="td-titulo" title="${item.titulo || ''}${item.variacao ? ` (${item.variacao})` : ''}">${item.titulo || '—'}${item.variacao ? `<span class="venda-variacao"> — ${item.variacao}</span>` : ''}</td>
-          <td colspan="3"></td>
+          <td colspan="4"></td>
         `;
         tbody.appendChild(trSub);
       }
