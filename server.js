@@ -4541,26 +4541,46 @@ app.get('/api/ml/shipping-schedule-debug', async (req, res) => {
   const headers = { Authorization: `Bearer ${c.access_token}` };
   const uid = c.user_id;
   const resultados = {};
-  // Busca um pedido pronto pra despachar e mostra dados do shipment
+  // Busca shipments xd_drop_off (estoque próprio) para achar campos de deadline
   try {
+    // Busca pedidos recentes em lote maior para achar um xd_drop_off
     const ordersResp = await axios.get(`https://api.mercadolibre.com/orders/search`, {
-      params: { seller: uid, 'order.status': 'paid', sort: 'date_desc', limit: 5 },
+      params: { seller: uid, 'order.status': 'paid', sort: 'date_desc', limit: 20 },
       headers, timeout: 10000,
     });
     const orders = ordersResp.data.results || [];
-    resultados['orders_sample'] = orders.map(o => ({
-      orderId: o.id,
-      status: o.status,
-      shipmentId: o.shipping?.id,
-      date_created: o.date_created,
-    }));
+    const shipmentIds = orders.filter(o => o.shipping?.id).map(o => o.shipping.id);
+    resultados['total_orders'] = orders.length;
 
-    // Busca o shipment do primeiro pedido que tiver shipmentId
-    const comShipment = orders.find(o => o.shipping?.id);
-    if (comShipment) {
-      const sid = comShipment.shipping.id;
-      const shipResp = await axios.get(`https://api.mercadolibre.com/shipments/${sid}`, { headers, timeout: 8000 });
-      resultados[`shipments/${sid}`] = shipResp.data;
+    // Busca os shipments em batch para achar um xd_drop_off
+    let xdShipmentId = null;
+    let fulShipmentId = null;
+    for (const sid of shipmentIds.slice(0, 10)) {
+      const sr = await axios.get(`https://api.mercadolibre.com/shipments/${sid}`, { headers, timeout: 8000 });
+      const lt = sr.data.logistic_type;
+      if (lt === 'xd_drop_off' && !xdShipmentId) xdShipmentId = sid;
+      if (lt === 'fulfillment'  && !fulShipmentId) fulShipmentId = sid;
+      if (xdShipmentId) break;
+    }
+
+    if (xdShipmentId) {
+      const sr = await axios.get(`https://api.mercadolibre.com/shipments/${xdShipmentId}`, { headers, timeout: 8000 });
+      // Mostra só os campos relevantes de datas/prazos
+      const d = sr.data;
+      resultados['xd_drop_off_shipment'] = {
+        id: d.id,
+        status: d.status,
+        substatus: d.substatus,
+        logistic_type: d.logistic_type,
+        status_history: d.status_history,
+        shipping_option: d.shipping_option,
+        date_created: d.date_created,
+        last_updated: d.last_updated,
+        tags: d.tags,
+        priority_class: d.priority_class,
+      };
+    } else {
+      resultados['xd_drop_off_shipment'] = 'nenhum encontrado nos últimos 10 pedidos';
     }
   } catch (e) {
     resultados['orders_error'] = e.response?.data || e.message;
