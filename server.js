@@ -2733,21 +2733,26 @@ app.get('/api/ml/debug-shipment/:sid', async (req, res) => {
   } catch (err) { res.json({ error: err.message }); }
 });
 
-// Debug — shipment completo + lead_time para encontrar campo de corte/prazo
-app.get('/api/ml/debug-shipment-full/:sid', async (req, res) => {
+// Debug — shipment completo + lead_time a partir do order_id
+app.get('/api/ml/debug-prazo/:order_id', async (req, res) => {
   const data = loadData();
   const num  = req.query.conta || data.conta_ativa;
   const c    = data.contas[num];
   if (!c?.access_token) return res.json({ error: 'Não conectado' });
   const headers = { Authorization: `Bearer ${c.access_token}` };
   try {
+    const order = await axios.get(`https://api.mercadolibre.com/orders/${req.params.order_id}`, { headers, timeout: 10000 }).then(r => r.data);
+    const sid   = order.shipping?.id;
+    if (!sid) return res.json({ error: 'Pedido sem shipment' });
     const [rShip, rLead] = await Promise.allSettled([
-      axios.get(`https://api.mercadolibre.com/shipments/${req.params.sid}`,           { headers, timeout: 10000 }),
-      axios.get(`https://api.mercadolibre.com/shipments/${req.params.sid}/lead_time`, { headers, timeout: 10000 }),
+      axios.get(`https://api.mercadolibre.com/shipments/${sid}`,           { headers, timeout: 10000 }),
+      axios.get(`https://api.mercadolibre.com/shipments/${sid}/lead_time`, { headers, timeout: 10000 }),
     ]);
     res.json({
-      shipment:  rShip.status  === 'fulfilled' ? rShip.value.data   : { error: rShip.reason?.message },
-      lead_time: rLead.status  === 'fulfilled' ? rLead.value.data   : { error: rLead.reason?.message },
+      order_id:  req.params.order_id,
+      shipment_id: sid,
+      shipment:  rShip.status === 'fulfilled' ? rShip.value.data : { error: rShip.reason?.message },
+      lead_time: rLead.status === 'fulfilled' ? rLead.value.data : { error: rLead.reason?.message },
     });
   } catch (err) { res.json({ error: err.message }); }
 });
