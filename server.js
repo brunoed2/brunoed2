@@ -1615,11 +1615,6 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
       resultado.push(...detalhes);
     }
 
-    if (rawMode && resultado.length > 0) {
-      const primeiro = resultado.find(r => r.shipment) || resultado[0];
-      return res.json({ order: primeiro.order, shipment: primeiro.shipment });
-    }
-
     const SUBSTATUS_LABEL = { ready_to_print: 'Baixar', printed: 'Baixar novamente' };
     const STATUS_PT = {
       handling:      'Preparando',
@@ -1775,7 +1770,9 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
       saveData(data);
     }
 
-    res.json({ vendas });
+    // Campo _debug_shipment: inclui o objeto bruto do primeiro shipment para inspeção via DevTools
+    const primeiroRaw = filtradas[0]?.shipment || null;
+    res.json({ vendas, _debug_shipment: primeiroRaw });
   } catch (err) {
     console.error('Erro ao buscar vendas com etiqueta:', err.response?.data || err.message);
     res.json({ error: 'Erro ao buscar vendas.' });
