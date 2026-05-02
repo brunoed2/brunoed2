@@ -1976,6 +1976,71 @@ app.delete('/api/vendas/atendidas-batch', async (req, res) => {
 
 // ── Promoções ──────────────────────────────────────────────────
 
+// Cache de frete médio por SKU (TTL 1h por conta)
+const _fretePorSkuCache = {};
+
+async function calcFretePorSku(data, c) {
+  const num    = String(data.conta_ativa || '1');
+  const cached = _fretePorSkuCache[num];
+  if (cached && Date.now() - cached.ts < 3600000) return cached.data;
+
+  const headers  = { Authorization: `Bearer ${c.access_token}` };
+  const dateFrom = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+  // Busca últimos 30 dias de pedidos pagos (max 200)
+  let ordens = [];
+  let off = 0;
+  while (ordens.length < 200) {
+    try {
+      const resp = await axios.get('https://api.mercadolibre.com/orders/search', {
+        params: { seller: c.user_id, 'order.status': 'paid', sort: 'date_desc', limit: 50, offset: off,
+                  'order.date_created.from': dateFrom + 'T00:00:00.000-03:00' },
+        headers, timeout: 15000,
+      });
+      const results = resp.data.results || [];
+      ordens = ordens.concat(results);
+      if (results.length < 50) break;
+      off += 50;
+    } catch { break; }
+  }
+
+  // Custo de frete por shipment
+  const shipIds = [...new Set(ordens.map(o => o.shipping?.id).filter(Boolean))];
+  const fretePorShipment = {};
+  for (let i = 0; i < shipIds.length; i += 25) {
+    await Promise.all(shipIds.slice(i, i + 25).map(async sid => {
+      try {
+        const r = await axios.get(`https://api.mercadolibre.com/shipments/${sid}/costs`, { headers, timeout: 8000 });
+        const senders = r.data?.senders || [];
+        const sender  = senders.find(sv => sv.user_id == c.user_id) || senders[0];
+        fretePorShipment[sid] = sender?.cost ?? 0;
+      } catch { fretePorShipment[sid] = 0; }
+    }));
+  }
+
+  // Agrupa frete por SKU
+  const acc = {};
+  for (const order of ordens) {
+    const frete = fretePorShipment[order.shipping?.id] ?? 0;
+    for (const oi of (order.order_items || [])) {
+      const sku = oi.item?.seller_sku;
+      if (!sku) continue;
+      if (!acc[sku]) acc[sku] = { sum: 0, n: 0 };
+      acc[sku].sum += frete;
+      acc[sku].n++;
+    }
+  }
+
+  const result = {};
+  for (const [sku, { sum, n }] of Object.entries(acc)) {
+    result[sku] = n > 0 ? sum / n : 0;
+  }
+
+  _fretePorSkuCache[num] = { ts: Date.now(), data: result };
+  addLog(`[promos] frete por SKU calculado: ${Object.keys(result).length} SKUs`, 'info');
+  return result;
+}
+
 const PROMO_TIPO_LABEL_SERVER = {
   SMART:          'Oferta Inteligente',
   DOD:            'Oferta do Dia',
@@ -2178,10 +2243,12 @@ app.get('/api/ml/promocoes', async (req, res) => {
 
     const numConta = String(data.conta_ativa || '1');
     const lc = (data.lucro_contas || {})[numConta] || {};
+    const fretePorSku = await calcFretePorSku(data, c).catch(() => ({}));
     const lucroConfig = {
-      taxa_imposto: lc.taxa_imposto ?? 0,
-      frete_medio:  lc.frete_medio  ?? 0,
-      custos:       lc.custos       || {},
+      taxa_imposto:  lc.taxa_imposto ?? 0,
+      frete_medio:   lc.frete_medio  ?? 0,
+      frete_por_sku: fretePorSku,
+      custos:        lc.custos       || {},
     };
     return res.json({ itens, lucroConfig, fonte: 'per-item-v2' });
 
