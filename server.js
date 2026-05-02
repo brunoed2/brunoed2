@@ -1183,17 +1183,18 @@ async function fetchBlingPedidosPendentes(conta) {
   const itens = resp.data?.data || [];
   addLog(`[bling] conta ${conta}: ${itens.length} pedidos encontrados`, 'info');
 
-  // Busca detalhe de cada pedido para obter o numeroLoja correto
+  // Busca detalhe de cada pedido para obter o numeroLoja correto e os itens
   const itensDetalhados = [];
   for (const p of itens) {
-    let numeroLojaCorreto = null;
-    for (let tentativa = 0; tentativa < 3 && !numeroLojaCorreto; tentativa++) {
+    let detalhe = null;
+    for (let tentativa = 0; tentativa < 3 && !detalhe; tentativa++) {
       if (tentativa > 0) await new Promise(r => setTimeout(r, 600 * tentativa));
-      numeroLojaCorreto = await axios.get(`https://www.bling.com.br/Api/v3/pedidos/vendas/${p.id}`, {
+      detalhe = await axios.get(`https://www.bling.com.br/Api/v3/pedidos/vendas/${p.id}`, {
         headers: { Authorization: `Bearer ${token}` }, timeout: 10000,
-      }).then(r => r.data?.data?.numeroLoja || null).catch(() => null);
+      }).then(r => r.data?.data || null).catch(() => null);
     }
-    itensDetalhados.push({ ...p, numeroLoja: numeroLojaCorreto || p.numeroLoja });
+    const produtos = (detalhe?.itens || []).map(i => `${i.descricao}${i.quantidade > 1 ? ` (x${i.quantidade})` : ''}`);
+    itensDetalhados.push({ ...p, numeroLoja: detalhe?.numeroLoja || p.numeroLoja, produtos });
   }
 
   // Verifica no ML quais têm shipment ready_to_ship (etiqueta disponível ao emitir NF)
@@ -1242,6 +1243,7 @@ async function fetchBlingPedidosPendentes(conta) {
     situacao:         p.situacao?.valor || 'Em aberto',
     numeroPedidoLoja: p.numeroLoja || null,
     dataPrevista:     p.dataPrevista || null,
+    produtos:         p.produtos || [],
     temEtiqueta:      mlTokens.length > 0 ? idsComEtiqueta.has(p.id) : true,
     conta,
   }));
@@ -1404,15 +1406,16 @@ async function autoSuperJob() {
       const token = crypto.randomBytes(24).toString('hex');
       data.auto_super_tokens[token] = {
         pedidoId: String(p.id), conta, comprador: p.comprador,
-        valor: p.valor_total, numero: p.numero,
+        valor: p.valor_total, numero: p.numero, produtos: p.produtos || [],
         expiresAt: agora + 48 * 3600_000,
       };
       data.auto_super_notificados[chave] = agora;
       changed = true;
 
-      const link   = `${APP_URL}/api/bling/confirmar/${token}`;
-      const valor  = (p.valor_total || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-      const texto  = `⚡ Pedido pronto para NF\n\n#${p.numero} — ${p.comprador} — ${valor}\nConta ${conta}\n\nConfirmar emissão:\n${link}\n\n(Link válido por 48h)`;
+      const link    = `${APP_URL}/api/bling/confirmar/${token}`;
+      const valor   = (p.valor_total || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+      const prods   = (p.produtos || []).join('\n• ');
+      const texto   = `⚡ Pedido pronto para NF\n\n#${p.numero} — ${p.comprador} — ${valor}\nConta ${conta}${prods ? `\n\n• ${prods}` : ''}\n\nConfirmar emissão:\n${link}\n\n(Link válido por 48h)`;
       notificar(texto).catch(() => {});
       addLog(`[auto-super] notificado pedido ${p.numero} conta ${conta}`, 'ok');
       await new Promise(r => setTimeout(r, 4000));
