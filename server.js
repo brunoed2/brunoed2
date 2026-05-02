@@ -1999,21 +1999,29 @@ app.get('/api/ml/promocoes/debug', async (req, res) => {
     }
   }
 
-  const r = {};
-  // seller-promotions sem seller_id (usa token para identificar)
-  r['seller-promotions/promotions-sem-seller_id'] = await testar(`https://api.mercadolibre.com/seller-promotions/promotions`, { status: 'candidate', limit: 5 });
-  r['seller-promotions/promotions?candidate']     = await testar(`https://api.mercadolibre.com/seller-promotions/promotions`, { seller_id: uid, status: 'candidate', limit: 5 });
-  r['seller-promotions/promotions?started']       = await testar(`https://api.mercadolibre.com/seller-promotions/promotions`, { seller_id: uid, status: 'started', limit: 5 });
-  r['seller-promotions/promotions?paused']        = await testar(`https://api.mercadolibre.com/seller-promotions/promotions`, { seller_id: uid, status: 'paused', limit: 5 });
-  r['seller-promotions/promotions?finished']      = await testar(`https://api.mercadolibre.com/seller-promotions/promotions`, { seller_id: uid, status: 'finished', limit: 5 });
-  // variações com site_id
-  r['seller-promotions/promotions?site=MLB']      = await testar(`https://api.mercadolibre.com/seller-promotions/promotions`, { seller_id: uid, site_id: 'MLB', limit: 5 });
-  // users/{id}/seller-promotions
-  r['users/{id}/seller-promotions']               = await testar(`https://api.mercadolibre.com/users/${uid}/seller-promotions`, { limit: 5 });
-  // campaings
-  r['seller-promotions/campaigns']                = await testar(`https://api.mercadolibre.com/seller-promotions/campaigns`, { seller_id: uid, limit: 5 });
+  // Pega um item ativo para testar endpoints por item
+  let primeiroItemId = null;
+  try {
+    const ri = await axios.get(`https://api.mercadolibre.com/users/${uid}/items/search`, {
+      params: { status: 'active', limit: 1 }, headers: h, timeout: 8000,
+    });
+    primeiroItemId = ri.data?.results?.[0] || null;
+  } catch {}
 
-  res.json({ user_id: uid, r });
+  const r = {};
+  r['seller-promotions/promotions?candidate']  = await testar(`https://api.mercadolibre.com/seller-promotions/promotions`, { seller_id: uid, status: 'candidate', limit: 5 });
+  r['seller-promotions/promotions?started']    = await testar(`https://api.mercadolibre.com/seller-promotions/promotions`, { seller_id: uid, status: 'started',   limit: 5 });
+  r['seller-promotions/promotions?active']     = await testar(`https://api.mercadolibre.com/seller-promotions/promotions`, { seller_id: uid, status: 'active',    limit: 5 });
+  r['seller-promotions/promotions?paused']     = await testar(`https://api.mercadolibre.com/seller-promotions/promotions`, { seller_id: uid, status: 'paused',    limit: 5 });
+  r['seller-promotions/promotions (sem status)'] = await testar(`https://api.mercadolibre.com/seller-promotions/promotions`, { seller_id: uid, limit: 5 });
+  r['seller-promotions/campaigns']             = await testar(`https://api.mercadolibre.com/seller-promotions/campaigns`,  { seller_id: uid, limit: 5 });
+
+  if (primeiroItemId) {
+    r[`seller-promotions/items/${primeiroItemId}`] = await testar(`https://api.mercadolibre.com/seller-promotions/items/${primeiroItemId}`);
+    r[`items/${primeiroItemId} (promotions field)`] = await testar(`https://api.mercadolibre.com/items/${primeiroItemId}`, { attributes: 'id,title,promotions,deal_ids,original_price,price' });
+  }
+
+  res.json({ user_id: uid, primeiro_item: primeiroItemId, r });
 });
 
 app.get('/api/ml/promocoes', async (req, res) => {
