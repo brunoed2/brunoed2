@@ -1977,9 +1977,16 @@ app.delete('/api/vendas/atendidas-batch', async (req, res) => {
 // ── Promoções ──────────────────────────────────────────────────
 
 const PROMO_TIPO_LABEL_SERVER = {
-  DEAL: 'Deal do Dia', LIGHTNING_DEAL: 'Oferta Relâmpago',
-  PRICE_DISCOUNT: 'Desconto de Preço', FREE_SHIPPING: 'Frete Grátis',
-  DEAL_OF_THE_DAY: 'Oferta do Dia', SPECIAL_PRICE: 'Preço Especial',
+  SMART:          'Oferta Inteligente',
+  DOD:            'Oferta do Dia',
+  DEAL:           'Deal do Dia',
+  LIGHTNING_DEAL: 'Oferta Relâmpago',
+  PRICE_DISCOUNT: 'Desconto de Preço',
+  FREE_SHIPPING:  'Frete Grátis',
+  DEAL_OF_THE_DAY:'Oferta do Dia',
+  SPECIAL_PRICE:  'Preço Especial',
+  REBATE:         'Saia na Frente',
+  FEE_REDUCTION:  'Redução de Tarifa',
 };
 
 // Debug temporário — testa vários endpoints possíveis de promoções ML
@@ -2032,6 +2039,25 @@ app.get('/api/ml/promocoes/debug', async (req, res) => {
   }
 
   res.json({ user_id: uid, primeiro_item: primeiroItemId, r });
+});
+
+// Debug: retorna resposta bruta da API de promoções para um item específico
+app.get('/api/ml/promocoes/debug-item', async (req, res) => {
+  const { mlb } = req.query;
+  if (!mlb) return res.json({ error: 'mlb obrigatório' });
+  const data = loadData();
+  const c    = contaAtiva(data);
+  if (!c.access_token) return res.json({ error: 'Não conectado' });
+  try {
+    const r = await axios.get(`https://api.mercadolibre.com/seller-promotions/items/${mlb}`, {
+      params: { app_version: 'v2' },
+      headers: { Authorization: `Bearer ${c.access_token}` },
+      timeout: 10000, validateStatus: () => true,
+    });
+    res.json({ status: r.status, data: r.data });
+  } catch (err) {
+    res.json({ error: err.message });
+  }
 });
 
 app.get('/api/ml/promocoes', async (req, res) => {
@@ -2114,7 +2140,7 @@ app.get('/api/ml/promocoes', async (req, res) => {
             }
             return {
               id:           promo.id   || null,
-              nome:         promo.name || (promo.type === 'PRICE_DISCOUNT' ? 'Desconto de Preço' : promo.id || '—'),
+              nome:         promo.name || PROMO_TIPO_LABEL_SERVER[promo.type] || promo.type || '—',
               tipo:         promo.type || 'PRICE_DISCOUNT',
               precoPromo,
               precoOriginal: promo.original_price || null,
