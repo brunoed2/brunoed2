@@ -2093,18 +2093,19 @@ app.get('/api/ml/promocoes', async (req, res) => {
     await Promise.all(detChunks.map(async chunk => {
       try {
         const r = await axios.get('https://api.mercadolibre.com/items', {
-          params: { ids: chunk.join(','), attributes: 'id,title,thumbnail,price,seller_custom_field,permalink,attributes,variations' },
+          params: { ids: chunk.join(','), attributes: 'id,title,thumbnail,price,listing_type_id,seller_custom_field,permalink,attributes,variations' },
           headers, timeout: 12000,
         });
         for (const e of (r.data || [])) {
           if (e.code !== 200) continue;
           const b = e.body;
           itemDetails[b.id] = {
-            titulo:    b.title,
-            thumbnail: b.thumbnail?.replace(/-[A-Z]\.jpg/, '-O.jpg') || null,
-            preco:     b.price,
-            sku:       extrairSku(b) || '—',
-            permalink: b.permalink || null,
+            titulo:      b.title,
+            thumbnail:   b.thumbnail?.replace(/-[A-Z]\.jpg/, '-O.jpg') || null,
+            preco:       b.price,
+            sku:         extrairSku(b) || '—',
+            permalink:   b.permalink || null,
+            listingType: b.listing_type_id || null,
           };
         }
       } catch {}
@@ -2155,12 +2156,13 @@ app.get('/api/ml/promocoes', async (req, res) => {
           });
 
           resultMap[itemId] = {
-            mlb:       itemId,
-            titulo:    info.titulo    || '—',
-            thumbnail: info.thumbnail || null,
-            sku:       info.sku       || '—',
-            permalink: info.permalink || null,
-            precoAtual: info.preco   ?? null,
+            mlb:        itemId,
+            titulo:     info.titulo      || '—',
+            thumbnail:  info.thumbnail   || null,
+            sku:        info.sku         || '—',
+            permalink:  info.permalink   || null,
+            precoAtual: info.preco       ?? null,
+            listingType: info.listingType || null,
             promocoes,
           };
         } catch {}
@@ -2174,7 +2176,14 @@ app.get('/api/ml/promocoes', async (req, res) => {
       return res.json({ itens: [], erroApi: `Nenhuma promoção disponível para os ${itemIds.length} itens ativos` });
     }
 
-    return res.json({ itens, fonte: 'per-item-v2' });
+    const numConta = String(data.conta_ativa || '1');
+    const lc = (data.lucro_contas || {})[numConta] || {};
+    const lucroConfig = {
+      taxa_imposto: lc.taxa_imposto ?? 0,
+      frete_medio:  lc.frete_medio  ?? 0,
+      custos:       lc.custos       || {},
+    };
+    return res.json({ itens, lucroConfig, fonte: 'per-item-v2' });
 
   } catch (err) {
     console.error('Promoções:', err.response?.data || err.message);

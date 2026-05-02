@@ -14,6 +14,37 @@ function promoFormatarPreco(v) {
   return Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
+// Taxa ML estimada por tipo de anúncio (% sobre preço + R$6 fixo acima de R$79)
+const TAXA_ML_PCT = {
+  gold_special:  0.11,
+  gold_pro:      0.16,
+  gold_premium:  0.16,
+  gold_extra:    0.09,
+  gold:          0.11,
+  silver:        0.06,
+  bronze:        0.06,
+  free:          0.00,
+};
+function promoTaxaML(preco, listingType) {
+  const pct  = TAXA_ML_PCT[listingType] ?? 0.11;
+  const fixo = preco >= 79 ? 6 : 0;
+  return preco * pct + fixo;
+}
+function promoCalcMargem(preco, sku, listingType, lucroConfig) {
+  if (!preco || preco <= 0 || !lucroConfig) return null;
+  const custo   = (lucroConfig.custos[sku] || 0);
+  const taxaML  = promoTaxaML(preco, listingType);
+  const frete   = lucroConfig.frete_medio || 0;
+  const imposto = preco * ((lucroConfig.taxa_imposto || 0) / 100);
+  const lucro   = preco - taxaML - frete - custo - imposto;
+  return (lucro / preco) * 100;
+}
+function promoFmtMargem(pct) {
+  if (pct == null) return { html: '—', cor: '' };
+  const cor = pct >= 10 ? '#16a34a' : pct >= 0 ? '#d97706' : '#dc2626';
+  return { html: `<span style="font-weight:600;color:${cor}">${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%</span>`, cor };
+}
+
 async function carregarPromocoes() {
   const loadingEl = document.getElementById('promocoes-loading');
   const erroEl    = document.getElementById('promocoes-erro');
@@ -35,7 +66,8 @@ async function carregarPromocoes() {
       return;
     }
 
-    const itens = d.itens || [];
+    const itens       = d.itens       || [];
+    const lucroConfig = d.lucroConfig || null;
     const totalPromos = itens.reduce((s, i) => s + i.promocoes.length, 0);
 
     if (!itens.length) {
@@ -65,6 +97,8 @@ async function carregarPromocoes() {
           <th class="col-num">Preço promo</th>
           <th class="col-num">% Seller</th>
           <th class="col-num">% Meli</th>
+          <th class="col-num" title="Margem atual estimada (taxa ML, custo, frete médio e imposto)">Margem</th>
+          <th class="col-num" title="Margem estimada se participar da promoção">c/ promo</th>
           <th>Status</th>
           <th></th>
         </tr>
@@ -163,6 +197,23 @@ async function carregarPromocoes() {
           ? `<span style="color:#2563eb;font-weight:500">${promo.meliPct}%</span>`
           : '—';
         tr.appendChild(tdMeli);
+
+        // Margem atual (rowspan = n, só na 1ª linha do item)
+        if (idx === 0) {
+          const mAtual   = promoCalcMargem(item.precoAtual, item.sku, item.listingType, lucroConfig);
+          const tdMargem = document.createElement('td');
+          tdMargem.className = 'col-num';
+          tdMargem.rowSpan   = n;
+          tdMargem.innerHTML = promoFmtMargem(mAtual).html;
+          tr.appendChild(tdMargem);
+        }
+
+        // Margem com promoção (uma por linha)
+        const mPromo    = promoCalcMargem(promo.precoPromo, item.sku, item.listingType, lucroConfig);
+        const tdMargemP = document.createElement('td');
+        tdMargemP.className = 'col-num';
+        tdMargemP.innerHTML = promoFmtMargem(mPromo).html;
+        tr.appendChild(tdMargemP);
 
         // Status
         const tdStatus = document.createElement('td');
