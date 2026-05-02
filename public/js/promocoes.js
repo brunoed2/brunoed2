@@ -32,17 +32,20 @@ function promoTaxaML(preco, listingType) {
 }
 function promoCalcMargem(preco, sku, listingType, lucroConfig) {
   if (!preco || preco <= 0 || !lucroConfig) return null;
-  const custo   = (lucroConfig.custos[sku] || 0);
+  const custo   = lucroConfig.custos[sku] || 0;
   const taxaML  = promoTaxaML(preco, listingType);
   const frete   = lucroConfig.frete_medio || 0;
   const imposto = preco * ((lucroConfig.taxa_imposto || 0) / 100);
   const lucro   = preco - taxaML - frete - custo - imposto;
-  return (lucro / preco) * 100;
+  return { pct: (lucro / preco) * 100, lucroR: lucro };
 }
-function promoFmtMargem(pct) {
-  if (pct == null) return { html: '—', cor: '' };
+function promoFmtMargem(resultado) {
+  if (resultado == null) return '—';
+  const { pct, lucroR } = resultado;
   const cor = pct >= 10 ? '#16a34a' : pct >= 0 ? '#d97706' : '#dc2626';
-  return { html: `<span style="font-weight:600;color:${cor}">${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%</span>`, cor };
+  const pctStr  = `${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%`;
+  const reaisStr = lucroR.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  return `<span style="font-weight:600;color:${cor}">${pctStr}</span><br><span style="font-size:11px;color:${cor}">${reaisStr}</span>`;
 }
 
 async function carregarPromocoes() {
@@ -81,6 +84,13 @@ async function carregarPromocoes() {
     }
 
     totalEl.textContent = `${itens.length} anúncio${itens.length !== 1 ? 's' : ''} com promoção disponível (${totalPromos} oportunidade${totalPromos !== 1 ? 's' : ''})`;
+
+    if (lucroConfig && !lucroConfig.frete_medio) {
+      const aviso = document.createElement('div');
+      aviso.style.cssText = 'background:#fefce8;border:1px solid #fde047;border-radius:6px;padding:8px 12px;margin-bottom:12px;font-size:12px;color:#854d0e';
+      aviso.textContent = '⚠ Frete médio não configurado em Lucro → configure para que a margem estimada inclua o custo de envio.';
+      listaEl.appendChild(aviso);
+    }
 
     const table = document.createElement('table');
     table.className = 'tabela';
