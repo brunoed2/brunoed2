@@ -1981,7 +1981,7 @@ const PROMO_TIPO_LABEL_SERVER = {
   DOD:            'Oferta do Dia',
   DEAL:           'Deal do Dia',
   LIGHTNING_DEAL: 'Oferta Relâmpago',
-  PRICE_DISCOUNT: 'Desconto de Preço',
+  PRICE_DISCOUNT: 'Saia na Frente',
   FREE_SHIPPING:  'Frete Grátis',
   DEAL_OF_THE_DAY:'Oferta do Dia',
   SPECIAL_PRICE:  'Preço Especial',
@@ -2127,8 +2127,9 @@ app.get('/api/ml/promocoes', async (req, res) => {
 
           const promocoes = r.data.map(promo => {
             let precoPromo = null, descontoMin = null, descontoMax = null;
-            if (promo.type === 'PRICE_DISCOUNT') {
-              precoPromo = promo.suggested_discounted_price || promo.max_discounted_price || null;
+            const usaFaixa = ['PRICE_DISCOUNT', 'DOD', 'DEAL'].includes(promo.type);
+            if (usaFaixa) {
+              precoPromo = promo.suggested_discounted_price || promo.max_discounted_price || (promo.price > 0 ? promo.price : null) || null;
               const orig = promo.original_price;
               if (orig) {
                 if (promo.max_discounted_price) descontoMin = Math.round((1 - promo.max_discounted_price / orig) * 100);

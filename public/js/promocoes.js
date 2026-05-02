@@ -2,9 +2,10 @@
 
 const PROMO_TIPO_LABEL = {
   SMART:          'Oferta Inteligente',
-  PRICE_DISCOUNT: 'Desconto de Preço',
+  DOD:            'Oferta do Dia',
   DEAL:           'Deal do Dia',
   LIGHTNING_DEAL: 'Oferta Relâmpago',
+  PRICE_DISCOUNT: 'Saia na Frente',
   FREE_SHIPPING:  'Frete Grátis',
 };
 
@@ -75,6 +76,7 @@ async function carregarPromocoes() {
 
     itens.forEach(item => {
       const n = item.promocoes.length;
+      const FAIXA_TIPOS = new Set(['PRICE_DISCOUNT', 'DOD', 'DEAL']);
 
       const imgHtml = item.thumbnail
         ? `<a href="${item.permalink || '#'}" target="_blank"><img src="${item.thumbnail}" class="venda-thumb" loading="lazy"></a>`
@@ -86,7 +88,7 @@ async function carregarPromocoes() {
 
       item.promocoes.forEach((promo, idx) => {
         const tr = document.createElement('tr');
-        const isPD = promo.tipo === 'PRICE_DISCOUNT';
+        const isPD = FAIXA_TIPOS.has(promo.tipo);
 
         // Colunas fixas do item — só na primeira linha (rowspan)
         if (idx === 0) {
@@ -169,9 +171,9 @@ async function carregarPromocoes() {
           : `<span class="badge-deposito" style="background:#f1f5f9;color:#64748b;font-size:11px">Candidata</span>`;
         tr.appendChild(tdStatus);
 
-        // Ação
+        // Ação — qualquer tipo com promotion_id pode participar
         const tdAcao = document.createElement('td');
-        if (!isPD && promo.id) {
+        if (promo.id) {
           if (promo.participando) {
             tdAcao.innerHTML = `<button class="btn-sm" disabled style="opacity:.5;cursor:default">✓ Inscrito</button>`;
           } else {
