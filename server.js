@@ -2067,7 +2067,7 @@ app.get('/api/ml/promocoes', async (req, res) => {
     await Promise.all(detChunks.map(async chunk => {
       try {
         const r = await axios.get('https://api.mercadolibre.com/items', {
-          params: { ids: chunk.join(','), attributes: 'id,title,thumbnail,price,seller_custom_field,permalink' },
+          params: { ids: chunk.join(','), attributes: 'id,title,thumbnail,price,seller_custom_field,permalink,attributes,variations' },
           headers, timeout: 12000,
         });
         for (const e of (r.data || [])) {
@@ -2077,7 +2077,7 @@ app.get('/api/ml/promocoes', async (req, res) => {
             titulo:    b.title,
             thumbnail: b.thumbnail?.replace(/-[A-Z]\.jpg/, '-O.jpg') || null,
             preco:     b.price,
-            sku:       b.seller_custom_field || '—',
+            sku:       extrairSku(b) || '—',
             permalink: b.permalink || null,
           };
         }
