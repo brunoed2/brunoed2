@@ -3756,6 +3756,8 @@ setInterval(() => {
 
 // Auto Super: verifica pedidos prontos para NF a cada 15 minutos
 setInterval(() => autoSuperJob().catch(err => addLog(`[auto-super] erro no job: ${err.message}`, 'warn')), 15 * 60 * 1000);
+// Roda 1x na inicialização (após 30s para tokens carregarem)
+setTimeout(() => autoSuperJob().catch(err => addLog(`[auto-super] erro no job inicial: ${err.message}`, 'warn')), 30 * 1000);
 
 app.post('/api/telegram/teste', async (req, res) => {
   if (!TELEGRAM_TOKEN || !TELEGRAM_CHAT_ID) {
