@@ -112,9 +112,10 @@ async function carregarPromocoes() {
     table.appendChild(tbody);
     listaEl.appendChild(table);
 
-    itens.forEach(item => {
+    itens.forEach((item, itemIdx) => {
       const n = item.promocoes.length;
       const FAIXA_TIPOS = new Set(['PRICE_DISCOUNT', 'DOD', 'DEAL']);
+      const bgItem = itemIdx % 2 === 0 ? '#ffffff' : '#f8fafc';
 
       const imgHtml = item.thumbnail
         ? `<a href="${item.permalink || '#'}" target="_blank"><img src="${item.thumbnail}" class="venda-thumb" loading="lazy"></a>`
@@ -126,6 +127,7 @@ async function carregarPromocoes() {
 
       item.promocoes.forEach((promo, idx) => {
         const tr = document.createElement('tr');
+        tr.style.background = bgItem;
         const isPD = FAIXA_TIPOS.has(promo.tipo);
 
         // Colunas fixas do item — só na primeira linha (rowspan)
@@ -240,8 +242,8 @@ async function carregarPromocoes() {
         }
         tr.appendChild(tdAcao);
 
-        // Separador visual entre itens diferentes
-        if (idx === n - 1) tr.style.borderBottom = '2px solid #e2e8f0';
+        // Borda inferior mais grossa na última linha de cada item
+        if (idx === n - 1) tr.style.borderBottom = '3px solid #cbd5e1';
 
         tbody.appendChild(tr);
       });
