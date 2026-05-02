@@ -2059,7 +2059,7 @@ app.get('/api/ml/promocoes', async (req, res) => {
       if (!ids.length || offset >= total) break;
     }
     addLog(`[promos] ${itemIds.length} itens ativos`, 'info');
-    if (!itemIds.length) return res.json({ promocoes: [], erroApi: 'Nenhum item ativo encontrado' });
+    if (!itemIds.length) return res.json({ itens: [], erroApi: 'Nenhum item ativo encontrado' });
 
     // 2. Detalhes dos itens em lotes de 20 (paralelo)
     const itemDetails = {};
@@ -2085,8 +2085,8 @@ app.get('/api/ml/promocoes', async (req, res) => {
     }));
 
     // 3. Promoções por item via seller-promotions/items/{id}?app_version=v2
-    //    Lotes de 25 para não sobrecarregar a API
-    const promoMap = {};
+    //    Agrupado por item (não por promoção)
+    const resultMap = {};
     const proChunks = Array.from({ length: Math.ceil(itemIds.length / 25) }, (_, i) => itemIds.slice(i * 25, i * 25 + 25));
 
     for (const chunk of proChunks) {
@@ -2099,18 +2099,11 @@ app.get('/api/ml/promocoes', async (req, res) => {
           if (r.status !== 200 || !Array.isArray(r.data) || !r.data.length) return;
           const info = itemDetails[itemId] || {};
 
-          for (const promo of r.data) {
-            const pid  = promo.id || 'PRICE_DISCOUNT';
-            const nome = promo.name || (pid === 'PRICE_DISCOUNT' ? 'Desconto de Preço' : pid);
-
-            if (!promoMap[pid]) {
-              promoMap[pid] = { id: pid, nome, tipo: promo.type || 'PRICE_DISCOUNT', itens: [] };
-            }
-
+          const promocoes = r.data.map(promo => {
             let precoPromo = null, descontoMin = null, descontoMax = null;
             if (promo.type === 'PRICE_DISCOUNT') {
-              precoPromo  = promo.suggested_discounted_price || promo.max_discounted_price || null;
-              const orig  = promo.original_price;
+              precoPromo = promo.suggested_discounted_price || promo.max_discounted_price || null;
+              const orig = promo.original_price;
               if (orig) {
                 if (promo.max_discounted_price) descontoMin = Math.round((1 - promo.max_discounted_price / orig) * 100);
                 if (promo.min_discounted_price) descontoMax = Math.round((1 - promo.min_discounted_price / orig) * 100);
@@ -2119,14 +2112,10 @@ app.get('/api/ml/promocoes', async (req, res) => {
               precoPromo  = promo.price || null;
               descontoMin = promo.seller_percentage ?? null;
             }
-
-            promoMap[pid].itens.push({
-              mlb:          itemId,
-              titulo:       info.titulo    || '—',
-              thumbnail:    info.thumbnail || null,
-              sku:          info.sku       || '—',
-              permalink:    info.permalink || null,
-              precoAtual:   info.preco     ?? null,
+            return {
+              id:           promo.id   || null,
+              nome:         promo.name || (promo.type === 'PRICE_DISCOUNT' ? 'Desconto de Preço' : promo.id || '—'),
+              tipo:         promo.type || 'PRICE_DISCOUNT',
               precoPromo,
               precoOriginal: promo.original_price || null,
               sellerPct:    promo.seller_percentage ?? null,
@@ -2135,20 +2124,30 @@ app.get('/api/ml/promocoes', async (req, res) => {
               descontoMax,
               participando: promo.status === 'started',
               status:       promo.status || 'candidate',
-            });
-          }
+            };
+          });
+
+          resultMap[itemId] = {
+            mlb:       itemId,
+            titulo:    info.titulo    || '—',
+            thumbnail: info.thumbnail || null,
+            sku:       info.sku       || '—',
+            permalink: info.permalink || null,
+            precoAtual: info.preco   ?? null,
+            promocoes,
+          };
         } catch {}
       }));
     }
 
-    const resultado = Object.values(promoMap).filter(p => p.itens.length > 0);
-    addLog(`[promos] ${resultado.length} grupos, ${resultado.reduce((s, p) => s + p.itens.length, 0)} itens`, 'info');
+    const itens = Object.values(resultMap);
+    addLog(`[promos] ${itens.length} itens com promoção, ${itens.reduce((s, i) => s + i.promocoes.length, 0)} oportunidades`, 'info');
 
-    if (!resultado.length) {
-      return res.json({ promocoes: [], erroApi: `Nenhuma promoção disponível para os ${itemIds.length} itens ativos` });
+    if (!itens.length) {
+      return res.json({ itens: [], erroApi: `Nenhuma promoção disponível para os ${itemIds.length} itens ativos` });
     }
 
-    return res.json({ promocoes: resultado, fonte: 'per-item-v2' });
+    return res.json({ itens, fonte: 'per-item-v2' });
 
   } catch (err) {
     console.error('Promoções:', err.response?.data || err.message);

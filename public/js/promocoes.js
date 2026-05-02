@@ -1,7 +1,7 @@
 // ── Promoções ML ──────────────────────────────────────────────
 
 const PROMO_TIPO_LABEL = {
-  SMART:         'Oferta Inteligente',
+  SMART:          'Oferta Inteligente',
   PRICE_DISCOUNT: 'Desconto de Preço',
   DEAL:           'Deal do Dia',
   LIGHTNING_DEAL: 'Oferta Relâmpago',
@@ -34,122 +34,158 @@ async function carregarPromocoes() {
       return;
     }
 
-    const promocoes = d.promocoes || [];
-    const totalItens = promocoes.reduce((s, p) => s + p.itens.length, 0);
+    const itens = d.itens || [];
+    const totalPromos = itens.reduce((s, i) => s + i.promocoes.length, 0);
 
-    if (!promocoes.length || !totalItens) {
+    if (!itens.length) {
       const msg = d.erroApi
         ? `Nenhuma promoção encontrada. Detalhe: ${d.erroApi}`
-        : 'Nenhuma promoção ativa ou disponível nos seus anúncios.';
+        : 'Nenhum anúncio com promoção disponível.';
       erroEl.innerHTML     = msg;
       erroEl.style.color   = d.erroApi ? '#c00' : '#64748b';
       erroEl.style.display = 'block';
       return;
     }
 
-    totalEl.textContent = `${totalItens} anúncio${totalItens !== 1 ? 's' : ''} com promoção disponível`;
+    totalEl.textContent = `${itens.length} anúncio${itens.length !== 1 ? 's' : ''} com promoção disponível (${totalPromos} oportunidade${totalPromos !== 1 ? 's' : ''})`;
 
-    promocoes.forEach(promo => {
-      if (!promo.itens.length) return;
+    const table = document.createElement('table');
+    table.className = 'tabela';
+    table.style.display = 'table';
+    table.innerHTML = `
+      <thead>
+        <tr>
+          <th></th>
+          <th>Anúncio</th>
+          <th>SKU</th>
+          <th class="col-num">Preço atual</th>
+          <th>Promoção</th>
+          <th>Tipo</th>
+          <th class="col-num">Preço promo</th>
+          <th class="col-num">% Seller</th>
+          <th class="col-num">% Meli</th>
+          <th>Status</th>
+          <th></th>
+        </tr>
+      </thead>
+    `;
+    const tbody = document.createElement('tbody');
+    table.appendChild(tbody);
+    listaEl.appendChild(table);
 
-      const tipoLabel = PROMO_TIPO_LABEL[promo.tipo] || promo.tipo;
-      const isPriceDiscount = promo.tipo === 'PRICE_DISCOUNT';
+    itens.forEach(item => {
+      const n = item.promocoes.length;
 
-      const section = document.createElement('div');
-      section.style.cssText = 'margin-bottom:32px';
+      const imgHtml = item.thumbnail
+        ? `<a href="${item.permalink || '#'}" target="_blank"><img src="${item.thumbnail}" class="venda-thumb" loading="lazy"></a>`
+        : `<div class="venda-thumb-vazio"></div>`;
 
-      section.innerHTML = `
-        <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
-          <h2 style="margin:0;font-size:16px;font-weight:600;color:#1e293b">${promo.nome || tipoLabel}</h2>
-          <span class="badge-deposito badge-ativo" style="font-size:11px">${tipoLabel}</span>
-        </div>
-        <table class="tabela" style="display:table">
-          <thead>
-            <tr>
-              <th></th>
-              <th>Anúncio</th>
-              <th>SKU</th>
-              <th class="col-num">Preço atual</th>
-              <th class="col-num">${isPriceDiscount ? 'Faixa de preço' : 'Preço promo'}</th>
-              <th class="col-num">% Seller</th>
-              <th class="col-num">% Meli</th>
-              <th>Status</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody id="promo-body-${promo.id}"></tbody>
-        </table>
-      `;
-      listaEl.appendChild(section);
+      const tituloHtml = item.permalink
+        ? `<a class="link-anuncio" href="${item.permalink}" target="_blank">${item.titulo}</a>`
+        : item.titulo;
 
-      const tbody = document.getElementById(`promo-body-${promo.id}`);
-
-      promo.itens.forEach(item => {
+      item.promocoes.forEach((promo, idx) => {
         const tr = document.createElement('tr');
+        const isPD = promo.tipo === 'PRICE_DISCOUNT';
 
-        const imgHtml = item.thumbnail
-          ? `<a href="${item.permalink || '#'}" target="_blank"><img src="${item.thumbnail}" class="venda-thumb" loading="lazy"></a>`
-          : `<div class="venda-thumb-vazio"></div>`;
+        // Colunas fixas do item — só na primeira linha (rowspan)
+        if (idx === 0) {
+          const tdImg = document.createElement('td');
+          tdImg.rowSpan = n;
+          tdImg.className = 'td-thumb';
+          tdImg.innerHTML = imgHtml;
+          tr.appendChild(tdImg);
 
-        const tituloHtml = item.permalink
-          ? `<a class="link-anuncio" href="${item.permalink}" target="_blank">${item.titulo}</a>`
-          : item.titulo;
+          const tdTit = document.createElement('td');
+          tdTit.rowSpan = n;
+          tdTit.className = 'td-titulo';
+          tdTit.title = item.titulo;
+          tdTit.innerHTML = tituloHtml;
+          tr.appendChild(tdTit);
 
-        // Coluna "Preço promo" ou "Faixa de preço"
-        let precoPromoHtml;
-        if (isPriceDiscount) {
-          const pMin = promoFormatarPreco(item.precoOriginal ? (item.descontoMax != null ? item.precoOriginal * (1 - item.descontoMax / 100) : null) : null);
-          const pMax = promoFormatarPreco(item.precoPromo);
-          precoPromoHtml = pMax !== '—' ? `<span style="font-size:11px;color:#64748b">${pMin !== '—' ? pMin + '–' : ''}${pMax}</span>` : '—';
-        } else {
-          precoPromoHtml = promoFormatarPreco(item.precoPromo);
+          const tdSku = document.createElement('td');
+          tdSku.rowSpan = n;
+          tdSku.className = 'td-sku';
+          tdSku.textContent = item.sku;
+          tr.appendChild(tdSku);
+
+          const tdPreco = document.createElement('td');
+          tdPreco.rowSpan = n;
+          tdPreco.className = 'col-num';
+          tdPreco.textContent = promoFormatarPreco(item.precoAtual);
+          tr.appendChild(tdPreco);
         }
 
-        // Coluna % Seller
-        let sellerHtml;
-        if (isPriceDiscount) {
-          if (item.descontoMin != null && item.descontoMax != null && item.descontoMax !== item.descontoMin) {
-            sellerHtml = `<span style="color:#7c3aed;font-weight:500">${item.descontoMin}%–${item.descontoMax}%</span>`;
-          } else if (item.descontoMin != null) {
-            sellerHtml = `<span style="color:#7c3aed;font-weight:500">${item.descontoMin}%</span>`;
-          } else {
-            sellerHtml = '—';
-          }
-        } else {
-          sellerHtml = item.sellerPct != null
-            ? `<span style="color:#7c3aed;font-weight:500">${item.sellerPct}%</span>`
-            : '—';
-        }
+        // Nome da promoção
+        const tdNome = document.createElement('td');
+        tdNome.style.fontWeight = '500';
+        tdNome.textContent = promo.nome;
+        tr.appendChild(tdNome);
 
-        // Coluna % Meli
-        const meliHtml = item.meliPct != null
-          ? `<span style="color:#2563eb;font-weight:500">${item.meliPct}%</span>`
+        // Tipo badge
+        const tdTipo = document.createElement('td');
+        tdTipo.innerHTML = `<span class="badge-deposito" style="background:${isPD ? '#f0fdf4' : '#eff6ff'};color:${isPD ? '#16a34a' : '#2563eb'};font-size:11px">${PROMO_TIPO_LABEL[promo.tipo] || promo.tipo}</span>`;
+        tr.appendChild(tdTipo);
+
+        // Preço promo
+        const tdPrecoP = document.createElement('td');
+        tdPrecoP.className = 'col-num';
+        if (isPD && promo.descontoMin != null && promo.descontoMax != null) {
+          const pMin = promoFormatarPreco(promo.precoOriginal ? promo.precoOriginal * (1 - promo.descontoMax / 100) : null);
+          const pMax = promoFormatarPreco(promo.precoPromo);
+          tdPrecoP.innerHTML = `<span style="font-size:11px;color:#64748b">${pMin !== '—' ? pMin + '–' : ''}${pMax}</span>`;
+        } else {
+          tdPrecoP.textContent = promoFormatarPreco(promo.precoPromo);
+        }
+        tr.appendChild(tdPrecoP);
+
+        // % Seller
+        const tdSeller = document.createElement('td');
+        tdSeller.className = 'col-num';
+        if (isPD && promo.descontoMin != null) {
+          const range = promo.descontoMax != null && promo.descontoMax !== promo.descontoMin
+            ? `${promo.descontoMin}%–${promo.descontoMax}%`
+            : `${promo.descontoMin}%`;
+          tdSeller.innerHTML = `<span style="color:#7c3aed;font-weight:500">${range}</span>`;
+        } else if (promo.sellerPct != null) {
+          tdSeller.innerHTML = `<span style="color:#7c3aed;font-weight:500">${promo.sellerPct}%</span>`;
+        } else {
+          tdSeller.textContent = '—';
+        }
+        tr.appendChild(tdSeller);
+
+        // % Meli
+        const tdMeli = document.createElement('td');
+        tdMeli.className = 'col-num';
+        tdMeli.innerHTML = promo.meliPct != null
+          ? `<span style="color:#2563eb;font-weight:500">${promo.meliPct}%</span>`
           : '—';
+        tr.appendChild(tdMeli);
 
-        // Badge de status
-        const statusHtml = item.participando
+        // Status
+        const tdStatus = document.createElement('td');
+        tdStatus.innerHTML = promo.participando
           ? `<span class="badge-deposito badge-ativo" style="font-size:11px">Ativa</span>`
           : `<span class="badge-deposito" style="background:#f1f5f9;color:#64748b;font-size:11px">Candidata</span>`;
+        tr.appendChild(tdStatus);
 
-        // Botão de ação — só para SMART com promotion_id
-        let btnHtml = '';
-        if (!isPriceDiscount) {
-          btnHtml = item.participando
-            ? `<button class="btn-sm" disabled style="opacity:.5;cursor:default">✓ Inscrito</button>`
-            : `<button class="btn-sm btn-primary" onclick="promoParticipar('${promo.id}','${item.mlb}',${item.precoPromo ?? 'null'},this)">Participar</button>`;
+        // Ação
+        const tdAcao = document.createElement('td');
+        if (!isPD && promo.id) {
+          if (promo.participando) {
+            tdAcao.innerHTML = `<button class="btn-sm" disabled style="opacity:.5;cursor:default">✓ Inscrito</button>`;
+          } else {
+            const promoId  = promo.id;
+            const mlb      = item.mlb;
+            const precoArg = promo.precoPromo ?? null;
+            tdAcao.innerHTML = `<button class="btn-sm btn-primary" onclick="promoParticipar('${promoId}','${mlb}',${precoArg},this)">Participar</button>`;
+          }
         }
+        tr.appendChild(tdAcao);
 
-        tr.innerHTML = `
-          <td class="td-thumb">${imgHtml}</td>
-          <td class="td-titulo" title="${item.titulo}">${tituloHtml}</td>
-          <td class="td-sku">${item.sku}</td>
-          <td class="col-num">${promoFormatarPreco(item.precoAtual)}</td>
-          <td class="col-num">${precoPromoHtml}</td>
-          <td class="col-num">${sellerHtml}</td>
-          <td class="col-num">${meliHtml}</td>
-          <td>${statusHtml}</td>
-          <td>${btnHtml}</td>
-        `;
+        // Separador visual entre itens diferentes
+        if (idx === n - 1) tr.style.borderBottom = '2px solid #e2e8f0';
+
         tbody.appendChild(tr);
       });
     });
@@ -191,7 +227,7 @@ async function promoParticipar(promotionId, mlb, precoPromo, btn) {
     } else {
       btn.textContent = '✓ Inscrito';
       btn.classList.remove('btn-primary');
-      const td = btn.closest('tr')?.querySelector('td:nth-child(8)');
+      const td = btn.closest('tr')?.querySelector('td:nth-child(10)');
       if (td) td.innerHTML = `<span class="badge-deposito badge-ativo" style="font-size:11px">Ativa</span>`;
     }
   } catch {
