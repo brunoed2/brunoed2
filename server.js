@@ -2044,157 +2044,111 @@ app.get('/api/ml/promocoes', async (req, res) => {
   const uid     = c.user_id;
 
   try {
-    // ── Tentativa 1: endpoint oficial seller-promotions ───────
-    let promocoes = [];
-    for (const status of ['candidate', 'started', 'active', null]) {
-      try {
-        const params = { seller_id: uid, limit: 50 };
-        if (status) params.status = status;
-        const r = await axios.get('https://api.mercadolibre.com/seller-promotions/promotions', {
-          params, headers, timeout: 10000, responseType: 'text', validateStatus: () => true,
-        });
-        if (r.status === 200 && r.data) {
-          let d; try { d = JSON.parse(r.data); } catch { d = null; }
-          const lista = (d && d.results) || (Array.isArray(d) ? d : []);
-          if (lista.length) { promocoes = lista; break; }
-        }
-      } catch {}
-    }
-
-    if (promocoes.length) {
-      // Tem dados do endpoint oficial — busca itens de cada promoção
-      const resultado = await Promise.all(promocoes.map(async (promo) => {
-        try {
-          const rItens = await axios.get('https://api.mercadolibre.com/seller-promotions/items', {
-            params: { promotion_id: promo.id, seller_id: uid, limit: 100 },
-            headers, timeout: 12000,
-          });
-          const itens = rItens.data.results || rItens.data || [];
-          const mlbs  = [...new Set(itens.map(i => i.item_id || i.id).filter(Boolean))];
-          const itemMap = {};
-          await Promise.all(
-            Array.from({ length: Math.ceil(mlbs.length / 20) }, (_, i) => mlbs.slice(i * 20, i * 20 + 20))
-              .map(async chunk => {
-                try {
-                  const r = await axios.get('https://api.mercadolibre.com/items', {
-                    params: { ids: chunk.join(','), attributes: 'id,title,thumbnail,price,seller_custom_field,permalink' },
-                    headers, timeout: 10000,
-                  });
-                  for (const e of r.data) {
-                    if (e.code === 200) {
-                      const b = e.body;
-                      itemMap[b.id] = { titulo: b.title, thumbnail: b.thumbnail?.replace(/-[A-Z]\.jpg/, '-O.jpg') || null, preco: b.price, sku: b.seller_custom_field || null, permalink: b.permalink };
-                    }
-                  }
-                } catch {}
-              })
-          );
-          return {
-            id: promo.id, nome: promo.name || promo.type || promo.id,
-            tipo: promo.type || '—', inicio: promo.start_date || null, fim: promo.finish_date || null,
-            itens: itens.map(i => {
-              const mlb = i.item_id || i.id; const info = itemMap[mlb] || {};
-              return {
-                mlb, titulo: info.titulo || i.title || '—', thumbnail: info.thumbnail || null,
-                sku: info.sku || '—', permalink: info.permalink || null,
-                precoAtual: info.preco ?? i.price ?? null,
-                precoSugerido: i.suggested_price ?? i.price_action?.suggested_price ?? null,
-                descontoMin: i.min_discount_percentage ?? null, descontoMax: i.max_discount_percentage ?? null,
-                participando: i.status === 'active' || i.status === 'started',
-              };
-            }),
-          };
-        } catch { return { id: promo.id, nome: promo.name || promo.id, tipo: promo.type || '—', itens: [] }; }
-      }));
-      return res.json({ promocoes: resultado });
-    }
-
-    // ── Tentativa 2: scan de itens ativos com campo promotions ─
-    addLog('[promos] seller-promotions vazio — fazendo scan de itens', 'info');
-
-    // Coleta até 500 IDs de itens ativos
+    // 1. Coleta IDs de itens ativos (até 200)
     const itemIds = [];
     let offset = 0;
-    while (itemIds.length < 500) {
-      try {
-        const r = await axios.get(`https://api.mercadolibre.com/users/${uid}/items/search`, {
-          params: { status: 'active', limit: 100, offset },
-          headers, timeout: 15000,
-        });
-        const ids    = r.data.results || [];
-        const total  = r.data.paging?.total || 0;
-        itemIds.push(...ids);
-        offset += ids.length;
-        if (!ids.length || offset >= total) break;
-      } catch { break; }
+    while (itemIds.length < 200) {
+      const r = await axios.get(`https://api.mercadolibre.com/users/${uid}/items/search`, {
+        params: { status: 'active', limit: 100, offset },
+        headers, timeout: 15000,
+      });
+      const ids   = r.data.results || [];
+      const total = r.data.paging?.total || 0;
+      itemIds.push(...ids);
+      offset += ids.length;
+      if (!ids.length || offset >= total) break;
     }
-    addLog(`[promos] scan: ${itemIds.length} itens ativos encontrados`, 'info');
-
+    addLog(`[promos] ${itemIds.length} itens ativos`, 'info');
     if (!itemIds.length) return res.json({ promocoes: [], erroApi: 'Nenhum item ativo encontrado' });
 
-    // Busca detalhes em paralelo (lotes de 20)
-    const chunks = Array.from({ length: Math.ceil(itemIds.length / 20) }, (_, i) => itemIds.slice(i * 20, i * 20 + 20));
-    const promoMap = {};
-
-    await Promise.all(chunks.map(async chunk => {
+    // 2. Detalhes dos itens em lotes de 20 (paralelo)
+    const itemDetails = {};
+    const detChunks = Array.from({ length: Math.ceil(itemIds.length / 20) }, (_, i) => itemIds.slice(i * 20, i * 20 + 20));
+    await Promise.all(detChunks.map(async chunk => {
       try {
         const r = await axios.get('https://api.mercadolibre.com/items', {
-          params: { ids: chunk.join(','), attributes: 'id,title,price,original_price,thumbnail,promotions,deal_ids,permalink,seller_custom_field' },
+          params: { ids: chunk.join(','), attributes: 'id,title,thumbnail,price,seller_custom_field,permalink' },
           headers, timeout: 12000,
         });
-        for (const entry of (r.data || [])) {
-          if (entry.code !== 200) continue;
-          const item   = entry.body;
-          const promos = item.promotions || [];
-          const temDesconto = item.original_price && item.original_price > item.price;
-
-          if (!promos.length && !temDesconto) continue;
-
-          const thumb = item.thumbnail?.replace(/-[A-Z]\.jpg/, '-O.jpg') || null;
-
-          if (promos.length) {
-            for (const promo of promos) {
-              const pid  = promo.id   || promo.type || 'promo';
-              const tipo = promo.type || 'PRICE_DISCOUNT';
-              if (!promoMap[pid]) {
-                promoMap[pid] = {
-                  id: pid,
-                  nome: promo.name || (PROMO_TIPO_LABEL_SERVER[tipo] || tipo),
-                  tipo, inicio: promo.start_date || null, fim: promo.finish_date || null, itens: [],
-                };
-              }
-              const descPct = promo.discount_percentage
-                ?? (temDesconto ? Math.round((1 - item.price / item.original_price) * 100) : null);
-              promoMap[pid].itens.push({
-                mlb: item.id, titulo: item.title, thumbnail: thumb,
-                sku: item.seller_custom_field || '—', permalink: item.permalink || null,
-                precoAtual: item.price, precoSugerido: item.original_price || null,
-                descontoMin: descPct, descontoMax: null, participando: true,
-              });
-            }
-          } else {
-            // desconto sem objeto de promoção explícito
-            const pid = 'desconto-ativo';
-            if (!promoMap[pid]) promoMap[pid] = { id: pid, nome: 'Desconto Ativo', tipo: 'PRICE_DISCOUNT', inicio: null, fim: null, itens: [] };
-            promoMap[pid].itens.push({
-              mlb: item.id, titulo: item.title, thumbnail: thumb,
-              sku: item.seller_custom_field || '—', permalink: item.permalink || null,
-              precoAtual: item.price, precoSugerido: item.original_price,
-              descontoMin: Math.round((1 - item.price / item.original_price) * 100), descontoMax: null, participando: true,
-            });
-          }
+        for (const e of (r.data || [])) {
+          if (e.code !== 200) continue;
+          const b = e.body;
+          itemDetails[b.id] = {
+            titulo:    b.title,
+            thumbnail: b.thumbnail?.replace(/-[A-Z]\.jpg/, '-O.jpg') || null,
+            preco:     b.price,
+            sku:       b.seller_custom_field || '—',
+            permalink: b.permalink || null,
+          };
         }
       } catch {}
     }));
 
-    const resultado = Object.values(promoMap);
-    addLog(`[promos] scan: ${resultado.length} promoções, ${resultado.reduce((s,p) => s + p.itens.length, 0)} itens`, 'info');
+    // 3. Promoções por item via seller-promotions/items/{id}?app_version=v2
+    //    Lotes de 25 para não sobrecarregar a API
+    const promoMap = {};
+    const proChunks = Array.from({ length: Math.ceil(itemIds.length / 25) }, (_, i) => itemIds.slice(i * 25, i * 25 + 25));
 
-    if (!resultado.length) {
-      return res.json({ promocoes: [], erroApi: `Scan de ${itemIds.length} itens não encontrou promoções ativas` });
+    for (const chunk of proChunks) {
+      await Promise.all(chunk.map(async itemId => {
+        try {
+          const r = await axios.get(`https://api.mercadolibre.com/seller-promotions/items/${itemId}`, {
+            params: { app_version: 'v2' },
+            headers, timeout: 10000, validateStatus: () => true,
+          });
+          if (r.status !== 200 || !Array.isArray(r.data) || !r.data.length) return;
+          const info = itemDetails[itemId] || {};
+
+          for (const promo of r.data) {
+            const pid  = promo.id || 'PRICE_DISCOUNT';
+            const nome = promo.name || (pid === 'PRICE_DISCOUNT' ? 'Desconto de Preço' : pid);
+
+            if (!promoMap[pid]) {
+              promoMap[pid] = { id: pid, nome, tipo: promo.type || 'PRICE_DISCOUNT', itens: [] };
+            }
+
+            let precoPromo = null, descontoMin = null, descontoMax = null;
+            if (promo.type === 'PRICE_DISCOUNT') {
+              precoPromo  = promo.suggested_discounted_price || promo.max_discounted_price || null;
+              const orig  = promo.original_price;
+              if (orig) {
+                if (promo.max_discounted_price) descontoMin = Math.round((1 - promo.max_discounted_price / orig) * 100);
+                if (promo.min_discounted_price) descontoMax = Math.round((1 - promo.min_discounted_price / orig) * 100);
+              }
+            } else {
+              precoPromo  = promo.price || null;
+              descontoMin = promo.seller_percentage ?? null;
+            }
+
+            promoMap[pid].itens.push({
+              mlb:          itemId,
+              titulo:       info.titulo    || '—',
+              thumbnail:    info.thumbnail || null,
+              sku:          info.sku       || '—',
+              permalink:    info.permalink || null,
+              precoAtual:   info.preco     ?? null,
+              precoPromo,
+              precoOriginal: promo.original_price || null,
+              sellerPct:    promo.seller_percentage ?? null,
+              meliPct:      promo.meli_percentage   ?? null,
+              descontoMin,
+              descontoMax,
+              participando: promo.status === 'started',
+              status:       promo.status || 'candidate',
+            });
+          }
+        } catch {}
+      }));
     }
 
-    return res.json({ promocoes: resultado, fonte: 'items-scan' });
+    const resultado = Object.values(promoMap).filter(p => p.itens.length > 0);
+    addLog(`[promos] ${resultado.length} grupos, ${resultado.reduce((s, p) => s + p.itens.length, 0)} itens`, 'info');
+
+    if (!resultado.length) {
+      return res.json({ promocoes: [], erroApi: `Nenhuma promoção disponível para os ${itemIds.length} itens ativos` });
+    }
+
+    return res.json({ promocoes: resultado, fonte: 'per-item-v2' });
 
   } catch (err) {
     console.error('Promoções:', err.response?.data || err.message);

@@ -1,16 +1,12 @@
 // ── Promoções ML ──────────────────────────────────────────────
 
 const PROMO_TIPO_LABEL = {
+  SMART:         'Oferta Inteligente',
+  PRICE_DISCOUNT: 'Desconto de Preço',
   DEAL:           'Deal do Dia',
   LIGHTNING_DEAL: 'Oferta Relâmpago',
-  PRICE_DISCOUNT: 'Desconto de Preço',
   FREE_SHIPPING:  'Frete Grátis',
 };
-
-function promoFormatarData(d) {
-  if (!d) return '—';
-  try { return new Date(d).toLocaleDateString('pt-BR'); } catch { return d.slice(0, 10); }
-}
 
 function promoFormatarPreco(v) {
   if (v == null) return '—';
@@ -44,36 +40,28 @@ async function carregarPromocoes() {
     if (!promocoes.length || !totalItens) {
       const msg = d.erroApi
         ? `Nenhuma promoção encontrada. Detalhe: ${d.erroApi}`
-        : 'Nenhuma promoção ativa encontrada nos seus anúncios.';
-      erroEl.innerHTML = msg
-        + (d.rawRespostas ? `<details style="margin-top:8px;font-size:11px"><summary style="cursor:pointer">Ver resposta bruta da API</summary><pre style="overflow:auto;max-height:200px;background:#1e293b;padding:8px;border-radius:4px;color:#94a3b8">${JSON.stringify(d.rawRespostas, null, 2)}</pre></details>` : '');
+        : 'Nenhuma promoção ativa ou disponível nos seus anúncios.';
+      erroEl.innerHTML     = msg;
       erroEl.style.color   = d.erroApi ? '#c00' : '#64748b';
       erroEl.style.display = 'block';
       return;
     }
 
-    const labelTotal = d.fonte === 'items-scan'
-      ? `${totalItens} anúncio${totalItens !== 1 ? 's' : ''} com promoção ativa`
-      : `${totalItens} anúncio${totalItens !== 1 ? 's' : ''} elegível${totalItens !== 1 ? 'is' : ''}`;
-    totalEl.textContent = labelTotal;
-    if (d.fonte === 'items-scan') {
-      totalEl.title = 'Dados obtidos via scan de itens ativos — mostra promoções em andamento';
-    }
+    totalEl.textContent = `${totalItens} anúncio${totalItens !== 1 ? 's' : ''} com promoção disponível`;
 
     promocoes.forEach(promo => {
       if (!promo.itens.length) return;
 
       const tipoLabel = PROMO_TIPO_LABEL[promo.tipo] || promo.tipo;
+      const isPriceDiscount = promo.tipo === 'PRICE_DISCOUNT';
 
       const section = document.createElement('div');
       section.style.cssText = 'margin-bottom:32px';
 
-      // Cabeçalho da promoção
       section.innerHTML = `
         <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
-          <h2 style="margin:0;font-size:16px;font-weight:600;color:#1e293b">${promo.nome}</h2>
+          <h2 style="margin:0;font-size:16px;font-weight:600;color:#1e293b">${promo.nome || tipoLabel}</h2>
           <span class="badge-deposito badge-ativo" style="font-size:11px">${tipoLabel}</span>
-          <span style="font-size:12px;color:#94a3b8">${promoFormatarData(promo.inicio)} → ${promoFormatarData(promo.fim)}</span>
         </div>
         <table class="tabela" style="display:table">
           <thead>
@@ -82,8 +70,9 @@ async function carregarPromocoes() {
               <th>Anúncio</th>
               <th>SKU</th>
               <th class="col-num">Preço atual</th>
-              <th class="col-num">Preço sugerido</th>
-              <th class="col-num">Desconto</th>
+              <th class="col-num">${isPriceDiscount ? 'Faixa de preço' : 'Preço promo'}</th>
+              <th class="col-num">% Seller</th>
+              <th class="col-num">% Meli</th>
               <th>Status</th>
               <th></th>
             </tr>
@@ -94,6 +83,7 @@ async function carregarPromocoes() {
       listaEl.appendChild(section);
 
       const tbody = document.getElementById(`promo-body-${promo.id}`);
+
       promo.itens.forEach(item => {
         const tr = document.createElement('tr');
 
@@ -101,25 +91,62 @@ async function carregarPromocoes() {
           ? `<a href="${item.permalink || '#'}" target="_blank"><img src="${item.thumbnail}" class="venda-thumb" loading="lazy"></a>`
           : `<div class="venda-thumb-vazio"></div>`;
 
-        const desconto = item.descontoMin != null
-          ? `${item.descontoMin}%${item.descontoMax != null && item.descontoMax !== item.descontoMin ? `–${item.descontoMax}%` : ''}`
+        const tituloHtml = item.permalink
+          ? `<a class="link-anuncio" href="${item.permalink}" target="_blank">${item.titulo}</a>`
+          : item.titulo;
+
+        // Coluna "Preço promo" ou "Faixa de preço"
+        let precoPromoHtml;
+        if (isPriceDiscount) {
+          const pMin = promoFormatarPreco(item.precoOriginal ? (item.descontoMax != null ? item.precoOriginal * (1 - item.descontoMax / 100) : null) : null);
+          const pMax = promoFormatarPreco(item.precoPromo);
+          precoPromoHtml = pMax !== '—' ? `<span style="font-size:11px;color:#64748b">${pMin !== '—' ? pMin + '–' : ''}${pMax}</span>` : '—';
+        } else {
+          precoPromoHtml = promoFormatarPreco(item.precoPromo);
+        }
+
+        // Coluna % Seller
+        let sellerHtml;
+        if (isPriceDiscount) {
+          if (item.descontoMin != null && item.descontoMax != null && item.descontoMax !== item.descontoMin) {
+            sellerHtml = `<span style="color:#7c3aed;font-weight:500">${item.descontoMin}%–${item.descontoMax}%</span>`;
+          } else if (item.descontoMin != null) {
+            sellerHtml = `<span style="color:#7c3aed;font-weight:500">${item.descontoMin}%</span>`;
+          } else {
+            sellerHtml = '—';
+          }
+        } else {
+          sellerHtml = item.sellerPct != null
+            ? `<span style="color:#7c3aed;font-weight:500">${item.sellerPct}%</span>`
+            : '—';
+        }
+
+        // Coluna % Meli
+        const meliHtml = item.meliPct != null
+          ? `<span style="color:#2563eb;font-weight:500">${item.meliPct}%</span>`
           : '—';
 
+        // Badge de status
         const statusHtml = item.participando
-          ? `<span class="badge-deposito badge-ativo" style="font-size:11px">Participando</span>`
-          : `<span class="badge-deposito" style="background:#f1f5f9;color:#64748b;font-size:11px">Elegível</span>`;
+          ? `<span class="badge-deposito badge-ativo" style="font-size:11px">Ativa</span>`
+          : `<span class="badge-deposito" style="background:#f1f5f9;color:#64748b;font-size:11px">Candidata</span>`;
 
-        const btnHtml = item.participando
-          ? `<button class="btn-sm" disabled style="opacity:.5;cursor:default">✓ Inscrito</button>`
-          : `<button class="btn-sm btn-primary" onclick="promoParticipar('${promo.id}','${item.mlb}',${item.precoSugerido ?? 'null'},this)">Participar</button>`;
+        // Botão de ação — só para SMART com promotion_id
+        let btnHtml = '';
+        if (!isPriceDiscount) {
+          btnHtml = item.participando
+            ? `<button class="btn-sm" disabled style="opacity:.5;cursor:default">✓ Inscrito</button>`
+            : `<button class="btn-sm btn-primary" onclick="promoParticipar('${promo.id}','${item.mlb}',${item.precoPromo ?? 'null'},this)">Participar</button>`;
+        }
 
         tr.innerHTML = `
           <td class="td-thumb">${imgHtml}</td>
-          <td class="td-titulo" title="${item.titulo}">${item.permalink ? `<a class="link-anuncio" href="${item.permalink}" target="_blank">${item.titulo}</a>` : item.titulo}</td>
+          <td class="td-titulo" title="${item.titulo}">${tituloHtml}</td>
           <td class="td-sku">${item.sku}</td>
           <td class="col-num">${promoFormatarPreco(item.precoAtual)}</td>
-          <td class="col-num">${promoFormatarPreco(item.precoSugerido)}</td>
-          <td class="col-num" style="color:#7c3aed;font-weight:500">${desconto}</td>
+          <td class="col-num">${precoPromoHtml}</td>
+          <td class="col-num">${sellerHtml}</td>
+          <td class="col-num">${meliHtml}</td>
           <td>${statusHtml}</td>
           <td>${btnHtml}</td>
         `;
@@ -135,12 +162,12 @@ async function carregarPromocoes() {
   }
 }
 
-async function promoParticipar(promotionId, mlb, precoSugerido, btn) {
+async function promoParticipar(promotionId, mlb, precoPromo, btn) {
   btn.disabled    = true;
   btn.textContent = '...';
 
   const body = { mlb, promotion_id: promotionId };
-  if (precoSugerido != null) body.preco = precoSugerido;
+  if (precoPromo != null) body.preco = precoPromo;
 
   try {
     const d = await fetch('/api/ml/promocoes/participar', {
@@ -164,9 +191,8 @@ async function promoParticipar(promotionId, mlb, precoSugerido, btn) {
     } else {
       btn.textContent = '✓ Inscrito';
       btn.classList.remove('btn-primary');
-      // Atualiza badge de status na mesma linha
-      const td = btn.closest('tr')?.querySelector('td:nth-child(7)');
-      if (td) td.innerHTML = `<span class="badge-deposito badge-ativo" style="font-size:11px">Participando</span>`;
+      const td = btn.closest('tr')?.querySelector('td:nth-child(8)');
+      if (td) td.innerHTML = `<span class="badge-deposito badge-ativo" style="font-size:11px">Ativa</span>`;
     }
   } catch {
     btn.textContent = '✗ Erro';
