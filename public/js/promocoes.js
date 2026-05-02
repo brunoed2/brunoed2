@@ -208,7 +208,7 @@ async function carregarPromocoes() {
           const tdMargem = document.createElement('td');
           tdMargem.className = 'col-num';
           tdMargem.rowSpan   = n;
-          tdMargem.innerHTML = promoFmtMargem(mAtual).html;
+          tdMargem.innerHTML = promoFmtMargem(mAtual);
           tr.appendChild(tdMargem);
         }
 
@@ -216,7 +216,7 @@ async function carregarPromocoes() {
         const mPromo    = promoCalcMargem(promo.precoPromo, item.sku, item.listingType, lucroConfig);
         const tdMargemP = document.createElement('td');
         tdMargemP.className = 'col-num';
-        tdMargemP.innerHTML = promoFmtMargem(mPromo).html;
+        tdMargemP.innerHTML = promoFmtMargem(mPromo);
         tr.appendChild(tdMargemP);
 
         // Status
