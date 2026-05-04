@@ -3329,6 +3329,30 @@ app.put('/api/ml/estoque/:mlb', async (req, res) => {
   }
 });
 
+app.post('/api/ml/sair-full/:mlb', async (req, res) => {
+  const data = loadData();
+  const num  = data.conta_ativa;
+  const c    = data.contas[num];
+  if (!c || !c.access_token) return res.status(401).json({ error: 'Não conectado' });
+
+  const mlb     = req.params.mlb;
+  const headers = { Authorization: `Bearer ${c.access_token}`, 'Content-Type': 'application/json' };
+  try {
+    await axios.put(
+      `https://api.mercadolibre.com/items/${mlb}`,
+      { shipping: { logistic_type: 'not_specified' } },
+      { headers, timeout: 15000 }
+    );
+    addLog(`[estoque] ${mlb} saiu do Full`, 'ok');
+    return res.json({ ok: true });
+  } catch (err) {
+    const mlErr = err.response?.data;
+    const msg   = mlErr?.message || mlErr?.error || mlErr?.cause?.[0]?.message || err.message;
+    addLog(`[estoque] sair-full ${mlb}: ${msg}`, 'warn');
+    return res.json({ ok: false, erro: msg, detalhe: JSON.stringify(mlErr) });
+  }
+});
+
 // ── Shopee: helpers ──────────────────────────────────────────
 
 function shopeeSign(partnerId, path, timestamp, partnerKey, accessToken, shopId) {

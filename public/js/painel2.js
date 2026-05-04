@@ -338,6 +338,11 @@ function renderizarTabela() {
       estoqueCell = `<td class="col-num"><div class="estoque-edit-wrap"><span id="estoque-total-${item.mlb}" class="${item.estoque === 0 ? 'estoque-zero' : ''}">${item.estoque}</span><button id="btn-expandir-${item.mlb}" class="btn-expandir-var" onclick="toggleVariacoes('${item.mlb}')">${aberto ? '▲' : '▼'}</button></div></td>`;
     } else if (isProprio(item.deposito)) {
       estoqueCell = `<td class="col-num"><div class="estoque-edit-wrap"><input type="number" class="estoque-input" value="${item.estoque}" min="0"><button class="btn-confirmar-estoque" onclick="atualizarEstoque('${item.mlb}', this)">✓</button></div></td>`;
+    } else if (item.deposito === 'fulfillment') {
+      estoqueCell = `<td class="col-num ${item.estoque === 0 ? 'estoque-zero' : ''}">
+        ${item.estoque}
+        <button class="btn-sm" onclick="sairFull('${item.mlb}', this)" style="font-size:10px;margin-left:5px;background:#f59e0b;color:#fff;padding:1px 6px" title="Remover este anúncio do Mercado Envios Full">Sair Full</button>
+      </td>`;
     } else {
       estoqueCell = `<td class="col-num ${item.estoque === 0 ? 'estoque-zero' : ''}">${item.estoque}</td>`;
     }
@@ -837,6 +842,30 @@ function renderizarHistorico() {
   }
 }
 
+
+// ── Sair do Full ─────────────────────────────────────────────
+
+async function sairFull(mlb, btn) {
+  if (!confirm(`Remover ${mlb} do Mercado Envios Full?\n\nIsso devolverá o controle de estoque para você e o produto passará a usar envio próprio.`)) return;
+  btn.disabled    = true;
+  btn.textContent = '...';
+  try {
+    const d = await apiFetch(`/api/ml/sair-full/${mlb}`, { method: 'POST' });
+    if (d.ok) {
+      btn.textContent = '✓ Feito';
+      btn.style.background = '#16a34a';
+      setTimeout(() => carregarEstoque(true), 1500);
+    } else {
+      btn.disabled    = false;
+      btn.textContent = 'Sair Full';
+      alert('Erro: ' + (d.erro || 'Falha na API do Mercado Livre'));
+    }
+  } catch (err) {
+    btn.disabled    = false;
+    btn.textContent = 'Sair Full';
+    alert('Erro: ' + err.message);
+  }
+}
 
 // ── Inicialização ─────────────────────────────────────────────
 
