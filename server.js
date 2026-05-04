@@ -1191,7 +1191,7 @@ async function fetchBlingPedidosPendentes(conta) {
       if (tentativa > 0) await new Promise(r => setTimeout(r, 600 * tentativa));
       detalhe = await axios.get(`https://www.bling.com.br/Api/v3/pedidos/vendas/${p.id}`, {
         headers: { Authorization: `Bearer ${token}` }, timeout: 10000,
-      }).then(r => r.data?.data || null).catch(() => null);
+      }).then(r => { addLog(`[bling-debug] pedido ${p.id} keys: ${Object.keys(r.data?.data || {}).join(',')}`, 'info'); return r.data?.data || null; }).catch(() => null);
     }
     const produtos = (detalhe?.itens || []).map(i => `${i.descricao}${i.quantidade > 1 ? ` (x${i.quantidade})` : ''}`);
     const pendencias = (detalhe?.pendencias || []).map(pen => pen.descricao || pen.valor || String(pen));
