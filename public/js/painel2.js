@@ -858,8 +858,8 @@ async function sairFull(mlb, btn) {
     } else if (d.notModifiable) {
       btn.disabled    = false;
       btn.textContent = 'Sair Full';
-      if (confirm(`Este anúncio é de catálogo — o Mercado Livre não permite alterar o envio via API.\n\nDeseja abrir o painel do ML para editar manualmente?`)) {
-        window.open(`https://www.mercadolivre.com.br/anuncios/${mlb}/editar`, '_blank');
+      if (confirm(`Não é possível sair do Full para ${mlb} via API — o Mercado Livre exige ação manual no painel deles.\n\nDeseja abrir o painel de gestão de estoque do ML?`)) {
+        window.open(`https://www.mercadolivre.com.br/anuncios/lista/space_management?search=${mlb.replace('MLB','')}`, '_blank');
       }
     } else {
       btn.disabled    = false;
