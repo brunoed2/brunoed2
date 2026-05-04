@@ -67,6 +67,11 @@ async function blingCarregarPedidos() {
       const btnSuper = p.temEtiqueta
         ? `<button class="btn-sm btn-super" data-bling-super-id="${p.id}" onclick="blingSuperEnvio('${p.id}', this, '${p.conta}')" style="background:#7c3aed;color:#fff;margin-left:4px" title="Gerar NF e enviar em um clique">⚡ Super</button>`
         : '';
+      const blingEditUrl = `https://www.bling.com.br/vendas.php#edit/${p.id}`;
+      const pendencias = p.pendencias || [];
+      const btnPendencia = pendencias.length > 0
+        ? `<a href="${blingEditUrl}" target="_blank" rel="noopener" class="btn-sm" style="background:#f59e0b;color:#fff;margin-left:4px;text-decoration:none;display:inline-block" title="Pendências: ${escapeHtml(pendencias.join(' | '))}">⚠ Pendências</a>`
+        : `<a href="${blingEditUrl}" target="_blank" rel="noopener" style="color:#64748b;margin-left:6px;font-size:13px;text-decoration:none" title="Editar pedido no Bling">✎</a>`;
       tr.innerHTML = `
         <td><input type="checkbox" class="bling-check-pedido" data-id="${p.id}" data-conta="${p.conta}" data-tem-etiqueta="${p.temEtiqueta}" onchange="blingAtualizarBotaoLote()"></td>
         <td>${contaBadge}</td>
@@ -75,7 +80,7 @@ async function blingCarregarPedidos() {
         <td class="col-num">${valor}</td>
         <td>${data_str}</td>
         <td style="text-align:center">${etqBadge}</td>
-        <td style="white-space:nowrap"><button class="btn-sm" data-bling-id="${p.id}" onclick="blingEmitirNF('${p.id}', this, '${p.conta}')">Emitir NF</button>${btnSuper}</td>
+        <td style="white-space:nowrap"><button class="btn-sm" data-bling-id="${p.id}" onclick="blingEmitirNF('${p.id}', this, '${p.conta}')">Emitir NF</button>${btnSuper}${btnPendencia}</td>
       `;
       tbody.appendChild(tr);
     }

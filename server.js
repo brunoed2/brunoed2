@@ -1194,7 +1194,8 @@ async function fetchBlingPedidosPendentes(conta) {
       }).then(r => r.data?.data || null).catch(() => null);
     }
     const produtos = (detalhe?.itens || []).map(i => `${i.descricao}${i.quantidade > 1 ? ` (x${i.quantidade})` : ''}`);
-    itensDetalhados.push({ ...p, numeroLoja: detalhe?.numeroLoja || p.numeroLoja, produtos });
+    const pendencias = (detalhe?.pendencias || []).map(pen => pen.descricao || pen.valor || String(pen));
+    itensDetalhados.push({ ...p, numeroLoja: detalhe?.numeroLoja || p.numeroLoja, produtos, pendencias });
   }
 
   // Verifica no ML quais têm shipment ready_to_ship (etiqueta disponível ao emitir NF)
@@ -1245,6 +1246,7 @@ async function fetchBlingPedidosPendentes(conta) {
     dataPrevista:     p.dataPrevista || null,
     produtos:         p.produtos || [],
     temEtiqueta:      mlTokens.length > 0 ? idsComEtiqueta.has(p.id) : true,
+    pendencias:       p.pendencias || [],
     conta,
   }));
 }
