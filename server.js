@@ -3338,15 +3338,9 @@ app.post('/api/ml/sair-full/:mlb', async (req, res) => {
   const mlb     = req.params.mlb;
   const headers = { Authorization: `Bearer ${c.access_token}`, 'Content-Type': 'application/json' };
   try {
-    // Busca shipping atual para preservar campos obrigatórios
-    const itemResp = await axios.get(`https://api.mercadolibre.com/items/${mlb}`,
-      { params: { attributes: 'id,shipping' }, headers, timeout: 10000 });
-    const sh = itemResp.data.shipping || {};
-    addLog(`[estoque] sair-full ${mlb} shipping atual: ${JSON.stringify(sh)}`, 'info');
-
     await axios.put(
       `https://api.mercadolibre.com/items/${mlb}`,
-      { shipping: { ...sh, logistic_type: 'not_specified', mode: 'me2', free_shipping: false } },
+      { shipping: { logistic_type: 'not_specified', mode: 'me2' } },
       { headers, timeout: 15000 }
     );
     addLog(`[estoque] ${mlb} saiu do Full`, 'ok');
