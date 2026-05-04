@@ -4,15 +4,14 @@
 // Suporta duas contas ML com alternância em tempo real
 // ============================================================
 
-const express = require('express');
-const axios   = require('axios');
-const fs      = require('fs');
-const path    = require('path');
-const crypto  = require('crypto');
-const multer  = require('multer');
-const forge   = require('node-forge');
-const https   = require('https');
-const zlib    = require('zlib');
+const express  = require('express');
+const axios    = require('axios');
+const fs       = require('fs');
+const path     = require('path');
+const crypto   = require('crypto');
+const multer   = require('multer');
+const https    = require('https');
+const zlib     = require('zlib');
 
 const uploadMem = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
@@ -4107,45 +4106,8 @@ app.post('/api/sync/force', (req, res) => {
 
 // ── Notas de Entrada (SEFAZ NF-e) ────────────────────────────────────────────
 
-function extrairCnpjDoCert(pfxBuffer, senha) {
-  let p12;
-  try {
-    const p12Asn1 = forge.asn1.fromDer(pfxBuffer.toString('binary'));
-    p12 = forge.pkcs12.pkcs12FromAsn1(p12Asn1, senha);
-  } catch {
-    throw new Error('Senha incorreta ou arquivo PFX inválido');
-  }
-  const certBags = p12.getBags({ bagType: forge.pki.oids.certBag });
-  const bags = certBags[forge.pki.oids.certBag] || [];
-  if (!bags.length) throw new Error('Nenhum certificado encontrado no PFX');
-  const cert = bags[0].cert;
-
-  const cn = cert.subject.getField('CN')?.value || '';
-  const allAttrs = cert.subject.attributes.map(a => String(a.value || '')).join(' ');
-  let cnpj = null;
-  const titular = cn.includes(':') ? cn.split(':')[0].trim() : cn.trim();
-
-  // Padrão ICP-Brasil: "NOME DA EMPRESA:01234567000195"
-  const matchCn = cn.match(/:(\d{14})(\s|$)/);
-  if (matchCn) {
-    cnpj = matchCn[1];
-  } else {
-    const matchAny = allAttrs.match(/\b(\d{14})\b/);
-    if (matchAny) cnpj = matchAny[1];
-  }
-
-  if (!cnpj) {
-    const sanExt = cert.extensions?.find(e => e.name === 'subjectAltName');
-    if (sanExt?.altNames) {
-      for (const alt of sanExt.altNames) {
-        const m = String(alt.value || '').match(/\d{14}/);
-        if (m) { cnpj = m[0]; break; }
-      }
-    }
-  }
-
-  if (!cnpj) throw new Error('CNPJ não encontrado no certificado. Certifique-se de usar um certificado e-CNPJ ICP-Brasil válido.');
-  return { cnpj, titular };
+function extrairCnpjDoCert(_pfxBuffer, _senha) {
+  throw new Error('Funcionalidade de consulta SEFAZ desativada.');
 }
 
 async function queryNFeByChave(pfxBuffer, senha, cnpj, cUF, chNFe) {
