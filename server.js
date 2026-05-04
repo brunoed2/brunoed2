@@ -3338,9 +3338,15 @@ app.post('/api/ml/sair-full/:mlb', async (req, res) => {
   const mlb     = req.params.mlb;
   const headers = { Authorization: `Bearer ${c.access_token}`, 'Content-Type': 'application/json' };
   try {
+    // Busca shipping atual para preservar campos obrigatórios
+    const itemResp = await axios.get(`https://api.mercadolibre.com/items/${mlb}`,
+      { params: { attributes: 'id,shipping' }, headers, timeout: 10000 });
+    const sh = itemResp.data.shipping || {};
+    addLog(`[estoque] sair-full ${mlb} shipping atual: ${JSON.stringify(sh)}`, 'info');
+
     await axios.put(
       `https://api.mercadolibre.com/items/${mlb}`,
-      { shipping: { logistic_type: 'not_specified' } },
+      { shipping: { ...sh, logistic_type: 'not_specified', mode: 'me2', free_shipping: false } },
       { headers, timeout: 15000 }
     );
     addLog(`[estoque] ${mlb} saiu do Full`, 'ok');
@@ -3348,7 +3354,7 @@ app.post('/api/ml/sair-full/:mlb', async (req, res) => {
   } catch (err) {
     const mlErr = err.response?.data;
     const msg   = mlErr?.message || mlErr?.error || mlErr?.cause?.[0]?.message || err.message;
-    addLog(`[estoque] sair-full ${mlb}: ${msg}`, 'warn');
+    addLog(`[estoque] sair-full ${mlb}: ${JSON.stringify(mlErr)}`, 'warn');
     return res.json({ ok: false, erro: msg, detalhe: JSON.stringify(mlErr) });
   }
 });

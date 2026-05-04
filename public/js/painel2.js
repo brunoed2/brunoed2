@@ -858,7 +858,7 @@ async function sairFull(mlb, btn) {
     } else {
       btn.disabled    = false;
       btn.textContent = 'Sair Full';
-      alert('Erro: ' + (d.erro || 'Falha na API do Mercado Livre'));
+      alert('Erro: ' + (d.erro || 'Falha na API do Mercado Livre') + (d.detalhe ? '\n\n' + d.detalhe : ''));
     }
   } catch (err) {
     btn.disabled    = false;
