@@ -341,7 +341,7 @@ function renderizarTabela() {
     } else if (item.deposito === 'fulfillment') {
       estoqueCell = `<td class="col-num ${item.estoque === 0 ? 'estoque-zero' : ''}">
         ${item.estoque}
-        <button class="btn-sm" onclick="sairFull('${item.mlb}', this)" style="font-size:10px;margin-left:5px;background:#f59e0b;color:#fff;padding:1px 6px" title="Remover este anúncio do Mercado Envios Full">Sair Full</button>
+        <button class="btn-sm" onclick="sairFull('${item.mlb}')" style="font-size:10px;margin-left:5px;background:#f59e0b;color:#fff;padding:1px 6px" title="Abrir painel do ML para sair do Full">Sair Full</button>
       </td>`;
     } else {
       estoqueCell = `<td class="col-num ${item.estoque === 0 ? 'estoque-zero' : ''}">${item.estoque}</td>`;
@@ -845,32 +845,8 @@ function renderizarHistorico() {
 
 // ── Sair do Full ─────────────────────────────────────────────
 
-async function sairFull(mlb, btn) {
-  if (!confirm(`Remover ${mlb} do Mercado Envios Full?\n\nIsso devolverá o controle de estoque para você e o produto passará a usar envio próprio.`)) return;
-  btn.disabled    = true;
-  btn.textContent = '...';
-  try {
-    const d = await apiFetch(`/api/ml/sair-full/${mlb}`, { method: 'POST' });
-    if (d.ok) {
-      btn.textContent = '✓ Feito';
-      btn.style.background = '#16a34a';
-      setTimeout(() => carregarEstoque(true), 1500);
-    } else if (d.notModifiable) {
-      btn.disabled    = false;
-      btn.textContent = 'Sair Full';
-      if (confirm(`Não é possível sair do Full para ${mlb} via API — o Mercado Livre exige ação manual no painel deles.\n\nDeseja abrir o painel de gestão de estoque do ML?`)) {
-        window.open(`https://www.mercadolivre.com.br/anuncios/lista/space_management?search=${mlb.replace('MLB','')}`, '_blank');
-      }
-    } else {
-      btn.disabled    = false;
-      btn.textContent = 'Sair Full';
-      alert('Erro: ' + (d.erro || 'Falha na API do Mercado Livre') + (d.detalhe ? '\n\n' + d.detalhe : ''));
-    }
-  } catch (err) {
-    btn.disabled    = false;
-    btn.textContent = 'Sair Full';
-    alert('Erro: ' + err.message);
-  }
+function sairFull(mlb) {
+  window.open(`https://www.mercadolivre.com.br/anuncios/lista/space_management?search=${mlb.replace('MLB','')}`, '_blank');
 }
 
 // ── Inicialização ─────────────────────────────────────────────
