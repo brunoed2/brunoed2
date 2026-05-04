@@ -1191,10 +1191,13 @@ async function fetchBlingPedidosPendentes(conta) {
       if (tentativa > 0) await new Promise(r => setTimeout(r, 600 * tentativa));
       detalhe = await axios.get(`https://www.bling.com.br/Api/v3/pedidos/vendas/${p.id}`, {
         headers: { Authorization: `Bearer ${token}` }, timeout: 10000,
-      }).then(r => { addLog(`[bling-debug] pedido ${p.id} keys: ${Object.keys(r.data?.data || {}).join(',')}`, 'info'); return r.data?.data || null; }).catch(() => null);
+      }).then(r => r.data?.data || null).catch(() => null);
     }
     const produtos = (detalhe?.itens || []).map(i => `${i.descricao}${i.quantidade > 1 ? ` (x${i.quantidade})` : ''}`);
-    const pendencias = (detalhe?.pendencias || []).map(pen => pen.descricao || pen.valor || String(pen));
+    const pendencias = [];
+    if (!detalhe?.contato?.numeroDocumento?.trim()) pendencias.push('CPF/CNPJ não informado');
+    const itensSemProduto = (detalhe?.itens || []).filter(i => !i?.produto?.id);
+    if (itensSemProduto.length > 0) pendencias.push(`Produto não cadastrado: ${itensSemProduto.map(i => i.descricao || '?').join(', ')}`);
     itensDetalhados.push({ ...p, numeroLoja: detalhe?.numeroLoja || p.numeroLoja, produtos, pendencias });
   }
 
