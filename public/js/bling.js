@@ -167,7 +167,7 @@ async function blingSuperSelecionadas() {
     }
 
     if (btnSuper) btnSuper.textContent = '⚡ Enviando...';
-    await new Promise(r => setTimeout(r, 2000));
+    await new Promise(r => setTimeout(r, 3500));
     const envio = await fetch(`/api/bling/enviar-nf/${emissao.nfId}?conta=${conta}`, { method: 'POST' }).then(r => r.json()).catch(() => ({ ok: false }));
     if (envio.ok) {
       ok++;
@@ -182,8 +182,8 @@ async function blingSuperSelecionadas() {
   blingAtualizarBotaoLote();
   const checkAll = document.getElementById('bling-check-all');
   if (checkAll) checkAll.checked = false;
-  if (erros === 0) setTimeout(() => blingCarregarPedidos(), 1500);
-  else alert(`${ok} NF(s) enviada(s) com sucesso. ${erros} erro(s).`);
+  setTimeout(() => blingCarregarPedidos(), 1500);
+  if (erros > 0) alert(`${ok} NF(s) enviada(s) com sucesso. ${erros} com erro — verifique no Bling.`);
 }
 
 async function blingSuperEnvio(pedidoId, btn, conta) {
@@ -199,7 +199,7 @@ async function blingSuperEnvio(pedidoId, btn, conta) {
       return;
     }
     btn.textContent = '⚡ Enviando NF...';
-    await new Promise(r => setTimeout(r, 2000));
+    await new Promise(r => setTimeout(r, 3500));
     const envio = await fetch(`/api/bling/enviar-nf/${emissao.nfId}?conta=${conta}`, { method: 'POST' }).then(r => r.json());
     if (envio.ok) {
       btn.textContent = '✅ Enviada';

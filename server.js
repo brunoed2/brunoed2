@@ -1329,10 +1329,21 @@ async function blingEmitirNFHelper(pedidoId, conta) {
 
 async function blingEnviarNFHelper(nfId, conta) {
   const token = await getBlingToken(conta);
-  await axios.post(`https://www.bling.com.br/Api/v3/nfe/${nfId}/enviar`, {},
-    { headers: { Authorization: `Bearer ${token}` }, timeout: 15000 }
-  );
-  addLog(`[bling] NF ${nfId} enviada para SEFAZ`, 'ok');
+  let lastErr;
+  for (let tentativa = 0; tentativa < 3; tentativa++) {
+    if (tentativa > 0) await new Promise(r => setTimeout(r, 4000 * tentativa));
+    try {
+      await axios.post(`https://www.bling.com.br/Api/v3/nfe/${nfId}/enviar`, {},
+        { headers: { Authorization: `Bearer ${token}` }, timeout: 25000 }
+      );
+      addLog(`[bling] NF ${nfId} enviada para SEFAZ (tentativa ${tentativa + 1})`, 'ok');
+      return;
+    } catch (err) {
+      lastErr = err;
+      addLog(`[bling] enviar NF ${nfId} tentativa ${tentativa + 1} falhou: ${err.response ? JSON.stringify(err.response.data).slice(0,150) : err.message}`, 'warn');
+    }
+  }
+  throw lastErr;
 }
 
 // ── Bling: emitir NF para pedido ML ──────────────────────────
