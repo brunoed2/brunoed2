@@ -855,6 +855,12 @@ async function sairFull(mlb, btn) {
       btn.textContent = '✓ Feito';
       btn.style.background = '#16a34a';
       setTimeout(() => carregarEstoque(true), 1500);
+    } else if (d.notModifiable) {
+      btn.disabled    = false;
+      btn.textContent = 'Sair Full';
+      if (confirm(`Este anúncio é de catálogo — o Mercado Livre não permite alterar o envio via API.\n\nDeseja abrir o painel do ML para editar manualmente?`)) {
+        window.open(`https://www.mercadolivre.com.br/anuncios/${mlb}/editar`, '_blank');
+      }
     } else {
       btn.disabled    = false;
       btn.textContent = 'Sair Full';

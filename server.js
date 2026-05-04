@@ -3348,8 +3348,9 @@ app.post('/api/ml/sair-full/:mlb', async (req, res) => {
   } catch (err) {
     const mlErr = err.response?.data;
     const msg   = mlErr?.message || mlErr?.error || mlErr?.cause?.[0]?.message || err.message;
+    const notModifiable = JSON.stringify(mlErr).includes('logistic_type.not_modifiable');
     addLog(`[estoque] sair-full ${mlb}: ${JSON.stringify(mlErr)}`, 'warn');
-    return res.json({ ok: false, erro: msg, detalhe: JSON.stringify(mlErr) });
+    return res.json({ ok: false, erro: msg, detalhe: JSON.stringify(mlErr), notModifiable });
   }
 });
 
