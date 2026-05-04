@@ -2233,6 +2233,8 @@ app.get('/api/ml/promocoes', async (req, res) => {
               descontoMax,
               participando: promo.status === 'started',
               status:       promo.status || 'candidate',
+              dataInicio:   promo.start_date  || null,
+              dataFim:      promo.finish_date || null,
             };
           });
 

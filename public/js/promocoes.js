@@ -14,6 +14,13 @@ function promoFormatarPreco(v) {
   return Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
+function promoFmtData(d) {
+  if (!d) return null;
+  const dt = new Date(d);
+  if (isNaN(dt)) return null;
+  return dt.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'UTC' });
+}
+
 // Taxa ML estimada por tipo de anúncio (% sobre preço + R$6 fixo acima de R$79)
 const TAXA_ML_PCT = {
   gold_special:  0.11,
@@ -31,22 +38,28 @@ function promoTaxaML(preco, listingType) {
   return preco * pct + fixo;
 }
 function promoCalcMargem(preco, sku, listingType, lucroConfig) {
-  if (!preco || preco <= 0 || !lucroConfig) return null;
-  const custo   = lucroConfig.custos[sku] || 0;
-  const taxaML  = promoTaxaML(preco, listingType);
-  const freteSku = lucroConfig.frete_por_sku?.[sku];
-  const frete   = freteSku != null ? freteSku : (lucroConfig.frete_medio || 0);
-  const imposto = preco * ((lucroConfig.taxa_imposto || 0) / 100);
-  const lucro   = preco - taxaML - frete - custo - imposto;
-  return { pct: (lucro / preco) * 100, lucroR: lucro };
+  try {
+    if (!preco || preco <= 0 || !lucroConfig) return null;
+    const custos   = lucroConfig.custos || {};
+    const custo    = custos[sku] || 0;
+    const taxaML   = promoTaxaML(preco, listingType);
+    const freteSku = (lucroConfig.frete_por_sku || {})[sku];
+    const frete    = freteSku != null ? freteSku : (lucroConfig.frete_medio || 0);
+    const imposto  = preco * ((lucroConfig.taxa_imposto || 0) / 100);
+    const lucro    = preco - taxaML - frete - custo - imposto;
+    return { pct: (lucro / preco) * 100, lucroR: lucro };
+  } catch { return null; }
 }
 function promoFmtMargem(resultado) {
-  if (resultado == null) return '—';
-  const { pct, lucroR } = resultado;
-  const cor = pct >= 10 ? '#16a34a' : pct >= 0 ? '#d97706' : '#dc2626';
-  const pctStr  = `${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%`;
-  const reaisStr = lucroR.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-  return `<span style="font-weight:600;color:${cor}">${pctStr}</span><br><span style="font-size:11px;color:${cor}">${reaisStr}</span>`;
+  try {
+    if (resultado == null) return '—';
+    const { pct, lucroR } = resultado;
+    if (!isFinite(pct)) return '—';
+    const cor      = pct >= 10 ? '#16a34a' : pct >= 0 ? '#d97706' : '#dc2626';
+    const pctStr   = `${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%`;
+    const reaisStr = (lucroR ?? 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    return `<span style="font-weight:600;color:${cor}">${pctStr}</span><br><span style="font-size:11px;color:${cor}">${reaisStr}</span>`;
+  } catch { return '—'; }
 }
 
 async function carregarPromocoes() {
@@ -98,12 +111,12 @@ async function carregarPromocoes() {
           <th class="col-num">Preço atual</th>
           <th>Promoção</th>
           <th>Tipo</th>
+          <th>Período</th>
           <th class="col-num">Preço promo</th>
           <th class="col-num">% Seller</th>
           <th class="col-num">% Meli</th>
           <th class="col-num" title="Margem atual estimada (taxa ML, custo, frete médio e imposto)">Margem</th>
           <th class="col-num" title="Margem estimada se participar da promoção">c/ promo</th>
-          <th>Status</th>
           <th></th>
         </tr>
       </thead>
@@ -169,6 +182,16 @@ async function carregarPromocoes() {
         tdTipo.innerHTML = `<span class="badge-deposito" style="background:${isPD ? '#f0fdf4' : '#eff6ff'};color:${isPD ? '#16a34a' : '#2563eb'};font-size:11px">${PROMO_TIPO_LABEL[promo.tipo] || promo.tipo}</span>`;
         tr.appendChild(tdTipo);
 
+        // Período
+        const tdPeriodo = document.createElement('td');
+        tdPeriodo.style.fontSize = '11px';
+        tdPeriodo.style.color = '#64748b';
+        tdPeriodo.style.whiteSpace = 'nowrap';
+        const dIni = promoFmtData(promo.dataInicio);
+        const dFim = promoFmtData(promo.dataFim);
+        tdPeriodo.textContent = dIni && dFim ? `${dIni} – ${dFim}` : dIni || dFim || '—';
+        tr.appendChild(tdPeriodo);
+
         // Preço promo
         const tdPrecoP = document.createElement('td');
         tdPrecoP.className = 'col-num';
@@ -221,24 +244,17 @@ async function carregarPromocoes() {
         tdMargemP.innerHTML = promoFmtMargem(mPromo);
         tr.appendChild(tdMargemP);
 
-        // Status
-        const tdStatus = document.createElement('td');
-        tdStatus.innerHTML = promo.participando
-          ? `<span class="badge-deposito badge-ativo" style="font-size:11px">Ativa</span>`
-          : `<span class="badge-deposito" style="background:#f1f5f9;color:#64748b;font-size:11px">Candidata</span>`;
-        tr.appendChild(tdStatus);
-
-        // Ação — qualquer tipo com promotion_id pode participar
+        // Ação
         const tdAcao = document.createElement('td');
-        if (promo.id) {
-          if (promo.participando) {
-            tdAcao.innerHTML = `<button class="btn-sm" disabled style="opacity:.5;cursor:default">✓ Inscrito</button>`;
-          } else {
-            const promoId  = promo.id;
-            const mlb      = item.mlb;
-            const precoArg = promo.precoPromo ?? null;
-            tdAcao.innerHTML = `<button class="btn-sm btn-primary" onclick="promoParticipar('${promoId}','${mlb}',${precoArg},this)">Participar</button>`;
-          }
+        if (promo.participando) {
+          tdAcao.innerHTML = `<button class="btn-sm" disabled style="opacity:.5;cursor:default">✓ Inscrito</button>`;
+        } else if (promo.id) {
+          const promoId  = promo.id;
+          const mlb      = item.mlb;
+          const precoArg = promo.precoPromo ?? null;
+          tdAcao.innerHTML = `<button class="btn-sm btn-primary" onclick="promoParticipar('${promoId}','${mlb}',${precoArg},this)">Participar</button>`;
+        } else {
+          tdAcao.innerHTML = `<span style="color:#94a3b8;font-size:11px" title="Campanha sem inscrição direta — ajuste o preço dentro da faixa para participar">—</span>`;
         }
         tr.appendChild(tdAcao);
 
@@ -286,8 +302,6 @@ async function promoParticipar(promotionId, mlb, precoPromo, btn) {
     } else {
       btn.textContent = '✓ Inscrito';
       btn.classList.remove('btn-primary');
-      const td = btn.closest('tr')?.querySelector('td:nth-child(10)');
-      if (td) td.innerHTML = `<span class="badge-deposito badge-ativo" style="font-size:11px">Ativa</span>`;
     }
   } catch {
     btn.textContent = '✗ Erro';
