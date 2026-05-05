@@ -17,7 +17,7 @@ async function calcCarregarDados() {
 
   try {
     // Buscar preço atual do anúncio
-    const itemResp = await fetch(`/api/ml/item/${mlb}`);
+    const itemResp = await fetch(`/api/ml/item/${mlb}?conta=${conta}`);
     const itemData = await itemResp.json();
     if (itemData.error) {
       alert('Erro ao buscar anúncio: ' + itemData.error);

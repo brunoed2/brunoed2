@@ -1611,7 +1611,8 @@ app.get('/api/ml/estoque', async (req, res) => {
 
 app.get('/api/ml/item/:mlb', async (req, res) => {
   const data = loadData();
-  const c    = data.contas[data.conta_ativa] || {};
+  const num  = req.query.conta || data.conta_ativa;
+  const c    = data.contas[num] || {};
   if (!c.access_token) return res.json({ error: 'Não conectado' });
 
   const mlb = req.params.mlb;
@@ -1625,9 +1626,9 @@ app.get('/api/ml/item/:mlb', async (req, res) => {
     });
     res.json({ item: itemResp.data });
   } catch (err) {
-    const detail = err.response?.data || err.message;
+    const detail = err.response?.data?.message || err.response?.data || err.message;
     console.error(`Erro ao buscar item ${mlb}:`, detail);
-    res.json({ error: 'Erro ao buscar anúncio no Mercado Livre.' });
+    res.json({ error: detail || 'Erro ao buscar anúncio no Mercado Livre.' });
   }
 });
 
