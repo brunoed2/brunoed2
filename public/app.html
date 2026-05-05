@@ -34,6 +34,7 @@
         <button class="nav-btn" data-tab="bling">🧾 Bling</button>
         <button class="nav-btn" data-tab="fiscal">🗂️ NF Compras</button>
         <button class="nav-btn" data-tab="compras">🛒 Compras</button>
+        <button class="nav-btn" data-tab="calculadora">🧮 Calculadora</button>
         <button class="nav-btn" data-tab="configuracoes">⚙️ Configurações</button>
       </nav>
       <div class="sidebar-footer">
@@ -775,6 +776,62 @@
         </div>
       </section>
 
+      <!-- ── Aba: Calculadora ── -->
+      <section id="tab-calculadora" class="tab">
+        <h1>Calculadora de Lucro</h1>
+        <p class="subtitle">Simule lucros ajustando custos, preços e impostos.</p>
+
+        <div class="calculadora-container">
+          <!-- Lado esquerdo: Dados atuais -->
+          <div class="calculadora-atual">
+            <h2>Dados Atuais</h2>
+            <div class="field">
+              <label>MLB (ID do produto)</label>
+              <input type="text" id="calc-mlb" placeholder="Ex: MLB123456789">
+            </div>
+            <button class="btn-primary" onclick="calcCarregarDados()">Carregar Dados</button>
+            <div id="calc-dados" class="calc-dados" style="display:none">
+              <div class="calc-item"><strong>Preço de Venda:</strong> <span id="calc-preco-venda">—</span></div>
+              <div class="calc-item"><strong>Custo do Produto:</strong> <span id="calc-custo-produto">—</span></div>
+              <div class="calc-item"><strong>Taxa ML:</strong> <span id="calc-taxa-ml">—</span></div>
+              <div class="calc-item"><strong>Frete:</strong> <span id="calc-frete">—</span></div>
+              <div class="calc-item"><strong>Imposto:</strong> <span id="calc-imposto">—</span></div>
+              <div class="calc-item"><strong>Lucro:</strong> <span id="calc-lucro">—</span></div>
+            </div>
+          </div>
+
+          <!-- Lado direito: Simulação -->
+          <div class="calculadora-simulacao">
+            <h2>Simulação</h2>
+            <div class="field">
+              <label>Custo do Produto</label>
+              <input type="number" id="sim-custo-produto" step="0.01" min="0">
+            </div>
+            <div class="field">
+              <label>Preço de Venda</label>
+              <input type="number" id="sim-preco-venda" step="0.01" min="0">
+            </div>
+            <div class="field">
+              <label>Taxa ML (%)</label>
+              <input type="number" id="sim-taxa-ml" step="0.01" min="0" max="100">
+            </div>
+            <div class="field">
+              <label>Frete</label>
+              <input type="number" id="sim-frete" step="0.01" min="0">
+            </div>
+            <div class="field">
+              <label>Imposto (%)</label>
+              <input type="number" id="sim-imposto" step="0.01" min="0" max="100">
+            </div>
+            <button class="btn-primary" onclick="calcSimular()">Simular</button>
+            <div id="calc-simulacao-resultado" class="calc-simulacao-resultado" style="display:none">
+              <div class="calc-item"><strong>Lucro Simulado:</strong> <span id="sim-lucro">—</span></div>
+              <div class="calc-item"><strong>Margem:</strong> <span id="sim-margem">—</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
     </main>
   </div>
 
@@ -809,6 +866,7 @@
   <script src="/js/bling.js?v=1"></script>
   <script src="/js/fiscal.js?v=1"></script>
   <script src="/js/compras.js?v=1"></script>
-  <div id="version-badge">v371</div>
+  <script src="/js/calculadora.js"></script>
+  <div id="version-badge">v372</div>
 </body>
 </html>

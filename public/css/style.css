@@ -1658,3 +1658,49 @@ tr.lucro-sub-item td {
 /* Topbar mobile — oculto no desktop */
 .mobile-topbar { display: none; }
 .mobile-conta-seletor { display: none; }
+
+/* -- Calculadora ---------------------------------------------- */
+
+.calculadora-container {
+  display: flex;
+  gap: 40px;
+  flex-wrap: wrap;
+}
+
+.calculadora-atual, .calculadora-simulacao {
+  flex: 1;
+  min-width: 300px;
+  background: #fff;
+  border-radius: 8px;
+  padding: 24px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.1);
+}
+
+.calculadora-atual h2, .calculadora-simulacao h2 {
+  margin-bottom: 16px;
+  color: #1a1a1a;
+}
+
+.calc-dados {
+  margin-top: 20px;
+}
+
+.calc-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.calc-item:last-child {
+  border-bottom: none;
+  font-weight: bold;
+  color: #16a34a;
+}
+
+.calc-simulacao-resultado {
+  margin-top: 20px;
+  padding: 16px;
+  background: #f8fafc;
+  border-radius: 6px;
+}
