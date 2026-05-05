@@ -38,19 +38,26 @@ async function calcCarregarDados() {
     let totalQuantidade = 0;
 
     vendasProduto.forEach(venda => {
+      const receitaPedido = venda.itens.reduce((sum, item) => sum + item.precoUnit * item.quantidade, 0);
       venda.itens.forEach(item => {
         if (item.mlb === mlb) {
-          totalReceita += item.precoUnit * item.quantidade;
+          const itemReceita = item.precoUnit * item.quantidade;
+          totalReceita += itemReceita;
           totalTaxaML += item.taxaML; // taxa por item
-          totalFrete += venda.freteReal;
+          totalFrete += receitaPedido ? (venda.freteReal * itemReceita / receitaPedido) : 0;
           totalQuantidade += item.quantidade;
         }
       });
     });
 
+    if (!totalQuantidade) {
+      alert('Erro ao calcular: quantidade total igual a zero.');
+      return;
+    }
+
     const precoMedio = totalReceita / totalQuantidade;
-    const taxaMLMedio = totalTaxaML / vendasProduto.length; // média por venda
-    const freteMedio = totalFrete / vendasProduto.length;
+    const taxaMLMedio = totalTaxaML / totalQuantidade; // média por unidade vendida
+    const freteMedio = totalFrete / totalQuantidade;
 
     // Custo do produto (do config de lucro)
     const configResp = await fetch(`/api/lucro/config?conta=${conta}`);
@@ -74,7 +81,7 @@ async function calcCarregarDados() {
     // Preencher simulação
     document.getElementById('sim-custo-produto').value = custoProduto;
     document.getElementById('sim-preco-venda').value = precoMedio.toFixed(2);
-    document.getElementById('sim-taxa-ml').value = (totalTaxaML / totalReceita * 100).toFixed(2);
+    document.getElementById('sim-taxa-ml').value = ((totalTaxaML / totalReceita) * 100).toFixed(2);
     document.getElementById('sim-frete').value = freteMedio.toFixed(2);
     document.getElementById('sim-imposto').value = (config.taxa_imposto || 0);
 
