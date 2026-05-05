@@ -1609,6 +1609,28 @@ app.get('/api/ml/estoque', async (req, res) => {
   }
 });
 
+app.get('/api/ml/item/:mlb', async (req, res) => {
+  const data = loadData();
+  const c    = data.contas[data.conta_ativa] || {};
+  if (!c.access_token) return res.json({ error: 'Não conectado' });
+
+  const mlb = req.params.mlb;
+  if (!mlb) return res.json({ error: 'MLB obrigatório' });
+
+  try {
+    const itemResp = await axios.get(`https://api.mercadolibre.com/items/${mlb}`, {
+      params: { attributes: 'id,title,price,currency_id,available_quantity,permalink,status' },
+      headers: { Authorization: `Bearer ${c.access_token}` },
+      timeout: 10000,
+    });
+    res.json({ item: itemResp.data });
+  } catch (err) {
+    const detail = err.response?.data || err.message;
+    console.error(`Erro ao buscar item ${mlb}:`, detail);
+    res.json({ error: 'Erro ao buscar anúncio no Mercado Livre.' });
+  }
+});
+
 app.get('/api/ml/vendas30dias', async (req, res) => {
   const data = loadData();
   const c    = contaAtiva(data);
