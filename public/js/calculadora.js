@@ -51,10 +51,11 @@ async function calcCarregarDados() {
     const freteUltimaVenda = receitaPedido ? (ultimaVenda.freteReal * itemReceita / receitaPedido) : 0;
     const taxaMLUltimaVenda = itemUltimaVenda.taxaML;
 
-    // Custo do produto (do config de lucro)
+    // Custo do produto (do config de lucro, usando SKU ou MLB)
     const configResp = await fetch(`/api/lucro/config?conta=${conta}`);
     const config = await configResp.json();
-    const custoProduto = config.custos[mlb] || 0;
+    const chaveCusto = itemUltimaVenda.sku || mlb;
+    const custoProduto = config.custos[chaveCusto] || 0;
 
     // Imposto sobre o preço da última venda
     const precoUltimaVenda = itemUltimaVenda.precoUnit;
