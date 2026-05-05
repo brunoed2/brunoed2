@@ -61,6 +61,7 @@ async function calcCarregarDados() {
     const precoUltimaVenda = itemUltimaVenda.precoUnit;
     const impostoValor = precoUltimaVenda * (config.taxa_imposto || 0) / 100;
     const lucro = precoUltimaVenda - custoProduto - taxaMLUltimaVenda - freteUltimaVenda - impostoValor;
+    const margem = precoUltimaVenda > 0 ? (lucro / precoUltimaVenda) * 100 : 0;
 
     document.getElementById('calc-preco-venda').textContent = 'R$ ' + precoUltimaVenda.toFixed(2);
     document.getElementById('calc-custo-produto').textContent = 'R$ ' + custoProduto.toFixed(2);
@@ -68,6 +69,7 @@ async function calcCarregarDados() {
     document.getElementById('calc-frete').textContent = 'R$ ' + freteUltimaVenda.toFixed(2);
     document.getElementById('calc-imposto').textContent = 'R$ ' + impostoValor.toFixed(2);
     document.getElementById('calc-lucro').textContent = 'R$ ' + lucro.toFixed(2);
+    document.getElementById('calc-margem').textContent = margem.toFixed(1) + '%';
 
     document.getElementById('calc-dados').style.display = 'block';
 
