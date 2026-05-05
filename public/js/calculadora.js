@@ -16,7 +16,7 @@ async function calcCarregarDados() {
   const conta = calcContaAtual();
 
   try {
-    // Buscar preço atual do anúncio
+    // Buscar o preço atual do anúncio (para comparação)
     const itemResp = await fetch(`/api/ml/item/${mlb}?conta=${conta}`);
     const itemData = await itemResp.json();
     if (itemData.error) {
@@ -24,54 +24,47 @@ async function calcCarregarDados() {
       return;
     }
 
-    const precoAtual = itemData.item?.price || 0;
+    const precoAnuncio = itemData.item?.price || 0;
 
-    // Buscar vendas recentes para calcular taxas e frete
-    const resp = await fetch(`/api/lucro/vendas?conta=${conta}&date_from=${new Date(Date.now() - 30*24*60*60*1000).toISOString().split('T')[0]}&date_to=${new Date().toISOString().split('T')[0]}`);
+    // Buscar vendas recentes para usar a última venda do MLB
+    const resp = await fetch(`/api/lucro/vendas?conta=${conta}&date_from=${new Date(Date.now() - 90*24*60*60*1000).toISOString().split('T')[0]}&date_to=${new Date().toISOString().split('T')[0]}`);
     const data = await resp.json();
     if (data.error) {
       alert('Erro: ' + data.error);
       return;
     }
 
-    // Filtrar vendas pelo MLB
-    const vendasProduto = data.vendas.filter(v => v.itens.some(i => i.mlb === mlb));
+    // Filtrar vendas pelo MLB e ordenar pela data mais recente
+    const vendasProduto = data.vendas
+      .filter(v => v.itens.some(i => i.mlb === mlb))
+      .sort((a, b) => new Date(b.data) - new Date(a.data));
 
-    // Calcular médias
-    let totalReceita = 0;
-    let totalTaxaML = 0;
-    let totalFrete = 0;
-    let totalQuantidade = 0;
+    if (!vendasProduto.length) {
+      alert('Nenhuma venda encontrada para este MLB.');
+      return;
+    }
 
-    vendasProduto.forEach(venda => {
-      const receitaPedido = venda.itens.reduce((sum, item) => sum + item.precoUnit * item.quantidade, 0);
-      venda.itens.forEach(item => {
-        if (item.mlb === mlb) {
-          const itemReceita = item.precoUnit * item.quantidade;
-          totalReceita += itemReceita;
-          totalTaxaML += item.taxaML;
-          totalFrete += receitaPedido ? (venda.freteReal * itemReceita / receitaPedido) : 0;
-          totalQuantidade += item.quantidade;
-        }
-      });
-    });
-
-    const taxaMLMedio = totalQuantidade ? totalTaxaML / totalQuantidade : 0;
-    const freteMedio = totalQuantidade ? totalFrete / totalQuantidade : 0;
+    const ultimaVenda = vendasProduto[0];
+    const itemUltimaVenda = ultimaVenda.itens.find(i => i.mlb === mlb);
+    const receitaPedido = ultimaVenda.itens.reduce((sum, item) => sum + item.precoUnit * item.quantidade, 0);
+    const itemReceita = itemUltimaVenda.precoUnit * itemUltimaVenda.quantidade;
+    const freteUltimaVenda = receitaPedido ? (ultimaVenda.freteReal * itemReceita / receitaPedido) : 0;
+    const taxaMLUltimaVenda = itemUltimaVenda.taxaML;
 
     // Custo do produto (do config de lucro)
     const configResp = await fetch(`/api/lucro/config?conta=${conta}`);
     const config = await configResp.json();
     const custoProduto = config.custos[mlb] || 0;
 
-    // Imposto sobre o preço atual do anúncio
-    const impostoValor = precoAtual * (config.taxa_imposto || 0) / 100;
-    const lucro = precoAtual - custoProduto - taxaMLMedio - freteMedio - impostoValor;
+    // Imposto sobre o preço da última venda
+    const precoUltimaVenda = itemUltimaVenda.precoUnit;
+    const impostoValor = precoUltimaVenda * (config.taxa_imposto || 0) / 100;
+    const lucro = precoUltimaVenda - custoProduto - taxaMLUltimaVenda - freteUltimaVenda - impostoValor;
 
-    document.getElementById('calc-preco-venda').textContent = 'R$ ' + precoAtual.toFixed(2);
+    document.getElementById('calc-preco-venda').textContent = 'R$ ' + precoUltimaVenda.toFixed(2);
     document.getElementById('calc-custo-produto').textContent = 'R$ ' + custoProduto.toFixed(2);
-    document.getElementById('calc-taxa-ml').textContent = 'R$ ' + taxaMLMedio.toFixed(2);
-    document.getElementById('calc-frete').textContent = 'R$ ' + freteMedio.toFixed(2);
+    document.getElementById('calc-taxa-ml').textContent = 'R$ ' + taxaMLUltimaVenda.toFixed(2);
+    document.getElementById('calc-frete').textContent = 'R$ ' + freteUltimaVenda.toFixed(2);
     document.getElementById('calc-imposto').textContent = 'R$ ' + impostoValor.toFixed(2);
     document.getElementById('calc-lucro').textContent = 'R$ ' + lucro.toFixed(2);
 
@@ -79,10 +72,12 @@ async function calcCarregarDados() {
 
     // Preencher simulação
     document.getElementById('sim-custo-produto').value = custoProduto;
-    document.getElementById('sim-preco-venda').value = precoAtual.toFixed(2);
-    document.getElementById('sim-taxa-ml').value = totalReceita ? ((totalTaxaML / totalReceita) * 100).toFixed(2) : '0.00';
-    document.getElementById('sim-frete').value = freteMedio.toFixed(2);
+    document.getElementById('sim-preco-venda').value = precoUltimaVenda.toFixed(2);
+    document.getElementById('sim-taxa-ml').value = precoUltimaVenda ? ((taxaMLUltimaVenda / precoUltimaVenda) * 100).toFixed(2) : '0.00';
+    document.getElementById('sim-frete').value = freteUltimaVenda.toFixed(2);
     document.getElementById('sim-imposto').value = (config.taxa_imposto || 0);
+
+    console.log('Preço anúncio atual:', precoAnuncio, 'Preço última venda:', precoUltimaVenda);
 
   } catch (e) {
     alert('Erro ao carregar dados: ' + e.message);
