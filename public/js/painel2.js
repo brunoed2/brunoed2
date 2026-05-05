@@ -81,6 +81,10 @@ async function apiFetch(url, opts = {}) {
   return resp.json();
 }
 
+function painel2ContaAtual() {
+  return document.querySelector('.conta-btn.active')?.dataset?.conta || '1';
+}
+
 // ── Estoque ───────────────────────────────────────────────────
 
 let todosItens = [];
@@ -211,7 +215,8 @@ async function atualizarEstoqueVariacao(mlb, variacaoId, btn) {
   btn.textContent = '...';
 
   try {
-    const result = await apiFetch(`/api/ml/estoque/${mlb}`, {
+    const conta = painel2ContaAtual();
+    const result = await apiFetch(`/api/ml/estoque/${mlb}?conta=${conta}`, {
       method: 'PUT',
       body:   JSON.stringify({ quantidade: novaQtd, variacao_id: variacaoId }),
     });
@@ -269,7 +274,8 @@ async function atualizarEstoque(mlb, btn) {
   btn.textContent = '...';
 
   try {
-    const result = await apiFetch(`/api/ml/estoque/${mlb}`, {
+    const conta = painel2ContaAtual();
+    const result = await apiFetch(`/api/ml/estoque/${mlb}?conta=${conta}`, {
       method: 'PUT',
       body:   JSON.stringify({ quantidade: novaQtd }),
     });

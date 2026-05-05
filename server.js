@@ -3300,7 +3300,7 @@ app.get('/api/ml/etiqueta/:shipment_id', async (req, res) => {
 
 app.put('/api/ml/estoque/:mlb', async (req, res) => {
   const data = loadData();
-  const num  = data.conta_ativa;
+  const num  = req.query.conta || data.conta_ativa;
   const c    = data.contas[num];
   if (!c || !c.access_token) return res.status(401).json({ error: 'Não conectado' });
 
@@ -3354,7 +3354,7 @@ app.put('/api/ml/estoque/:mlb', async (req, res) => {
 
 app.post('/api/ml/sair-full/:mlb', async (req, res) => {
   const data = loadData();
-  const num  = data.conta_ativa;
+  const num  = req.query.conta || data.conta_ativa;
   const c    = data.contas[num];
   if (!c || !c.access_token) return res.status(401).json({ error: 'Não conectado' });
 
