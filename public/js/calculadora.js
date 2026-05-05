@@ -18,6 +18,7 @@ async function calcCarregarDados() {
   const statusEl = document.getElementById('calc-status');
   btn.disabled = true;
   statusEl.style.display = 'block';
+  statusEl.textContent = '🔄 Buscando preço atual do anúncio...';
 
   try {
     // Buscar o preço atual do anúncio (para comparação)
@@ -30,6 +31,8 @@ async function calcCarregarDados() {
 
     const precoAnuncio = itemData.item?.price || 0;
 
+    statusEl.textContent = '🔄 Carregando vendas recentes...';
+
     // Buscar vendas recentes para usar a última venda do MLB
     const resp = await fetch(`/api/lucro/vendas?conta=${conta}&date_from=${new Date(Date.now() - 90*24*60*60*1000).toISOString().split('T')[0]}&date_to=${new Date().toISOString().split('T')[0]}`);
     const data = await resp.json();
@@ -37,6 +40,8 @@ async function calcCarregarDados() {
       alert('Erro: ' + data.error);
       return;
     }
+
+    statusEl.textContent = '🔄 Processando dados da última venda...';
 
     // Filtrar vendas pelo MLB e ordenar pela data mais recente
     const vendasProduto = data.vendas
@@ -55,6 +60,8 @@ async function calcCarregarDados() {
     const freteUltimaVenda = receitaPedido ? (ultimaVenda.freteReal * itemReceita / receitaPedido) : 0;
     const taxaMLUltimaVenda = itemUltimaVenda.taxaML;
 
+    statusEl.textContent = '🔄 Calculando custos e impostos...';
+
     // Custo do produto (do config de lucro, usando SKU ou MLB)
     const configResp = await fetch(`/api/lucro/config?conta=${conta}`);
     const config = await configResp.json();
@@ -67,27 +74,32 @@ async function calcCarregarDados() {
     const lucro = precoUltimaVenda - custoProduto - taxaMLUltimaVenda - freteUltimaVenda - impostoValor;
     const margem = precoUltimaVenda > 0 ? (lucro / precoUltimaVenda) * 100 : 0;
 
-    document.getElementById('calc-preco-venda').textContent = 'R$ ' + precoUltimaVenda.toFixed(2);
-    document.getElementById('calc-custo-produto').textContent = 'R$ ' + custoProduto.toFixed(2);
-    document.getElementById('calc-taxa-ml').textContent = 'R$ ' + taxaMLUltimaVenda.toFixed(2);
-    document.getElementById('calc-frete').textContent = 'R$ ' + freteUltimaVenda.toFixed(2);
-    document.getElementById('calc-imposto').textContent = 'R$ ' + impostoValor.toFixed(2);
-    document.getElementById('calc-lucro').textContent = 'R$ ' + lucro.toFixed(2);
-    document.getElementById('calc-margem').textContent = margem.toFixed(1) + '%';
+    statusEl.textContent = '✅ Calculadora pronta!';
 
-    document.getElementById('calc-dados').style.display = 'block';
+    // Pequena pausa para mostrar o sucesso
+    setTimeout(() => {
+      document.getElementById('calc-preco-venda').textContent = 'R$ ' + precoUltimaVenda.toFixed(2);
+      document.getElementById('calc-custo-produto').textContent = 'R$ ' + custoProduto.toFixed(2);
+      document.getElementById('calc-taxa-ml').textContent = 'R$ ' + taxaMLUltimaVenda.toFixed(2);
+      document.getElementById('calc-frete').textContent = 'R$ ' + freteUltimaVenda.toFixed(2);
+      document.getElementById('calc-imposto').textContent = 'R$ ' + impostoValor.toFixed(2);
+      document.getElementById('calc-lucro').textContent = 'R$ ' + lucro.toFixed(2);
+      document.getElementById('calc-margem').textContent = margem.toFixed(1) + '%';
 
-    // Preencher simulação
-    document.getElementById('sim-custo-produto').value = custoProduto;
-    document.getElementById('sim-preco-venda').value = precoUltimaVenda.toFixed(2);
-    document.getElementById('sim-taxa-ml').value = precoUltimaVenda ? ((taxaMLUltimaVenda / precoUltimaVenda) * 100).toFixed(2) : '0.00';
-    document.getElementById('sim-frete').value = freteUltimaVenda.toFixed(2);
-    document.getElementById('sim-imposto').value = (config.taxa_imposto || 0);
+      document.getElementById('calc-dados').style.display = 'block';
 
-    console.log('Preço anúncio atual:', precoAnuncio, 'Preço última venda:', precoUltimaVenda);
+      // Preencher simulação
+      document.getElementById('sim-custo-produto').value = custoProduto;
+      document.getElementById('sim-preco-venda').value = precoUltimaVenda.toFixed(2);
+      document.getElementById('sim-taxa-ml').value = precoUltimaVenda ? ((taxaMLUltimaVenda / precoUltimaVenda) * 100).toFixed(2) : '0.00';
+      document.getElementById('sim-frete').value = freteUltimaVenda.toFixed(2);
+      document.getElementById('sim-imposto').value = (config.taxa_imposto || 0);
 
-    btn.disabled = false;
-    statusEl.style.display = 'none';
+      console.log('Preço anúncio atual:', precoAnuncio, 'Preço última venda:', precoUltimaVenda);
+
+      btn.disabled = false;
+      statusEl.style.display = 'none';
+    }, 500);
 
   } catch (e) {
     alert('Erro ao carregar dados: ' + e.message);
