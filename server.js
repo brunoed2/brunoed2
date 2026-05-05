@@ -3343,12 +3343,12 @@ app.put('/api/ml/estoque/:mlb', async (req, res) => {
       }
     }
 
-    res.json({ ok: true });
+    res.json({ ok: true, conta: num, ml_user_id: c.user_id || null });
   } catch (err) {
     const mlErr = err.response?.data;
-    console.error('Erro ao atualizar estoque:', mlErr || err.message);
+    console.error(`Erro ao atualizar estoque (conta=${num}):`, mlErr || err.message);
     const msg = mlErr?.message || mlErr?.error || mlErr?.cause?.[0]?.message || 'Erro ao atualizar no Mercado Livre';
-    res.status(400).json({ error: msg, detalhe: JSON.stringify(mlErr) });
+    res.status(400).json({ error: msg, detalhe: JSON.stringify(mlErr), conta: num, ml_user_id: c.user_id || null });
   }
 });
 

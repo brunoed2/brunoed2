@@ -223,7 +223,7 @@ async function atualizarEstoqueVariacao(mlb, variacaoId, btn) {
     if (result.error) {
       btn.textContent = '✗';
       btn.classList.add('btn-confirmar-erro');
-      btn.title = result.error;
+      btn.title = `${result.error} (conta ML ${result.conta || conta})`;
       setTimeout(() => {
         btn.textContent = '✓';
         btn.classList.remove('btn-confirmar-erro');
@@ -282,7 +282,7 @@ async function atualizarEstoque(mlb, btn) {
     if (result.error) {
       btn.textContent = '✗';
       btn.classList.add('btn-confirmar-erro');
-      btn.title = result.error;
+      btn.title = `${result.error} (conta ML ${result.conta || conta})`;
       setTimeout(() => {
         btn.textContent = '✓';
         btn.classList.remove('btn-confirmar-erro');
