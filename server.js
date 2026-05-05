@@ -3300,9 +3300,9 @@ app.get('/api/ml/etiqueta/:shipment_id', async (req, res) => {
 
 app.put('/api/ml/estoque/:mlb', async (req, res) => {
   const data = loadData();
-  const num  = req.query.conta || data.conta_ativa;
+  const num  = String(req.query.conta || data.conta_ativa || '1');
   const c    = data.contas[num];
-  if (!c || !c.access_token) return res.status(401).json({ error: 'Não conectado' });
+  if (!c || !c.access_token) return res.status(401).json({ error: `Não conectado (conta: ${num})` });
 
   const { quantidade, variacao_id } = req.body;
   if (typeof quantidade !== 'number' || !Number.isInteger(quantidade) || quantidade < 0) {
