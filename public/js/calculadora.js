@@ -34,7 +34,7 @@ async function calcCarregarDados() {
     statusEl.textContent = '🔄 Carregando vendas recentes...';
 
     // Buscar vendas recentes para usar a última venda do MLB
-    const resp = await fetch(`/api/lucro/vendas?conta=${conta}&date_from=${new Date(Date.now() - 90*24*60*60*1000).toISOString().split('T')[0]}&date_to=${new Date().toISOString().split('T')[0]}`);
+    const resp = await fetch(`/api/lucro/vendas?conta=${conta}&date_from=${new Date(Date.now() - 30*24*60*60*1000).toISOString().split('T')[0]}&date_to=${new Date().toISOString().split('T')[0]}`);
     const data = await resp.json();
     if (data.error) {
       alert('Erro: ' + data.error);
