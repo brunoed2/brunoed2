@@ -15,8 +15,9 @@ async function calcCarregarDados() {
 
   const conta = calcContaAtual();
   const btn = document.getElementById('btn-calc-carregar');
+  const statusEl = document.getElementById('calc-status');
   btn.disabled = true;
-  btn.textContent = 'Carregando...';
+  statusEl.style.display = 'block';
 
   try {
     // Buscar o preço atual do anúncio (para comparação)
@@ -86,12 +87,12 @@ async function calcCarregarDados() {
     console.log('Preço anúncio atual:', precoAnuncio, 'Preço última venda:', precoUltimaVenda);
 
     btn.disabled = false;
-    btn.textContent = 'Carregar Dados';
+    statusEl.style.display = 'none';
 
   } catch (e) {
     alert('Erro ao carregar dados: ' + e.message);
     btn.disabled = false;
-    btn.textContent = 'Carregar Dados';
+    statusEl.style.display = 'none';
   }
 }
 
