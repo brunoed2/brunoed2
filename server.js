@@ -2014,8 +2014,8 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
       histMap.set(sid, {
         orderId:      v.orderId,
         data:         v.data,
-        dataDespacho: existente?.dataDespachoFinalizado ? existente.dataDespacho : (v.dataDespacho || v.prazoDespacho || v.data),
-        dataDespachoFinalizado: existente?.dataDespachoFinalizado || false,
+        dataDespacho: existente?.dataDespachoFinalizado === 'ml' ? existente.dataDespacho : (v.dataDespacho || v.prazoDespacho || v.data),
+        dataDespachoFinalizado: existente?.dataDespachoFinalizado === 'ml' ? 'ml' : false,
         comprador:    v.comprador,
         shipmentId:   v.shipmentId,
         conta:        v.conta,
@@ -2030,7 +2030,7 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
     }
     // Pedidos que saíram da lista ativa: busca date_shipped real no ML
     const recemSaidos = [...histMap.values()].filter(
-      h => !porShipment.has(String(h.shipmentId)) && !h.dataDespachoFinalizado && h.shipmentId
+      h => !porShipment.has(String(h.shipmentId)) && h.dataDespachoFinalizado !== 'ml' && h.shipmentId
     );
     for (let i = 0; i < recemSaidos.length; i += 5) {
       await Promise.all(recemSaidos.slice(i, i + 5).map(async h => {
@@ -2043,7 +2043,7 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
         } catch {
           h.dataDespacho = h.ultimoVisto || agora;
         }
-        h.dataDespachoFinalizado = true;
+        h.dataDespachoFinalizado = 'ml';
       }));
     }
     const historico = [...histMap.values()]
