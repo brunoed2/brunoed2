@@ -588,11 +588,11 @@ function renderizarTabela() {
     const skuKey  = (!isFull && item.sku) ? String(item.sku) : null;
     const estoqueLocalValor = skuKey !== null && estoqueLocal[skuKey] !== undefined ? estoqueLocal[skuKey] : '';
 
-    const estoqueLocalCell = skuKey
+    const estoqueLocalCell = (skuKey && !temVariacoes)
       ? `<td class="col-num"><input type="number" class="estoque-local-input" data-sku="${skuKey}" value="${estoqueLocalValor}" placeholder="—" min="0" style="width:60px;text-align:center"></td>`
       : `<td class="col-num"></td>`;
 
-    const transferirCell = isFull
+    const transferirCell = (isFull || temVariacoes)
       ? `<td class="col-num"></td>`
       : `<td class="col-num"><button class="btn-transferir" data-mlb="${item.mlb}" onclick="transferirEstoque('${item.mlb}')" title="Transferir estoque local para ML">→</button></td>`;
 
