@@ -584,11 +584,21 @@ function renderizarTabela() {
     const diasPausado  = calcularDiasPausado(item.status, item.pausadoDesde);
     const temVariacoes = isProprio(item.deposito) && item.variacoes && item.variacoes.length > 0;
 
-    const skuKey = item.sku ? String(item.sku) : null;
+    const isFull  = item.deposito === 'fulfillment';
+    const skuKey  = (!isFull && item.sku) ? String(item.sku) : null;
     const estoqueLocalValor = skuKey !== null && estoqueLocal[skuKey] !== undefined ? estoqueLocal[skuKey] : '';
+
     const estoqueLocalCell = skuKey
       ? `<td class="col-num"><input type="number" class="estoque-local-input" data-sku="${skuKey}" value="${estoqueLocalValor}" placeholder="—" min="0" style="width:60px;text-align:center"></td>`
-      : `<td class="col-num" style="color:#aaa;text-align:center;font-size:12px">—</td>`;
+      : `<td class="col-num"></td>`;
+
+    const transferirCell = isFull
+      ? `<td class="col-num"></td>`
+      : `<td class="col-num"><button class="btn-transferir" data-mlb="${item.mlb}" onclick="transferirEstoque('${item.mlb}')" title="Transferir estoque local para ML">→</button></td>`;
+
+    const estoqueForaFullCell = isFull
+      ? `<td class="col-num"></td>`
+      : `<td class="col-num ${item.estoque === 0 ? 'estoque-zero' : ''}">${item.estoque}</td>`;
 
     let estoqueFullCell;
     if (temVariacoes) {
@@ -596,7 +606,7 @@ function renderizarTabela() {
       estoqueFullCell = `<td class="col-num"><div class="estoque-edit-wrap"><span id="estoque-total-${item.mlb}" class="${item.estoque === 0 ? 'estoque-zero' : ''}">${item.estoque}</span><button id="btn-expandir-${item.mlb}" class="btn-expandir-var" onclick="toggleVariacoes('${item.mlb}')">${aberto ? '▲' : '▼'}</button></div></td>`;
     } else if (isProprio(item.deposito)) {
       estoqueFullCell = `<td class="col-num"><div class="estoque-edit-wrap"><input type="number" class="estoque-input" value="${item.estoque}" min="0"><button class="btn-confirmar-estoque" onclick="atualizarEstoque('${item.mlb}', this)">✓</button></div></td>`;
-    } else if (item.deposito === 'fulfillment') {
+    } else if (isFull) {
       estoqueFullCell = `<td class="col-num ${item.estoque === 0 ? 'estoque-zero' : ''}">
         ${item.estoque}
         <button class="btn-sm" onclick="sairFull('${item.mlb}')" style="font-size:10px;margin-left:5px;background:#f59e0b;color:#fff;padding:1px 6px" title="Abrir painel do ML para sair do Full">Sair Full</button>
@@ -613,10 +623,8 @@ function renderizarTabela() {
       <td><span class="badge-deposito ${bDeposito}">${item.depositoLabel}</span></td>
       <td><span class="badge-deposito ${bStatus}">${STATUS_LABEL[item.status] || item.status}</span></td>
       ${estoqueLocalCell}
-      <td class="col-num">
-        <button class="btn-transferir" data-mlb="${item.mlb}" onclick="transferirEstoque('${item.mlb}')" title="Transferir estoque local para ML">→</button>
-      </td>
-      <td class="col-num ${item.estoque === 0 ? 'estoque-zero' : ''}">${item.estoque}</td>
+      ${transferirCell}
+      ${estoqueForaFullCell}
       ${estoqueFullCell}
       <td class="col-num">${item.vendas30d === null ? '...' : (item.vendas30d || '—')}</td>
       <td class="col-num ${duracao.classe}">${item.vendas30d === null ? '...' : duracao.texto}</td>
