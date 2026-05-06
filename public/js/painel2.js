@@ -468,8 +468,14 @@ function renderizarTabela() {
         trVar.style.display = aberto ? '' : 'none';
         trVar.innerHTML = `
           <td colspan="5" class="variacao-indent"></td>
-          <td colspan="4" class="variacao-nome">↳ ${v.nome}</td>
-          <td colspan="2"></td>
+          <td colspan="2" class="variacao-nome">↳ ${v.nome}</td>
+          <td class="col-num">
+            <div class="estoque-edit-wrap">
+              <input type="number" class="estoque-input" value="${v.estoque}" min="0">
+              <button class="btn-confirmar-estoque" onclick="atualizarEstoqueVariacao('${item.mlb}', ${v.id}, this)">✓</button>
+            </div>
+          </td>
+          <td colspan="3"></td>
         `;
         tbody.appendChild(trVar);
       });
