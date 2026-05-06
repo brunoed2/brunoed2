@@ -246,22 +246,36 @@ function renderizarTabela() {
     (filtroAtivo ? ' (filtro ativo)' : '');
 }
 
-// Salva o estoque local no localStorage
-function salvarEstoqueLocal(event) {
+// Salva o estoque local no servidor
+async function salvarEstoqueLocal(event) {
   const input = event.target;
   const mlb = input.dataset.mlb;
   const valor = input.value.trim();
 
-  if (valor === '') {
-    delete estoqueLocal[mlb];
-  } else {
-    const num = parseInt(valor);
-    if (!isNaN(num) && num >= 0) {
-      estoqueLocal[mlb] = num;
-    }
-  }
+  try {
+    const response = await apiFetch('/api/estoque-local', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mlb, quantidade: valor })
+    });
 
-  localStorage.setItem('estoqueLocal', JSON.stringify(estoqueLocal));
+    if (response.erro) {
+      console.error('Erro ao salvar estoque local:', response.erro);
+      return;
+    }
+
+    // Atualizar o objeto local
+    if (valor === '') {
+      delete estoqueLocal[mlb];
+    } else {
+      const num = parseInt(valor);
+      if (!isNaN(num) && num >= 0) {
+        estoqueLocal[mlb] = num;
+      }
+    }
+  } catch (error) {
+    console.error('Erro ao conectar com o servidor:', error);
+  }
 }
 
 // Transfere o estoque local para o Mercado Livre
@@ -298,15 +312,16 @@ async function transferirEstoque(mlb) {
   }
 }
 
-// Carrega o estoque local do localStorage
-function carregarEstoqueLocal() {
-  const saved = localStorage.getItem('estoqueLocal');
-  if (saved) {
-    try {
-      estoqueLocal = JSON.parse(saved);
-    } catch {
-      estoqueLocal = {};
+// Carrega o estoque local do servidor
+async function carregarEstoqueLocal() {
+  try {
+    const response = await apiFetch('/api/estoque-local');
+    if (response.estoque_local) {
+      estoqueLocal = response.estoque_local;
     }
+  } catch (error) {
+    console.error('Erro ao carregar estoque local:', error);
+    estoqueLocal = {};
   }
 }
 
@@ -331,7 +346,7 @@ async function carregarEstoque(reiniciar = false) {
 
   // Carregar estoque local na primeira vez
   if (Object.keys(estoqueLocal).length === 0) {
-    carregarEstoqueLocal();
+    await carregarEstoqueLocal();
   }
 
   const loading = document.getElementById('estoque-loading');

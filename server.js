@@ -97,6 +97,7 @@ function loadData() {
   raw.contas          = raw.contas      || {};
   raw.contas['1']     = raw.contas['1'] || {};
   raw.contas['2']     = raw.contas['2'] || {};
+  raw.estoque_local   = raw.estoque_local || {}; // Estoque local por MLB
   return raw;
 }
 
@@ -834,6 +835,33 @@ function extrairSku(body) {
 
 // Ping simples para testar conectividade frontend→servidor
 app.get('/api/ping', (req, res) => res.json({ ok: true, ts: Date.now() }));
+
+// ── Estoque Local ─────────────────────────────────────────────
+app.get('/api/estoque-local', (req, res) => {
+  const data = loadData();
+  res.json({ estoque_local: data.estoque_local });
+});
+
+app.post('/api/estoque-local', (req, res) => {
+  const { mlb, quantidade } = req.body;
+  if (!mlb || quantidade === undefined) {
+    return res.status(400).json({ erro: 'MLB e quantidade obrigatórios' });
+  }
+
+  const data = loadData();
+  if (quantidade === '' || quantidade === null) {
+    delete data.estoque_local[mlb];
+  } else {
+    const num = parseInt(quantidade);
+    if (isNaN(num) || num < 0) {
+      return res.status(400).json({ erro: 'Quantidade deve ser um número positivo' });
+    }
+    data.estoque_local[mlb] = num;
+  }
+
+  saveData(data);
+  res.json({ ok: true, estoque_local: data.estoque_local });
+});
 
 // ── Pesquisa de mercado ML ────────────────────────────────────
 app.get('/api/ml/pesquisa', async (req, res) => {
