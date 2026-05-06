@@ -475,7 +475,7 @@ async function transferirEstoque(mlb) {
     const response = await apiFetch(`/api/ml/estoque/${mlb}?conta=${conta}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ estoque: valor })
+      body: JSON.stringify({ quantidade: parseInt(valor, 10) })
     });
     if (response.error) { alert('Erro ao atualizar estoque: ' + response.error); return; }
     alert('Estoque atualizado com sucesso!');
