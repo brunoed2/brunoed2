@@ -2028,12 +2028,23 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
         ultimoVisto:  agora,
       });
     }
-    // Pedidos que saíram da lista ativa (foram despachados): grava a data de saída como despacho
-    for (const [sid, h] of histMap) {
-      if (!porShipment.has(sid) && !h.dataDespachoFinalizado && h.ultimoVisto) {
-        h.dataDespacho = h.ultimoVisto;
+    // Pedidos que saíram da lista ativa: busca date_shipped real no ML
+    const recemSaidos = [...histMap.values()].filter(
+      h => !porShipment.has(String(h.shipmentId)) && !h.dataDespachoFinalizado && h.shipmentId
+    );
+    for (let i = 0; i < recemSaidos.length; i += 5) {
+      await Promise.all(recemSaidos.slice(i, i + 5).map(async h => {
+        try {
+          const r = await axios.get(`https://api.mercadolibre.com/shipments/${h.shipmentId}`, {
+            headers: { Authorization: `Bearer ${c.access_token}` },
+            timeout: 5000,
+          });
+          h.dataDespacho = r.data.date_shipped || h.ultimoVisto || agora;
+        } catch {
+          h.dataDespacho = h.ultimoVisto || agora;
+        }
         h.dataDespachoFinalizado = true;
-      }
+      }));
     }
     const historico = [...histMap.values()]
       .sort((a, b) => b.primeiroVisto.localeCompare(a.primeiroVisto))
