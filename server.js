@@ -2014,7 +2014,8 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
       histMap.set(sid, {
         orderId:      v.orderId,
         data:         v.data,
-        dataDespacho: v.dataDespacho || v.prazoDespacho || v.data,
+        dataDespacho: existente?.dataDespachoFinalizado ? existente.dataDespacho : (v.dataDespacho || v.prazoDespacho || v.data),
+        dataDespachoFinalizado: existente?.dataDespachoFinalizado || false,
         comprador:    v.comprador,
         shipmentId:   v.shipmentId,
         conta:        v.conta,
@@ -2026,6 +2027,13 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
         primeiroVisto: existente?.primeiroVisto || agora,
         ultimoVisto:  agora,
       });
+    }
+    // Pedidos que saíram da lista ativa (foram despachados): grava a data de saída como despacho
+    for (const [sid, h] of histMap) {
+      if (!porShipment.has(sid) && !h.dataDespachoFinalizado && h.ultimoVisto) {
+        h.dataDespacho = h.ultimoVisto;
+        h.dataDespachoFinalizado = true;
+      }
     }
     const historico = [...histMap.values()]
       .sort((a, b) => b.primeiroVisto.localeCompare(a.primeiroVisto))
