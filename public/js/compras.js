@@ -105,12 +105,14 @@ async function carregarPrevisao() {
   document.getElementById('previsao-total').textContent = '';
 
   try {
-    const [estoqueData, vendas30d, fornData] = await Promise.all([
+    const [estoqueData, vendas30d, fornData, estoqueLocalData] = await Promise.all([
       apiFetch('/api/ml/estoque'),
       apiFetch('/api/ml/vendas30dias'),
       apiFetch(`/api/fornecedores?conta=${getContaAtiva()}`),
+      apiFetch('/api/estoque-local'),
     ]);
     fornecedores = fornData.fornecedores || [];
+    const estoqueLocalPorSku = estoqueLocalData.estoque_local || {};
 
     // Agrupa por SKU; produtos sem SKU real ficam como linha individual (chave = MLB)
     const porSku = {};
@@ -121,10 +123,16 @@ async function carregarPrevisao() {
       if (item.deposito === 'fulfillment') {
         porSku[chave].full += item.estoque || 0;
       } else {
-        // Estoque próprio é compartilhado entre anúncios — pega o maior valor
         porSku[chave].proprio = Math.max(porSku[chave].proprio, item.estoque || 0);
       }
       porSku[chave].vendas30d += vendas30d[item.mlb] || 0;
+    }
+
+    // Sobrescreve "próprio" com o estoque local definido manualmente, quando existir
+    for (const [chave, linha] of Object.entries(porSku)) {
+      if (estoqueLocalPorSku[chave] !== undefined) {
+        linha.proprio = estoqueLocalPorSku[chave];
+      }
     }
 
     const hoje = new Date();
