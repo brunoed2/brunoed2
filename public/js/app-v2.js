@@ -274,6 +274,7 @@ let todosItens = [];
 let filtros    = { deposito: 'todos', status: 'todos' };
 let sortState    = { campo: null, direcao: 'asc' };
 let expandedMLBs = new Set();
+let estoqueLocal = {};
 
 function calcularDiasPausado(status, pausadoDesde) {
   if (status !== 'paused' || !pausadoDesde) return null;
@@ -438,6 +439,60 @@ function isProprio(deposito) {
   return deposito === 'self_service' || deposito === 'xd_drop_off';
 }
 
+async function salvarEstoqueLocal(event) {
+  const input = event.target;
+  const mlb = input.dataset.mlb;
+  const valor = input.value.trim();
+  try {
+    const response = await apiFetch('/api/estoque-local', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mlb, quantidade: valor })
+    });
+    if (response.erro) { console.error('Erro ao salvar estoque local:', response.erro); return; }
+    if (valor === '') {
+      delete estoqueLocal[mlb];
+    } else {
+      const num = parseInt(valor);
+      if (!isNaN(num) && num >= 0) estoqueLocal[mlb] = num;
+    }
+  } catch (error) {
+    console.error('Erro ao conectar com o servidor:', error);
+  }
+}
+
+async function transferirEstoque(mlb) {
+  const valor = estoqueLocal[mlb];
+  if (valor === undefined || valor === '') {
+    alert('Digite um valor de estoque local primeiro.');
+    return;
+  }
+  if (!confirm(`Transferir estoque ${valor} para o anúncio ${mlb}?`)) return;
+  try {
+    const conta = app2ContaAtual();
+    const response = await apiFetch(`/api/ml/estoque/${mlb}?conta=${conta}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ estoque: valor })
+    });
+    if (response.error) { alert('Erro ao atualizar estoque: ' + response.error); return; }
+    alert('Estoque atualizado com sucesso!');
+    await carregarEstoque(true);
+  } catch (error) {
+    alert('Erro ao conectar com o servidor.');
+  }
+}
+
+async function carregarEstoqueLocal() {
+  try {
+    const response = await apiFetch('/api/estoque-local');
+    if (response.estoque_local) estoqueLocal = response.estoque_local;
+  } catch (error) {
+    console.error('Erro ao carregar estoque local:', error);
+    estoqueLocal = {};
+  }
+}
+
 async function atualizarEstoque(mlb, btn) {
   const input  = btn.previousElementSibling;
   const novaQtd = parseInt(input.value, 10);
@@ -511,19 +566,24 @@ function renderizarTabela() {
     const diasPausado  = calcularDiasPausado(item.status, item.pausadoDesde);
     const temVariacoes = isProprio(item.deposito) && item.variacoes && item.variacoes.length > 0;
 
-    let estoqueCell;
+    const estoqueLocalValor = estoqueLocal[item.mlb] !== undefined ? estoqueLocal[item.mlb] : '';
+    const estoqueLocalCell = `<td class="col-num">
+      <input type="number" class="estoque-local-input" data-mlb="${item.mlb}" value="${estoqueLocalValor}" placeholder="—" min="0" style="width: 60px; text-align: center;">
+    </td>`;
+
+    let estoqueFullCell;
     if (temVariacoes) {
       const aberto = expandedMLBs.has(item.mlb);
-      estoqueCell = `<td class="col-num"><div class="estoque-edit-wrap"><span id="estoque-total-${item.mlb}" class="${item.estoque === 0 ? 'estoque-zero' : ''}">${item.estoque}</span><button id="btn-expandir-${item.mlb}" class="btn-expandir-var" onclick="toggleVariacoes('${item.mlb}')">${aberto ? '▲' : '▼'}</button></div></td>`;
+      estoqueFullCell = `<td class="col-num"><div class="estoque-edit-wrap"><span id="estoque-total-${item.mlb}" class="${item.estoque === 0 ? 'estoque-zero' : ''}">${item.estoque}</span><button id="btn-expandir-${item.mlb}" class="btn-expandir-var" onclick="toggleVariacoes('${item.mlb}')">${aberto ? '▲' : '▼'}</button></div></td>`;
     } else if (isProprio(item.deposito)) {
-      estoqueCell = `<td class="col-num"><div class="estoque-edit-wrap"><input type="number" class="estoque-input" value="${item.estoque}" min="0"><button class="btn-confirmar-estoque" onclick="atualizarEstoque('${item.mlb}', this)">✓</button></div></td>`;
+      estoqueFullCell = `<td class="col-num"><div class="estoque-edit-wrap"><input type="number" class="estoque-input" value="${item.estoque}" min="0"><button class="btn-confirmar-estoque" onclick="atualizarEstoque('${item.mlb}', this)">✓</button></div></td>`;
     } else if (item.deposito === 'fulfillment') {
-      estoqueCell = `<td class="col-num ${item.estoque === 0 ? 'estoque-zero' : ''}">
+      estoqueFullCell = `<td class="col-num ${item.estoque === 0 ? 'estoque-zero' : ''}">
         ${item.estoque}
         <button class="btn-sm" onclick="sairFull('${item.mlb}')" style="font-size:10px;margin-left:5px;background:#f59e0b;color:#fff;padding:1px 6px" title="Abrir painel do ML para sair do Full">Sair Full</button>
       </td>`;
     } else {
-      estoqueCell = `<td class="col-num ${item.estoque === 0 ? 'estoque-zero' : ''}">${item.estoque}</td>`;
+      estoqueFullCell = `<td class="col-num ${item.estoque === 0 ? 'estoque-zero' : ''}">${item.estoque}</td>`;
     }
 
     const tr = document.createElement('tr');
@@ -533,10 +593,14 @@ function renderizarTabela() {
       <td class="td-mlb">${item.mlb}</td>
       <td><span class="badge-deposito ${bDeposito}">${item.depositoLabel}</span></td>
       <td><span class="badge-deposito ${bStatus}">${STATUS_LABEL[item.status] || item.status}</span></td>
-      ${estoqueCell}
+      ${estoqueLocalCell}
+      <td class="col-num">
+        <button class="btn-transferir" data-mlb="${item.mlb}" onclick="transferirEstoque('${item.mlb}')" title="Transferir estoque local para ML">→</button>
+      </td>
+      <td class="col-num ${item.estoque === 0 ? 'estoque-zero' : ''}">${item.estoque}</td>
+      ${estoqueFullCell}
       <td class="col-num">${item.vendas30d === null ? '...' : (item.vendas30d || '—')}</td>
       <td class="col-num ${duracao.classe}">${item.vendas30d === null ? '...' : duracao.texto}</td>
-      <td class="col-num ${diasPausado !== null ? 'pausado-dias' : ''}">${diasPausado !== null ? diasPausado + 'd' : ''}</td>
     `;
     tbody.appendChild(tr);
 
@@ -547,7 +611,7 @@ function renderizarTabela() {
         trVar.className = `variacao-row variacao-row-${item.mlb}`;
         trVar.style.display = aberto ? '' : 'none';
         trVar.innerHTML = `
-          <td colspan="2" class="variacao-indent"></td>
+          <td colspan="5" class="variacao-indent"></td>
           <td colspan="3" class="variacao-nome">↳ ${v.nome}</td>
           <td class="col-num">
             <div class="estoque-edit-wrap">
@@ -555,11 +619,16 @@ function renderizarTabela() {
               <button class="btn-confirmar-estoque" onclick="atualizarEstoqueVariacao('${item.mlb}', ${v.id}, this)">✓</button>
             </div>
           </td>
-          <td colspan="3"></td>
+          <td colspan="2"></td>
         `;
         tbody.appendChild(trVar);
       });
     }
+  });
+
+  document.querySelectorAll('.estoque-local-input').forEach(input => {
+    input.addEventListener('change', salvarEstoqueLocal);
+    input.addEventListener('input', salvarEstoqueLocal);
   });
 
   document.getElementById('tabela-estoque').style.display = itens.length ? 'table' : 'none';
@@ -610,6 +679,7 @@ async function carregarEstoque(reiniciar = false) {
     }
 
     todosItens = estoqueData.items.map(item => ({ ...item, vendas30d: null }));
+    if (Object.keys(estoqueLocal).length === 0) await carregarEstoqueLocal();
     renderizarTabela();
   } catch (err) {
     clog(`carregarEstoque() catch: ${err.message}`, 'erro');
