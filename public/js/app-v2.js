@@ -596,9 +596,15 @@ function renderizarTabela() {
       ? `<td class="col-num"></td>`
       : `<td class="col-num"><button class="btn-transferir" data-mlb="${item.mlb}" onclick="transferirEstoque('${item.mlb}')" title="Transferir estoque local para ML">→</button></td>`;
 
-    const estoqueForaFullCell = isFull
-      ? `<td class="col-num"></td>`
-      : `<td class="col-num ${item.estoque === 0 ? 'estoque-zero' : ''}">${item.estoque}</td>`;
+    let estoqueForaFullCell;
+    if (isFull) {
+      estoqueForaFullCell = `<td class="col-num"></td>`;
+    } else if (temVariacoes) {
+      const aberto = expandedMLBs.has(item.mlb);
+      estoqueForaFullCell = `<td class="col-num"><div class="estoque-edit-wrap"><span id="estoque-total-${item.mlb}" class="${item.estoque === 0 ? 'estoque-zero' : ''}">${item.estoque}</span><button id="btn-expandir-${item.mlb}" class="btn-expandir-var" onclick="toggleVariacoes('${item.mlb}')">${aberto ? '▲' : '▼'}</button></div></td>`;
+    } else {
+      estoqueForaFullCell = `<td class="col-num ${item.estoque === 0 ? 'estoque-zero' : ''}">${item.estoque}</td>`;
+    }
 
     let estoqueFullCell;
     if (isFull) {
