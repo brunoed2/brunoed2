@@ -97,7 +97,8 @@ function loadData() {
   raw.contas          = raw.contas      || {};
   raw.contas['1']     = raw.contas['1'] || {};
   raw.contas['2']     = raw.contas['2'] || {};
-  raw.estoque_local   = raw.estoque_local || {}; // Estoque local por MLB
+  raw.estoque_local        = raw.estoque_local        || {};
+  raw.estoque_ml_snapshot  = raw.estoque_ml_snapshot  || {};
   return raw;
 }
 
@@ -861,6 +862,27 @@ app.post('/api/estoque-local', (req, res) => {
 
   saveData(data);
   res.json({ ok: true, estoque_local: data.estoque_local });
+});
+
+// Sincroniza estoque local com vendas: desconta automaticamente o que saiu do ML
+app.post('/api/estoque-local/sync', (req, res) => {
+  const { items } = req.body; // [{ mlb, estoque }]
+  if (!Array.isArray(items)) return res.status(400).json({ erro: 'items obrigatório' });
+
+  const data = loadData();
+
+  for (const { mlb, estoque } of items) {
+    if (data.estoque_local[mlb] === undefined) continue; // sem estoque local, ignora
+    const snapshot = data.estoque_ml_snapshot[mlb];
+    if (snapshot !== undefined && estoque < snapshot) {
+      const vendido = snapshot - estoque;
+      data.estoque_local[mlb] = Math.max(0, data.estoque_local[mlb] - vendido);
+    }
+    data.estoque_ml_snapshot[mlb] = estoque;
+  }
+
+  saveData(data);
+  res.json({ estoque_local: data.estoque_local });
 });
 
 // ── Pesquisa de mercado ML ────────────────────────────────────

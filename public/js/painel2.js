@@ -239,6 +239,21 @@ async function carregarEstoqueLocal() {
   }
 }
 
+async function sincronizarEstoqueLocal(itens) {
+  try {
+    const items = itens.map(i => ({ mlb: i.mlb, estoque: i.estoque }));
+    const response = await apiFetch('/api/estoque-local/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items })
+    });
+    if (response.estoque_local) estoqueLocal = response.estoque_local;
+  } catch (error) {
+    console.error('Erro ao sincronizar estoque local:', error);
+    if (Object.keys(estoqueLocal).length === 0) await carregarEstoqueLocal();
+  }
+}
+
 document.querySelectorAll('.th-sort').forEach(th => {
   th.addEventListener('click', () => {
     if (sortState.campo === th.dataset.sort) {
@@ -495,11 +510,6 @@ async function carregarEstoque(reiniciar = false) {
     document.getElementById('estoque-total').textContent     = '';
   }
 
-  // Carregar estoque local na primeira vez
-  if (Object.keys(estoqueLocal).length === 0) {
-    await carregarEstoqueLocal();
-  }
-
   const loading = document.getElementById('estoque-loading');
   const erroEl  = document.getElementById('estoque-erro');
 
@@ -519,6 +529,7 @@ async function carregarEstoque(reiniciar = false) {
     }
 
     todosItens = estoqueData.items.map(item => ({ ...item, vendas30d: null }));
+    await sincronizarEstoqueLocal(todosItens);
     renderizarTabela();
   } catch {
     if (contaGen !== gen) return;

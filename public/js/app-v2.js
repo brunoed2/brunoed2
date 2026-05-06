@@ -493,6 +493,21 @@ async function carregarEstoqueLocal() {
   }
 }
 
+async function sincronizarEstoqueLocal(itens) {
+  try {
+    const items = itens.map(i => ({ mlb: i.mlb, estoque: i.estoque }));
+    const response = await apiFetch('/api/estoque-local/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items })
+    });
+    if (response.estoque_local) estoqueLocal = response.estoque_local;
+  } catch (error) {
+    console.error('Erro ao sincronizar estoque local:', error);
+    if (Object.keys(estoqueLocal).length === 0) await carregarEstoqueLocal();
+  }
+}
+
 async function atualizarEstoque(mlb, btn) {
   const input  = btn.previousElementSibling;
   const novaQtd = parseInt(input.value, 10);
@@ -679,7 +694,7 @@ async function carregarEstoque(reiniciar = false) {
     }
 
     todosItens = estoqueData.items.map(item => ({ ...item, vendas30d: null }));
-    if (Object.keys(estoqueLocal).length === 0) await carregarEstoqueLocal();
+    await sincronizarEstoqueLocal(todosItens);
     renderizarTabela();
   } catch (err) {
     clog(`carregarEstoque() catch: ${err.message}`, 'erro');
