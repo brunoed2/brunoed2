@@ -1644,7 +1644,7 @@ app.get('/api/ml/estoque', async (req, res) => {
       const resp  = await axios.get('https://api.mercadolibre.com/items', {
         params: {
           ids:        chunk.join(','),
-          attributes: 'id,title,permalink,seller_custom_field,available_quantity,variations,shipping,attributes,status,last_updated',
+          attributes: 'id,title,permalink,seller_custom_field,available_quantity,variations,shipping,attributes,status,last_updated,catalog_product_id',
         },
         headers: { Authorization: `Bearer ${c.access_token}` },
         timeout: 15000,
@@ -1686,11 +1686,12 @@ app.get('/api/ml/estoque', async (req, res) => {
           pausadoDesde:  status === 'paused' ? (pauseDates[mlb] || agora) : null,
           deposito:      logisticType,
           depositoLabel: DEPOSITO_LABEL[logisticType] || logisticType,
-          variacoes:     (r.body.variations || []).map(v => ({
+          variacoes:        (r.body.variations || []).map(v => ({
             id:     v.id,
             nome:   (v.attribute_combinations || []).map(a => a.value_name).join(' / ') || `Var. ${v.id}`,
             estoque: v.available_quantity ?? 0,
           })),
+          catalogProductId: r.body.catalog_product_id || null,
         };
       });
 
@@ -1699,7 +1700,18 @@ app.get('/api/ml/estoque', async (req, res) => {
       saveData(data);
     }
 
-    res.json({ items, total: items.length });
+    // Deduplica anúncios Full com mesmo catalog_product_id + SKU (listagens de catálogo ML)
+    const seenCatalog = new Set();
+    const itemsFinal = items.filter(item => {
+      if (item.deposito === 'fulfillment' && item.catalogProductId) {
+        const key = `${item.catalogProductId}::${item.sku}`;
+        if (seenCatalog.has(key)) return false;
+        seenCatalog.add(key);
+      }
+      return true;
+    });
+
+    res.json({ items: itemsFinal, total: itemsFinal.length });
   } catch (err) {
     console.error('Erro ao buscar estoque:', err.response?.data || err.message);
     res.json({ error: 'Erro ao buscar anúncios. Tente novamente.' });
