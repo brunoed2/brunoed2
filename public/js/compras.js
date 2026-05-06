@@ -122,22 +122,20 @@ async function carregarPrevisao() {
       if (!porSku[chave]) porSku[chave] = { sku: temSku ? item.sku : '', titulo: item.titulo, permalink: item.permalink || null, full: 0, proprio: 0, vendas30d: 0 };
       if (item.deposito === 'fulfillment') {
         porSku[chave].full += item.estoque || 0;
-      } else {
-        porSku[chave].proprio = Math.max(porSku[chave].proprio, item.estoque || 0);
       }
       porSku[chave].vendas30d += vendas30d[item.mlb] || 0;
     }
 
-    // Sobrescreve "próprio" com o estoque local definido manualmente, quando existir
-    for (const [chave, linha] of Object.entries(porSku)) {
-      if (estoqueLocalPorSku[chave] !== undefined) {
-        linha.proprio = estoqueLocalPorSku[chave];
-      }
+    // Próprio = estoque local definido manualmente; sem definição → null (exibe —)
+    for (const linha of Object.values(porSku)) {
+      linha.proprio = estoqueLocalPorSku[linha.sku] !== undefined
+        ? estoqueLocalPorSku[linha.sku]
+        : null;
     }
 
     const hoje = new Date();
     previsaoLinhas = Object.values(porSku).map(s => {
-      const total         = s.full + s.proprio;
+      const total         = s.full + (s.proprio ?? 0);
       const vendasDia     = s.vendas30d / 30;
       const diasRestantes = vendasDia > 0 ? Math.round(total / vendasDia) : null;
       const forn          = fornecedores.find(f => f.skus.includes(s.sku)) || null;
@@ -260,7 +258,7 @@ function renderizarPrevisao() {
       <td class="td-sku">${l.sku ? esc(l.sku) : '<span style="color:#94a3b8">sem SKU</span>'}</td>
       <td class="td-titulo">${tituloHtml}</td>
       <td class="col-num">${l.full}</td>
-      <td class="col-num">${l.proprio}</td>
+      <td class="col-num">${l.proprio !== null ? l.proprio : '—'}</td>
       <td class="col-num"><strong>${l.total}</strong></td>
       <td class="col-num">${vendHtml}</td>
       <td class="col-num">${diasHtml}</td>
