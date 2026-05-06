@@ -936,16 +936,19 @@ function renderizarHistorico() {
     const atendidoHtml = h.atendida
       ? `<span style="color:#16a34a;font-size:12px">✔ Sim${h.atendidaEm ? '<br><span style="font-size:11px;color:#94a3b8">' + new Date(h.atendidaEm).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }) + '</span>' : ''}</span>`
       : '<span style="color:#94a3b8;font-size:12px">—</span>';
-    const statusBadgeClass = { handling: 'badge-pausado', ready_to_ship: 'badge-ativo', shipped: 'badge-encerrado' }[h.status] || '';
+    const item0 = (h.itensLista || [])[0];
+    const imgHtml = item0?.thumbnail
+      ? `<a href="${item0.permalink || '#'}" target="_blank" class="venda-thumb-link"><img src="${item0.thumbnail}" class="venda-thumb" loading="lazy"></a>`
+      : '<span style="color:#94a3b8;font-size:11px">—</span>';
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td style="white-space:nowrap">${dataFmt}</td>
+      <td>${imgHtml}</td>
       <td style="white-space:nowrap">#${h.orderId}</td>
       <td>${h.comprador || '—'}</td>
       <td class="col-num">${qtdTotal}</td>
       <td style="font-size:12px;color:#64748b">${skus}</td>
       <td style="font-size:12px">${itens}</td>
-      <td><span class="badge-deposito ${statusBadgeClass}">${h.statusLabel || h.status || '—'}</span></td>
       <td>${atendidoHtml}</td>
     `;
     tbody.appendChild(tr);
