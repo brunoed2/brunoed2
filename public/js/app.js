@@ -213,6 +213,13 @@ function renderizarTabela() {
     const bStatus   = BADGE_STATUS[item.status]     || 'badge-outro';
     const duracao   = calcularDuracao(item.estoque, item.vendas30d);
     const estoqueLocalValor = estoqueLocal[item.mlb] !== undefined ? estoqueLocal[item.mlb] : '';
+    const estoqueLocalCell = `<td class="col-num">
+      <input type="number" class="estoque-local-input" data-mlb="${item.mlb}" value="${estoqueLocalValor}" placeholder="—" min="0" style="width: 60px; text-align: center;">
+    </td>`;
+
+    const estoqueForaFullCell = `<td class="col-num ${item.estoque === 0 ? 'estoque-zero' : ''}">${item.estoque}</td>`;
+    const estoqueFullCell = `<td class="col-num ${item.estoque === 0 ? 'estoque-zero' : ''}">${item.estoque}</td>`;
+
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td class="td-sku">${item.sku}</td>
@@ -220,14 +227,12 @@ function renderizarTabela() {
       <td class="td-mlb">${item.mlb}</td>
       <td><span class="badge-deposito ${bDeposito}">${item.depositoLabel}</span></td>
       <td><span class="badge-deposito ${bStatus}">${STATUS_LABEL[item.status] || item.status}</span></td>
-      <td class="col-num">
-        <input type="number" class="estoque-local-input" data-mlb="${item.mlb}" value="${estoqueLocalValor}" placeholder="—" min="0" style="width: 60px; text-align: center;">
-      </td>
+      ${estoqueLocalCell}
       <td class="col-num">
         <button class="btn-transferir" data-mlb="${item.mlb}" onclick="transferirEstoque('${item.mlb}')" title="Transferir estoque local para ML">→</button>
       </td>
-      <td class="col-num ${item.estoque === 0 ? 'estoque-zero' : ''}">${item.estoque}</td>
-      <td class="col-num ${item.estoque === 0 ? 'estoque-zero' : ''}">${item.estoque}</td>
+      ${estoqueForaFullCell}
+      ${estoqueFullCell}
       <td class="col-num">${item.vendas30d === null ? '...' : (item.vendas30d || '—')}</td>
       <td class="col-num ${duracao.classe}">${item.vendas30d === null ? '...' : duracao.texto}</td>
     `;
