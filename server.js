@@ -2075,6 +2075,43 @@ app.get('/api/vendas/historico', (req, res) => {
   res.json({ historico });
 });
 
+app.post('/api/vendas/historico/sincronizar', async (req, res) => {
+  const data = loadData();
+  const num  = data.conta_ativa;
+  const c    = data.contas[num];
+  if (!c?.access_token) return res.json({ ok: false, erro: 'Não conectado' });
+
+  const sete = new Date();
+  sete.setDate(sete.getDate() - 7);
+  const limite = sete.toISOString();
+
+  const pendentes = (c.historico_vendas || []).filter(h =>
+    h.dataDespachoFinalizado !== 'ml' &&
+    h.shipmentId &&
+    (h.primeiroVisto || h.data || '') >= limite
+  );
+
+  let atualizados = 0;
+  for (let i = 0; i < pendentes.length; i += 5) {
+    await Promise.all(pendentes.slice(i, i + 5).map(async h => {
+      try {
+        const r = await axios.get(`https://api.mercadolibre.com/shipments/${h.shipmentId}`, {
+          headers: { Authorization: `Bearer ${c.access_token}` },
+          timeout: 5000,
+        });
+        h.dataDespacho = r.data.date_shipped || h.ultimoVisto || h.data;
+      } catch {
+        h.dataDespacho = h.ultimoVisto || h.data;
+      }
+      h.dataDespachoFinalizado = 'ml';
+      atualizados++;
+    }));
+  }
+
+  if (atualizados > 0) saveData(data);
+  res.json({ ok: true, atualizados });
+});
+
 app.post('/api/vendas/atendida', (req, res) => {
   const { shipmentId, venda } = req.body;
   if (!shipmentId) return res.json({ error: 'shipmentId obrigatório' });

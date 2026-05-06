@@ -883,6 +883,10 @@ async function carregarHistorico() {
   if (vazio)   vazio.style.display   = 'none';
 
   try {
+    await apiFetch('/api/vendas/historico/sincronizar', { method: 'POST' });
+  } catch {}
+
+  try {
     const params = new URLSearchParams();
     if (ini) params.set('de', ini);
     if (fim) params.set('ate', fim);
