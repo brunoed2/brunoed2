@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s http://localhost:3000 -o /dev/null -w \"%{http_code}\")",
+      "Bash(node --check server.js)",
+      "WebSearch",
+      "WebFetch(domain:brunoed2-production.up.railway.app)",
+      "Bash(git commit -m ':*)",
+      "Bash(git push:*)",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); contas=d.get\\('contas',{}\\); [print\\(f'conta {k}: atendidas_dados={len\\(v.get\\(\\\\\"atendidas_dados\\\\\",[]\\)\\)} items'\\) for k,v in contas.items\\(\\)]; [print\\(json.dumps\\(item, indent=2\\)\\) for k,v in contas.items\\(\\) for item in \\(v.get\\('atendidas_dados'\\) or []\\)[:2]]\")",
+      "Bash(python3 -c ' *)",
+      "Bash(node -e ' *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)"
+    ]
+  }
+}

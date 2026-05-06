@@ -91,6 +91,7 @@ let todosItens = [];
 let filtros    = { deposito: 'todos', status: 'todos' };
 let sortState    = { campo: null, direcao: 'asc' };
 let expandedMLBs = new Set();
+let estoqueLocal = {}; // Armazenamento local do estoque
 
 function calcularDiasPausado(status, pausadoDesde) {
   if (status !== 'paused' || !pausadoDesde) return null;
@@ -158,6 +159,70 @@ const STATUS_LABEL = {
   paused: 'Pausado',
   closed: 'Encerrado',
 };
+
+// Salva o estoque local no localStorage
+function salvarEstoqueLocal(event) {
+  const input = event.target;
+  const mlb = input.dataset.mlb;
+  const valor = input.value.trim();
+
+  if (valor === '') {
+    delete estoqueLocal[mlb];
+  } else {
+    const num = parseInt(valor);
+    if (!isNaN(num) && num >= 0) {
+      estoqueLocal[mlb] = num;
+    }
+  }
+
+  localStorage.setItem('estoqueLocal', JSON.stringify(estoqueLocal));
+}
+
+// Transfere o estoque local para o Mercado Livre
+async function transferirEstoque(mlb) {
+  const valor = estoqueLocal[mlb];
+  if (valor === undefined || valor === '') {
+    alert('Digite um valor de estoque local primeiro.');
+    return;
+  }
+
+  if (!confirm(`Transferir estoque ${valor} para o anúncio ${mlb}?`)) {
+    return;
+  }
+
+  try {
+    const response = await apiFetch(`/api/ml/estoque/${mlb}?conta=${contaAtual()}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ estoque: valor })
+    });
+
+    if (response.error) {
+      alert('Erro ao atualizar estoque: ' + response.error);
+      return;
+    }
+
+    alert('Estoque atualizado com sucesso!');
+
+    // Recarregar dados do estoque
+    await carregarEstoque(true);
+
+  } catch (error) {
+    alert('Erro ao conectar com o servidor.');
+  }
+}
+
+// Carrega o estoque local do localStorage
+function carregarEstoqueLocal() {
+  const saved = localStorage.getItem('estoqueLocal');
+  if (saved) {
+    try {
+      estoqueLocal = JSON.parse(saved);
+    } catch {
+      estoqueLocal = {};
+    }
+  }
+}
 
 document.querySelectorAll('.th-sort').forEach(th => {
   th.addEventListener('click', () => {
@@ -337,20 +402,25 @@ function renderizarTabela() {
     const duracao      = calcularDuracao(item.estoque, item.vendas30d);
     const diasPausado  = calcularDiasPausado(item.status, item.pausadoDesde);
     const temVariacoes = isProprio(item.deposito) && item.variacoes && item.variacoes.length > 0;
+    const estoqueLocalValor = estoqueLocal[item.mlb] !== undefined ? estoqueLocal[item.mlb] : '';
 
-    let estoqueCell;
+    let estoqueLocalCell = `<td class="col-num">
+      <input type="number" class="estoque-local-input" data-mlb="${item.mlb}" value="${estoqueLocalValor}" placeholder="—" min="0" style="width: 60px; text-align: center;">
+    </td>`;
+
+    let estoqueFullCell;
     if (temVariacoes) {
       const aberto = expandedMLBs.has(item.mlb);
-      estoqueCell = `<td class="col-num"><div class="estoque-edit-wrap"><span id="estoque-total-${item.mlb}" class="${item.estoque === 0 ? 'estoque-zero' : ''}">${item.estoque}</span><button id="btn-expandir-${item.mlb}" class="btn-expandir-var" onclick="toggleVariacoes('${item.mlb}')">${aberto ? '▲' : '▼'}</button></div></td>`;
+      estoqueFullCell = `<td class="col-num"><div class="estoque-edit-wrap"><span id="estoque-total-${item.mlb}" class="${item.estoque === 0 ? 'estoque-zero' : ''}">${item.estoque}</span><button id="btn-expandir-${item.mlb}" class="btn-expandir-var" onclick="toggleVariacoes('${item.mlb}')">${aberto ? '▲' : '▼'}</button></div></td>`;
     } else if (isProprio(item.deposito)) {
-      estoqueCell = `<td class="col-num"><div class="estoque-edit-wrap"><input type="number" class="estoque-input" value="${item.estoque}" min="0"><button class="btn-confirmar-estoque" onclick="atualizarEstoque('${item.mlb}', this)">✓</button></div></td>`;
+      estoqueFullCell = `<td class="col-num"><div class="estoque-edit-wrap"><input type="number" class="estoque-input" value="${item.estoque}" min="0"><button class="btn-confirmar-estoque" onclick="atualizarEstoque('${item.mlb}', this)">✓</button></div></td>`;
     } else if (item.deposito === 'fulfillment') {
-      estoqueCell = `<td class="col-num ${item.estoque === 0 ? 'estoque-zero' : ''}">
+      estoqueFullCell = `<td class="col-num ${item.estoque === 0 ? 'estoque-zero' : ''}">
         ${item.estoque}
         <button class="btn-sm" onclick="sairFull('${item.mlb}')" style="font-size:10px;margin-left:5px;background:#f59e0b;color:#fff;padding:1px 6px" title="Abrir painel do ML para sair do Full">Sair Full</button>
       </td>`;
     } else {
-      estoqueCell = `<td class="col-num ${item.estoque === 0 ? 'estoque-zero' : ''}">${item.estoque}</td>`;
+      estoqueFullCell = `<td class="col-num ${item.estoque === 0 ? 'estoque-zero' : ''}">${item.estoque}</td>`;
     }
 
     const tr = document.createElement('tr');
@@ -360,10 +430,13 @@ function renderizarTabela() {
       <td class="td-mlb">${item.mlb}</td>
       <td><span class="badge-deposito ${bDeposito}">${item.depositoLabel}</span></td>
       <td><span class="badge-deposito ${bStatus}">${STATUS_LABEL[item.status] || item.status}</span></td>
-      ${estoqueCell}
+      ${estoqueLocalCell}
+      ${estoqueFullCell}
       <td class="col-num">${item.vendas30d === null ? '...' : (item.vendas30d || '—')}</td>
       <td class="col-num ${duracao.classe}">${item.vendas30d === null ? '...' : duracao.texto}</td>
-      <td class="col-num ${diasPausado !== null ? 'pausado-dias' : ''}">${diasPausado !== null ? diasPausado + 'd' : ''}</td>
+      <td class="col-num">
+        <button class="btn-transferir" data-mlb="${item.mlb}" onclick="transferirEstoque('${item.mlb}')" title="Transferir estoque local para ML">→</button>
+      </td>
     `;
     tbody.appendChild(tr);
 
@@ -389,6 +462,12 @@ function renderizarTabela() {
     }
   });
 
+  // Adicionar event listeners para os inputs de estoque local
+  document.querySelectorAll('.estoque-local-input').forEach(input => {
+    input.addEventListener('change', salvarEstoqueLocal);
+    input.addEventListener('input', salvarEstoqueLocal);
+  });
+
   document.getElementById('tabela-estoque').style.display = itens.length ? 'table' : 'none';
   const filtroAtivo = filtros.deposito !== 'todos' || filtros.status !== 'todos';
   document.getElementById('estoque-total').textContent =
@@ -404,6 +483,11 @@ async function carregarEstoque(reiniciar = false) {
     document.getElementById('tabela-estoque-body').innerHTML = '';
     document.getElementById('tabela-estoque').style.display  = 'none';
     document.getElementById('estoque-total').textContent     = '';
+  }
+
+  // Carregar estoque local na primeira vez
+  if (Object.keys(estoqueLocal).length === 0) {
+    carregarEstoqueLocal();
   }
 
   const loading = document.getElementById('estoque-loading');

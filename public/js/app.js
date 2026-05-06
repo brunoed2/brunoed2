@@ -162,8 +162,10 @@ async function carregarLoja() {
 
 let todosItens = [];
 let filtros    = { deposito: 'todos', status: 'todos' };
+let estoqueLocal = {}; // Armazenamento local do estoque
 
 const BADGE_DEPOSITO = {
+  fulfillment:   'badge-full',
   fulfillment:   'badge-full',
   self_service:  'badge-proprio',
   cross_docking: 'badge-flex',
@@ -210,6 +212,7 @@ function renderizarTabela() {
     const bDeposito = BADGE_DEPOSITO[item.deposito] || 'badge-outro';
     const bStatus   = BADGE_STATUS[item.status]     || 'badge-outro';
     const duracao   = calcularDuracao(item.estoque, item.vendas30d);
+    const estoqueLocalValor = estoqueLocal[item.mlb] !== undefined ? estoqueLocal[item.mlb] : '';
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td class="td-sku">${item.sku}</td>
@@ -217,11 +220,23 @@ function renderizarTabela() {
       <td class="td-mlb">${item.mlb}</td>
       <td><span class="badge-deposito ${bDeposito}">${item.depositoLabel}</span></td>
       <td><span class="badge-deposito ${bStatus}">${STATUS_LABEL[item.status] || item.status}</span></td>
+      <td class="col-num">
+        <input type="number" class="estoque-local-input" data-mlb="${item.mlb}" value="${estoqueLocalValor}" placeholder="—" min="0" style="width: 60px; text-align: center;">
+      </td>
       <td class="col-num ${item.estoque === 0 ? 'estoque-zero' : ''}">${item.estoque}</td>
       <td class="col-num">${item.vendas30d === null ? '...' : (item.vendas30d || '—')}</td>
       <td class="col-num ${duracao.classe}">${item.vendas30d === null ? '...' : duracao.texto}</td>
+      <td class="col-num">
+        <button class="btn-transferir" data-mlb="${item.mlb}" onclick="transferirEstoque('${item.mlb}')" title="Transferir estoque local para ML">→</button>
+      </td>
     `;
     tbody.appendChild(tr);
+  });
+
+  // Adicionar event listeners para os inputs de estoque local
+  document.querySelectorAll('.estoque-local-input').forEach(input => {
+    input.addEventListener('change', salvarEstoqueLocal);
+    input.addEventListener('input', salvarEstoqueLocal);
   });
 
   document.getElementById('tabela-estoque').style.display = itens.length ? 'table' : 'none';
@@ -229,6 +244,70 @@ function renderizarTabela() {
   document.getElementById('estoque-total').textContent =
     `${itens.length} de ${todosItens.length} anúncios` +
     (filtroAtivo ? ' (filtro ativo)' : '');
+}
+
+// Salva o estoque local no localStorage
+function salvarEstoqueLocal(event) {
+  const input = event.target;
+  const mlb = input.dataset.mlb;
+  const valor = input.value.trim();
+
+  if (valor === '') {
+    delete estoqueLocal[mlb];
+  } else {
+    const num = parseInt(valor);
+    if (!isNaN(num) && num >= 0) {
+      estoqueLocal[mlb] = num;
+    }
+  }
+
+  localStorage.setItem('estoqueLocal', JSON.stringify(estoqueLocal));
+}
+
+// Transfere o estoque local para o Mercado Livre
+async function transferirEstoque(mlb) {
+  const valor = estoqueLocal[mlb];
+  if (valor === undefined || valor === '') {
+    alert('Digite um valor de estoque local primeiro.');
+    return;
+  }
+
+  if (!confirm(`Transferir estoque ${valor} para o anúncio ${mlb}?`)) {
+    return;
+  }
+
+  try {
+    const response = await apiFetch(`/api/ml/estoque/${mlb}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ estoque: valor })
+    });
+
+    if (response.error) {
+      alert('Erro ao atualizar estoque: ' + response.error);
+      return;
+    }
+
+    alert('Estoque atualizado com sucesso!');
+
+    // Recarregar dados do estoque
+    await carregarEstoque(true);
+
+  } catch (error) {
+    alert('Erro ao conectar com o servidor.');
+  }
+}
+
+// Carrega o estoque local do localStorage
+function carregarEstoqueLocal() {
+  const saved = localStorage.getItem('estoqueLocal');
+  if (saved) {
+    try {
+      estoqueLocal = JSON.parse(saved);
+    } catch {
+      estoqueLocal = {};
+    }
+  }
 }
 
 // Calcula classe de cor e texto da duração do estoque
@@ -248,6 +327,11 @@ async function carregarEstoque(reiniciar = false) {
     document.getElementById('tabela-estoque-body').innerHTML = '';
     document.getElementById('tabela-estoque').style.display  = 'none';
     document.getElementById('estoque-total').textContent     = '';
+  }
+
+  // Carregar estoque local na primeira vez
+  if (Object.keys(estoqueLocal).length === 0) {
+    carregarEstoqueLocal();
   }
 
   const loading = document.getElementById('estoque-loading');

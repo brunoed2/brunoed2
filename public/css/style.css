@@ -299,6 +299,24 @@ h1 {
   border-color: #aaa;
 }
 
+.btn-transferir {
+  padding: 4px 8px;
+  background: #2563eb;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all .15s;
+  font-family: inherit;
+  min-width: 24px;
+}
+
+.btn-transferir:hover {
+  background: #1d4ed8;
+}
+
 /* ── Mensagens de feedback ───────────────────────────────────── */
 
 .msg {
