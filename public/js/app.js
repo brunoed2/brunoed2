@@ -223,12 +223,13 @@ function renderizarTabela() {
       <td class="col-num">
         <input type="number" class="estoque-local-input" data-mlb="${item.mlb}" value="${estoqueLocalValor}" placeholder="—" min="0" style="width: 60px; text-align: center;">
       </td>
-      <td class="col-num ${item.estoque === 0 ? 'estoque-zero' : ''}">${item.estoque}</td>
-      <td class="col-num">${item.vendas30d === null ? '...' : (item.vendas30d || '—')}</td>
-      <td class="col-num ${duracao.classe}">${item.vendas30d === null ? '...' : duracao.texto}</td>
       <td class="col-num">
         <button class="btn-transferir" data-mlb="${item.mlb}" onclick="transferirEstoque('${item.mlb}')" title="Transferir estoque local para ML">→</button>
       </td>
+      <td class="col-num ${item.estoque === 0 ? 'estoque-zero' : ''}">${item.estoque}</td>
+      <td class="col-num ${item.estoque === 0 ? 'estoque-zero' : ''}">${item.estoque}</td>
+      <td class="col-num">${item.vendas30d === null ? '...' : (item.vendas30d || '—')}</td>
+      <td class="col-num ${duracao.classe}">${item.vendas30d === null ? '...' : duracao.texto}</td>
     `;
     tbody.appendChild(tr);
   });

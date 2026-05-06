@@ -446,12 +446,13 @@ function renderizarTabela() {
       <td><span class="badge-deposito ${bDeposito}">${item.depositoLabel}</span></td>
       <td><span class="badge-deposito ${bStatus}">${STATUS_LABEL[item.status] || item.status}</span></td>
       ${estoqueLocalCell}
-      ${estoqueFullCell}
-      <td class="col-num">${item.vendas30d === null ? '...' : (item.vendas30d || '—')}</td>
-      <td class="col-num ${duracao.classe}">${item.vendas30d === null ? '...' : duracao.texto}</td>
       <td class="col-num">
         <button class="btn-transferir" data-mlb="${item.mlb}" onclick="transferirEstoque('${item.mlb}')" title="Transferir estoque local para ML">→</button>
       </td>
+      <td class="col-num ${item.estoque === 0 ? 'estoque-zero' : ''}">${item.estoque}</td>
+      ${estoqueFullCell}
+      <td class="col-num">${item.vendas30d === null ? '...' : (item.vendas30d || '—')}</td>
+      <td class="col-num ${duracao.classe}">${item.vendas30d === null ? '...' : duracao.texto}</td>
     `;
     tbody.appendChild(tr);
 
@@ -462,15 +463,9 @@ function renderizarTabela() {
         trVar.className = `variacao-row variacao-row-${item.mlb}`;
         trVar.style.display = aberto ? '' : 'none';
         trVar.innerHTML = `
-          <td colspan="2" class="variacao-indent"></td>
-          <td colspan="3" class="variacao-nome">↳ ${v.nome}</td>
-          <td class="col-num">
-            <div class="estoque-edit-wrap">
-              <input type="number" class="estoque-input" value="${v.estoque}" min="0">
-              <button class="btn-confirmar-estoque" onclick="atualizarEstoqueVariacao('${item.mlb}', ${v.id}, this)">✓</button>
-            </div>
-          </td>
-          <td colspan="3"></td>
+          <td colspan="5" class="variacao-indent"></td>
+          <td colspan="4" class="variacao-nome">↳ ${v.nome}</td>
+          <td colspan="2"></td>
         `;
         tbody.appendChild(trVar);
       });
