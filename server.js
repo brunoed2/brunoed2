@@ -1947,6 +1947,7 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
         porShipment.set(sid, {
           orderId:        order.id,
           data:           order.date_created,
+          dataDespacho:   shipment.date_shipped || prazo || order.date_created,
           comprador:      order.buyer?.nickname || '—',
           shipmentId:     shipment.id,
           conta:          data.conta_ativa,
@@ -2013,6 +2014,7 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
       histMap.set(sid, {
         orderId:      v.orderId,
         data:         v.data,
+        dataDespacho: v.dataDespacho || v.prazoDespacho || v.data,
         comprador:    v.comprador,
         shipmentId:   v.shipmentId,
         conta:        v.conta,
@@ -2047,9 +2049,10 @@ app.get('/api/vendas/historico', (req, res) => {
   if (!c) return res.json({ historico: [] });
   const { de, ate } = req.query;
   let historico = c.historico_vendas || [];
-  if (de)  historico = historico.filter(h => (h.data || '').slice(0, 10) >= de);
-  if (ate) historico = historico.filter(h => (h.data || '').slice(0, 10) <= ate);
-  historico = historico.sort((a, b) => b.data.localeCompare(a.data));
+  const dataOrdenar = h => (h.dataDespacho || h.data || '').slice(0, 10);
+  if (de)  historico = historico.filter(h => dataOrdenar(h) >= de);
+  if (ate) historico = historico.filter(h => dataOrdenar(h) <= ate);
+  historico = historico.sort((a, b) => dataOrdenar(b).localeCompare(dataOrdenar(a)));
   res.json({ historico });
 });
 
