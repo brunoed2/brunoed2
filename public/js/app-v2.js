@@ -441,20 +441,20 @@ function isProprio(deposito) {
 
 async function salvarEstoqueLocal(event) {
   const input = event.target;
-  const mlb = input.dataset.mlb;
+  const sku   = input.dataset.sku;
   const valor = input.value.trim();
   try {
     const response = await apiFetch('/api/estoque-local', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mlb, quantidade: valor })
+      body: JSON.stringify({ sku, quantidade: valor })
     });
     if (response.erro) { console.error('Erro ao salvar estoque local:', response.erro); return; }
     if (valor === '') {
-      delete estoqueLocal[mlb];
+      delete estoqueLocal[sku];
     } else {
       const num = parseInt(valor);
-      if (!isNaN(num) && num >= 0) estoqueLocal[mlb] = num;
+      if (!isNaN(num) && num >= 0) estoqueLocal[sku] = num;
     }
   } catch (error) {
     console.error('Erro ao conectar com o servidor:', error);
@@ -462,7 +462,9 @@ async function salvarEstoqueLocal(event) {
 }
 
 async function transferirEstoque(mlb) {
-  const valor = estoqueLocal[mlb];
+  const item  = todosItens.find(i => i.mlb === mlb);
+  const sku   = item?.sku ? String(item.sku) : null;
+  const valor = sku !== null ? estoqueLocal[sku] : undefined;
   if (valor === undefined || valor === '') {
     alert('Digite um valor de estoque local primeiro.');
     return;
@@ -495,11 +497,12 @@ async function carregarEstoqueLocal() {
 
 async function sincronizarEstoqueLocal(itens) {
   try {
-    const items = itens.map(i => ({ mlb: i.mlb, estoque: i.estoque }));
+    const items = itens.filter(i => i.sku).map(i => ({ mlb: i.mlb, sku: String(i.sku) }));
+    const conta = app2ContaAtual();
     const response = await apiFetch('/api/estoque-local/sync', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ items })
+      body: JSON.stringify({ items, conta })
     });
     if (response.estoque_local) estoqueLocal = response.estoque_local;
   } catch (error) {
@@ -581,10 +584,11 @@ function renderizarTabela() {
     const diasPausado  = calcularDiasPausado(item.status, item.pausadoDesde);
     const temVariacoes = isProprio(item.deposito) && item.variacoes && item.variacoes.length > 0;
 
-    const estoqueLocalValor = estoqueLocal[item.mlb] !== undefined ? estoqueLocal[item.mlb] : '';
-    const estoqueLocalCell = `<td class="col-num">
-      <input type="number" class="estoque-local-input" data-mlb="${item.mlb}" value="${estoqueLocalValor}" placeholder="—" min="0" style="width: 60px; text-align: center;">
-    </td>`;
+    const skuKey = item.sku ? String(item.sku) : null;
+    const estoqueLocalValor = skuKey !== null && estoqueLocal[skuKey] !== undefined ? estoqueLocal[skuKey] : '';
+    const estoqueLocalCell = skuKey
+      ? `<td class="col-num"><input type="number" class="estoque-local-input" data-sku="${skuKey}" value="${estoqueLocalValor}" placeholder="—" min="0" style="width:60px;text-align:center"></td>`
+      : `<td class="col-num" style="color:#aaa;text-align:center;font-size:12px">—</td>`;
 
     let estoqueFullCell;
     if (temVariacoes) {

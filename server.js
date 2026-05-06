@@ -97,8 +97,8 @@ function loadData() {
   raw.contas          = raw.contas      || {};
   raw.contas['1']     = raw.contas['1'] || {};
   raw.contas['2']     = raw.contas['2'] || {};
-  raw.estoque_local        = raw.estoque_local        || {};
-  raw.estoque_ml_snapshot  = raw.estoque_ml_snapshot  || {};
+  raw.estoque_local            = raw.estoque_local            || {};
+  raw.estoque_local_last_check = raw.estoque_local_last_check || {};
   return raw;
 }
 
@@ -844,45 +844,92 @@ app.get('/api/estoque-local', (req, res) => {
 });
 
 app.post('/api/estoque-local', (req, res) => {
-  const { mlb, quantidade } = req.body;
-  if (!mlb || quantidade === undefined) {
-    return res.status(400).json({ erro: 'MLB e quantidade obrigatórios' });
+  const { sku, quantidade } = req.body;
+  if (!sku || quantidade === undefined) {
+    return res.status(400).json({ erro: 'SKU e quantidade obrigatórios' });
   }
 
   const data = loadData();
+  const skuKey = String(sku);
   if (quantidade === '' || quantidade === null) {
-    delete data.estoque_local[mlb];
+    delete data.estoque_local[skuKey];
   } else {
     const num = parseInt(quantidade);
     if (isNaN(num) || num < 0) {
       return res.status(400).json({ erro: 'Quantidade deve ser um número positivo' });
     }
-    data.estoque_local[mlb] = num;
+    data.estoque_local[skuKey] = num;
   }
 
   saveData(data);
   res.json({ ok: true, estoque_local: data.estoque_local });
 });
 
-// Sincroniza estoque local com vendas: desconta automaticamente o que saiu do ML
-app.post('/api/estoque-local/sync', (req, res) => {
-  const { items } = req.body; // [{ mlb, estoque }]
+// Sincroniza estoque local descontando vendas próprias (não-Full) desde a última verificação
+app.post('/api/estoque-local/sync', async (req, res) => {
+  const { items, conta } = req.body; // items: [{mlb, sku}]
   if (!Array.isArray(items)) return res.status(400).json({ erro: 'items obrigatório' });
 
-  const data = loadData();
+  const data     = loadData();
+  const contaNum = conta || data.conta_ativa || '1';
+  const lastCheck = data.estoque_local_last_check[contaNum];
 
-  for (const { mlb, estoque } of items) {
-    if (data.estoque_local[mlb] === undefined) continue; // sem estoque local, ignora
-    const snapshot = data.estoque_ml_snapshot[mlb];
-    if (snapshot !== undefined && estoque < snapshot) {
-      const vendido = snapshot - estoque;
-      data.estoque_local[mlb] = Math.max(0, data.estoque_local[mlb] - vendido);
-    }
-    data.estoque_ml_snapshot[mlb] = estoque;
+  // Primeira vez: registra timestamp e retorna sem processar histórico
+  if (!lastCheck) {
+    data.estoque_local_last_check[contaNum] = new Date().toISOString();
+    saveData(data);
+    return res.json({ estoque_local: data.estoque_local });
   }
 
-  saveData(data);
-  res.json({ estoque_local: data.estoque_local });
+  // Monta mapa MLB -> SKU (só itens com SKU válido)
+  const mlbToSku = {};
+  for (const item of items) {
+    if (item.mlb && item.sku) mlbToSku[item.mlb] = String(item.sku);
+  }
+
+  try {
+    const token = await getToken(data, contaNum);
+    const c     = data.contas[contaNum];
+
+    // Busca pedidos pagos desde última verificação (paginado, até 200)
+    let orders = [];
+    let offset = 0;
+    while (orders.length < 200) {
+      const resp = await axios.get('https://api.mercadolibre.com/orders/search', {
+        params: {
+          seller:                    c.user_id,
+          'order.status':            'paid',
+          'order.date_created.from': lastCheck,
+          sort:                      'date_asc',
+          offset,
+          limit:                     50,
+        },
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 10000,
+      });
+      const results = resp.data.results || [];
+      orders = orders.concat(results);
+      if (results.length < 50) break;
+      offset += 50;
+    }
+
+    for (const order of orders) {
+      // Full: ML envia do próprio estoque, não afeta local
+      if (order.shipping?.logistic_type === 'fulfillment') continue;
+
+      for (const oi of (order.order_items || [])) {
+        const sku = mlbToSku[oi.item.id];
+        if (!sku || data.estoque_local[sku] === undefined) continue;
+        data.estoque_local[sku] = Math.max(0, data.estoque_local[sku] - (oi.quantity || 1));
+      }
+    }
+
+    data.estoque_local_last_check[contaNum] = new Date().toISOString();
+    saveData(data);
+    res.json({ estoque_local: data.estoque_local });
+  } catch (err) {
+    res.json({ estoque_local: data.estoque_local, aviso: 'Erro ao consultar pedidos ML' });
+  }
 });
 
 // ── Pesquisa de mercado ML ────────────────────────────────────
