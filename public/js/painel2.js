@@ -218,6 +218,14 @@ async function carregarEstoqueLocal() {
   }
 }
 
+async function salvarEstoqueLocalDireto(chave, valor) {
+  await apiFetch('/api/estoque-local', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sku: chave, quantidade: String(valor) })
+  });
+}
+
 async function sincronizarEstoqueLocal(itens) {
   try {
     const items = itens.filter(i => i.sku).map(i => ({ mlb: i.mlb, sku: String(i.sku) }));
@@ -231,6 +239,18 @@ async function sincronizarEstoqueLocal(itens) {
   } catch (error) {
     console.error('Erro ao sincronizar estoque local:', error);
     if (Object.keys(estoqueLocal).length === 0) await carregarEstoqueLocal();
+  }
+  // Migra chaves MLB → SKU para itens que ganharam SKU desde a última vez
+  for (const item of itens) {
+    if (!item.sku || item.sku === '—') continue;
+    const mlbKey = `_mlb_${item.mlb}`;
+    if (estoqueLocal[mlbKey] !== undefined && estoqueLocal[item.sku] === undefined) {
+      const valor = estoqueLocal[mlbKey];
+      await salvarEstoqueLocalDireto(item.sku, valor);
+      await salvarEstoqueLocalDireto(mlbKey, '');
+      estoqueLocal[item.sku] = valor;
+      delete estoqueLocal[mlbKey];
+    }
   }
 }
 
@@ -413,7 +433,7 @@ function renderizarTabela() {
     const diasPausado  = calcularDiasPausado(item.status, item.pausadoDesde);
     const temVariacoes = isProprio(item.deposito) && item.variacoes && item.variacoes.length > 0;
     const isFull  = item.deposito === 'fulfillment';
-    const skuKey  = (item.sku && item.sku !== '—') ? String(item.sku) : null;
+    const skuKey  = (item.sku && item.sku !== '—') ? String(item.sku) : `_mlb_${item.mlb}`;
     const estoqueLocalValor = skuKey !== null && estoqueLocal[skuKey] !== undefined ? estoqueLocal[skuKey] : '';
 
     const estoqueLocalCell = (skuKey && !temVariacoes)
