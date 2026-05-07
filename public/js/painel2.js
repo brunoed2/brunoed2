@@ -431,7 +431,10 @@ function renderizarTabela() {
       const aberto = expandedMLBs.has(item.mlb);
       estoqueForaFullCell = `<td class="col-num"><div class="estoque-edit-wrap"><span id="estoque-total-${item.mlb}" class="${item.estoque === 0 ? 'estoque-zero' : ''}">${item.estoque}</span><button id="btn-expandir-${item.mlb}" class="btn-expandir-var" onclick="toggleVariacoes('${item.mlb}')">${aberto ? '▲' : '▼'}</button></div></td>`;
     } else {
-      estoqueForaFullCell = `<td class="col-num ${item.estoque === 0 ? 'estoque-zero' : ''}">${item.estoque}</td>`;
+      const localDef = skuKey && estoqueLocal[skuKey] !== undefined;
+      const diverge  = localDef && item.estoque !== estoqueLocal[skuKey];
+      const avisoDiv = diverge ? ` <span title="Diverge do Estoque Local" style="color:#f59e0b;font-weight:bold;cursor:default">!</span>` : '';
+      estoqueForaFullCell = `<td class="col-num ${item.estoque === 0 ? 'estoque-zero' : ''}">${item.estoque}${avisoDiv}</td>`;
     }
 
     let estoqueFullCell;
