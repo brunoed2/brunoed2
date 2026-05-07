@@ -413,7 +413,7 @@ function renderizarTabela() {
     const diasPausado  = calcularDiasPausado(item.status, item.pausadoDesde);
     const temVariacoes = isProprio(item.deposito) && item.variacoes && item.variacoes.length > 0;
     const isFull  = item.deposito === 'fulfillment';
-    const skuKey  = item.sku ? String(item.sku) : null;
+    const skuKey  = (item.sku && item.sku !== '—') ? String(item.sku) : null;
     const estoqueLocalValor = skuKey !== null && estoqueLocal[skuKey] !== undefined ? estoqueLocal[skuKey] : '';
 
     const estoqueLocalCell = (skuKey && !temVariacoes)
