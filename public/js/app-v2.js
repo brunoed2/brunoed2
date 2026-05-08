@@ -477,7 +477,7 @@ async function transferirEstoque(mlb) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ quantidade: parseInt(valor, 10) })
     });
-    if (response.error) { alert('Erro ao atualizar estoque: ' + response.error); return; }
+    if (response.error) { alert('Erro ao atualizar estoque: ' + response.error + (response.detalhe ? '\n\n' + response.detalhe : '')); return; }
     alert('Estoque atualizado com sucesso!');
     await carregarEstoque(true);
   } catch (error) {
