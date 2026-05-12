@@ -4977,21 +4977,20 @@ app.get('/api/notas/buscar', async (req, res) => {
 
 // ── ZPL → PDF (via Labelary) ──────────────────────────────────
 function zplSplitLabels(zpl) {
-  const matches = zpl.match(/\^XA[\s\S]*?\^XZ/gi) || [];
-  return matches;
+  return zpl.match(/\^XA[\s\S]*?\^XZ/gi) || [];
 }
 
-async function zplChunkToPdf(labelSize, labels) {
+async function singleLabelToPdf(labelSize, labelZpl) {
   const FormData = require('form-data');
   const form = new FormData();
-  form.append('file', Buffer.from(labels.join('\n'), 'utf-8'), { filename: 'label.zpl' });
+  form.append('file', Buffer.from(labelZpl, 'utf-8'), { filename: 'label.zpl' });
   const resp = await axios.post(
     `https://api.labelary.com/v1/printers/8dpmm/labels/${labelSize}/0/`,
     form,
     {
       headers: { ...form.getHeaders(), 'Accept': 'application/pdf' },
       responseType: 'arraybuffer',
-      timeout: 60000,
+      timeout: 30000,
     }
   );
   return Buffer.from(resp.data);
@@ -5001,7 +5000,7 @@ app.post('/api/zpl-to-pdf', express.text({ type: '*/*', limit: '20mb' }), async 
   const tamanho = req.query.tamanho;
   const sizes = { '100x150': '3.94x5.91', '104x29': '4.09x1.14' };
   const labelSize = sizes[tamanho];
-  if (!labelSize) return res.status(400).json({ erro: 'Tamanho inválido. Use 100x150 ou 29x104' });
+  if (!labelSize) return res.status(400).json({ erro: 'Tamanho inválido. Use 100x150 ou 104x29' });
 
   const zpl = req.body;
   if (!zpl || typeof zpl !== 'string' || !zpl.trim()) {
@@ -5013,27 +5012,23 @@ app.post('/api/zpl-to-pdf', express.text({ type: '*/*', limit: '20mb' }), async 
     const labels = zplSplitLabels(zpl);
     if (labels.length === 0) return res.status(400).json({ erro: 'Nenhuma etiqueta encontrada no ZPL (^XA...^XZ)' });
 
-    // Divide em blocos de 50 (limite do Labelary)
-    const CHUNK = 50;
-    const chunks = [];
-    for (let i = 0; i < labels.length; i += CHUNK) {
-      chunks.push(labels.slice(i, i + CHUNK));
+    // Converte cada etiqueta individualmente (10 em paralelo por vez)
+    const CONCURRENCY = 10;
+    const pdfBuffers = [];
+    for (let i = 0; i < labels.length; i += CONCURRENCY) {
+      const batch  = labels.slice(i, i + CONCURRENCY);
+      const result = await Promise.all(batch.map(l => singleLabelToPdf(labelSize, l)));
+      pdfBuffers.push(...result);
     }
 
-    const pdfBuffers = await Promise.all(chunks.map(c => zplChunkToPdf(labelSize, c)));
-
-    let finalPdf;
-    if (pdfBuffers.length === 1) {
-      finalPdf = pdfBuffers[0];
-    } else {
-      const merged = await PDFDocument.create();
-      for (const buf of pdfBuffers) {
-        const doc = await PDFDocument.load(buf);
-        const pages = await merged.copyPages(doc, doc.getPageIndices());
-        pages.forEach(p => merged.addPage(p));
-      }
-      finalPdf = Buffer.from(await merged.save());
+    // Mescla todas as páginas em um único PDF
+    const merged = await PDFDocument.create();
+    for (const buf of pdfBuffers) {
+      const doc   = await PDFDocument.load(buf);
+      const pages = await merged.copyPages(doc, doc.getPageIndices());
+      pages.forEach(p => merged.addPage(p));
     }
+    const finalPdf = Buffer.from(await merged.save());
 
     res.set('Content-Type', 'application/pdf');
     res.set('Content-Disposition', 'attachment; filename="etiquetas.pdf"');
