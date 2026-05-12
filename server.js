@@ -5012,10 +5012,11 @@ app.post('/api/zpl-to-pdf', express.text({ type: '*/*', limit: '20mb' }), async 
     const labels = zplSplitLabels(zpl);
     if (labels.length === 0) return res.status(400).json({ erro: 'Nenhuma etiqueta encontrada no ZPL (^XA...^XZ)' });
 
-    // Converte cada etiqueta individualmente (10 em paralelo por vez)
-    const CONCURRENCY = 10;
-    const pdfBuffers = [];
+    // Converte cada etiqueta individualmente (3 em paralelo, 400ms entre grupos)
+    const CONCURRENCY = 3;
+    const pdfBuffers  = [];
     for (let i = 0; i < labels.length; i += CONCURRENCY) {
+      if (i > 0) await new Promise(r => setTimeout(r, 400));
       const batch  = labels.slice(i, i + CONCURRENCY);
       const result = await Promise.all(batch.map(l => singleLabelToPdf(labelSize, l)));
       pdfBuffers.push(...result);
