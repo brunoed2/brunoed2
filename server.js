@@ -5037,6 +5037,8 @@ app.post('/api/zpl-to-pdf', express.text({ type: '*/*', limit: '20mb' }), async 
 
     res.set('Content-Type', 'application/pdf');
     res.set('Content-Disposition', 'attachment; filename="etiquetas.pdf"');
+    res.set('X-Label-Count', String(labels.length));
+    res.set('Access-Control-Expose-Headers', 'X-Label-Count');
     res.send(finalPdf);
   } catch (err) {
     const detalhe = err.response?.data

@@ -63,6 +63,7 @@ async function converterZpl() {
       throw new Error(msg || `Erro ${resp.status}`);
     }
 
+    const count    = resp.headers.get('X-Label-Count') || '?';
     const blob     = await resp.blob();
     const url      = URL.createObjectURL(blob);
     const link     = document.createElement('a');
@@ -71,7 +72,7 @@ async function converterZpl() {
     link.click();
     URL.revokeObjectURL(url);
 
-    status.textContent        = '✓ PDF gerado com sucesso!';
+    status.textContent        = `✓ PDF gerado: ${count} etiqueta(s) detectadas no arquivo`;
     status.style.background   = '#f0fdf4';
     status.style.color        = '#16a34a';
     status.style.border       = '1px solid #bbf7d0';
