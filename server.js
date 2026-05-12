@@ -4975,6 +4975,45 @@ app.get('/api/notas/buscar', async (req, res) => {
   }
 });
 
+// ── ZPL → PDF (via Labelary) ──────────────────────────────────
+app.post('/api/zpl-to-pdf', express.text({ type: '*/*', limit: '5mb' }), async (req, res) => {
+  const tamanho = req.query.tamanho;
+  const sizes = {
+    '100x150': '3.94x5.91',
+    '29x104':  '1.14x4.09',
+  };
+  const labelSize = sizes[tamanho];
+  if (!labelSize) return res.status(400).json({ erro: 'Tamanho inválido. Use 100x150 ou 29x104' });
+
+  const zpl = req.body;
+  if (!zpl || typeof zpl !== 'string' || !zpl.trim()) {
+    return res.status(400).json({ erro: 'Conteúdo ZPL inválido ou vazio' });
+  }
+
+  try {
+    const resp = await axios.post(
+      `http://api.labelary.com/v1/printers/8dpmm/labels/${labelSize}/0/`,
+      zpl,
+      {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Accept': 'application/pdf',
+        },
+        responseType: 'arraybuffer',
+        timeout: 30000,
+      }
+    );
+    res.set('Content-Type', 'application/pdf');
+    res.set('Content-Disposition', 'attachment; filename="etiqueta.pdf"');
+    res.send(Buffer.from(resp.data));
+  } catch (err) {
+    const detalhe = err.response?.data
+      ? Buffer.from(err.response.data).toString().substring(0, 300)
+      : err.message;
+    res.status(500).json({ erro: 'Erro ao converter ZPL', detalhe });
+  }
+});
+
 // ── Inicia o servidor ─────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`Servidor rodando em http://localhost:${PORT}`);

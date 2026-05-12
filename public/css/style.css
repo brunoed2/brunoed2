@@ -1722,3 +1722,74 @@ tr.lucro-sub-item td {
   background: #f8fafc;
   border-radius: 6px;
 }
+
+/* ── Etiquetas ─────────────────────────────────────────────── */
+.etiquetas-container {
+  max-width: 520px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.etiquetas-tamanhos {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.etiqueta-tam-label {
+  flex: 1;
+  cursor: pointer;
+}
+.etiqueta-tam-label input[type="radio"] {
+  display: none;
+}
+.etiqueta-tam-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 14px 12px;
+  border: 2px solid #e2e8f0;
+  border-radius: 8px;
+  transition: border-color .15s, background .15s;
+  background: #fff;
+}
+.etiqueta-tam-label input:checked + .etiqueta-tam-card {
+  border-color: #6366f1;
+  background: #eef2ff;
+}
+.etiqueta-tam-titulo {
+  font-weight: 600;
+  font-size: 15px;
+  color: #1e293b;
+}
+.etiqueta-tam-sub {
+  font-size: 12px;
+  color: #64748b;
+  margin-top: 2px;
+}
+.etiquetas-dropzone {
+  border: 2px dashed #cbd5e1;
+  border-radius: 10px;
+  padding: 40px 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color .15s, background .15s;
+  background: #f8fafc;
+}
+.etiquetas-dropzone:hover,
+.etiquetas-dropzone.dragover {
+  border-color: #6366f1;
+  background: #eef2ff;
+}
+.etiquetas-drop-icon {
+  font-size: 36px;
+  margin-bottom: 8px;
+}
+.etiquetas-drop-text {
+  font-size: 15px;
+  color: #334155;
+}
+.etiquetas-drop-sub {
+  font-size: 13px;
+  color: #94a3b8;
+  margin-top: 4px;
+}
