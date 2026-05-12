@@ -46,7 +46,7 @@ async function converterZpl() {
   const status  = document.getElementById('etiquetas-status');
 
   btn.disabled    = true;
-  btn.textContent = 'Convertendo...';
+  btn.textContent = 'Convertendo... (pode levar alguns segundos)';
   status.style.display = 'none';
 
   try {

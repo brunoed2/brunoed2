@@ -4982,18 +4982,30 @@ function zplSplitLabels(zpl) {
 
 async function singleLabelToPdf(labelSize, labelZpl) {
   const FormData = require('form-data');
-  const form = new FormData();
-  form.append('file', Buffer.from(labelZpl, 'utf-8'), { filename: 'label.zpl' });
-  const resp = await axios.post(
-    `https://api.labelary.com/v1/printers/8dpmm/labels/${labelSize}/0/`,
-    form,
-    {
-      headers: { ...form.getHeaders(), 'Accept': 'application/pdf' },
-      responseType: 'arraybuffer',
-      timeout: 30000,
+  const MAX_RETRIES = 4;
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    const form = new FormData();
+    form.append('file', Buffer.from(labelZpl, 'utf-8'), { filename: 'label.zpl' });
+    try {
+      const resp = await axios.post(
+        `https://api.labelary.com/v1/printers/8dpmm/labels/${labelSize}/0/`,
+        form,
+        {
+          headers: { ...form.getHeaders(), 'Accept': 'application/pdf' },
+          responseType: 'arraybuffer',
+          timeout: 30000,
+        }
+      );
+      return Buffer.from(resp.data);
+    } catch (err) {
+      const status = err.response?.status;
+      if (status === 429 && attempt < MAX_RETRIES - 1) {
+        await new Promise(r => setTimeout(r, 3000 * (attempt + 1))); // 3s, 6s, 9s
+        continue;
+      }
+      throw err;
     }
-  );
-  return Buffer.from(resp.data);
+  }
 }
 
 app.post('/api/zpl-to-pdf', express.text({ type: '*/*', limit: '20mb' }), async (req, res) => {
@@ -5012,14 +5024,11 @@ app.post('/api/zpl-to-pdf', express.text({ type: '*/*', limit: '20mb' }), async 
     const labels = zplSplitLabels(zpl);
     if (labels.length === 0) return res.status(400).json({ erro: 'Nenhuma etiqueta encontrada no ZPL (^XA...^XZ)' });
 
-    // Converte cada etiqueta individualmente (3 em paralelo, 400ms entre grupos)
-    const CONCURRENCY = 3;
-    const pdfBuffers  = [];
-    for (let i = 0; i < labels.length; i += CONCURRENCY) {
-      if (i > 0) await new Promise(r => setTimeout(r, 400));
-      const batch  = labels.slice(i, i + CONCURRENCY);
-      const result = await Promise.all(batch.map(l => singleLabelToPdf(labelSize, l)));
-      pdfBuffers.push(...result);
+    // Converte cada etiqueta sequencialmente com 700ms entre cada (respeita rate limit)
+    const pdfBuffers = [];
+    for (let i = 0; i < labels.length; i++) {
+      if (i > 0) await new Promise(r => setTimeout(r, 700));
+      pdfBuffers.push(await singleLabelToPdf(labelSize, labels[i]));
     }
 
     // Mescla todas as páginas em um único PDF
