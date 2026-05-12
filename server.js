@@ -4992,11 +4992,11 @@ app.post('/api/zpl-to-pdf', express.text({ type: '*/*', limit: '5mb' }), async (
 
   try {
     const resp = await axios.post(
-      `http://api.labelary.com/v1/printers/8dpmm/labels/${labelSize}/0/`,
+      `https://api.labelary.com/v1/printers/8dpmm/labels/${labelSize}/0/`,
       zpl,
       {
         headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
+          'Content-Type': 'application/octet-stream',
           'Accept': 'application/pdf',
         },
         responseType: 'arraybuffer',

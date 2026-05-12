@@ -59,7 +59,8 @@ async function converterZpl() {
 
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({}));
-      throw new Error(err.erro || `Erro ${resp.status}`);
+      const msg = [err.erro, err.detalhe].filter(Boolean).join(' — ');
+      throw new Error(msg || `Erro ${resp.status}`);
     }
 
     const blob     = await resp.blob();
