@@ -97,8 +97,9 @@ function loadData() {
   raw.contas          = raw.contas      || {};
   raw.contas['1']     = raw.contas['1'] || {};
   raw.contas['2']     = raw.contas['2'] || {};
-  raw.estoque_local            = raw.estoque_local            || {};
-  raw.estoque_local_last_check = raw.estoque_local_last_check || {};
+  raw.estoque_local                  = raw.estoque_local                  || {};
+  raw.estoque_local_last_check       = raw.estoque_local_last_check       || {};
+  raw.estoque_local_deducted_orders  = raw.estoque_local_deducted_orders  || {};
   return raw;
 }
 
@@ -881,10 +882,10 @@ app.post('/api/estoque-local/sync', async (req, res) => {
     return res.json({ estoque_local: data.estoque_local });
   }
 
-  // Monta mapa MLB -> SKU (só itens com SKU válido)
+  // Monta mapa MLB -> SKU (só itens com SKU válido, exclui '—')
   const mlbToSku = {};
   for (const item of items) {
-    if (item.mlb && item.sku) mlbToSku[item.mlb] = String(item.sku);
+    if (item.mlb && item.sku && item.sku !== '—') mlbToSku[item.mlb] = String(item.sku);
   }
 
   try {
@@ -917,10 +918,61 @@ app.post('/api/estoque-local/sync', async (req, res) => {
       // Full: ML envia do próprio estoque, não afeta local
       if (order.shipping?.logistic_type === 'fulfillment') continue;
 
+      const deducted = [];
       for (const oi of (order.order_items || [])) {
         const sku = mlbToSku[oi.item.id];
         if (!sku || data.estoque_local[sku] === undefined) continue;
-        data.estoque_local[sku] = Math.max(0, data.estoque_local[sku] - (oi.quantity || 1));
+        const qty = oi.quantity || 1;
+        data.estoque_local[sku] = Math.max(0, data.estoque_local[sku] - qty);
+        deducted.push({ sku, qty });
+      }
+      if (deducted.length > 0) {
+        data.estoque_local_deducted_orders[String(order.id)] = {
+          items: deducted,
+          date:  order.date_created,
+        };
+      }
+    }
+
+    // Busca pedidos cancelados dos últimos 90 dias e reverte deduções registradas
+    const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+    let cancelled = [];
+    offset = 0;
+    while (cancelled.length < 500) {
+      const resp = await axios.get('https://api.mercadolibre.com/orders/search', {
+        params: {
+          seller:                    c.user_id,
+          'order.status':            'cancelled',
+          'order.date_created.from': ninetyDaysAgo,
+          sort:                      'date_asc',
+          offset,
+          limit:                     50,
+        },
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 10000,
+      });
+      const results = resp.data.results || [];
+      cancelled = cancelled.concat(results);
+      if (results.length < 50) break;
+      offset += 50;
+    }
+
+    for (const order of cancelled) {
+      const orderId  = String(order.id);
+      const recorded = data.estoque_local_deducted_orders[orderId];
+      if (!recorded) continue;
+      for (const { sku, qty } of recorded.items) {
+        if (data.estoque_local[sku] !== undefined) {
+          data.estoque_local[sku] += qty;
+        }
+      }
+      delete data.estoque_local_deducted_orders[orderId];
+    }
+
+    // Remove registros com mais de 90 dias (limpeza)
+    for (const [orderId, record] of Object.entries(data.estoque_local_deducted_orders)) {
+      if (record.date && record.date < ninetyDaysAgo) {
+        delete data.estoque_local_deducted_orders[orderId];
       }
     }
 

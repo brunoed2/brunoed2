@@ -505,7 +505,7 @@ async function salvarEstoqueLocalDireto(chave, valor) {
 
 async function sincronizarEstoqueLocal(itens) {
   try {
-    const items = itens.filter(i => i.sku).map(i => ({ mlb: i.mlb, sku: String(i.sku) }));
+    const items = itens.filter(i => i.sku && i.sku !== '—').map(i => ({ mlb: i.mlb, sku: String(i.sku) }));
     const conta = app2ContaAtual();
     const response = await apiFetch('/api/estoque-local/sync', {
       method: 'POST',
