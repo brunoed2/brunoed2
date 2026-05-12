@@ -4999,7 +4999,7 @@ async function zplChunkToPdf(labelSize, labels) {
 
 app.post('/api/zpl-to-pdf', express.text({ type: '*/*', limit: '20mb' }), async (req, res) => {
   const tamanho = req.query.tamanho;
-  const sizes = { '100x150': '3.94x5.91', '29x104': '1.14x4.09' };
+  const sizes = { '100x150': '3.94x5.91', '104x29': '4.09x1.14' };
   const labelSize = sizes[tamanho];
   if (!labelSize) return res.status(400).json({ erro: 'Tamanho inválido. Use 100x150 ou 29x104' });
 
