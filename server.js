@@ -3891,7 +3891,8 @@ async function verificarNovosShipmentsTelegram() {
 
 // ── Polling em background: anúncios pausados ──────────────────
 async function verificarAnunciosPausadosTelegram() {
-  if (!TELEGRAM_TOKEN || !TELEGRAM_CHAT_ID) return;
+  const temCanal = (TELEGRAM_TOKEN && TELEGRAM_CHAT_ID) || (CALLMEBOT_PHONE && CALLMEBOT_APIKEY);
+  if (!temCanal) return;
   const data = loadData();
   for (const num of ['1', '2']) {
     const c = data.contas[num];
@@ -5059,29 +5060,33 @@ app.listen(PORT, () => {
   // Inicia monitoramento Telegram 10s após subir, depois a cada 60s
   if (CALLMEBOT_PHONE && CALLMEBOT_APIKEY) {
     addLog(`WhatsApp: contas/anúncios → ${CALLMEBOT_PHONE} ✅`, 'ok');
-    // Estoque baixo: verifica a cada 6 horas
-    setTimeout(() => {
-      verificarEstoqueBaixo().catch(() => {});
-      setInterval(() => verificarEstoqueBaixo().catch(() => {}), 6 * 60 * 60_000);
-    }, 90_000);
   }
   if (CALLMEBOT_PHONE_PEDIDOS && CALLMEBOT_APIKEY_PEDIDOS) {
     addLog(`WhatsApp: pedidos novos → ${CALLMEBOT_PHONE_PEDIDOS} ✅`, 'ok');
   }
   if (TELEGRAM_TOKEN && TELEGRAM_CHAT_ID) {
-    addLog('Telegram: monitoramento de pedidos e anúncios ativado', 'info');
-    // Pedidos novos: verifica a cada 60s
+    addLog('Telegram: ativado ✅', 'ok');
+  }
+  // Estoque baixo: roda se tiver WhatsApp principal ou Telegram
+  if ((CALLMEBOT_PHONE && CALLMEBOT_APIKEY) || (TELEGRAM_TOKEN && TELEGRAM_CHAT_ID)) {
+    setTimeout(() => {
+      verificarEstoqueBaixo().catch(() => {});
+      setInterval(() => verificarEstoqueBaixo().catch(() => {}), 6 * 60 * 60_000);
+    }, 90_000);
+  }
+  // Pedidos novos: roda se tiver WhatsApp pedidos ou Telegram
+  if ((CALLMEBOT_PHONE_PEDIDOS && CALLMEBOT_APIKEY_PEDIDOS) || (TELEGRAM_TOKEN && TELEGRAM_CHAT_ID)) {
     setTimeout(() => {
       verificarNovosShipmentsTelegram().catch(() => {});
       setInterval(() => verificarNovosShipmentsTelegram().catch(() => {}), 60_000);
     }, 10_000);
-    // Anúncios pausados: verifica a cada 5 minutos
+  }
+  // Anúncios pausados: roda se tiver WhatsApp principal ou Telegram
+  if ((CALLMEBOT_PHONE && CALLMEBOT_APIKEY) || (TELEGRAM_TOKEN && TELEGRAM_CHAT_ID)) {
     setTimeout(() => {
       verificarAnunciosPausadosTelegram().catch(() => {});
       setInterval(() => verificarAnunciosPausadosTelegram().catch(() => {}), 5 * 60_000);
     }, 30_000);
-  } else {
-    addLog('Telegram: TELEGRAM_TOKEN ou TELEGRAM_CHAT_ID não configurados', 'warn');
   }
 });
 
