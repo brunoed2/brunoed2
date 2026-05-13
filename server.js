@@ -4152,6 +4152,23 @@ app.post('/api/whatsapp/teste-pedidos', async (req, res) => {
   }
 });
 
+app.post('/api/whatsapp/reenviar-estoque-baixo', async (req, res) => {
+  if (!CALLMEBOT_PHONE || !CALLMEBOT_APIKEY) {
+    return res.json({ ok: false, erro: 'CALLMEBOT_PHONE ou CALLMEBOT_APIKEY não configurados' });
+  }
+  try {
+    const data = loadData();
+    for (const num of ['1', '2']) {
+      if (data.contas[num]) data.contas[num].estoque_alerta_dates = {};
+    }
+    saveData(data);
+    await verificarEstoqueBaixo();
+    res.json({ ok: true });
+  } catch (e) {
+    res.json({ ok: false, erro: e.message });
+  }
+});
+
 app.post('/api/whatsapp/teste-estoque-baixo', async (req, res) => {
   if (!CALLMEBOT_PHONE || !CALLMEBOT_APIKEY) {
     return res.json({ ok: false, erro: 'CALLMEBOT_PHONE ou CALLMEBOT_APIKEY não configurados' });

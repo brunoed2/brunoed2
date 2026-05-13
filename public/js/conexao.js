@@ -229,6 +229,22 @@ async function cxTestarEstoqueBaixo() {
   if (btn) { btn.disabled = false; btn.textContent = '📦 WA Estoque'; }
 }
 
+async function cxReenviarEstoqueBaixo() {
+  const btn = document.getElementById('btn-reenviar-estoque');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Enviando...'; }
+  try {
+    const d = await fetch('/api/whatsapp/reenviar-estoque-baixo', { method: 'POST' }).then(r => r.json());
+    if (d.ok) {
+      alert('✅ Reenvio concluído! Se houver itens com estoque baixo, as mensagens foram enviadas.');
+    } else {
+      alert('⚠️ Falha: ' + (d.erro || 'Erro desconhecido.'));
+    }
+  } catch {
+    alert('⚠️ Erro ao conectar com o servidor.');
+  }
+  if (btn) { btn.disabled = false; btn.textContent = '🔄 Reenviar Estoque'; }
+}
+
 // ── Bling ─────────────────────────────────────────────────────
 
 async function verificarBling() {
