@@ -4157,8 +4157,14 @@ app.post('/api/whatsapp/teste-estoque-baixo', async (req, res) => {
     return res.json({ ok: false, erro: 'CALLMEBOT_PHONE ou CALLMEBOT_APIKEY não configurados' });
   }
   try {
-    await verificarEstoqueBaixo();
-    res.json({ ok: true, mensagem: 'Rotina executada — veja o log para detalhes' });
+    const resp = await axios.get('https://api.callmebot.com/whatsapp.php', {
+      params: { phone: CALLMEBOT_PHONE, text: '🧪 Teste — notificações de estoque/anúncios ativas!', apikey: CALLMEBOT_APIKEY },
+      timeout: 10000,
+    });
+    const body = String(resp.data || '').trim();
+    const erro = body.toLowerCase().includes('error') || body.toLowerCase().includes('wrong');
+    addLog(`WhatsApp teste-estoque → ${CALLMEBOT_PHONE}: ${body}`, erro ? 'warn' : 'ok');
+    res.json({ ok: !erro, resposta: body });
   } catch (e) {
     res.json({ ok: false, erro: e.message });
   }

@@ -215,13 +215,13 @@ async function cxTestarWhatsappPedidos() {
 
 async function cxTestarEstoqueBaixo() {
   const btn = document.getElementById('btn-estoque-baixo-teste');
-  if (btn) { btn.disabled = true; btn.textContent = '⏳ Verificando...'; }
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Enviando...'; }
   try {
     const d = await fetch('/api/whatsapp/teste-estoque-baixo', { method: 'POST' }).then(r => r.json());
     if (d.ok) {
-      alert('✅ Rotina executada! Verifique o log e o WhatsApp — se houver itens com <15 dias de estoque, a mensagem foi enviada.');
+      alert('✅ Mensagem enviada! Verifique o WhatsApp do número de estoque/anúncios.');
     } else {
-      alert('⚠️ Falha: ' + (d.erro || 'Verifique CALLMEBOT_PHONE e CALLMEBOT_APIKEY no Railway.'));
+      alert('⚠️ Falha: ' + (d.resposta || d.erro || 'Verifique CALLMEBOT_PHONE e CALLMEBOT_APIKEY no Railway.'));
     }
   } catch {
     alert('⚠️ Erro ao conectar com o servidor.');
