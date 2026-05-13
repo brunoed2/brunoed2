@@ -14,6 +14,7 @@ function abrirAba(nome) {
   if (nome === 'estoque')      carregarEstoque(true);
   if (nome === 'vendas')       carregarVendas();
   if (nome === 'historico')    { histIniciarDatas(); carregarHistorico(); }
+  if (nome === 'etiquetas')    etiquetasInit();
 }
 
 navBtns.forEach(btn => {
