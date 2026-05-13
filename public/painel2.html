@@ -29,6 +29,7 @@
         <button class="nav-btn" data-tab="estoque">📦 Estoque</button>
         <button class="nav-btn active" data-tab="vendas">🏷️ Vendas</button>
         <button class="nav-btn" data-tab="historico">📋 Histórico</button>
+        <button class="nav-btn" data-tab="etiquetas">🖨️ Etiquetas</button>
       </nav>
       <div class="sidebar-footer">
         <button class="btn-sair" onclick="sair()">Sair</button>
@@ -180,10 +181,53 @@
       </section>
 
 
+      <!-- ── Aba: Etiquetas ── -->
+      <section id="tab-etiquetas" class="tab">
+        <h1>ZPL → PDF</h1>
+        <p class="subtitle">Converta arquivos ZPL em PDF prontos para impressão.</p>
+
+        <div class="etiquetas-container">
+
+          <div class="etiquetas-tamanhos">
+            <label class="etiqueta-tam-label">
+              <input type="radio" name="etiqueta-tam" value="100x150" checked>
+              <div class="etiqueta-tam-card">
+                <span class="etiqueta-tam-titulo">100 × 150 mm</span>
+                <span class="etiqueta-tam-sub">Etiqueta de envio</span>
+              </div>
+            </label>
+            <label class="etiqueta-tam-label">
+              <input type="radio" name="etiqueta-tam" value="104x29">
+              <div class="etiqueta-tam-card">
+                <span class="etiqueta-tam-titulo">104 × 29 mm</span>
+                <span class="etiqueta-tam-sub">Etiqueta pequena</span>
+              </div>
+            </label>
+          </div>
+
+          <div id="etiquetas-dropzone" class="etiquetas-dropzone">
+            <div class="etiquetas-drop-icon">📄</div>
+            <div class="etiquetas-drop-text">Arraste o arquivo <strong>.zpl</strong> aqui</div>
+            <div class="etiquetas-drop-sub">ou clique para selecionar</div>
+            <input type="file" id="etiquetas-file" accept=".zpl,.txt" style="display:none">
+          </div>
+
+          <div id="etiquetas-nome" style="display:none;margin-top:12px;color:#64748b;font-size:14px"></div>
+
+          <button class="btn-primary" id="btn-converter-zpl" onclick="converterZpl()" style="display:none;margin-top:16px">
+            Converter para PDF
+          </button>
+
+          <div id="etiquetas-status" style="display:none;margin-top:12px;padding:10px 14px;border-radius:6px;font-size:14px"></div>
+
+        </div>
+      </section>
+
     </main>
   </div>
 
   <script src="/js/painel2.js?v=170"></script>
-  <div id="version-badge">v424</div>
+  <script src="/js/etiquetas.js"></script>
+  <div id="version-badge">v425</div>
 </body>
 </html>
