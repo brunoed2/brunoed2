@@ -104,16 +104,16 @@ function loadData() {
   if (!raw.usuarios['1224']) {
     raw.usuarios['1224'] = { nome: 'Operador', abas: ['estoque', 'vendas', 'historico', 'etiquetas'], painel: 'painel2' };
   }
-  if (!raw.usuarios['199412']) {
-    raw.usuarios['199412'] = {
-      nome: 'Admin',
-      abas: ['estoque','ads','lucro','promocoes','contas-pagar','bling','fiscal','compras','calculadora','etiquetas','configuracoes'],
-      painel: 'app',
-    };
-  }
+  // 199412 é sempre admin no painel app — forçado mesmo se já existir com dados errados
+  const adminAbas = ['estoque','ads','lucro','promocoes','contas-pagar','bling','fiscal','compras','calculadora','etiquetas','configuracoes'];
+  raw.usuarios['199412'] = {
+    nome:  (raw.usuarios['199412'] || {}).nome  || 'Admin',
+    abas:  (raw.usuarios['199412'] || {}).abas  || adminAbas,
+    painel: 'app',
+  };
   // Migração: garante campo painel em usuários antigos
   for (const [senha, u] of Object.entries(raw.usuarios)) {
-    if (!u.painel) u.painel = senha === '199412' ? 'app' : 'painel2';
+    if (!u.painel) u.painel = 'painel2';
   }
   return raw;
 }
