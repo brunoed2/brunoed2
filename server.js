@@ -598,7 +598,6 @@ app.post('/api/usuarios', (req, res) => {
 app.put('/api/usuarios/:senha', (req, res) => {
   const { senha } = req.params;
   const { nome, abas } = req.body || {};
-  if (senha === '199412') return res.status(400).json({ error: 'Não é possível editar o administrador' });
   const data = loadData();
   data.usuarios = data.usuarios || {};
   if (!data.usuarios[senha]) return res.status(404).json({ error: 'Usuário não encontrado' });
