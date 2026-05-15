@@ -1080,9 +1080,9 @@
       });
       const data = await resp.json();
       if (!resp.ok) { msg.textContent = data.error; msg.className = 'msg erro'; return; }
-      msg.textContent = 'Salvo!';
+      msg.textContent = 'Salvo! O usuário precisa fazer login novamente para ver as mudanças.';
       msg.className = 'msg ok';
-      setTimeout(() => { msg.textContent = ''; }, 2000);
+      setTimeout(() => { msg.textContent = ''; }, 4000);
     } catch {
       msg.textContent = 'Erro ao salvar.';
       msg.className = 'msg erro';
@@ -1104,6 +1104,6 @@
     }
   }
   </script>
-  <div id="version-badge">v431</div>
+  <div id="version-badge">v432</div>
 </body>
 </html>
