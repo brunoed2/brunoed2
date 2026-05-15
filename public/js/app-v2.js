@@ -55,9 +55,12 @@ function abrirAba(nome) {
 function abrirSubConfig(sub) {
   document.getElementById('subtab-btn-ml').classList.toggle('active', sub === 'ml');
   document.getElementById('subtab-btn-conexao').classList.toggle('active', sub === 'conexao');
-  document.getElementById('subtab-ml').style.display      = sub === 'ml'      ? '' : 'none';
-  document.getElementById('subtab-conexao').style.display = sub === 'conexao' ? '' : 'none';
+  document.getElementById('subtab-btn-usuarios').classList.toggle('active', sub === 'usuarios');
+  document.getElementById('subtab-ml').style.display       = sub === 'ml'       ? '' : 'none';
+  document.getElementById('subtab-conexao').style.display  = sub === 'conexao'  ? '' : 'none';
+  document.getElementById('subtab-usuarios').style.display = sub === 'usuarios' ? '' : 'none';
   if (sub === 'ml') carregarConfig(contaConfigurando);
+  if (sub === 'usuarios') usuariosCarregar();
   if (sub === 'conexao') {
     if (typeof cxIniciarStream    === 'function') cxIniciarStream();
     if (typeof verificarConexao   === 'function') verificarConexao();

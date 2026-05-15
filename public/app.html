@@ -539,6 +539,7 @@
         <div style="display:flex;gap:8px;margin-bottom:20px;border-bottom:1px solid #334155;padding-bottom:12px">
           <button class="filtro-btn active" id="subtab-btn-ml" onclick="abrirSubConfig('ml')">⚙️ Mercado Livre</button>
           <button class="filtro-btn" id="subtab-btn-conexao" onclick="abrirSubConfig('conexao')">🔌 Conexão</button>
+          <button class="filtro-btn" id="subtab-btn-usuarios" onclick="abrirSubConfig('usuarios')">👥 Usuários</button>
         </div>
 
         <!-- Sub-aba: Mercado Livre (conteúdo de config) -->
@@ -597,6 +598,42 @@
               <code id="callback-url"></code>
             </p>
           </div>
+        </div>
+
+        <!-- Sub-aba: Usuários -->
+        <div id="subtab-usuarios" style="display:none">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+            <h2 style="font-size:16px;font-weight:600">Usuários do Painel</h2>
+            <button class="btn-primary" onclick="usuariosAbrirForm()">+ Novo Usuário</button>
+          </div>
+
+          <div id="usuarios-form-novo" class="card" style="display:none;margin-bottom:16px">
+            <h2>Novo Usuário</h2>
+            <div class="field">
+              <label>Senha de acesso</label>
+              <input type="text" id="nu-senha" placeholder="Ex: 5678" autocomplete="off" style="letter-spacing:0">
+            </div>
+            <div class="field">
+              <label>Nome (opcional)</label>
+              <input type="text" id="nu-nome" placeholder="Ex: Estoque" autocomplete="off" style="letter-spacing:0">
+            </div>
+            <div class="field">
+              <label>Abas permitidas</label>
+              <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:8px">
+                <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" class="nu-aba" value="estoque"> 📦 Estoque</label>
+                <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" class="nu-aba" value="vendas"> 🏷️ Vendas</label>
+                <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" class="nu-aba" value="historico"> 📋 Histórico</label>
+                <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" class="nu-aba" value="etiquetas"> 🖨️ Etiquetas</label>
+              </div>
+            </div>
+            <div class="btn-row">
+              <button class="btn-primary" onclick="usuariosCriar()">💾 Salvar</button>
+              <button class="btn-secondary" onclick="document.getElementById('usuarios-form-novo').style.display='none'">Cancelar</button>
+            </div>
+            <div class="msg" id="usuarios-msg-novo"></div>
+          </div>
+
+          <div id="usuarios-lista"></div>
         </div>
 
         <!-- Sub-aba: Conexão -->
@@ -916,6 +953,138 @@
   <script src="/js/compras.js?v=1"></script>
   <script src="/js/calculadora.js"></script>
   <script src="/js/etiquetas.js"></script>
-  <div id="version-badge">v426</div>
+  <script>
+  // ── Gerenciamento de Usuários ─────────────────────────────────
+
+  const ABAS_DISPONIVEIS = [
+    { id: 'estoque',   label: '📦 Estoque' },
+    { id: 'vendas',    label: '🏷️ Vendas' },
+    { id: 'historico', label: '📋 Histórico' },
+    { id: 'etiquetas', label: '🖨️ Etiquetas' },
+  ];
+
+  function usuariosAbrirForm() {
+    document.getElementById('nu-senha').value = '';
+    document.getElementById('nu-nome').value = '';
+    document.querySelectorAll('.nu-aba').forEach(c => c.checked = false);
+    document.getElementById('usuarios-msg-novo').textContent = '';
+    document.getElementById('usuarios-form-novo').style.display = '';
+    document.getElementById('nu-senha').focus();
+  }
+
+  async function usuariosCarregar() {
+    const lista = document.getElementById('usuarios-lista');
+    lista.innerHTML = '<p style="color:#94a3b8;font-size:13px">Carregando...</p>';
+    try {
+      const resp = await fetch('/api/usuarios');
+      const usuarios = await resp.json();
+      if (!usuarios.length) {
+        lista.innerHTML = '<p style="color:#94a3b8;font-size:13px">Nenhum usuário cadastrado.</p>';
+        return;
+      }
+      lista.innerHTML = '';
+      for (const u of usuarios) {
+        lista.appendChild(usuariosRenderCard(u));
+      }
+    } catch {
+      lista.innerHTML = '<p style="color:#e74c3c;font-size:13px">Erro ao carregar usuários.</p>';
+    }
+  }
+
+  function usuariosRenderCard(u) {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.style.marginBottom = '12px';
+    card.dataset.senha = u.senha;
+
+    const abasHtml = ABAS_DISPONIVEIS.map(a =>
+      `<label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+        <input type="checkbox" class="eu-aba" value="${a.id}" ${u.abas.includes(a.id) ? 'checked' : ''}> ${a.label}
+      </label>`
+    ).join('');
+
+    card.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+        <div style="flex:1">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+            <span style="font-size:13px;color:#94a3b8">Senha:</span>
+            <code style="background:#1e293b;padding:2px 8px;border-radius:4px;font-size:14px">${u.senha}</code>
+            <span style="font-size:13px;color:#94a3b8">Nome:</span>
+            <input class="eu-nome" type="text" value="${u.nome}" style="font-size:13px;padding:3px 8px;border:1px solid #334155;border-radius:6px;background:#1e293b;color:#e2e8f0;width:140px;letter-spacing:0">
+          </div>
+          <div style="display:flex;gap:16px;flex-wrap:wrap">${abasHtml}</div>
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0">
+          <button class="btn-primary" style="padding:5px 12px;font-size:12px" onclick="usuariosSalvar('${u.senha}', this)">💾 Salvar</button>
+          <button class="btn-secondary" style="padding:5px 12px;font-size:12px;color:#e74c3c" onclick="usuariosDeletar('${u.senha}', this)">🗑️</button>
+        </div>
+      </div>
+      <div class="eu-msg msg" style="margin-top:8px"></div>
+    `;
+    return card;
+  }
+
+  async function usuariosCriar() {
+    const senha = document.getElementById('nu-senha').value.trim();
+    const nome  = document.getElementById('nu-nome').value.trim();
+    const abas  = [...document.querySelectorAll('.nu-aba:checked')].map(c => c.value);
+    const msg   = document.getElementById('usuarios-msg-novo');
+    if (!senha) { msg.textContent = 'Informe a senha.'; msg.className = 'msg erro'; return; }
+    try {
+      const resp = await fetch('/api/usuarios', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ senha, nome: nome || senha, abas }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) { msg.textContent = data.error; msg.className = 'msg erro'; return; }
+      msg.textContent = 'Usuário criado!';
+      msg.className = 'msg ok';
+      document.getElementById('usuarios-form-novo').style.display = 'none';
+      usuariosCarregar();
+    } catch {
+      msg.textContent = 'Erro ao criar usuário.';
+      msg.className = 'msg erro';
+    }
+  }
+
+  async function usuariosSalvar(senha, btn) {
+    const card = btn.closest('.card');
+    const nome = card.querySelector('.eu-nome').value.trim();
+    const abas = [...card.querySelectorAll('.eu-aba:checked')].map(c => c.value);
+    const msg  = card.querySelector('.eu-msg');
+    try {
+      const resp = await fetch(`/api/usuarios/${encodeURIComponent(senha)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nome, abas }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) { msg.textContent = data.error; msg.className = 'msg erro'; return; }
+      msg.textContent = 'Salvo!';
+      msg.className = 'msg ok';
+      setTimeout(() => { msg.textContent = ''; }, 2000);
+    } catch {
+      msg.textContent = 'Erro ao salvar.';
+      msg.className = 'msg erro';
+    }
+  }
+
+  async function usuariosDeletar(senha, btn) {
+    if (!confirm(`Remover o usuário com senha "${senha}"?`)) return;
+    const card = btn.closest('.card');
+    try {
+      const resp = await fetch(`/api/usuarios/${encodeURIComponent(senha)}`, { method: 'DELETE' });
+      const data = await resp.json();
+      if (!resp.ok) { alert(data.error); return; }
+      card.remove();
+      const lista = document.getElementById('usuarios-lista');
+      if (!lista.children.length) lista.innerHTML = '<p style="color:#94a3b8;font-size:13px">Nenhum usuário cadastrado.</p>';
+    } catch {
+      alert('Erro ao remover usuário.');
+    }
+  }
+  </script>
+  <div id="version-badge">v427</div>
 </body>
 </html>

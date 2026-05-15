@@ -100,6 +100,9 @@ function loadData() {
   raw.estoque_local                  = raw.estoque_local                  || {};
   raw.estoque_local_last_check       = raw.estoque_local_last_check       || {};
   raw.estoque_local_deducted_orders  = raw.estoque_local_deducted_orders  || {};
+  raw.usuarios = raw.usuarios || {
+    '1224': { nome: 'Operador', abas: ['estoque', 'vendas', 'historico', 'etiquetas'] },
+  };
   return raw;
 }
 
@@ -540,6 +543,63 @@ app.post('/api/conta/ativa', (req, res) => {
   if (!['1', '2'].includes(conta)) return res.status(400).json({ error: 'Conta inválida' });
   const data = loadData();
   data.conta_ativa = conta;
+  saveData(data);
+  res.json({ ok: true });
+});
+
+// ── Rotas: login e gerenciamento de usuários painel2 ──────────
+
+app.post('/api/login', (req, res) => {
+  const { senha } = req.body || {};
+  if (!senha) return res.status(400).json({ error: 'Senha obrigatória' });
+  const data = loadData();
+  const usuario = (data.usuarios || {})[String(senha)];
+  if (!usuario) return res.status(401).json({ error: 'Senha incorreta' });
+  res.json({ ok: true, nome: usuario.nome, abas: usuario.abas || [] });
+});
+
+app.get('/api/usuarios', (req, res) => {
+  const data = loadData();
+  const lista = Object.entries(data.usuarios || {}).map(([senha, info]) => ({
+    senha,
+    nome: info.nome || senha,
+    abas: info.abas || [],
+  }));
+  res.json(lista);
+});
+
+app.post('/api/usuarios', (req, res) => {
+  const { senha, nome, abas } = req.body || {};
+  if (!senha || !String(senha).trim()) return res.status(400).json({ error: 'Senha obrigatória' });
+  if (String(senha) === '199412') return res.status(400).json({ error: 'Senha reservada' });
+  const data = loadData();
+  data.usuarios = data.usuarios || {};
+  if (data.usuarios[String(senha)]) return res.status(409).json({ error: 'Usuário já existe com essa senha' });
+  data.usuarios[String(senha)] = { nome: nome || String(senha), abas: abas || [] };
+  saveData(data);
+  res.json({ ok: true });
+});
+
+app.put('/api/usuarios/:senha', (req, res) => {
+  const { senha } = req.params;
+  const { nome, abas } = req.body || {};
+  if (senha === '199412') return res.status(400).json({ error: 'Não é possível editar o administrador' });
+  const data = loadData();
+  data.usuarios = data.usuarios || {};
+  if (!data.usuarios[senha]) return res.status(404).json({ error: 'Usuário não encontrado' });
+  if (nome !== undefined) data.usuarios[senha].nome = nome;
+  if (abas !== undefined) data.usuarios[senha].abas = abas;
+  saveData(data);
+  res.json({ ok: true });
+});
+
+app.delete('/api/usuarios/:senha', (req, res) => {
+  const { senha } = req.params;
+  if (senha === '199412') return res.status(400).json({ error: 'Não é possível remover o administrador' });
+  const data = loadData();
+  data.usuarios = data.usuarios || {};
+  if (!data.usuarios[senha]) return res.status(404).json({ error: 'Usuário não encontrado' });
+  delete data.usuarios[senha];
   saveData(data);
   res.json({ ok: true });
 });

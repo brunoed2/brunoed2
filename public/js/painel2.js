@@ -988,5 +988,24 @@ function sairFull(mlb) {
 
 // ── Inicialização ─────────────────────────────────────────────
 
+function aplicarPermissoesAbas() {
+  const permitidas = JSON.parse(sessionStorage.getItem('abasPermitidas') || 'null');
+  if (permitidas && Array.isArray(permitidas)) {
+    document.querySelectorAll('.nav-btn').forEach(btn => {
+      if (!permitidas.includes(btn.dataset.tab)) btn.style.display = 'none';
+    });
+    document.querySelectorAll('.tab').forEach(tab => {
+      const nome = tab.id.replace('tab-', '');
+      if (!permitidas.includes(nome)) {
+        tab.classList.remove('active');
+        tab.style.display = 'none';
+      }
+    });
+    if (permitidas.length > 0) abrirAba(permitidas[0]);
+  } else {
+    carregarVendas();
+  }
+}
+
 inicializarSeletorConta();
-carregarVendas();
+aplicarPermissoesAbas();
