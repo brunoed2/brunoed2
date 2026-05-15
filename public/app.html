@@ -27,6 +27,8 @@
       </div>
       <nav>
         <button class="nav-btn active" data-tab="estoque">📦 Estoque</button>
+        <button class="nav-btn" data-tab="vendas">🏷️ Vendas</button>
+        <button class="nav-btn" data-tab="historico">📋 Histórico</button>
         <button class="nav-btn" data-tab="ads">📊 Ads</button>
         <button class="nav-btn" data-tab="lucro">💰 Lucro</button>
         <button class="nav-btn" data-tab="promocoes">🏷️ Promoções</button>
@@ -443,6 +445,85 @@
             <tbody id="tabela-estoque-body"></tbody>
           </table>
 
+        </div>
+      </section>
+
+      <!-- ── Aba: Vendas ── -->
+      <section id="tab-vendas" class="tab">
+        <h1>Vendas</h1>
+        <p class="subtitle">Vendas com etiqueta de envio disponível para baixar.</p>
+
+        <div id="vendas-erro" class="estoque-erro" style="display:none"></div>
+
+        <div class="tabela-container">
+          <div class="tabela-topo">
+            <span id="vendas-total"></span>
+            <div style="display:flex;gap:8px;align-items:center">
+              <button class="btn-secondary" id="btn-filtro-atendidos" onclick="toggleFiltroAtendidos()">Atendidos</button>
+              <button class="btn-primary" id="btn-baixar-selecionadas" onclick="baixarSelecionadas()" style="display:none">⬇ Baixar selecionadas</button>
+              <button class="btn-primary" id="btn-marcar-atendido" onclick="marcarAtendidoSelecionadas()" style="display:none;background:#16a34a">✔ Marcar atendido</button>
+              <button class="btn-secondary" onclick="carregarVendas()" id="btn-atualizar-vendas">↻ Atualizar</button>
+            </div>
+          </div>
+
+          <div id="vendas-loading" class="loading" style="display:none">Carregando vendas...</div>
+
+          <table class="tabela" id="tabela-vendas" style="display:none">
+            <thead>
+              <tr>
+                <th><input type="checkbox" id="check-todas" onclick="toggleTodasVendas(this)"></th>
+                <th></th>
+                <th>Pedido</th>
+                <th>Comprador</th>
+                <th class="col-num">Qtd</th>
+                <th>SKU</th>
+                <th>Itens</th>
+                <th>Status</th>
+                <th>Etiqueta</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="tabela-vendas-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ── Aba: Histórico ── -->
+      <section id="tab-historico" class="tab">
+        <h1>Histórico de Vendas</h1>
+        <p class="subtitle">Todos os pedidos que passaram pela tela, independente de terem sido marcados como atendidos.</p>
+
+        <div class="tabela-container">
+          <div class="tabela-topo" style="flex-wrap:wrap;gap:8px">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+              <span style="font-size:12px;color:#94a3b8">de</span>
+              <input type="date" id="hist-data-ini" style="font-size:12px;padding:3px 6px;border:1px solid #e2e8f0;border-radius:6px;color:#334155" onchange="carregarHistorico()">
+              <span style="font-size:12px;color:#94a3b8">até</span>
+              <input type="date" id="hist-data-fim" style="font-size:12px;padding:3px 6px;border:1px solid #e2e8f0;border-radius:6px;color:#334155" onchange="carregarHistorico()">
+              <input type="text" id="hist-busca" placeholder="Buscar por pedido, comprador, SKU, item..." oninput="renderizarHistorico()" style="font-size:12px;padding:3px 8px;border:1px solid #e2e8f0;border-radius:6px;color:#334155;width:280px">
+            </div>
+            <div style="display:flex;gap:8px;align-items:center">
+              <span id="hist-total" style="font-size:13px;color:#64748b"></span>
+              <button class="btn-secondary" onclick="carregarHistorico()" id="btn-atualizar-hist">↻ Atualizar</button>
+            </div>
+          </div>
+          <div id="hist-loading" class="loading" style="display:none">Carregando histórico...</div>
+          <div id="hist-vazio" style="display:none;color:#94a3b8;padding:30px 0;text-align:center;font-size:14px">Nenhum pedido encontrado neste período.</div>
+          <table class="tabela" id="tabela-hist" style="display:none">
+            <thead>
+              <tr>
+                <th>Despacho</th>
+                <th></th>
+                <th>Pedido</th>
+                <th>Comprador</th>
+                <th class="col-num">Qtd</th>
+                <th>SKU</th>
+                <th>Itens</th>
+                <th>Atendido</th>
+              </tr>
+            </thead>
+            <tbody id="tabela-hist-body"></tbody>
+          </table>
         </div>
       </section>
 
@@ -940,6 +1021,7 @@
 
   <script src="/js/lucro.js"></script>
   <script src="/js/app-v2.js?v=2"></script>
+  <script src="/js/operacoes.js?v=1"></script>
   <script src="/js/conexao.js"></script>
   <script src="/js/contas-pagar.js?v=1"></script>
   <script src="/js/promocoes.js?v=9"></script>
@@ -1104,6 +1186,6 @@
     }
   }
   </script>
-  <div id="version-badge">v432</div>
+  <div id="version-badge">v433</div>
 </body>
 </html>

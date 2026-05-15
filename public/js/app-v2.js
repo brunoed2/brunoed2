@@ -36,6 +36,8 @@ function abrirAba(nome) {
   clog(`abrirAba(${nome}) trocandoConta=${trocandoConta} contaGen=${contaGen}`);
   if (trocandoConta) { clog(`abrirAba bloqueado por trocandoConta`, 'warn'); return; }
   if (nome === 'estoque')       carregarEstoque(true);
+  if (nome === 'vendas')        carregarVendas();
+  if (nome === 'historico')     { histIniciarDatas(); carregarHistorico(); }
   if (nome === 'ads')           carregarAds();
   if (nome === 'lucro')         lucroInit();
   if (nome === 'promocoes')     carregarPromocoes();
