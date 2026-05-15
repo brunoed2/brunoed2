@@ -76,8 +76,17 @@ navBtns.forEach(btn => {
 });
 
 (function () {
-  const params = new URLSearchParams(location.search);
-  const tab    = params.get('tab') || 'estoque';
+  const permitidas = JSON.parse(sessionStorage.getItem('abasPermitidas') || 'null');
+  if (permitidas && Array.isArray(permitidas)) {
+    navBtns.forEach(btn => {
+      if (!permitidas.includes(btn.dataset.tab)) btn.style.display = 'none';
+    });
+  }
+
+  const params    = new URLSearchParams(location.search);
+  const tabParam  = params.get('tab');
+  const primeiraAba = permitidas && permitidas.length ? permitidas[0] : 'estoque';
+  const tab = tabParam && (!permitidas || permitidas.includes(tabParam)) ? tabParam : primeiraAba;
   abrirAba(tab);
 
   if (params.get('connected') === 'true') {

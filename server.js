@@ -100,9 +100,21 @@ function loadData() {
   raw.estoque_local                  = raw.estoque_local                  || {};
   raw.estoque_local_last_check       = raw.estoque_local_last_check       || {};
   raw.estoque_local_deducted_orders  = raw.estoque_local_deducted_orders  || {};
-  raw.usuarios = raw.usuarios || {
-    '1224': { nome: 'Operador', abas: ['estoque', 'vendas', 'historico', 'etiquetas'] },
-  };
+  raw.usuarios = raw.usuarios || {};
+  if (!raw.usuarios['1224']) {
+    raw.usuarios['1224'] = { nome: 'Operador', abas: ['estoque', 'vendas', 'historico', 'etiquetas'], painel: 'painel2' };
+  }
+  if (!raw.usuarios['199412']) {
+    raw.usuarios['199412'] = {
+      nome: 'Admin',
+      abas: ['estoque','ads','lucro','promocoes','contas-pagar','bling','fiscal','compras','calculadora','etiquetas','configuracoes'],
+      painel: 'app',
+    };
+  }
+  // Migração: garante campo painel em usuários antigos
+  for (const [senha, u] of Object.entries(raw.usuarios)) {
+    if (!u.painel) u.painel = senha === '199412' ? 'app' : 'painel2';
+  }
   return raw;
 }
 
@@ -555,7 +567,7 @@ app.post('/api/login', (req, res) => {
   const data = loadData();
   const usuario = (data.usuarios || {})[String(senha)];
   if (!usuario) return res.status(401).json({ error: 'Senha incorreta' });
-  res.json({ ok: true, nome: usuario.nome, abas: usuario.abas || [] });
+  res.json({ ok: true, nome: usuario.nome, abas: usuario.abas || [], painel: usuario.painel || 'painel2' });
 });
 
 app.get('/api/usuarios', (req, res) => {
@@ -569,13 +581,13 @@ app.get('/api/usuarios', (req, res) => {
 });
 
 app.post('/api/usuarios', (req, res) => {
-  const { senha, nome, abas } = req.body || {};
+  const { senha, nome, abas, painel } = req.body || {};
   if (!senha || !String(senha).trim()) return res.status(400).json({ error: 'Senha obrigatória' });
   if (String(senha) === '199412') return res.status(400).json({ error: 'Senha reservada' });
   const data = loadData();
   data.usuarios = data.usuarios || {};
   if (data.usuarios[String(senha)]) return res.status(409).json({ error: 'Usuário já existe com essa senha' });
-  data.usuarios[String(senha)] = { nome: nome || String(senha), abas: abas || [] };
+  data.usuarios[String(senha)] = { nome: nome || String(senha), abas: abas || [], painel: painel || 'painel2' };
   saveData(data);
   res.json({ ok: true });
 });

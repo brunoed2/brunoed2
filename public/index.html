@@ -71,12 +71,6 @@
 
     async function verificar() {
       var val = document.getElementById('codigo').value;
-      if (val === '199412') {
-        sessionStorage.setItem('auth', '1');
-        sessionStorage.removeItem('abasPermitidas');
-        location.href = '/app.html';
-        return;
-      }
       try {
         var resp = await fetch('/api/login', {
           method: 'POST',
@@ -85,9 +79,14 @@
         });
         if (!resp.ok) throw new Error('invalido');
         var data = await resp.json();
-        sessionStorage.setItem('auth', '2');
         sessionStorage.setItem('abasPermitidas', JSON.stringify(data.abas));
-        location.href = '/painel2.html';
+        if (data.painel === 'app') {
+          sessionStorage.setItem('auth', '1');
+          location.href = '/app.html';
+        } else {
+          sessionStorage.setItem('auth', '2');
+          location.href = '/painel2.html';
+        }
       } catch {
         document.getElementById('erro').style.display = 'block';
         document.getElementById('codigo').value = '';
