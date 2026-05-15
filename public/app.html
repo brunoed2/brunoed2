@@ -618,15 +618,8 @@
               <input type="text" id="nu-nome" placeholder="Ex: Estoque" autocomplete="off" style="letter-spacing:0">
             </div>
             <div class="field">
-              <label>Painel</label>
-              <div style="display:flex;gap:16px;margin-top:6px">
-                <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="radio" name="nu-painel" value="painel2" checked onchange="usuariosAtualizarAbasForm()"> Operações (painel2)</label>
-                <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="radio" name="nu-painel" value="app" onchange="usuariosAtualizarAbasForm()"> Principal (app)</label>
-              </div>
-            </div>
-            <div class="field">
-              <label>Abas permitidas</label>
-              <div id="nu-abas-container" style="display:flex;gap:16px;flex-wrap:wrap;margin-top:8px"></div>
+              <label>Módulos permitidos</label>
+              <div id="nu-abas-container" style="display:flex;gap:12px;flex-wrap:wrap;margin-top:8px"></div>
             </div>
             <div class="btn-row">
               <button class="btn-primary" onclick="usuariosCriar()">💾 Salvar</button>
@@ -958,44 +951,32 @@
   <script>
   // ── Gerenciamento de Usuários ─────────────────────────────────
 
-  const ABAS_POR_PAINEL = {
-    app: [
-      { id: 'estoque',       label: '📦 Estoque' },
-      { id: 'ads',           label: '📊 Ads' },
-      { id: 'lucro',         label: '💰 Lucro' },
-      { id: 'promocoes',     label: '🏷️ Promoções' },
-      { id: 'contas-pagar',  label: '💳 Contas a Pagar' },
-      { id: 'bling',         label: '🧾 Bling' },
-      { id: 'fiscal',        label: '🗂️ NF Compras' },
-      { id: 'compras',       label: '🛒 Compras' },
-      { id: 'calculadora',   label: '🧮 Calculadora' },
-      { id: 'etiquetas',     label: '🖨️ Etiquetas' },
-      { id: 'configuracoes', label: '⚙️ Configurações' },
-    ],
-    painel2: [
-      { id: 'estoque',   label: '📦 Estoque' },
-      { id: 'vendas',    label: '🏷️ Vendas' },
-      { id: 'historico', label: '📋 Histórico' },
-      { id: 'etiquetas', label: '🖨️ Etiquetas' },
-    ],
-  };
-
-  function usuariosAtualizarAbasForm() {
-    const painel = document.querySelector('input[name="nu-painel"]:checked')?.value || 'painel2';
-    const container = document.getElementById('nu-abas-container');
-    container.innerHTML = (ABAS_POR_PAINEL[painel] || []).map(a =>
-      `<label style="display:flex;align-items:center;gap:6px;cursor:pointer">
-        <input type="checkbox" class="nu-aba" value="${a.id}"> ${a.label}
-      </label>`
-    ).join('');
-  }
+  // Todos os módulos disponíveis no sistema (ambos os painéis)
+  const TODOS_MODULOS = [
+    { id: 'estoque',       label: '📦 Estoque' },
+    { id: 'vendas',        label: '🏷️ Vendas' },
+    { id: 'historico',     label: '📋 Histórico' },
+    { id: 'ads',           label: '📊 Ads' },
+    { id: 'lucro',         label: '💰 Lucro' },
+    { id: 'promocoes',     label: '🏷️ Promoções' },
+    { id: 'contas-pagar',  label: '💳 Contas a Pagar' },
+    { id: 'bling',         label: '🧾 Bling' },
+    { id: 'fiscal',        label: '🗂️ NF Compras' },
+    { id: 'compras',       label: '🛒 Compras' },
+    { id: 'calculadora',   label: '🧮 Calculadora' },
+    { id: 'etiquetas',     label: '🖨️ Etiquetas' },
+    { id: 'configuracoes', label: '⚙️ Configurações' },
+  ];
 
   function usuariosAbrirForm() {
     document.getElementById('nu-senha').value = '';
     document.getElementById('nu-nome').value = '';
-    const radio = document.querySelector('input[name="nu-painel"][value="painel2"]');
-    if (radio) { radio.checked = true; }
-    usuariosAtualizarAbasForm();
+    const container = document.getElementById('nu-abas-container');
+    container.innerHTML = TODOS_MODULOS.map(a =>
+      `<label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+        <input type="checkbox" class="nu-aba" value="${a.id}"> ${a.label}
+      </label>`
+    ).join('');
     document.getElementById('usuarios-msg-novo').textContent = '';
     document.getElementById('usuarios-form-novo').style.display = '';
     document.getElementById('nu-senha').focus();
@@ -1012,8 +993,8 @@
         return;
       }
       lista.innerHTML = '';
-      // Ordena: app primeiro, depois painel2
-      usuarios.sort((a, b) => (a.painel === 'app' ? -1 : 1));
+      // Admin (199412) sempre primeiro
+      usuarios.sort((a, b) => (a.senha === '199412' ? -1 : b.senha === '199412' ? 1 : 0));
       for (const u of usuarios) {
         lista.appendChild(usuariosRenderCard(u));
       }
@@ -1028,13 +1009,9 @@
     card.style.marginBottom = '12px';
     card.dataset.senha = u.senha;
 
-    const abas = ABAS_POR_PAINEL[u.painel] || ABAS_POR_PAINEL.painel2;
     const isAdmin = u.senha === '199412';
-    const painelBadge = u.painel === 'app'
-      ? '<span style="font-size:11px;background:#1d4ed8;color:#fff;padding:1px 7px;border-radius:10px">app</span>'
-      : '<span style="font-size:11px;background:#374151;color:#9ca3af;padding:1px 7px;border-radius:10px">painel2</span>';
 
-    const abasHtml = abas.map(a => {
+    const abasHtml = TODOS_MODULOS.map(a => {
       const locked = isAdmin && a.id === 'configuracoes';
       return `<label style="display:flex;align-items:center;gap:6px;cursor:${locked ? 'not-allowed' : 'pointer'};opacity:${locked ? '.5' : '1'}">
         <input type="checkbox" class="eu-aba" value="${a.id}" ${u.abas.includes(a.id) ? 'checked' : ''} ${locked ? 'disabled checked' : ''}> ${a.label}
@@ -1049,7 +1026,6 @@
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
         <div style="flex:1">
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">
-            ${painelBadge}
             <span style="font-size:13px;color:#94a3b8">Senha:</span>
             <code style="background:#1e293b;padding:2px 8px;border-radius:4px;font-size:14px">${u.senha}</code>
             <span style="font-size:13px;color:#94a3b8">Nome:</span>
@@ -1068,17 +1044,16 @@
   }
 
   async function usuariosCriar() {
-    const senha  = document.getElementById('nu-senha').value.trim();
-    const nome   = document.getElementById('nu-nome').value.trim();
-    const painel = document.querySelector('input[name="nu-painel"]:checked')?.value || 'painel2';
-    const abas   = [...document.querySelectorAll('.nu-aba:checked')].map(c => c.value);
-    const msg    = document.getElementById('usuarios-msg-novo');
+    const senha = document.getElementById('nu-senha').value.trim();
+    const nome  = document.getElementById('nu-nome').value.trim();
+    const abas  = [...document.querySelectorAll('.nu-aba:checked')].map(c => c.value);
+    const msg   = document.getElementById('usuarios-msg-novo');
     if (!senha) { msg.textContent = 'Informe a senha.'; msg.className = 'msg erro'; return; }
     try {
       const resp = await fetch('/api/usuarios', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ senha, nome: nome || senha, abas, painel }),
+        body: JSON.stringify({ senha, nome: nome || senha, abas }),
       });
       const data = await resp.json();
       if (!resp.ok) { msg.textContent = data.error; msg.className = 'msg erro'; return; }
@@ -1129,6 +1104,6 @@
     }
   }
   </script>
-  <div id="version-badge">v429</div>
+  <div id="version-badge">v430</div>
 </body>
 </html>

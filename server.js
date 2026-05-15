@@ -567,7 +567,10 @@ app.post('/api/login', (req, res) => {
   const data = loadData();
   const usuario = (data.usuarios || {})[String(senha)];
   if (!usuario) return res.status(401).json({ error: 'Senha incorreta' });
-  res.json({ ok: true, nome: usuario.nome, abas: usuario.abas || [], painel: usuario.painel || 'painel2' });
+  // Painel é forçado para 199412; para outros, derivado das abas escolhidas
+  const APP_TABS = new Set(['ads','lucro','promocoes','contas-pagar','bling','fiscal','compras','calculadora','configuracoes']);
+  const painel = (usuario.painel === 'app' || (usuario.abas || []).some(t => APP_TABS.has(t))) ? 'app' : 'painel2';
+  res.json({ ok: true, nome: usuario.nome, abas: usuario.abas || [], painel });
 });
 
 app.get('/api/usuarios', (req, res) => {
