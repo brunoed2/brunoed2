@@ -78,19 +78,17 @@ navBtns.forEach(btn => {
 });
 
 (function () {
-  // 199412 (auth=1) sempre vê tudo — filtro só se aplicar a outros usuários com auth diferente
   const permitidas = JSON.parse(sessionStorage.getItem('abasPermitidas') || 'null');
-  if (permitidas && Array.isArray(permitidas) && sessionStorage.getItem('auth') !== '1') {
+  if (permitidas && Array.isArray(permitidas)) {
     navBtns.forEach(btn => {
       if (!permitidas.includes(btn.dataset.tab)) btn.style.display = 'none';
     });
   }
 
-  const params   = new URLSearchParams(location.search);
-  const tabParam = params.get('tab');
-  const primeiraAba = (permitidas && permitidas.length && sessionStorage.getItem('auth') !== '1')
-    ? permitidas[0] : 'estoque';
-  const tab = tabParam || primeiraAba;
+  const params      = new URLSearchParams(location.search);
+  const tabParam    = params.get('tab');
+  const primeiraAba = permitidas && permitidas.length ? permitidas[0] : 'estoque';
+  const tab = (tabParam && (!permitidas || permitidas.includes(tabParam))) ? tabParam : primeiraAba;
   abrirAba(tab);
 
   if (params.get('connected') === 'true') {
@@ -938,6 +936,7 @@ async function carregarAds() {
 
 function sair() {
   sessionStorage.removeItem('auth');
+  sessionStorage.removeItem('abasPermitidas');
   location.href = '/';
 }
 

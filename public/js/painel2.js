@@ -873,6 +873,7 @@ async function toggleFlag(shipmentId, btn) {
 
 function sair() {
   sessionStorage.removeItem('auth');
+  sessionStorage.removeItem('abasPermitidas');
   location.href = '/';
 }
 
