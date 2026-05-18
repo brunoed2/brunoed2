@@ -80,6 +80,7 @@
         if (!resp.ok) throw new Error('invalido');
         var data = await resp.json();
         sessionStorage.setItem('abasPermitidas', JSON.stringify(data.abas));
+        sessionStorage.setItem('usuarioNome', data.nome || '');
         if (data.painel === 'app') {
           sessionStorage.setItem('auth', '1');
           location.href = '/app.html';

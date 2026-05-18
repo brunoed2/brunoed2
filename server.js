@@ -100,6 +100,7 @@ function loadData() {
   raw.estoque_local                  = raw.estoque_local                  || {};
   raw.estoque_local_last_check       = raw.estoque_local_last_check       || {};
   raw.estoque_local_deducted_orders  = raw.estoque_local_deducted_orders  || {};
+  raw.estoque_local_historico        = raw.estoque_local_historico        || [];
   raw.usuarios = raw.usuarios || {};
   if (!raw.usuarios['1224']) {
     raw.usuarios['1224'] = { nome: 'Operador', abas: ['estoque', 'vendas', 'historico', 'etiquetas'], painel: 'painel2' };
@@ -913,27 +914,41 @@ function extrairSku(body) {
 app.get('/api/ping', (req, res) => res.json({ ok: true, ts: Date.now() }));
 
 // ── Estoque Local ─────────────────────────────────────────────
+function addEstoqueHistorico(data, entry) {
+  data.estoque_local_historico = data.estoque_local_historico || [];
+  data.estoque_local_historico.push({ ...entry, ts: new Date().toISOString() });
+  if (data.estoque_local_historico.length > 2000) {
+    data.estoque_local_historico = data.estoque_local_historico.slice(-2000);
+  }
+}
+
 app.get('/api/estoque-local', (req, res) => {
   const data = loadData();
   res.json({ estoque_local: data.estoque_local });
 });
 
 app.post('/api/estoque-local', (req, res) => {
-  const { sku, quantidade } = req.body;
+  const { sku, quantidade, usuario } = req.body;
   if (!sku || quantidade === undefined) {
     return res.status(400).json({ erro: 'SKU e quantidade obrigatórios' });
   }
 
   const data = loadData();
   const skuKey = String(sku);
+  const anterior = data.estoque_local[skuKey] !== undefined ? data.estoque_local[skuKey] : null;
+
   if (quantidade === '' || quantidade === null) {
     delete data.estoque_local[skuKey];
+    if (anterior !== null) {
+      addEstoqueHistorico(data, { sku: skuKey, anterior, novo: null, tipo: 'manual', usuario: usuario || 'Desconhecido' });
+    }
   } else {
     const num = parseInt(quantidade);
     if (isNaN(num) || num < 0) {
       return res.status(400).json({ erro: 'Quantidade deve ser um número positivo' });
     }
     data.estoque_local[skuKey] = num;
+    addEstoqueHistorico(data, { sku: skuKey, anterior, novo: num, tipo: 'manual', usuario: usuario || 'Desconhecido' });
   }
 
   saveData(data);
@@ -997,7 +1012,9 @@ app.post('/api/estoque-local/sync', async (req, res) => {
         const sku = mlbToSku[oi.item.id];
         if (!sku || data.estoque_local[sku] === undefined) continue;
         const qty = oi.quantity || 1;
-        data.estoque_local[sku] = Math.max(0, data.estoque_local[sku] - qty);
+        const anterior = data.estoque_local[sku];
+        data.estoque_local[sku] = Math.max(0, anterior - qty);
+        addEstoqueHistorico(data, { sku, anterior, novo: data.estoque_local[sku], tipo: 'venda', pedido_id: order.id, usuario: 'Automático' });
         deducted.push({ sku, qty });
       }
       if (deducted.length > 0) {
@@ -1037,7 +1054,9 @@ app.post('/api/estoque-local/sync', async (req, res) => {
       if (!recorded) continue;
       for (const { sku, qty } of recorded.items) {
         if (data.estoque_local[sku] !== undefined) {
+          const anterior = data.estoque_local[sku];
           data.estoque_local[sku] += qty;
+          addEstoqueHistorico(data, { sku, anterior, novo: data.estoque_local[sku], tipo: 'cancelamento', pedido_id: orderId, usuario: 'Automático' });
         }
       }
       delete data.estoque_local_deducted_orders[orderId];
@@ -1056,6 +1075,14 @@ app.post('/api/estoque-local/sync', async (req, res) => {
   } catch (err) {
     res.json({ estoque_local: data.estoque_local, aviso: 'Erro ao consultar pedidos ML' });
   }
+});
+
+app.get('/api/estoque-local/historico', (req, res) => {
+  const data = loadData();
+  const sku = req.query.sku;
+  let hist = data.estoque_local_historico || [];
+  if (sku) hist = hist.filter(e => e.sku === sku);
+  res.json({ historico: hist.slice(-200).reverse() });
 });
 
 // ── Pesquisa de mercado ML ────────────────────────────────────

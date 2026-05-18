@@ -317,6 +317,24 @@ h1 {
   background: #1d4ed8;
 }
 
+.btn-hist-estoque {
+  padding: 2px 5px;
+  background: transparent;
+  color: #64748b;
+  border: 1px solid #334155;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all .15s;
+  vertical-align: middle;
+}
+
+.btn-hist-estoque:hover {
+  background: #1e293b;
+  color: #e2e8f0;
+  border-color: #475569;
+}
+
 /* ── Mensagens de feedback ───────────────────────────────────── */
 
 .msg {

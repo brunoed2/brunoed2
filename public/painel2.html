@@ -228,6 +228,30 @@
 
   <script src="/js/painel2.js?v=170"></script>
   <script src="/js/etiquetas.js"></script>
-  <div id="version-badge">v435</div>
+  <!-- Modal histórico de estoque -->
+  <div id="modal-hist-estoque" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;align-items:center;justify-content:center" onclick="if(event.target===this)this.style.display='none'">
+    <div style="background:#1e2130;border-radius:10px;padding:24px;max-width:720px;width:95%;max-height:80vh;display:flex;flex-direction:column">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-shrink:0">
+        <h3 style="margin:0;color:#e2e8f0;font-size:15px">Histórico de estoque — SKU: <span id="hist-estoque-sku" style="color:#60a5fa"></span></h3>
+        <button onclick="document.getElementById('modal-hist-estoque').style.display='none'" style="background:none;border:none;color:#94a3b8;font-size:20px;cursor:pointer;line-height:1">✕</button>
+      </div>
+      <div style="overflow-y:auto;flex:1">
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead style="position:sticky;top:0;background:#1e2130">
+            <tr style="color:#94a3b8;border-bottom:1px solid #334155">
+              <th style="text-align:left;padding:6px 8px;font-weight:500">Data/Hora</th>
+              <th style="text-align:left;padding:6px 8px;font-weight:500">Usuário</th>
+              <th style="text-align:left;padding:6px 8px;font-weight:500">Alteração</th>
+              <th style="text-align:left;padding:6px 8px;font-weight:500">Tipo</th>
+              <th style="text-align:left;padding:6px 8px;font-weight:500">Pedido</th>
+            </tr>
+          </thead>
+          <tbody id="hist-estoque-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div id="version-badge">v436</div>
 </body>
 </html>
