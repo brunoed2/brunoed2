@@ -212,11 +212,11 @@ function renderizarTabela() {
     const bDeposito = BADGE_DEPOSITO[item.deposito] || 'badge-outro';
     const bStatus   = BADGE_STATUS[item.status]     || 'badge-outro';
     const duracao   = calcularDuracao(item.estoque, item.vendas30d);
+    const histKey = (item.sku && item.sku !== '—') ? String(item.sku) : `_mlb_${item.mlb}`;
     const estoqueLocalValor = estoqueLocal[item.mlb] !== undefined ? estoqueLocal[item.mlb] : '';
-    const skuValido = item.sku && item.sku !== '—';
     const estoqueLocalCell = `<td class="col-num" style="white-space:nowrap">
       <input type="number" class="estoque-local-input" data-mlb="${item.mlb}" value="${estoqueLocalValor}" placeholder="—" min="0" style="width:58px;text-align:center">
-      ${skuValido ? ` <button class="btn-hist-estoque" data-sku="${item.sku}" title="Histórico de alterações">📋</button>` : ''}
+      <button class="btn-hist-estoque" data-sku="${histKey}" title="Histórico de alterações">📋</button>
     </td>`;
 
     const estoqueForaFullCell = `<td class="col-num ${item.estoque === 0 ? 'estoque-zero' : ''}">${item.estoque}</td>`;
