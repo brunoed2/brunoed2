@@ -3916,11 +3916,18 @@ async function verificarNovosShipmentsTelegram() {
       const LABEL_STATUSES    = new Set(['handling', 'ready_to_ship']);
       const LABEL_SUBSTATUSES = new Set(['ready_to_print', 'printed']);
       const STATUS_PT = { handling: 'Preparando', ready_to_ship: 'Aguardando coleta' };
+      addLog(`[pedido] Conta ${num}: ${orders.length} pedidos pagos encontrados na API`, 'info');
 
       for (const order of orders) {
-        if (!order.shipping?.id) continue;
+        if (!order.shipping?.id) {
+          addLog(`[pedido] #${order.id} pulado — sem shipping.id`, 'info');
+          continue;
+        }
         const sid = String(order.shipping.id);
-        if (shipmentsNotificados.has(sid)) continue;
+        if (shipmentsNotificados.has(sid)) {
+          addLog(`[pedido] #${order.id} (shipment ${sid}) pulado — já está em shipmentsNotificados`, 'info');
+          continue;
+        }
 
         try {
           const sr = await axios.get(`https://api.mercadolibre.com/shipments/${order.shipping.id}`, {
