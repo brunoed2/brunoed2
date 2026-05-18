@@ -203,12 +203,12 @@ async function abrirHistoricoEstoque(sku) {
       const para = e.novo    !== null && e.novo    !== undefined ? e.novo    : '—';
       const tipo = TIPO[e.tipo] || e.tipo;
       const pedido = e.pedido_id ? `#${e.pedido_id}` : '—';
-      return `<tr>
-        <td style="padding:5px 8px">${dt}</td>
-        <td style="padding:5px 8px">${e.usuario || '—'}</td>
-        <td style="padding:5px 8px">${de} → ${para}</td>
-        <td style="padding:5px 8px">${tipo}</td>
-        <td style="padding:5px 8px">${pedido}</td>
+      return `<tr style="border-bottom:1px solid #1e293b">
+        <td style="padding:6px 8px;color:#e2e8f0">${dt}</td>
+        <td style="padding:6px 8px;color:#e2e8f0">${e.usuario || '—'}</td>
+        <td style="padding:6px 8px;color:#e2e8f0">${de} → ${para}</td>
+        <td style="padding:6px 8px;color:#94a3b8">${tipo}</td>
+        <td style="padding:6px 8px;color:#94a3b8">${pedido}</td>
       </tr>`;
     }).join('');
   } catch {
