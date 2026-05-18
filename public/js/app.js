@@ -213,8 +213,10 @@ function renderizarTabela() {
     const bStatus   = BADGE_STATUS[item.status]     || 'badge-outro';
     const duracao   = calcularDuracao(item.estoque, item.vendas30d);
     const estoqueLocalValor = estoqueLocal[item.mlb] !== undefined ? estoqueLocal[item.mlb] : '';
-    const estoqueLocalCell = `<td class="col-num">
-      <input type="number" class="estoque-local-input" data-mlb="${item.mlb}" value="${estoqueLocalValor}" placeholder="—" min="0" style="width: 60px; text-align: center;">
+    const skuValido = item.sku && item.sku !== '—';
+    const estoqueLocalCell = `<td class="col-num" style="white-space:nowrap">
+      <input type="number" class="estoque-local-input" data-mlb="${item.mlb}" value="${estoqueLocalValor}" placeholder="—" min="0" style="width:58px;text-align:center">
+      ${skuValido ? ` <button class="btn-hist-estoque" data-sku="${item.sku}" title="Histórico de alterações">📋</button>` : ''}
     </td>`;
 
     const estoqueForaFullCell = `<td class="col-num ${item.estoque === 0 ? 'estoque-zero' : ''}">${item.estoque}</td>`;
@@ -243,6 +245,10 @@ function renderizarTabela() {
   document.querySelectorAll('.estoque-local-input').forEach(input => {
     input.addEventListener('change', salvarEstoqueLocal);
     input.addEventListener('input', salvarEstoqueLocal);
+  });
+
+  document.querySelectorAll('.btn-hist-estoque').forEach(btn => {
+    btn.addEventListener('click', () => abrirHistoricoEstoque(btn.dataset.sku));
   });
 
   document.getElementById('tabela-estoque').style.display = itens.length ? 'table' : 'none';
@@ -281,6 +287,39 @@ async function salvarEstoqueLocal(event) {
     }
   } catch (error) {
     console.error('Erro ao conectar com o servidor:', error);
+  }
+}
+
+async function abrirHistoricoEstoque(sku) {
+  document.getElementById('hist-estoque-sku').textContent = sku;
+  document.getElementById('hist-estoque-body').innerHTML = '<tr><td colspan="5" style="text-align:center;color:#aaa;padding:16px">Carregando...</td></tr>';
+  document.getElementById('modal-hist-estoque').style.display = 'flex';
+  try {
+    const resp = await apiFetch(`/api/estoque-local/historico?sku=${encodeURIComponent(sku)}`);
+    const hist = resp.historico || [];
+    const TIPO = { manual: 'Manual', venda: 'Venda', cancelamento: 'Cancelamento' };
+    if (hist.length === 0) {
+      document.getElementById('hist-estoque-body').innerHTML =
+        '<tr><td colspan="5" style="text-align:center;color:#aaa;padding:16px">Nenhum registro ainda</td></tr>';
+      return;
+    }
+    document.getElementById('hist-estoque-body').innerHTML = hist.map(e => {
+      const dt   = new Date(e.ts).toLocaleString('pt-BR');
+      const de   = e.anterior !== null && e.anterior !== undefined ? e.anterior : '—';
+      const para = e.novo    !== null && e.novo    !== undefined ? e.novo    : '—';
+      const tipo = TIPO[e.tipo] || e.tipo;
+      const pedido = e.pedido_id ? `#${e.pedido_id}` : '—';
+      return `<tr>
+        <td style="padding:5px 8px">${dt}</td>
+        <td style="padding:5px 8px">${e.usuario || '—'}</td>
+        <td style="padding:5px 8px">${de} → ${para}</td>
+        <td style="padding:5px 8px">${tipo}</td>
+        <td style="padding:5px 8px">${pedido}</td>
+      </tr>`;
+    }).join('');
+  } catch {
+    document.getElementById('hist-estoque-body').innerHTML =
+      '<tr><td colspan="5" style="text-align:center;color:#f87171;padding:16px">Erro ao carregar histórico</td></tr>';
   }
 }
 
