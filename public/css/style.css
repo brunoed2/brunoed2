@@ -1168,14 +1168,36 @@ tr.lucro-sub-item td {
 }
 .btn-sm:hover { background: #3d4264; color: #fff; }
 
-/* ── Responsivo — Mobile ────────────────────────────────────── */
+/* Elementos exclusivos do mobile — ocultos no desktop (deve vir ANTES do @media) */
+.mobile-topbar { display: none; }
+.mobile-conta-seletor { display: none; }
+.mobile-hamburger-bar { display: none; }
+.mobile-drawer-overlay { display: none; }
+/* Drawer: estilos de posição ficam aqui (globais); display é controlado pela media query */
+.mobile-drawer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: #1a1a2e;
+  border-radius: 18px 18px 0 0;
+  transform: translateY(110%);
+  transition: transform 0.28s ease;
+  z-index: 201;
+  max-height: 78vh;
+  overflow-y: auto;
+  display: none;
+}
+.mobile-drawer.open { transform: translateY(0); }
 
-@media (max-width: 768px) {
+/* ── Responsivo — Mobile (inclui paisagem em celular) ──────── */
+
+@media (max-width: 1024px) {
 
   /* Sidebar vira barra de navegação inferior */
   .sidebar {
     width: 100%;
-    height: auto;
+    height: 56px;
     position: fixed;
     top: auto;
     bottom: 0;
@@ -1185,7 +1207,7 @@ tr.lucro-sub-item td {
     align-items: stretch;
     padding: 0;
     z-index: 100;
-    border-top: 1px solid #222;
+    border-top: 1px solid #333;
   }
 
   .sidebar-logo { display: none; }
@@ -1441,8 +1463,8 @@ tr.lucro-sub-item td {
   /* Status bar */
   .status-bar { font-size: 12px; padding: 6px 12px; }
 
-  /* version badge acima da navbar */
-  #version-badge { bottom: 68px; }
+  /* version badge acima da barra hamburger */
+  #version-badge { bottom: 64px; }
 
   /* Aba conexão */
   .cx-status-box { font-size: 13px; }
@@ -1769,28 +1791,7 @@ tr.lucro-sub-item td {
 }
 .btn-danger-sm:hover { background: #fecaca !important; color: #7f1d1d !important; }
 
-/* Topbar mobile — oculto no desktop */
-.mobile-topbar { display: none; }
-.mobile-conta-seletor { display: none; }
-
-/* Hamburger bar e drawer — ocultos no desktop */
-.mobile-hamburger-bar { display: none; }
-.mobile-drawer-overlay { display: none; }
-.mobile-drawer {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  background: #1a1a2e;
-  border-radius: 18px 18px 0 0;
-  transform: translateY(110%);
-  transition: transform 0.28s ease;
-  z-index: 201;
-  max-height: 78vh;
-  overflow-y: auto;
-  display: none;
-}
-.mobile-drawer.open { transform: translateY(0); }
+/* (mobile-only elements are declared before the @media block above) */
 
 /* -- Calculadora ---------------------------------------------- */
 
