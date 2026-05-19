@@ -1426,7 +1426,7 @@ async function fetchBlingPedidosPendentes(conta) {
   const token = await getBlingToken(conta);
   const resp = await axios.get('https://www.bling.com.br/Api/v3/pedidos/vendas', {
     headers: { Authorization: `Bearer ${token}` },
-    params: { pagina: 1, limite: 100, idSituacao: 6, rastreamento: 8 },
+    params: { pagina: 1, limite: 100, idSituacao: 6 },
     timeout: 15000,
   });
   const itens = resp.data?.data || [];
@@ -1520,9 +1520,15 @@ app.get('/api/bling/pedidos-pendentes-todas', async (req, res) => {
   try {
     const data = loadData();
     const contasAtivas = ['1', '2'].filter(c => !!(getBlingDataConta(data, c)?.access_token));
+    if (contasAtivas.length === 0) return res.json({ erro: 'Nenhuma conta Bling conectada.' });
     const resultados = await Promise.allSettled(contasAtivas.map(c => fetchBlingPedidosPendentes(c)));
     const pedidos = [];
-    resultados.forEach(r => { if (r.status === 'fulfilled') pedidos.push(...r.value); });
+    const erros = [];
+    resultados.forEach((r, i) => {
+      if (r.status === 'fulfilled') pedidos.push(...r.value);
+      else erros.push(`Conta ${contasAtivas[i]}: ${r.reason?.response ? `HTTP ${r.reason.response.status}: ${JSON.stringify(r.reason.response.data).slice(0,150)}` : r.reason?.message}`);
+    });
+    if (pedidos.length === 0 && erros.length > 0) return res.json({ erro: erros.join(' | ') });
     pedidos.sort((a, b) => (b.temEtiqueta ? 1 : 0) - (a.temEtiqueta ? 1 : 0));
     return res.json({ pedidos });
   } catch (err) {
