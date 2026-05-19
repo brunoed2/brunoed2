@@ -27,12 +27,35 @@ let contaGen          = 0;
 
 // ── Navegação entre abas ──────────────────────────────────────
 
-const navBtns = document.querySelectorAll('.nav-btn');
-const tabs    = document.querySelectorAll('.tab');
+const navBtns    = document.querySelectorAll('.nav-btn');
+const tabs       = document.querySelectorAll('.tab');
+const drawerBtns = document.querySelectorAll('.mobile-drawer-btn');
+
+drawerBtns.forEach(btn => {
+  btn.addEventListener('click', () => { abrirAba(btn.dataset.tab); fecharMobileMenu(); });
+});
+
+function toggleMobileMenu() {
+  document.getElementById('mobileDrawer').classList.toggle('open');
+  document.getElementById('mobileOverlay').classList.toggle('open');
+}
+
+function fecharMobileMenu() {
+  document.getElementById('mobileDrawer').classList.remove('open');
+  document.getElementById('mobileOverlay').classList.remove('open');
+}
 
 function abrirAba(nome) {
   navBtns.forEach(b => b.classList.toggle('active', b.dataset.tab === nome));
+  drawerBtns.forEach(b => b.classList.toggle('active', b.dataset.tab === nome));
   tabs.forEach(t => t.classList.toggle('active', t.id === `tab-${nome}`));
+
+  // Atualiza label da barra inferior mobile
+  const labelEl = document.getElementById('mobile-tab-label');
+  if (labelEl) {
+    const ref = document.querySelector(`.nav-btn[data-tab="${nome}"]`);
+    if (ref) labelEl.textContent = ref.textContent.trim();
+  }
   clog(`abrirAba(${nome}) trocandoConta=${trocandoConta} contaGen=${contaGen}`);
   if (trocandoConta) { clog(`abrirAba bloqueado por trocandoConta`, 'warn'); return; }
   if (nome === 'estoque')       carregarEstoque(true);
