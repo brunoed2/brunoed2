@@ -1150,7 +1150,7 @@ app.get('/api/dashboard', async (req, res) => {
   async function blingResumo(conta) {
     try {
       const token = await getBlingToken(conta);
-      const rNotas = await axios.get('https://www.bling.com.br/Api/v3/nfe', {
+      const rNotas = await axios.get('https://api.bling.com.br/Api/v3/nfe', {
         headers: { Authorization: `Bearer ${token}` },
         params: { pagina: 1, limite: 100 }, timeout: 10000,
       }).catch(() => null);
@@ -1161,7 +1161,7 @@ app.get('/api/dashboard', async (req, res) => {
       if (blingPedidosCache[conta] !== null) {
         pedidos = blingPedidosCache[conta].count;
       } else {
-        const rPedidos = await axios.get('https://www.bling.com.br/Api/v3/pedidos/vendas', {
+        const rPedidos = await axios.get('https://api.bling.com.br/Api/v3/pedidos/vendas', {
           headers: { Authorization: `Bearer ${token}` },
           params: { pagina: 1, limite: 100, idSituacao: 6 }, timeout: 10000,
         }).catch(() => null);
@@ -1269,7 +1269,7 @@ app.get('/api/bling/auth', (req, res) => {
   const { id: clientId } = getBlingCreds(conta);
   if (!clientId) return res.redirect('/app.html?tab=configuracoes&bling_error=sem_client_id');
   const state = `${conta}_${Math.random().toString(36).slice(2)}`;
-  const url = `https://www.bling.com.br/Api/v3/oauth/authorize`
+  const url = `https://api.bling.com.br/Api/v3/oauth/authorize`
     + `?response_type=code`
     + `&client_id=${clientId}`
     + `&state=${state}`;
@@ -1296,7 +1296,7 @@ app.get('/api/bling/callback', async (req, res) => {
 
   try {
     const resp = await axios.post(
-      'https://www.bling.com.br/Api/v3/oauth/token',
+      'https://api.bling.com.br/Api/v3/oauth/token',
       new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri: callback }),
       { headers: { Authorization: `Basic ${creds}`, 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 15000 }
     );
@@ -1349,7 +1349,7 @@ async function _executarRefreshBling(conta) {
   let resp;
   try {
     resp = await axios.post(
-      'https://www.bling.com.br/Api/v3/oauth/token',
+      'https://api.bling.com.br/Api/v3/oauth/token',
       new URLSearchParams({ grant_type: 'refresh_token', refresh_token: b.refresh_token }),
       { headers: { Authorization: `Basic ${creds}`, 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 15000 }
     );
@@ -1424,7 +1424,7 @@ app.get('/api/bling/status', async (req, res) => {
 
 async function fetchBlingPedidosPendentes(conta) {
   const token = await getBlingToken(conta);
-  const resp = await axios.get('https://www.bling.com.br/Api/v3/pedidos/vendas', {
+  const resp = await axios.get('https://api.bling.com.br/Api/v3/pedidos/vendas', {
     headers: { Authorization: `Bearer ${token}` },
     params: { pagina: 1, limite: 100, idSituacao: 6 },
     timeout: 15000,
@@ -1438,7 +1438,7 @@ async function fetchBlingPedidosPendentes(conta) {
     let detalhe = null;
     for (let tentativa = 0; tentativa < 3 && !detalhe; tentativa++) {
       if (tentativa > 0) await new Promise(r => setTimeout(r, 600 * tentativa));
-      detalhe = await axios.get(`https://www.bling.com.br/Api/v3/pedidos/vendas/${p.id}`, {
+      detalhe = await axios.get(`https://api.bling.com.br/Api/v3/pedidos/vendas/${p.id}`, {
         headers: { Authorization: `Bearer ${token}` }, timeout: 10000,
       }).then(r => r.data?.data || null).catch(() => null);
     }
@@ -1542,7 +1542,7 @@ app.get('/api/bling/notas-pendentes', async (req, res) => {
   try {
     const conta = blingContaReq(req);
     const token = await getBlingToken(conta);
-    const resp  = await axios.get('https://www.bling.com.br/Api/v3/nfe', {
+    const resp  = await axios.get('https://api.bling.com.br/Api/v3/nfe', {
       headers: { Authorization: `Bearer ${token}` },
       params: { pagina: 1, limite: 100 },
       timeout: 15000,
@@ -1572,7 +1572,7 @@ app.get('/api/bling/notas-pendentes', async (req, res) => {
 async function blingEmitirNFHelper(pedidoId, conta) {
   const token = await getBlingToken(conta);
   const resp  = await axios.post(
-    `https://www.bling.com.br/Api/v3/pedidos/vendas/${pedidoId}/gerar-nfe`,
+    `https://api.bling.com.br/Api/v3/pedidos/vendas/${pedidoId}/gerar-nfe`,
     {},
     { headers: { Authorization: `Bearer ${token}` }, timeout: 15000 }
   );
@@ -1588,7 +1588,7 @@ async function blingEnviarNFHelper(nfId, conta) {
   for (let tentativa = 0; tentativa < 3; tentativa++) {
     if (tentativa > 0) await new Promise(r => setTimeout(r, 4000 * tentativa));
     try {
-      await axios.post(`https://www.bling.com.br/Api/v3/nfe/${nfId}/enviar`, {},
+      await axios.post(`https://api.bling.com.br/Api/v3/nfe/${nfId}/enviar`, {},
         { headers: { Authorization: `Bearer ${token}` }, timeout: 25000 }
       );
       addLog(`[bling] NF ${nfId} enviada para SEFAZ (tentativa ${tentativa + 1})`, 'ok');
