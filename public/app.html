@@ -40,6 +40,13 @@
         <button class="nav-btn" data-tab="etiquetas">🖨️ Etiquetas</button>
         <button class="nav-btn" data-tab="configuracoes">⚙️ Configurações</button>
       </nav>
+      <!-- Mobile: barra inferior com label da aba ativa + hamburger -->
+      <div class="mobile-hamburger-bar">
+        <span id="mobile-tab-label">📦 Estoque</span>
+        <button class="hamburger-btn" onclick="toggleMobileMenu()" aria-label="Abrir menu">
+          <span></span><span></span><span></span>
+        </button>
+      </div>
       <div class="sidebar-footer">
         <button class="btn-sair" onclick="sair()">Sair</button>
       </div>
@@ -996,6 +1003,30 @@
     </main>
   </div>
 
+  <!-- Mobile: drawer de navegação -->
+  <div class="mobile-drawer-overlay" id="mobileOverlay" onclick="fecharMobileMenu()"></div>
+  <div class="mobile-drawer" id="mobileDrawer">
+    <div class="mobile-drawer-header">
+      <span>Menu</span>
+      <button class="mobile-drawer-close" onclick="fecharMobileMenu()">✕</button>
+    </div>
+    <nav class="mobile-drawer-nav">
+      <button class="mobile-drawer-btn" data-tab="estoque">📦 Estoque</button>
+      <button class="mobile-drawer-btn" data-tab="vendas">🏷️ Vendas</button>
+      <button class="mobile-drawer-btn" data-tab="historico">📋 Histórico</button>
+      <button class="mobile-drawer-btn" data-tab="ads">📊 Ads</button>
+      <button class="mobile-drawer-btn" data-tab="lucro">💰 Lucro</button>
+      <button class="mobile-drawer-btn" data-tab="promocoes">🏷️ Promoções</button>
+      <button class="mobile-drawer-btn" data-tab="contas-pagar">💳 Contas a Pagar</button>
+      <button class="mobile-drawer-btn" data-tab="bling">🧾 Bling</button>
+      <button class="mobile-drawer-btn" data-tab="fiscal">🗂️ NF Compras</button>
+      <button class="mobile-drawer-btn" data-tab="compras">🛒 Compras</button>
+      <button class="mobile-drawer-btn" data-tab="calculadora">🧮 Calculadora</button>
+      <button class="mobile-drawer-btn" data-tab="etiquetas">🖨️ Etiquetas</button>
+      <button class="mobile-drawer-btn" data-tab="configuracoes">⚙️ Configurações</button>
+    </nav>
+  </div>
+
   <!-- Modal: Fornecedor -->
   <div id="modal-fornecedor" class="modal-overlay" style="display:none" onclick="if(event.target===this)fecharModalFornecedor()">
     <div class="modal-card">
@@ -1210,6 +1241,6 @@
     </div>
   </div>
 
-  <div id="version-badge">v444</div>
+  <div id="version-badge">v445</div>
 </body>
 </html>

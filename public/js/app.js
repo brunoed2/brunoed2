@@ -4,15 +4,22 @@
 
 // ── Navegação entre abas ──────────────────────────────────────
 
-const navBtns = document.querySelectorAll('.nav-btn');
-const tabs    = document.querySelectorAll('.tab');
+const navBtns    = document.querySelectorAll('.nav-btn');
+const tabs       = document.querySelectorAll('.tab');
+const drawerBtns = document.querySelectorAll('.mobile-drawer-btn');
 
 function abrirAba(nome) {
-  // Atualiza botões do menu
   navBtns.forEach(b => b.classList.toggle('active', b.dataset.tab === nome));
-  // Mostra a aba correta
+  drawerBtns.forEach(b => b.classList.toggle('active', b.dataset.tab === nome));
   tabs.forEach(t => t.classList.toggle('active', t.id === `tab-${nome}`));
-  // Carrega dados da aba quando aberta
+
+  // Atualiza label da barra inferior mobile
+  const labelEl = document.getElementById('mobile-tab-label');
+  if (labelEl) {
+    const btn = document.querySelector(`.nav-btn[data-tab="${nome}"]`);
+    if (btn) labelEl.textContent = btn.textContent.trim();
+  }
+
   if (nome === 'loja') carregarLoja();
   if (nome === 'estoque') carregarEstoque(true);
 }
@@ -20,6 +27,20 @@ function abrirAba(nome) {
 navBtns.forEach(btn => {
   btn.addEventListener('click', () => abrirAba(btn.dataset.tab));
 });
+
+drawerBtns.forEach(btn => {
+  btn.addEventListener('click', () => { abrirAba(btn.dataset.tab); fecharMobileMenu(); });
+});
+
+function toggleMobileMenu() {
+  document.getElementById('mobileDrawer').classList.toggle('open');
+  document.getElementById('mobileOverlay').classList.toggle('open');
+}
+
+function fecharMobileMenu() {
+  document.getElementById('mobileDrawer').classList.remove('open');
+  document.getElementById('mobileOverlay').classList.remove('open');
+}
 
 // Suporte a ?tab=xxx na URL (usado após redirect do OAuth)
 (function () {
