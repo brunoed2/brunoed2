@@ -49,6 +49,7 @@ function abrirAba(nome) {
   navBtns.forEach(b => b.classList.toggle('active', b.dataset.tab === nome));
   drawerBtns.forEach(b => b.classList.toggle('active', b.dataset.tab === nome));
   tabs.forEach(t => t.classList.toggle('active', t.id === `tab-${nome}`));
+  localStorage.setItem('ultimaAba', nome);
 
   // Atualiza label da barra inferior mobile
   const labelEl = document.getElementById('mobile-tab-label');
@@ -110,8 +111,10 @@ navBtns.forEach(btn => {
 
   const params      = new URLSearchParams(location.search);
   const tabParam    = params.get('tab');
+  const ultimaAba   = localStorage.getItem('ultimaAba');
   const primeiraAba = permitidas && permitidas.length ? permitidas[0] : 'estoque';
-  const tab = (tabParam && (!permitidas || permitidas.includes(tabParam))) ? tabParam : primeiraAba;
+  const tabSalva    = ultimaAba && (!permitidas || permitidas.includes(ultimaAba)) ? ultimaAba : primeiraAba;
+  const tab = (tabParam && (!permitidas || permitidas.includes(tabParam))) ? tabParam : tabSalva;
   abrirAba(tab);
 
   if (params.get('connected') === 'true') {
