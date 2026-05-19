@@ -4896,10 +4896,13 @@ function parsearRespostaSefaz(xmlResp) {
   const maxNSU  = get('maxNSU');
 
   const docs = [];
-  const re = /<docZip[^>]*NSU="(\d+)"[^>]*schema="([^"]*)"[^>]*>([\s\S]+?)<\/docZip>/g;
+  const re = /<docZip([^>]*)>([\s\S]+?)<\/docZip>/g;
   let m;
   while ((m = re.exec(xmlResp)) !== null) {
-    docs.push({ nsu: m[1], schema: m[2], zip: m[3].trim() });
+    const attrs  = m[1];
+    const nsu    = attrs.match(/NSU="(\d+)"/)?.[1]    || '';
+    const schema = attrs.match(/schema="([^"]*)"/)?.[1] || '';
+    docs.push({ nsu, schema, zip: m[2].trim() });
   }
   return { cStat, xMotivo, ultNSU, maxNSU, docs };
 }
