@@ -101,7 +101,7 @@ navBtns.forEach(btn => {
 });
 
 (function () {
-  const permitidas = JSON.parse(sessionStorage.getItem('abasPermitidas') || 'null');
+  const permitidas = JSON.parse(localStorage.getItem('abasPermitidas') || 'null');
   if (permitidas && Array.isArray(permitidas)) {
     navBtns.forEach(btn => {
       if (!permitidas.includes(btn.dataset.tab)) btn.style.display = 'none';
@@ -485,7 +485,7 @@ async function salvarEstoqueLocal(event) {
     const response = await apiFetch('/api/estoque-local', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sku, quantidade: valor, usuario: sessionStorage.getItem('usuarioNome') || 'Desconhecido' })
+      body: JSON.stringify({ sku, quantidade: valor, usuario: localStorage.getItem('usuarioNome') || 'Desconhecido' })
     });
     if (response.erro) { console.error('Erro ao salvar estoque local:', response.erro); return; }
     if (valor === '') {
@@ -995,8 +995,8 @@ async function carregarAds() {
 // ── Sair ──────────────────────────────────────────────────────
 
 function sair() {
-  sessionStorage.removeItem('auth');
-  sessionStorage.removeItem('abasPermitidas');
+  localStorage.removeItem('auth');
+  localStorage.removeItem('abasPermitidas');
   location.href = '/';
 }
 

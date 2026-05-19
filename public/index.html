@@ -79,13 +79,13 @@
         });
         if (!resp.ok) throw new Error('invalido');
         var data = await resp.json();
-        sessionStorage.setItem('abasPermitidas', JSON.stringify(data.abas));
-        sessionStorage.setItem('usuarioNome', data.nome || '');
+        localStorage.setItem('abasPermitidas', JSON.stringify(data.abas));
+        localStorage.setItem('usuarioNome', data.nome || '');
         if (data.painel === 'app') {
-          sessionStorage.setItem('auth', '1');
+          localStorage.setItem('auth', '1');
           location.href = '/app.html';
         } else {
-          sessionStorage.setItem('auth', '2');
+          localStorage.setItem('auth', '2');
           location.href = '/painel2.html';
         }
       } catch {

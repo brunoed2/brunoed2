@@ -11,7 +11,7 @@
 
   <!-- Verifica autenticação antes de mostrar o app -->
   <script>
-    if (sessionStorage.getItem('auth') !== '1') {
+    if (localStorage.getItem('auth') !== '1') {
       location.href = '/';
     }
   </script>
@@ -1241,6 +1241,6 @@
     </div>
   </div>
 
-  <div id="version-badge">v448</div>
+  <div id="version-badge">v449</div>
 </body>
 </html>

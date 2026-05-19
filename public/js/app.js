@@ -464,7 +464,7 @@ async function carregarEstoque(reiniciar = false) {
 // ── Sair ─────────────────────────────────────────────────────
 
 function sair() {
-  sessionStorage.removeItem('auth');
+  localStorage.removeItem('auth');
   location.href = '/';
 }
 
