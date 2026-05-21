@@ -50,80 +50,49 @@
       box-shadow: 0 1px 0 rgba(255,255,255,.06);
     }
 
-    .h-brand {
-      display: flex;
-      align-items: center;
-      gap: 14px;
-    }
+    .h-brand { display: flex; align-items: center; gap: 14px; }
 
     .h-logo {
       width: 34px; height: 34px;
       background: #2563eb;
       border-radius: 8px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 14px;
-      font-weight: 800;
-      color: #fff;
-      letter-spacing: -.5px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px; font-weight: 800; color: #fff; letter-spacing: -.5px;
     }
 
     .h-name { font-size: 15px; font-weight: 700; color: #f1f5f9; letter-spacing: .1px; }
     .h-sub  { font-size: 11px; color: #64748b; margin-top: 1px; }
-
     .h-right { display: flex; align-items: center; gap: 12px; }
 
     #version-badge {
-      font-size: 10px;
-      background: #1e293b;
-      color: #475569;
-      border: 1px solid #334155;
-      border-radius: 4px;
-      padding: 3px 8px;
-      letter-spacing: .3px;
+      font-size: 10px; background: #1e293b; color: #475569;
+      border: 1px solid #334155; border-radius: 4px; padding: 3px 8px; letter-spacing: .3px;
     }
 
     .btn-sair {
-      font-size: 12px;
-      background: transparent;
-      color: #94a3b8;
-      border: 1px solid #334155;
-      border-radius: 6px;
-      padding: 6px 14px;
-      cursor: pointer;
-      transition: all .15s;
-      font-weight: 500;
+      font-size: 12px; background: transparent; color: #94a3b8;
+      border: 1px solid #334155; border-radius: 6px; padding: 6px 14px;
+      cursor: pointer; transition: all .15s; font-weight: 500;
     }
     .btn-sair:hover { background: #1e293b; color: #e2e8f0; border-color: #475569; }
 
     /* ── Controls bar ───────────────────────────────────────── */
     .ctrl-bar {
       position: fixed;
-      top: var(--header-h);
-      left: 0; right: 0;
+      top: var(--header-h); left: 0; right: 0;
       height: var(--ctrl-h);
       background: var(--card);
       border-bottom: 1px solid var(--border);
-      display: flex;
-      align-items: center;
-      padding: 0 28px;
-      gap: 12px;
-      z-index: 99;
+      display: flex; align-items: center;
+      padding: 0 28px; gap: 12px; z-index: 99;
     }
 
     .presets { display: flex; gap: 4px; }
 
     .preset-btn {
-      font-size: 12px;
-      font-weight: 500;
-      background: transparent;
-      color: var(--text2);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      padding: 5px 11px;
-      cursor: pointer;
-      transition: all .15s;
+      font-size: 12px; font-weight: 500; background: transparent;
+      color: var(--text2); border: 1px solid var(--border);
+      border-radius: 6px; padding: 5px 11px; cursor: pointer; transition: all .15s;
     }
     .preset-btn:hover  { background: #f8fafc; border-color: #cbd5e1; color: var(--text); }
     .preset-btn.active { background: var(--blue-l); border-color: #93c5fd; color: var(--blue); }
@@ -132,43 +101,24 @@
 
     .date-group { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text2); }
     .date-input {
-      padding: 5px 10px;
-      font-size: 12px;
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      color: var(--text);
-      background: #f8fafc;
-      cursor: pointer;
-      transition: border-color .15s;
-      font-family: inherit;
+      padding: 5px 10px; font-size: 12px; border: 1px solid var(--border);
+      border-radius: 6px; color: var(--text); background: #f8fafc;
+      cursor: pointer; transition: border-color .15s; font-family: inherit;
     }
     .date-input:focus { outline: none; border-color: #93c5fd; background: #fff; }
 
     .ctrl-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
 
-    #last-sync {
-      font-size: 11px;
-      color: var(--text3);
-      white-space: nowrap;
-    }
+    #last-sync { font-size: 11px; color: var(--text3); white-space: nowrap; }
 
     .btn-refresh {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 12px;
-      font-weight: 600;
-      background: var(--blue);
-      color: #fff;
-      border: none;
-      border-radius: 7px;
-      padding: 7px 16px;
-      cursor: pointer;
-      transition: background .15s;
+      display: flex; align-items: center; gap: 6px;
+      font-size: 12px; font-weight: 600;
+      background: var(--blue); color: #fff; border: none;
+      border-radius: 7px; padding: 7px 16px; cursor: pointer; transition: background .15s;
     }
     .btn-refresh:hover    { background: #1d4ed8; }
     .btn-refresh:disabled { background: #93c5fd; cursor: default; }
-    .btn-refresh svg { flex-shrink: 0; }
 
     /* ── Main layout ────────────────────────────────────────── */
     main {
@@ -182,23 +132,17 @@
 
     /* ── States ─────────────────────────────────────────────── */
     .state-box {
-      background: var(--card);
-      border-radius: 16px;
-      padding: 64px 40px;
-      text-align: center;
-      border: 1px solid var(--border);
+      background: var(--card); border-radius: 16px; padding: 64px 40px;
+      text-align: center; border: 1px solid var(--border);
     }
     .state-box .icon { font-size: 40px; margin-bottom: 14px; }
-    .state-box h3  { font-size: 16px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
-    .state-box p   { font-size: 13px; color: var(--text2); max-width: 380px; margin: 0 auto; line-height: 1.6; }
+    .state-box h3 { font-size: 16px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
+    .state-box p  { font-size: 13px; color: var(--text2); max-width: 380px; margin: 0 auto; line-height: 1.6; }
 
     .spinner {
-      width: 32px; height: 32px;
-      border: 3px solid var(--border);
-      border-top-color: var(--blue);
-      border-radius: 50%;
-      animation: spin .7s linear infinite;
-      margin: 0 auto 16px;
+      width: 32px; height: 32px; border: 3px solid var(--border);
+      border-top-color: var(--blue); border-radius: 50%;
+      animation: spin .7s linear infinite; margin: 0 auto 16px;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -208,240 +152,110 @@
     @media (max-width: 520px) { .cards { grid-template-columns: 1fr; } }
 
     .card {
-      background: var(--card);
-      border-radius: 14px;
-      padding: 20px 22px;
-      border: 1px solid var(--border);
-      transition: box-shadow .2s;
+      background: var(--card); border-radius: 14px; padding: 20px 22px;
+      border: 1px solid var(--border); transition: box-shadow .2s;
     }
     .card:hover { box-shadow: 0 4px 16px rgba(0,0,0,.06); }
-
-    .card-label {
-      font-size: 11px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: .6px;
-      color: var(--text2);
-      margin-bottom: 10px;
-    }
-
-    .card-value {
-      font-size: 32px;
-      font-weight: 800;
-      color: var(--text);
-      line-height: 1;
-      margin-bottom: 6px;
-      font-variant-numeric: tabular-nums;
-    }
-
-    .card-sub {
-      font-size: 12px;
-      color: var(--text3);
-    }
-
-    .card-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      font-size: 11px;
-      font-weight: 600;
-      padding: 3px 8px;
-      border-radius: 20px;
-      margin-top: 8px;
-    }
-    .badge-up   { background: var(--green-l); color: var(--green); }
-    .badge-down { background: var(--red-l);   color: var(--red);   }
-    .badge-flat { background: var(--amber-l); color: var(--amber); }
+    .card-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .6px; color: var(--text2); margin-bottom: 10px; }
+    .card-value { font-size: 32px; font-weight: 800; color: var(--text); line-height: 1; margin-bottom: 6px; font-variant-numeric: tabular-nums; }
+    .card-sub   { font-size: 12px; color: var(--text3); }
 
     /* ── Chart card ─────────────────────────────────────────── */
     .chart-card {
-      background: var(--card);
-      border-radius: 16px;
-      padding: 24px 28px;
-      border: 1px solid var(--border);
-      margin-bottom: 20px;
+      background: var(--card); border-radius: 16px;
+      padding: 24px 28px; border: 1px solid var(--border); margin-bottom: 20px;
     }
 
     .chart-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 18px;
+    }
+
+    .chart-title { font-size: 15px; font-weight: 700; color: var(--text); }
+
+    /* ── Filtro de anúncios ──────────────────────────────────── */
+    .filtros-wrap {
+      display: flex; flex-wrap: wrap; gap: 8px;
+      padding-bottom: 18px;
+      border-bottom: 1px solid var(--border);
       margin-bottom: 20px;
     }
 
-    .chart-title {
-      font-size: 15px;
-      font-weight: 700;
-      color: var(--text);
+    .filtro-btn {
+      display: inline-flex; align-items: center; gap: 7px;
+      padding: 6px 14px; border-radius: 20px;
+      font-size: 12px; font-weight: 500;
+      cursor: pointer; transition: all .15s;
+      border: 1.5px solid;
+      white-space: nowrap;
     }
+    .filtro-btn:not(.active) { background: transparent; }
+    .filtro-btn.active { color: #fff !important; }
 
-    .chart-legend {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 14px;
+    .filtro-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: currentColor; flex-shrink: 0;
+      transition: background .15s;
     }
+    .filtro-btn.active .filtro-dot { background: rgba(255,255,255,.6); }
 
-    .legend-item {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 12px;
-      color: var(--text2);
-    }
-
-    .legend-dot {
-      width: 10px; height: 10px;
-      border-radius: 50%;
-      flex-shrink: 0;
-    }
-
-    .chart-wrap {
-      position: relative;
-      height: 320px;
-    }
+    .chart-wrap { position: relative; height: 320px; }
 
     /* ── Products table ─────────────────────────────────────── */
-    .table-card {
-      background: var(--card);
-      border-radius: 16px;
-      border: 1px solid var(--border);
-      overflow: hidden;
-    }
-
+    .table-card { background: var(--card); border-radius: 16px; border: 1px solid var(--border); overflow: hidden; }
     .table-header {
-      padding: 18px 24px;
-      border-bottom: 1px solid var(--border);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
+      padding: 18px 24px; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
     }
-
     .table-title { font-size: 14px; font-weight: 700; color: var(--text); }
 
     table { width: 100%; border-collapse: collapse; }
-
     thead th {
-      padding: 11px 20px;
-      background: #f8fafc;
-      text-align: left;
-      font-size: 11px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: .5px;
-      color: var(--text2);
-      border-bottom: 1px solid var(--border);
+      padding: 11px 20px; background: #f8fafc; text-align: left;
+      font-size: 11px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: .5px; color: var(--text2); border-bottom: 1px solid var(--border);
     }
-
     thead th:not(:first-child) { text-align: right; }
-
-    tbody td {
-      padding: 14px 20px;
-      border-bottom: 1px solid #f1f5f9;
-      vertical-align: middle;
-    }
-
+    tbody td { padding: 14px 20px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
     tbody tr:last-child td { border-bottom: none; }
     tbody tr:hover td { background: #fafcff; }
 
     .prod-cell { display: flex; align-items: center; gap: 14px; }
-
-    .prod-thumb {
-      width: 44px; height: 44px;
-      border-radius: 8px;
-      object-fit: cover;
-      background: #f1f5f9;
-      border: 1px solid var(--border);
-      flex-shrink: 0;
-    }
-
-    .prod-thumb-placeholder {
-      width: 44px; height: 44px;
-      border-radius: 8px;
-      background: #f1f5f9;
-      border: 1px solid var(--border);
-      display: flex; align-items: center; justify-content: center;
-      flex-shrink: 0;
-      color: var(--text3);
-      font-size: 18px;
-    }
-
+    .prod-thumb { width: 44px; height: 44px; border-radius: 8px; object-fit: cover; background: #f1f5f9; border: 1px solid var(--border); flex-shrink: 0; }
+    .prod-thumb-placeholder { width: 44px; height: 44px; border-radius: 8px; background: #f1f5f9; border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: var(--text3); font-size: 18px; }
     .prod-name { font-size: 13px; font-weight: 500; color: var(--text); line-height: 1.3; max-width: 340px; }
     .prod-mlb  { font-size: 11px; color: var(--text3); margin-top: 2px; font-family: monospace; }
-
     td.num { text-align: right; font-variant-numeric: tabular-nums; }
-
-    .stock-badge {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      min-width: 40px;
-      padding: 3px 10px;
-      border-radius: 20px;
-      font-size: 12px;
-      font-weight: 700;
-    }
+    .stock-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 40px; padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 700; }
     .stock-ok   { background: var(--green-l); color: var(--green); }
     .stock-low  { background: var(--amber-l); color: var(--amber); }
     .stock-zero { background: var(--red-l);   color: var(--red);   }
-
     .num-big { font-size: 15px; font-weight: 700; color: var(--text); }
     .num-med { font-size: 13px; color: var(--text2); }
 
     /* ── Admin config panel ─────────────────────────────────── */
     #config-panel {
-      display: none;
-      background: #fffbeb;
-      border: 1px solid #fde68a;
-      border-radius: 14px;
-      padding: 20px 24px;
-      margin-bottom: 20px;
+      display: none; background: #fffbeb; border: 1px solid #fde68a;
+      border-radius: 14px; padding: 20px 24px; margin-bottom: 20px;
     }
-
     #config-panel h3 { font-size: 13px; font-weight: 700; color: #92400e; margin-bottom: 10px; }
     #config-panel p  { font-size: 12px; color: #78350f; margin-bottom: 12px; line-height: 1.5; }
-
     .config-row { display: flex; gap: 10px; align-items: flex-start; }
-
     #mlbs-input {
-      flex: 1;
-      font-size: 12px;
-      font-family: monospace;
-      border: 1px solid #fde68a;
-      border-radius: 8px;
-      padding: 8px 12px;
-      background: #fff;
-      color: var(--text);
-      resize: vertical;
-      min-height: 80px;
+      flex: 1; font-size: 12px; font-family: monospace;
+      border: 1px solid #fde68a; border-radius: 8px; padding: 8px 12px;
+      background: #fff; color: var(--text); resize: vertical; min-height: 80px;
     }
     #mlbs-input:focus { outline: none; border-color: #f59e0b; }
-
     .btn-save-mlbs {
-      padding: 8px 18px;
-      font-size: 12px;
-      font-weight: 600;
-      background: #f59e0b;
-      color: #fff;
-      border: none;
-      border-radius: 8px;
-      cursor: pointer;
-      transition: background .15s;
-      white-space: nowrap;
+      padding: 8px 18px; font-size: 12px; font-weight: 600;
+      background: #f59e0b; color: #fff; border: none; border-radius: 8px;
+      cursor: pointer; transition: background .15s; white-space: nowrap;
     }
     .btn-save-mlbs:hover { background: #d97706; }
-
     #config-msg { font-size: 12px; color: var(--green); margin-top: 8px; }
 
-    /* ── No config state ────────────────────────────────────── */
-    .cfg-steps {
-      text-align: left;
-      margin-top: 16px;
-      font-size: 13px;
-      color: var(--text2);
-      line-height: 2;
-      list-style: decimal;
-      padding-left: 20px;
-    }
+    .cfg-steps { text-align: left; margin-top: 16px; font-size: 13px; color: var(--text2); line-height: 2; list-style: decimal; padding-left: 20px; }
     .cfg-steps li { margin-bottom: 2px; }
   </style>
 </head>
@@ -457,7 +271,7 @@
     </div>
   </div>
   <div class="h-right">
-    <div id="version-badge">v455</div>
+    <div id="version-badge">v456</div>
     <button class="btn-sair" onclick="sair()">Sair</button>
   </div>
 </header>
@@ -465,10 +279,10 @@
 <!-- ── Controls bar ─────────────────────────────────────────── -->
 <div class="ctrl-bar">
   <div class="presets">
-    <button class="preset-btn" onclick="setPreset(30)"  data-d="30">30d</button>
-    <button class="preset-btn" onclick="setPreset(90)"  data-d="90">3m</button>
-    <button class="preset-btn active" onclick="setPreset(180)" data-d="180">6m</button>
-    <button class="preset-btn" onclick="setPreset(365)" data-d="365">12m</button>
+    <button class="preset-btn active" onclick="setPreset(30)"  data-d="30">30d</button>
+    <button class="preset-btn"        onclick="setPreset(90)"  data-d="90">3m</button>
+    <button class="preset-btn"        onclick="setPreset(180)" data-d="180">6m</button>
+    <button class="preset-btn"        onclick="setPreset(365)" data-d="365">12m</button>
   </div>
 
   <div class="ctrl-sep"></div>
@@ -484,8 +298,7 @@
     <span id="last-sync"></span>
     <button class="btn-refresh" id="btn-refresh" onclick="carregar(true)">
       <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M13.5 2.5A7 7 0 1 0 14.5 8"/>
-        <polyline points="14.5 2 14.5 6 10.5 6"/>
+        <path d="M13.5 2.5A7 7 0 1 0 14.5 8"/><polyline points="14.5 2 14.5 6 10.5 6"/>
       </svg>
       Atualizar
     </button>
@@ -495,7 +308,7 @@
 <!-- ── Main ─────────────────────────────────────────────────── -->
 <main>
 
-  <!-- Admin config (só visível para admin) -->
+  <!-- Admin config -->
   <div id="config-panel">
     <h3>Configurar produtos HANDDRY</h3>
     <p>Cole abaixo os IDs dos anúncios do Mercado Livre (um por linha ou separados por vírgula). Ex: <code>MLB3700346581</code></p>
@@ -524,25 +337,26 @@
   <div id="state-config" class="state-box" style="display:none;">
     <div class="icon">📋</div>
     <h3>Produtos não configurados</h3>
-    <p>Nenhum anúncio HANDDRY foi cadastrado ainda. Para configurar:</p>
+    <p>Nenhum anúncio HANDDRY foi cadastrado ainda.</p>
     <ol class="cfg-steps">
       <li>Vá em <b>Compras → Fornecedores</b> no painel admin e crie o fornecedor <b>HANDDRY</b></li>
-      <li>Acesse esta página com <code>?config=1</code> (admin) para cadastrar os IDs dos anúncios</li>
+      <li>Acesse esta página com <code>?config=1</code> para cadastrar os IDs dos anúncios</li>
     </ol>
   </div>
 
   <!-- Conteúdo principal -->
   <div id="conteudo" style="display:none;">
 
-    <!-- Cards -->
+    <!-- Cards (sempre totais gerais de todos os produtos) -->
     <div class="cards" id="cards"></div>
 
-    <!-- Gráfico -->
+    <!-- Gráfico com seletor de anúncios -->
     <div class="chart-card">
       <div class="chart-header">
-        <div class="chart-title">Vendas diárias por produto</div>
-        <div class="chart-legend" id="legenda"></div>
+        <div class="chart-title">Vendas diárias</div>
       </div>
+      <!-- Filtros gerados dinamicamente -->
+      <div class="filtros-wrap" id="filtros-wrap"></div>
       <div class="chart-wrap">
         <canvas id="chart-vendas"></canvas>
       </div>
@@ -573,35 +387,35 @@
 </main>
 
 <script>
-  // Redireciona se não autenticado como fornecedor
-  const isAdmin    = localStorage.getItem('auth') === '1';
-  const isFornec   = localStorage.getItem('auth') === '3';
+  const isAdmin  = localStorage.getItem('auth') === '1';
+  const isFornec = localStorage.getItem('auth') === '3';
   if (!isFornec && !isAdmin) location.href = '/';
 
-  // Exibe painel admin se logado como admin ou ?config=1
   if (isAdmin || new URLSearchParams(location.search).has('config')) {
     document.getElementById('config-panel').style.display = 'block';
   }
 
-  // ── Cores ───────────────────────────────────────────────────
-  const CORES = ['#2563eb','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#ec4899','#84cc16'];
+  // ── Paleta ───────────────────────────────────────────────────
+  const CORES     = ['#2563eb','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#ec4899','#84cc16'];
+  const COR_GERAL = '#6366f1'; // indigo — exclusivo para "Total geral"
 
-  // ── Estado ──────────────────────────────────────────────────
-  let chartVendas = null;
-  let dadosAtuais = null;
+  // ── Estado global ────────────────────────────────────────────
+  let chartVendas   = null;
+  let dadosAtuais   = null;
+  let filtroAtivo   = new Set(['geral']); // inicia com "Total geral" selecionado
 
-  // ── Inicializa datas padrão (6 meses) ───────────────────────
-  function hojeStr() {
-    return new Date().toISOString().slice(0, 10);
-  }
-  function addDias(dias) {
-    const d = new Date();
-    d.setDate(d.getDate() + dias);
-    return d.toISOString().slice(0, 10);
-  }
+  // Dados processados reutilizados pelo seletor de filtros
+  let _datas        = [];
+  let _agrupar      = false;
+  let _semanas      = [];
+  let _semMap       = {};
+
+  // ── Datas padrão: últimos 30 dias ────────────────────────────
+  function hojeStr()   { return new Date().toISOString().slice(0, 10); }
+  function addDias(n)  { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); }
 
   document.getElementById('inp-ate').value = hojeStr();
-  document.getElementById('inp-de').value  = addDias(-180);
+  document.getElementById('inp-de').value  = addDias(-30);
 
   function setPreset(dias) {
     document.getElementById('inp-de').value  = addDias(-dias);
@@ -621,9 +435,7 @@
     const ate = document.getElementById('inp-ate').value;
     if (!de || !ate) return;
 
-    const btn = document.getElementById('btn-refresh');
-    btn.disabled = true;
-
+    document.getElementById('btn-refresh').disabled = true;
     mostrarEstado('loading');
 
     try {
@@ -632,12 +444,8 @@
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const dados = await resp.json();
 
-      if (dados.error) throw new Error(dados.error);
-
-      if (dados.sem_config) {
-        mostrarEstado('config');
-        return;
-      }
+      if (dados.error)      throw new Error(dados.error);
+      if (dados.sem_config) { mostrarEstado('config'); return; }
 
       dadosAtuais = dados;
       renderizar(dados);
@@ -652,55 +460,60 @@
       document.getElementById('state-erro-msg').textContent = e.message;
       mostrarEstado('erro');
     } finally {
-      btn.disabled = false;
+      document.getElementById('btn-refresh').disabled = false;
     }
   }
 
   function mostrarEstado(id) {
     ['state-loading','state-erro','state-config','conteudo'].forEach(s => {
-      document.getElementById(s).style.display = s === id ? (id === 'conteudo' ? 'block' : 'flex') : 'none';
+      const el = document.getElementById(s);
+      el.style.display = s === id ? (s === 'conteudo' ? 'block' : 'flex') : 'none';
     });
-    if (id === 'conteudo') document.getElementById('conteudo').style.display = 'block';
   }
 
-  // ── Renderizar dashboard ─────────────────────────────────────
+  // ── Renderizar: calcula tudo e monta a página ─────────────────
   function renderizar(dados) {
     const { produtos, vendas_diarias, de, ate } = dados;
 
-    // Gera array de todas as datas no intervalo
-    const datas = [];
-    const cur = new Date(de);
-    const fim = new Date(ate);
-    while (cur <= fim) {
-      datas.push(cur.toISOString().slice(0, 10));
-      cur.setDate(cur.getDate() + 1);
+    // Gera array de datas do intervalo
+    _datas = [];
+    const cur = new Date(de), fim = new Date(ate);
+    while (cur <= fim) { _datas.push(cur.toISOString().slice(0, 10)); cur.setDate(cur.getDate() + 1); }
+
+    // Agrupa por semana quando range > 90 dias
+    _agrupar = _datas.length > 90;
+    _semanas = [];
+    _semMap  = {};
+    if (_agrupar) {
+      for (const d of _datas) {
+        const dt = new Date(d);
+        const ini = new Date(dt);
+        ini.setDate(dt.getDate() - dt.getDay());
+        const key = ini.toISOString().slice(0, 10);
+        if (!_semMap[key]) { _semMap[key] = {}; _semanas.push(key); }
+        for (const p of produtos) {
+          const v = (vendas_diarias[p.mlb] || {})[d] || 0;
+          _semMap[key][p.mlb] = (_semMap[key][p.mlb] || 0) + v;
+        }
+      }
     }
 
-    // Calcula totais por produto
-    const totaisPorProd = {};
+    // Totais por produto (para cards e tabela — sempre all-products)
+    const totaisProd = {};
     for (const p of produtos) {
       const dias = vendas_diarias[p.mlb] || {};
-      totaisPorProd[p.mlb] = Object.values(dias).reduce((s, v) => s + v, 0);
+      totaisProd[p.mlb] = Object.values(dias).reduce((s, v) => s + v, 0);
     }
-
-    // Totais gerais
-    const totalVendasPeriodo = Object.values(totaisPorProd).reduce((s, v) => s + v, 0);
-    const totalEstoque       = produtos.reduce((s, p) => s + (p.estoque || 0), 0);
-    const numDias            = datas.length || 1;
-    const mediaDiaria        = totalVendasPeriodo / numDias;
-
-    // Melhor produto
-    let melhorMLB = null, melhorQt = 0;
-    for (const [mlb, qt] of Object.entries(totaisPorProd)) {
-      if (qt > melhorQt) { melhorQt = qt; melhorMLB = mlb; }
-    }
-    const melhor = produtos.find(p => p.mlb === melhorMLB);
+    const totalVendas   = Object.values(totaisProd).reduce((s, v) => s + v, 0);
+    const totalEstoque  = produtos.reduce((s, p) => s + (p.estoque || 0), 0);
+    const numDias       = _datas.length || 1;
+    const mediaDiaria   = totalVendas / numDias;
 
     // ── Cards ────────────────────────────────────────────────
     document.getElementById('cards').innerHTML = `
       <div class="card">
         <div class="card-label">Vendas no período</div>
-        <div class="card-value">${totalVendasPeriodo.toLocaleString('pt-BR')}</div>
+        <div class="card-value">${totalVendas.toLocaleString('pt-BR')}</div>
         <div class="card-sub">unidades vendidas</div>
       </div>
       <div class="card">
@@ -709,9 +522,9 @@
         <div class="card-sub">unidades em estoque</div>
       </div>
       <div class="card">
-        <div class="card-label">Produtos ativos</div>
+        <div class="card-label">Produtos</div>
         <div class="card-value">${produtos.length}</div>
-        <div class="card-sub">anúncios cadastrados</div>
+        <div class="card-sub">anúncios ativos</div>
       </div>
       <div class="card">
         <div class="card-label">Média diária</div>
@@ -720,130 +533,50 @@
       </div>
     `;
 
-    // ── Legenda do gráfico ───────────────────────────────────
-    const legenda = document.getElementById('legenda');
-    legenda.innerHTML = produtos.map((p, i) =>
-      `<div class="legend-item">
-        <div class="legend-dot" style="background:${CORES[i % CORES.length]}"></div>
-        ${truncar(p.titulo, 28)}
-      </div>`
-    ).join('');
-
-    // ── Gráfico de linha ─────────────────────────────────────
-    if (chartVendas) chartVendas.destroy();
-
-    // Para ranges longos, agrupa por semana para visual mais limpo
-    const agrupar = datas.length > 90;
-    let labelsChart, datasetsData;
-
-    if (agrupar) {
-      // Agrupa por semana
-      const semanas = [];
-      const semMap  = {};
-      for (const d of datas) {
-        const dt  = new Date(d);
-        const dow = dt.getDay();
-        const ini = new Date(dt);
-        ini.setDate(dt.getDate() - dow);
-        const key = ini.toISOString().slice(0, 10);
-        if (!semMap[key]) { semMap[key] = {}; semanas.push(key); }
-        for (const p of produtos) {
-          const v = (vendas_diarias[p.mlb] || {})[d] || 0;
-          semMap[key][p.mlb] = (semMap[key][p.mlb] || 0) + v;
-        }
-      }
-      labelsChart  = semanas.map(s => formatLabel(s));
-      datasetsData = produtos.map((p, i) => ({
-        label:           p.titulo,
-        data:            semanas.map(s => semMap[s][p.mlb] || 0),
-        borderColor:     CORES[i % CORES.length],
-        backgroundColor: CORES[i % CORES.length] + '18',
-        fill:            true,
-        tension:         0.35,
-        pointRadius:     2,
-        pointHoverRadius: 6,
-        borderWidth:     2,
-      }));
-    } else {
-      labelsChart  = datas.map(d => formatLabel(d));
-      datasetsData = produtos.map((p, i) => ({
-        label:           p.titulo,
-        data:            datas.map(d => (vendas_diarias[p.mlb] || {})[d] || 0),
-        borderColor:     CORES[i % CORES.length],
-        backgroundColor: CORES[i % CORES.length] + '18',
-        fill:            true,
-        tension:         0.35,
-        pointRadius:     1,
-        pointHoverRadius: 6,
-        borderWidth:     2.5,
-      }));
+    // ── Filtros de anúncios ──────────────────────────────────
+    // Mantém o filtroAtivo entre recargas (reseta só se produtos mudaram)
+    const mlbsAtuais = new Set(produtos.map(p => p.mlb));
+    // Remove filtros de produtos que não existem mais
+    for (const id of filtroAtivo) {
+      if (id !== 'geral' && !mlbsAtuais.has(id)) filtroAtivo.delete(id);
     }
+    // Se ficou vazio, coloca geral
+    if (filtroAtivo.size === 0) filtroAtivo.add('geral');
 
-    chartVendas = new Chart(document.getElementById('chart-vendas'), {
-      type: 'line',
-      data: { labels: labelsChart, datasets: datasetsData },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        interaction: { mode: 'index', intersect: false },
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            backgroundColor: '#0f172a',
-            titleColor: '#f1f5f9',
-            bodyColor:  '#cbd5e1',
-            borderColor: '#334155',
-            borderWidth: 1,
-            padding: 12,
-            titleFont: { size: 12, weight: '600' },
-            bodyFont:  { size: 12 },
-            callbacks: {
-              title: items => agrupar
-                ? 'Semana de ' + items[0].label
-                : items[0].label,
-              label: item => {
-                const v = item.raw;
-                const nome = truncar(item.dataset.label, 24);
-                return `  ${nome}: ${v} un.`;
-              },
-              afterBody: items => {
-                const total = items.reduce((s, i) => s + i.raw, 0);
-                return total > 0 ? [`  ─────────────────`, `  Total: ${total} un.`] : [];
-              },
-            },
-          },
-        },
-        scales: {
-          x: {
-            grid:  { color: '#f1f5f9' },
-            ticks: {
-              color: '#94a3b8',
-              font: { size: 11 },
-              maxTicksLimit: labelsChart.length > 60 ? 12 : labelsChart.length > 30 ? 8 : 20,
-              maxRotation: 0,
-            },
-          },
-          y: {
-            beginAtZero: true,
-            grid:  { color: '#f1f5f9' },
-            ticks: {
-              color: '#94a3b8',
-              font: { size: 11 },
-              precision: 0,
-            },
-          },
-        },
-      },
+    const wrap = document.getElementById('filtros-wrap');
+    wrap.innerHTML = '';
+
+    // Botão "Total geral"
+    const btnGeral = document.createElement('button');
+    btnGeral.className = 'filtro-btn' + (filtroAtivo.has('geral') ? ' active' : '');
+    btnGeral.dataset.id = 'geral';
+    btnGeral.style.cssText = `color:${COR_GERAL}; border-color:${COR_GERAL}; ${filtroAtivo.has('geral') ? `background:${COR_GERAL}` : ''}`;
+    btnGeral.innerHTML = `<span class="filtro-dot"></span> Total geral`;
+    btnGeral.onclick = () => toggleFiltro('geral', produtos, vendas_diarias);
+    wrap.appendChild(btnGeral);
+
+    // Botão por produto
+    produtos.forEach((p, i) => {
+      const cor = CORES[i % CORES.length];
+      const ativo = filtroAtivo.has(p.mlb);
+      const btn = document.createElement('button');
+      btn.className = 'filtro-btn' + (ativo ? ' active' : '');
+      btn.dataset.id = p.mlb;
+      btn.style.cssText = `color:${cor}; border-color:${cor}; ${ativo ? `background:${cor}` : ''}`;
+      btn.innerHTML = `<span class="filtro-dot"></span> ${truncar(p.titulo, 32)}`;
+      btn.onclick = () => toggleFiltro(p.mlb, produtos, vendas_diarias);
+      wrap.appendChild(btn);
     });
 
-    // ── Tabela ───────────────────────────────────────────────
-    // Vendas 30d (últimas 30 datas com dados dentro do intervalo)
-    const ultimos30 = datas.slice(-30);
+    // ── Gráfico ──────────────────────────────────────────────
+    montarChart(produtos, vendas_diarias);
 
+    // ── Tabela ───────────────────────────────────────────────
+    const ultimos30 = _datas.slice(-30);
     document.getElementById('tabela-corpo').innerHTML = [...produtos]
-      .sort((a, b) => (totaisPorProd[b.mlb] || 0) - (totaisPorProd[a.mlb] || 0))
+      .sort((a, b) => (totaisProd[b.mlb] || 0) - (totaisProd[a.mlb] || 0))
       .map(p => {
-        const totalPer = totaisPorProd[p.mlb] || 0;
+        const totalPer = totaisProd[p.mlb] || 0;
         const total30d = ultimos30.reduce((s, d) => s + ((vendas_diarias[p.mlb] || {})[d] || 0), 0);
         const media    = (totalPer / numDias).toFixed(1).replace('.', ',');
         const est      = p.estoque || 0;
@@ -851,17 +584,11 @@
         const thumb    = p.thumbnail
           ? `<img src="${p.thumbnail}" class="prod-thumb" alt="" loading="lazy" onerror="this.style.display='none'">`
           : `<div class="prod-thumb-placeholder">📦</div>`;
-
         return `<tr>
-          <td>
-            <div class="prod-cell">
-              ${thumb}
-              <div>
-                <div class="prod-name">${p.titulo}</div>
-                <div class="prod-mlb">${p.mlb}</div>
-              </div>
-            </div>
-          </td>
+          <td><div class="prod-cell">${thumb}<div>
+            <div class="prod-name">${p.titulo}</div>
+            <div class="prod-mlb">${p.mlb}</div>
+          </div></div></td>
           <td class="num"><span class="stock-badge ${estClass}">${est}</span></td>
           <td class="num"><span class="num-big">${totalPer.toLocaleString('pt-BR')}</span></td>
           <td class="num"><span class="num-med">${total30d}</span></td>
@@ -870,15 +597,127 @@
       }).join('');
   }
 
-  // ── Helpers ──────────────────────────────────────────────────
-  function truncar(str, n) {
-    return str && str.length > n ? str.slice(0, n) + '…' : str || '';
+  // ── Toggle de filtro ──────────────────────────────────────────
+  function toggleFiltro(id, produtos, vendas_diarias) {
+    if (filtroAtivo.has(id)) {
+      if (filtroAtivo.size > 1) filtroAtivo.delete(id); // pelo menos 1 ativo
+    } else {
+      filtroAtivo.add(id);
+    }
+
+    // Atualiza visual dos botões
+    document.querySelectorAll('.filtro-btn').forEach(btn => {
+      const btnId = btn.dataset.id;
+      const cor = btnId === 'geral' ? COR_GERAL : CORES[(produtos.findIndex(p => p.mlb === btnId)) % CORES.length];
+      const ativo = filtroAtivo.has(btnId);
+      btn.className = 'filtro-btn' + (ativo ? ' active' : '');
+      btn.style.cssText = `color:${cor}; border-color:${cor}; ${ativo ? `background:${cor}` : ''}`;
+    });
+
+    montarChart(produtos, vendas_diarias);
   }
 
-  function formatLabel(dateStr) {
-    const [y, m, d] = dateStr.split('-');
-    return `${d}/${m}`;
+  // ── Montar / atualizar gráfico ────────────────────────────────
+  function montarChart(produtos, vendas_diarias) {
+    const labels = _agrupar ? _semanas.map(s => formatLabel(s)) : _datas.map(d => formatLabel(d));
+    const datasets = [];
+
+    // Dataset "Total geral"
+    if (filtroAtivo.has('geral')) {
+      const data = _agrupar
+        ? _semanas.map(s => produtos.reduce((sum, p) => sum + (_semMap[s]?.[p.mlb] || 0), 0))
+        : _datas.map(d => produtos.reduce((sum, p) => sum + ((vendas_diarias[p.mlb] || {})[d] || 0), 0));
+      datasets.push({
+        label: 'Total geral',
+        data,
+        borderColor:     COR_GERAL,
+        backgroundColor: COR_GERAL + '15',
+        fill: true, tension: 0.35,
+        pointRadius: 1, pointHoverRadius: 7,
+        borderWidth: 2.5,
+      });
+    }
+
+    // Datasets individuais
+    produtos.forEach((p, i) => {
+      if (!filtroAtivo.has(p.mlb)) return;
+      const cor  = CORES[i % CORES.length];
+      const data = _agrupar
+        ? _semanas.map(s => _semMap[s]?.[p.mlb] || 0)
+        : _datas.map(d => (vendas_diarias[p.mlb] || {})[d] || 0);
+      datasets.push({
+        label: p.titulo,
+        data,
+        borderColor:     cor,
+        backgroundColor: cor + '15',
+        fill: true, tension: 0.35,
+        pointRadius: 1, pointHoverRadius: 7,
+        borderWidth: 2,
+      });
+    });
+
+    if (chartVendas) {
+      // Atualiza sem recriar (sem animação ao mudar filtro)
+      chartVendas.data.labels   = labels;
+      chartVendas.data.datasets = datasets;
+      chartVendas.update('none');
+      return;
+    }
+
+    // Cria o gráfico pela primeira vez
+    chartVendas = new Chart(document.getElementById('chart-vendas'), {
+      type: 'line',
+      data: { labels, datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#0f172a',
+            titleColor:  '#f1f5f9',
+            bodyColor:   '#cbd5e1',
+            borderColor: '#334155',
+            borderWidth: 1,
+            padding: 14,
+            titleFont: { size: 12, weight: '600' },
+            bodyFont:  { size: 12 },
+            callbacks: {
+              title: items => _agrupar ? 'Semana de ' + items[0].label : items[0].label,
+              label: item => {
+                const v = item.raw;
+                if (v === 0) return null; // esconde linhas zeradas no tooltip
+                return `  ${truncar(item.dataset.label, 26)}: ${v} un.`;
+              },
+              afterBody: items => {
+                const visiveis = items.filter(i => i.raw > 0);
+                if (visiveis.length < 2) return [];
+                const total = visiveis.reduce((s, i) => s + i.raw, 0);
+                return [`  ───────────────────`, `  Total: ${total} un.`];
+              },
+            },
+          },
+        },
+        scales: {
+          x: {
+            grid:  { color: '#f1f5f9' },
+            ticks: { color: '#94a3b8', font: { size: 11 }, maxRotation: 0,
+                     maxTicksLimit: labels.length > 60 ? 12 : labels.length > 30 ? 10 : 20 },
+          },
+          y: {
+            beginAtZero: true,
+            grid:  { color: '#f1f5f9' },
+            ticks: { color: '#94a3b8', font: { size: 11 }, precision: 0 },
+          },
+        },
+      },
+    });
   }
+
+  // ── Helpers ──────────────────────────────────────────────────
+  function truncar(str, n) { return str && str.length > n ? str.slice(0, n) + '…' : str || ''; }
+  function formatLabel(d)  { const [,m,dd] = d.split('-'); return `${dd}/${m}`; }
 
   // ── Admin: salvar MLBs ────────────────────────────────────────
   async function salvarMLBs() {
@@ -895,7 +734,9 @@
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || 'Erro');
       msg.style.color = '#16a34a';
-      msg.textContent = `${d.mlbs.length} anúncio(s) salvos. Atualizando dados...`;
+      msg.textContent = `${d.mlbs.length} anúncio(s) salvos. Atualizando...`;
+      // Reseta o gráfico para forçar recriação com novos dados
+      if (chartVendas) { chartVendas.destroy(); chartVendas = null; }
       setTimeout(() => carregar(true), 800);
     } catch (e) {
       msg.style.color = '#dc2626';
