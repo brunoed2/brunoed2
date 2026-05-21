@@ -5212,6 +5212,8 @@ app.post('/api/zpl-to-pdf', express.text({ type: '*/*', limit: '20mb' }), async 
 
 // ── Inicia o servidor ─────────────────────────────────────────
 app.listen(PORT, () => {
+  // Persiste configurações auto-geradas no boot (ex: HANDDRY MLBs)
+  try { saveData(loadData()); } catch {}
   console.log(`Servidor rodando em http://localhost:${PORT}`);
   // Inicia monitoramento Telegram 10s após subir, depois a cada 60s
   if (CALLMEBOT_PHONE && CALLMEBOT_APIKEY) {
