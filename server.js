@@ -102,6 +102,16 @@ function loadData() {
   raw.estoque_local_deducted_orders  = raw.estoque_local_deducted_orders  || {};
   raw.estoque_local_historico        = raw.estoque_local_historico        || [];
   raw.handdry_dashboard_cache        = raw.handdry_dashboard_cache        || null;
+  // Auto-configura fornecedor HANDDRY na conta 1
+  raw.fornecedores_por_conta = raw.fornecedores_por_conta || {};
+  raw.fornecedores_por_conta['1'] = raw.fornecedores_por_conta['1'] || [];
+  const HANDDRY_MLBS = ['MLB3700346581','MLB3148872272','MLB2807954078','MLB2807930465'];
+  const hdEntry = raw.fornecedores_por_conta['1'].find(f => f.nome?.toUpperCase() === 'HANDDRY');
+  if (!hdEntry) {
+    raw.fornecedores_por_conta['1'].push({ id: 'handdry', nome: 'HANDDRY', leadTimeDias: 30, skus: [], mlbs: HANDDRY_MLBS });
+  } else if (!hdEntry.mlbs || hdEntry.mlbs.length === 0) {
+    hdEntry.mlbs = HANDDRY_MLBS;
+  }
   raw.usuarios = raw.usuarios || {};
   if (!raw.usuarios['1224']) {
     raw.usuarios['1224'] = { nome: 'Operador', abas: ['estoque', 'vendas', 'historico', 'etiquetas'], painel: 'painel2' };
