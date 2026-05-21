@@ -271,7 +271,7 @@
     </div>
   </div>
   <div class="h-right">
-    <div id="version-badge">v456</div>
+    <div id="version-badge">v457</div>
     <button class="btn-sair" onclick="sair()">Sair</button>
   </div>
 </header>
@@ -374,7 +374,6 @@
               <th>Produto</th>
               <th>Estoque</th>
               <th>Vendas no período</th>
-              <th>Vendas 30d</th>
               <th>Média / dia</th>
             </tr>
           </thead>
@@ -572,12 +571,10 @@
     montarChart(produtos, vendas_diarias);
 
     // ── Tabela ───────────────────────────────────────────────
-    const ultimos30 = _datas.slice(-30);
     document.getElementById('tabela-corpo').innerHTML = [...produtos]
       .sort((a, b) => (totaisProd[b.mlb] || 0) - (totaisProd[a.mlb] || 0))
       .map(p => {
         const totalPer = totaisProd[p.mlb] || 0;
-        const total30d = ultimos30.reduce((s, d) => s + ((vendas_diarias[p.mlb] || {})[d] || 0), 0);
         const media    = (totalPer / numDias).toFixed(1).replace('.', ',');
         const est      = p.estoque || 0;
         const estClass = est === 0 ? 'stock-zero' : est < 10 ? 'stock-low' : 'stock-ok';
@@ -591,7 +588,6 @@
           </div></div></td>
           <td class="num"><span class="stock-badge ${estClass}">${est}</span></td>
           <td class="num"><span class="num-big">${totalPer.toLocaleString('pt-BR')}</span></td>
-          <td class="num"><span class="num-med">${total30d}</span></td>
           <td class="num"><span class="num-med">${media} / dia</span></td>
         </tr>`;
       }).join('');
