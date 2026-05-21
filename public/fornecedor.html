@@ -6,460 +6,901 @@
   <title>HANDDRY — Painel do Fornecedor</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      background: #f0f2f5;
-      color: #1a1a1a;
-      min-height: 100vh;
+    :root {
+      --bg:        #f1f5f9;
+      --card:      #ffffff;
+      --border:    #e2e8f0;
+      --text:      #0f172a;
+      --text2:     #64748b;
+      --text3:     #94a3b8;
+      --blue:      #2563eb;
+      --blue-l:    #dbeafe;
+      --green:     #16a34a;
+      --green-l:   #dcfce7;
+      --amber:     #d97706;
+      --amber-l:   #fef3c7;
+      --red:       #dc2626;
+      --red-l:     #fee2e2;
+      --header-h:  60px;
+      --ctrl-h:    56px;
     }
 
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    /* ── Header ─────────────────────────────────────────────── */
     header {
-      background: #111;
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      height: var(--header-h);
+      background: #0f172a;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 28px;
+      z-index: 100;
+      box-shadow: 0 1px 0 rgba(255,255,255,.06);
+    }
+
+    .h-brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .h-logo {
+      width: 34px; height: 34px;
+      background: #2563eb;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      font-weight: 800;
       color: #fff;
-      padding: 0 24px;
-      height: 56px;
+      letter-spacing: -.5px;
+    }
+
+    .h-name { font-size: 15px; font-weight: 700; color: #f1f5f9; letter-spacing: .1px; }
+    .h-sub  { font-size: 11px; color: #64748b; margin-top: 1px; }
+
+    .h-right { display: flex; align-items: center; gap: 12px; }
+
+    #version-badge {
+      font-size: 10px;
+      background: #1e293b;
+      color: #475569;
+      border: 1px solid #334155;
+      border-radius: 4px;
+      padding: 3px 8px;
+      letter-spacing: .3px;
+    }
+
+    .btn-sair {
+      font-size: 12px;
+      background: transparent;
+      color: #94a3b8;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      padding: 6px 14px;
+      cursor: pointer;
+      transition: all .15s;
+      font-weight: 500;
+    }
+    .btn-sair:hover { background: #1e293b; color: #e2e8f0; border-color: #475569; }
+
+    /* ── Controls bar ───────────────────────────────────────── */
+    .ctrl-bar {
+      position: fixed;
+      top: var(--header-h);
+      left: 0; right: 0;
+      height: var(--ctrl-h);
+      background: var(--card);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 28px;
+      gap: 12px;
+      z-index: 99;
+    }
+
+    .presets { display: flex; gap: 4px; }
+
+    .preset-btn {
+      font-size: 12px;
+      font-weight: 500;
+      background: transparent;
+      color: var(--text2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 5px 11px;
+      cursor: pointer;
+      transition: all .15s;
+    }
+    .preset-btn:hover  { background: #f8fafc; border-color: #cbd5e1; color: var(--text); }
+    .preset-btn.active { background: var(--blue-l); border-color: #93c5fd; color: var(--blue); }
+
+    .ctrl-sep { width: 1px; height: 24px; background: var(--border); margin: 0 4px; }
+
+    .date-group { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text2); }
+    .date-input {
+      padding: 5px 10px;
+      font-size: 12px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      background: #f8fafc;
+      cursor: pointer;
+      transition: border-color .15s;
+      font-family: inherit;
+    }
+    .date-input:focus { outline: none; border-color: #93c5fd; background: #fff; }
+
+    .ctrl-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+
+    #last-sync {
+      font-size: 11px;
+      color: var(--text3);
+      white-space: nowrap;
+    }
+
+    .btn-refresh {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      background: var(--blue);
+      color: #fff;
+      border: none;
+      border-radius: 7px;
+      padding: 7px 16px;
+      cursor: pointer;
+      transition: background .15s;
+    }
+    .btn-refresh:hover    { background: #1d4ed8; }
+    .btn-refresh:disabled { background: #93c5fd; cursor: default; }
+    .btn-refresh svg { flex-shrink: 0; }
+
+    /* ── Main layout ────────────────────────────────────────── */
+    main {
+      padding-top: calc(var(--header-h) + var(--ctrl-h) + 28px);
+      padding-bottom: 48px;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding-left: 28px;
+      padding-right: 28px;
+    }
+
+    /* ── States ─────────────────────────────────────────────── */
+    .state-box {
+      background: var(--card);
+      border-radius: 16px;
+      padding: 64px 40px;
+      text-align: center;
+      border: 1px solid var(--border);
+    }
+    .state-box .icon { font-size: 40px; margin-bottom: 14px; }
+    .state-box h3  { font-size: 16px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
+    .state-box p   { font-size: 13px; color: var(--text2); max-width: 380px; margin: 0 auto; line-height: 1.6; }
+
+    .spinner {
+      width: 32px; height: 32px;
+      border: 3px solid var(--border);
+      border-top-color: var(--blue);
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+      margin: 0 auto 16px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Summary cards ──────────────────────────────────────── */
+    .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 20px; }
+    @media (max-width: 900px) { .cards { grid-template-columns: repeat(2,1fr); } }
+    @media (max-width: 520px) { .cards { grid-template-columns: 1fr; } }
+
+    .card {
+      background: var(--card);
+      border-radius: 14px;
+      padding: 20px 22px;
+      border: 1px solid var(--border);
+      transition: box-shadow .2s;
+    }
+    .card:hover { box-shadow: 0 4px 16px rgba(0,0,0,.06); }
+
+    .card-label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .6px;
+      color: var(--text2);
+      margin-bottom: 10px;
+    }
+
+    .card-value {
+      font-size: 32px;
+      font-weight: 800;
+      color: var(--text);
+      line-height: 1;
+      margin-bottom: 6px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .card-sub {
+      font-size: 12px;
+      color: var(--text3);
+    }
+
+    .card-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 20px;
+      margin-top: 8px;
+    }
+    .badge-up   { background: var(--green-l); color: var(--green); }
+    .badge-down { background: var(--red-l);   color: var(--red);   }
+    .badge-flat { background: var(--amber-l); color: var(--amber); }
+
+    /* ── Chart card ─────────────────────────────────────────── */
+    .chart-card {
+      background: var(--card);
+      border-radius: 16px;
+      padding: 24px 28px;
+      border: 1px solid var(--border);
+      margin-bottom: 20px;
+    }
+
+    .chart-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
+
+    .chart-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .chart-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--text2);
+    }
+
+    .legend-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .chart-wrap {
+      position: relative;
+      height: 320px;
+    }
+
+    /* ── Products table ─────────────────────────────────────── */
+    .table-card {
+      background: var(--card);
+      border-radius: 16px;
+      border: 1px solid var(--border);
+      overflow: hidden;
+    }
+
+    .table-header {
+      padding: 18px 24px;
+      border-bottom: 1px solid var(--border);
       display: flex;
       align-items: center;
       justify-content: space-between;
     }
 
-    .header-brand {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
+    .table-title { font-size: 14px; font-weight: 700; color: var(--text); }
 
-    .header-brand h1 {
-      font-size: 16px;
-      font-weight: 600;
-      letter-spacing: .5px;
-    }
-
-    .header-brand span {
-      font-size: 12px;
-      color: #888;
-    }
-
-    .header-right {
-      display: flex;
-      align-items: center;
-      gap: 16px;
-    }
-
-    #version-badge {
-      font-size: 11px;
-      background: #222;
-      color: #666;
-      border: 1px solid #333;
-      border-radius: 4px;
-      padding: 2px 8px;
-    }
-
-    button.sair {
-      font-size: 13px;
-      background: transparent;
-      color: #aaa;
-      border: 1px solid #444;
-      border-radius: 6px;
-      padding: 6px 14px;
-      cursor: pointer;
-      transition: all .2s;
-    }
-    button.sair:hover { background: #222; color: #fff; border-color: #666; }
-
-    main {
-      max-width: 1100px;
-      margin: 0 auto;
-      padding: 28px 20px;
-    }
-
-    .page-title {
-      font-size: 22px;
-      font-weight: 700;
-      margin-bottom: 4px;
-    }
-
-    .page-subtitle {
-      font-size: 13px;
-      color: #666;
-      margin-bottom: 28px;
-    }
-
-    #loading {
-      text-align: center;
-      padding: 60px;
-      color: #888;
-      font-size: 14px;
-    }
-
-    #erro {
-      display: none;
-      background: #fff0f0;
-      border: 1px solid #fccaca;
-      border-radius: 10px;
-      padding: 20px 24px;
-      color: #c0392b;
-      font-size: 14px;
-      margin-bottom: 20px;
-    }
-
-    #sem-produtos {
-      display: none;
-      background: #fff;
-      border-radius: 10px;
-      padding: 40px;
-      text-align: center;
-      color: #888;
-      font-size: 14px;
-    }
-
-    #conteudo { display: none; }
-
-    .cards-row {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-      gap: 16px;
-      margin-bottom: 28px;
-    }
-
-    .card-stat {
-      background: #fff;
-      border-radius: 10px;
-      padding: 20px 22px;
-      box-shadow: 0 1px 4px rgba(0,0,0,.06);
-    }
-
-    .card-stat .label {
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: .6px;
-      color: #888;
-      margin-bottom: 8px;
-    }
-
-    .card-stat .value {
-      font-size: 28px;
-      font-weight: 700;
-      color: #111;
-    }
-
-    .card-stat .sub {
-      font-size: 12px;
-      color: #aaa;
-      margin-top: 4px;
-    }
-
-    .graficos {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 20px;
-      margin-bottom: 28px;
-    }
-
-    @media (max-width: 700px) {
-      .graficos { grid-template-columns: 1fr; }
-    }
-
-    .chart-card {
-      background: #fff;
-      border-radius: 10px;
-      padding: 20px 22px;
-      box-shadow: 0 1px 4px rgba(0,0,0,.06);
-    }
-
-    .chart-card h3 {
-      font-size: 13px;
-      font-weight: 600;
-      color: #333;
-      margin-bottom: 16px;
-      text-transform: uppercase;
-      letter-spacing: .5px;
-    }
-
-    .chart-card canvas { max-height: 280px; }
-
-    .tabela-wrap {
-      background: #fff;
-      border-radius: 10px;
-      padding: 20px 22px;
-      box-shadow: 0 1px 4px rgba(0,0,0,.06);
-      overflow-x: auto;
-    }
-
-    .tabela-wrap h3 {
-      font-size: 13px;
-      font-weight: 600;
-      color: #333;
-      margin-bottom: 16px;
-      text-transform: uppercase;
-      letter-spacing: .5px;
-    }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 13px;
-    }
+    table { width: 100%; border-collapse: collapse; }
 
     thead th {
+      padding: 11px 20px;
+      background: #f8fafc;
       text-align: left;
-      padding: 8px 12px;
-      background: #f7f7f8;
-      color: #555;
-      font-weight: 600;
       font-size: 11px;
+      font-weight: 600;
       text-transform: uppercase;
       letter-spacing: .5px;
-      border-bottom: 1px solid #eee;
+      color: var(--text2);
+      border-bottom: 1px solid var(--border);
     }
 
+    thead th:not(:first-child) { text-align: right; }
+
     tbody td {
-      padding: 10px 12px;
-      border-bottom: 1px solid #f2f2f2;
-      color: #222;
+      padding: 14px 20px;
+      border-bottom: 1px solid #f1f5f9;
+      vertical-align: middle;
     }
 
     tbody tr:last-child td { border-bottom: none; }
-    tbody tr:hover td { background: #fafafa; }
+    tbody tr:hover td { background: #fafcff; }
 
-    .badge-estoque {
-      display: inline-block;
-      padding: 2px 10px;
+    .prod-cell { display: flex; align-items: center; gap: 14px; }
+
+    .prod-thumb {
+      width: 44px; height: 44px;
+      border-radius: 8px;
+      object-fit: cover;
+      background: #f1f5f9;
+      border: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .prod-thumb-placeholder {
+      width: 44px; height: 44px;
+      border-radius: 8px;
+      background: #f1f5f9;
+      border: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+      color: var(--text3);
+      font-size: 18px;
+    }
+
+    .prod-name { font-size: 13px; font-weight: 500; color: var(--text); line-height: 1.3; max-width: 340px; }
+    .prod-mlb  { font-size: 11px; color: var(--text3); margin-top: 2px; font-family: monospace; }
+
+    td.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+    .stock-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 40px;
+      padding: 3px 10px;
       border-radius: 20px;
       font-size: 12px;
+      font-weight: 700;
+    }
+    .stock-ok   { background: var(--green-l); color: var(--green); }
+    .stock-low  { background: var(--amber-l); color: var(--amber); }
+    .stock-zero { background: var(--red-l);   color: var(--red);   }
+
+    .num-big { font-size: 15px; font-weight: 700; color: var(--text); }
+    .num-med { font-size: 13px; color: var(--text2); }
+
+    /* ── Admin config panel ─────────────────────────────────── */
+    #config-panel {
+      display: none;
+      background: #fffbeb;
+      border: 1px solid #fde68a;
+      border-radius: 14px;
+      padding: 20px 24px;
+      margin-bottom: 20px;
+    }
+
+    #config-panel h3 { font-size: 13px; font-weight: 700; color: #92400e; margin-bottom: 10px; }
+    #config-panel p  { font-size: 12px; color: #78350f; margin-bottom: 12px; line-height: 1.5; }
+
+    .config-row { display: flex; gap: 10px; align-items: flex-start; }
+
+    #mlbs-input {
+      flex: 1;
+      font-size: 12px;
+      font-family: monospace;
+      border: 1px solid #fde68a;
+      border-radius: 8px;
+      padding: 8px 12px;
+      background: #fff;
+      color: var(--text);
+      resize: vertical;
+      min-height: 80px;
+    }
+    #mlbs-input:focus { outline: none; border-color: #f59e0b; }
+
+    .btn-save-mlbs {
+      padding: 8px 18px;
+      font-size: 12px;
       font-weight: 600;
-    }
-    .badge-ok   { background: #e8f5e9; color: #2e7d32; }
-    .badge-low  { background: #fff3e0; color: #e65100; }
-    .badge-zero { background: #fce4ec; color: #c62828; }
-
-    #last-updated {
-      font-size: 11px;
-      color: #aaa;
-      text-align: right;
-      margin-top: 16px;
-    }
-
-    .btn-atualizar {
-      background: #111;
+      background: #f59e0b;
       color: #fff;
       border: none;
-      border-radius: 7px;
-      padding: 8px 18px;
-      font-size: 13px;
+      border-radius: 8px;
       cursor: pointer;
-      transition: background .2s;
+      transition: background .15s;
+      white-space: nowrap;
     }
-    .btn-atualizar:hover { background: #333; }
-    .btn-atualizar:disabled { background: #999; cursor: default; }
+    .btn-save-mlbs:hover { background: #d97706; }
+
+    #config-msg { font-size: 12px; color: var(--green); margin-top: 8px; }
+
+    /* ── No config state ────────────────────────────────────── */
+    .cfg-steps {
+      text-align: left;
+      margin-top: 16px;
+      font-size: 13px;
+      color: var(--text2);
+      line-height: 2;
+      list-style: decimal;
+      padding-left: 20px;
+    }
+    .cfg-steps li { margin-bottom: 2px; }
   </style>
 </head>
 <body>
 
+<!-- ── Header ──────────────────────────────────────────────── -->
 <header>
-  <div class="header-brand">
-    <h1>HANDDRY</h1>
-    <span>Painel do Fornecedor</span>
+  <div class="h-brand">
+    <div class="h-logo">HD</div>
+    <div>
+      <div class="h-name">HANDDRY</div>
+      <div class="h-sub">Painel do Fornecedor</div>
+    </div>
   </div>
-  <div class="header-right">
-    <div id="version-badge">v452</div>
-    <button class="sair" onclick="sair()">Sair</button>
+  <div class="h-right">
+    <div id="version-badge">v453</div>
+    <button class="btn-sair" onclick="sair()">Sair</button>
   </div>
 </header>
 
-<main>
-  <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:28px;">
-    <div>
-      <div class="page-title">Vendas & Estoque</div>
-      <div class="page-subtitle">Acompanhamento dos produtos HANDDRY em tempo real</div>
-    </div>
-    <button class="btn-atualizar" id="btn-atualizar" onclick="carregar()">Atualizar</button>
+<!-- ── Controls bar ─────────────────────────────────────────── -->
+<div class="ctrl-bar">
+  <div class="presets">
+    <button class="preset-btn" onclick="setPreset(30)"  data-d="30">30d</button>
+    <button class="preset-btn" onclick="setPreset(90)"  data-d="90">3m</button>
+    <button class="preset-btn active" onclick="setPreset(180)" data-d="180">6m</button>
+    <button class="preset-btn" onclick="setPreset(365)" data-d="365">12m</button>
   </div>
 
-  <div id="loading">Carregando dados...</div>
-  <div id="erro"></div>
-  <div id="sem-produtos">Nenhum produto HANDDRY cadastrado ainda. Peça ao administrador para vincular os SKUs ao fornecedor HANDDRY.</div>
+  <div class="ctrl-sep"></div>
 
-  <div id="conteudo">
-    <div class="cards-row" id="cards-row"></div>
+  <div class="date-group">
+    De
+    <input type="date" id="inp-de"  class="date-input" onchange="aplicarDatas()">
+    Até
+    <input type="date" id="inp-ate" class="date-input" onchange="aplicarDatas()">
+  </div>
 
-    <div class="graficos">
-      <div class="chart-card">
-        <h3>Vendas dos últimos 30 dias</h3>
+  <div class="ctrl-right">
+    <span id="last-sync"></span>
+    <button class="btn-refresh" id="btn-refresh" onclick="carregar(true)">
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M13.5 2.5A7 7 0 1 0 14.5 8"/>
+        <polyline points="14.5 2 14.5 6 10.5 6"/>
+      </svg>
+      Atualizar
+    </button>
+  </div>
+</div>
+
+<!-- ── Main ─────────────────────────────────────────────────── -->
+<main>
+
+  <!-- Admin config (só visível para admin) -->
+  <div id="config-panel">
+    <h3>Configurar produtos HANDDRY</h3>
+    <p>Cole abaixo os IDs dos anúncios do Mercado Livre (um por linha ou separados por vírgula). Ex: <code>MLB3700346581</code></p>
+    <div class="config-row">
+      <textarea id="mlbs-input" placeholder="MLB3700346581&#10;MLB3148872272&#10;MLB2807954078&#10;MLB2807930465"></textarea>
+      <button class="btn-save-mlbs" onclick="salvarMLBs()">Salvar</button>
+    </div>
+    <div id="config-msg"></div>
+  </div>
+
+  <!-- Loading -->
+  <div id="state-loading" class="state-box">
+    <div class="spinner"></div>
+    <h3>Carregando dados</h3>
+    <p>Buscando pedidos e estoque diretamente no Mercado Livre. Pode levar alguns segundos...</p>
+  </div>
+
+  <!-- Erro -->
+  <div id="state-erro" class="state-box" style="display:none;">
+    <div class="icon">⚠️</div>
+    <h3>Não foi possível carregar os dados</h3>
+    <p id="state-erro-msg"></p>
+  </div>
+
+  <!-- Sem config -->
+  <div id="state-config" class="state-box" style="display:none;">
+    <div class="icon">📋</div>
+    <h3>Produtos não configurados</h3>
+    <p>Nenhum anúncio HANDDRY foi cadastrado ainda. Para configurar:</p>
+    <ol class="cfg-steps">
+      <li>Vá em <b>Compras → Fornecedores</b> no painel admin e crie o fornecedor <b>HANDDRY</b></li>
+      <li>Acesse esta página com <code>?config=1</code> (admin) para cadastrar os IDs dos anúncios</li>
+    </ol>
+  </div>
+
+  <!-- Conteúdo principal -->
+  <div id="conteudo" style="display:none;">
+
+    <!-- Cards -->
+    <div class="cards" id="cards"></div>
+
+    <!-- Gráfico -->
+    <div class="chart-card">
+      <div class="chart-header">
+        <div class="chart-title">Vendas diárias por produto</div>
+        <div class="chart-legend" id="legenda"></div>
+      </div>
+      <div class="chart-wrap">
         <canvas id="chart-vendas"></canvas>
       </div>
-      <div class="chart-card">
-        <h3>Estoque atual por produto</h3>
-        <canvas id="chart-estoque"></canvas>
+    </div>
+
+    <!-- Tabela -->
+    <div class="table-card">
+      <div class="table-header">
+        <div class="table-title">Produtos</div>
+      </div>
+      <div style="overflow-x:auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>Produto</th>
+              <th>Estoque</th>
+              <th>Vendas no período</th>
+              <th>Vendas 30d</th>
+              <th>Média / dia</th>
+            </tr>
+          </thead>
+          <tbody id="tabela-corpo"></tbody>
+        </table>
       </div>
     </div>
 
-    <div class="tabela-wrap">
-      <h3>Detalhamento por produto</h3>
-      <table>
-        <thead>
-          <tr>
-            <th>SKU</th>
-            <th>Produto</th>
-            <th>Estoque</th>
-            <th>Vendas (30d)</th>
-            <th>Vendas (7d)</th>
-          </tr>
-        </thead>
-        <tbody id="tabela-corpo"></tbody>
-      </table>
-    </div>
-
-    <div id="last-updated"></div>
   </div>
 </main>
 
 <script>
-  if (localStorage.getItem('auth') !== '3') location.href = '/';
+  // Redireciona se não autenticado como fornecedor
+  const isAdmin    = localStorage.getItem('auth') === '1';
+  const isFornec   = localStorage.getItem('auth') === '3';
+  if (!isFornec && !isAdmin) location.href = '/';
 
+  // Exibe painel admin se logado como admin ou ?config=1
+  if (isAdmin || new URLSearchParams(location.search).has('config')) {
+    document.getElementById('config-panel').style.display = 'block';
+  }
+
+  // ── Cores ───────────────────────────────────────────────────
+  const CORES = ['#2563eb','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#ec4899','#84cc16'];
+
+  // ── Estado ──────────────────────────────────────────────────
   let chartVendas = null;
-  let chartEstoque = null;
+  let dadosAtuais = null;
 
-  const CORES = [
-    '#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6',
-    '#06b6d4','#ec4899','#84cc16','#f97316','#6366f1',
-  ];
+  // ── Inicializa datas padrão (6 meses) ───────────────────────
+  function hojeStr() {
+    return new Date().toISOString().slice(0, 10);
+  }
+  function addDias(dias) {
+    const d = new Date();
+    d.setDate(d.getDate() + dias);
+    return d.toISOString().slice(0, 10);
+  }
 
-  async function carregar() {
-    const btn = document.getElementById('btn-atualizar');
+  document.getElementById('inp-ate').value = hojeStr();
+  document.getElementById('inp-de').value  = addDias(-180);
+
+  function setPreset(dias) {
+    document.getElementById('inp-de').value  = addDias(-dias);
+    document.getElementById('inp-ate').value = hojeStr();
+    document.querySelectorAll('.preset-btn').forEach(b => b.classList.toggle('active', +b.dataset.d === dias));
+    carregar(false);
+  }
+
+  function aplicarDatas() {
+    document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+    carregar(false);
+  }
+
+  // ── Carregar dados ───────────────────────────────────────────
+  async function carregar(forcar = false) {
+    const de  = document.getElementById('inp-de').value;
+    const ate = document.getElementById('inp-ate').value;
+    if (!de || !ate) return;
+
+    const btn = document.getElementById('btn-refresh');
     btn.disabled = true;
-    btn.textContent = 'Atualizando...';
 
-    document.getElementById('loading').style.display = 'block';
-    document.getElementById('conteudo').style.display = 'none';
-    document.getElementById('erro').style.display = 'none';
-    document.getElementById('sem-produtos').style.display = 'none';
+    mostrarEstado('loading');
 
     try {
-      const resp = await fetch('/api/fornecedor/dashboard');
-      if (!resp.ok) throw new Error('Falha ao buscar dados');
+      const url = `/api/fornecedor/dashboard?de=${de}&ate=${ate}${forcar ? '&force=1' : ''}`;
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const dados = await resp.json();
 
-      document.getElementById('loading').style.display = 'none';
+      if (dados.error) throw new Error(dados.error);
 
-      if (!dados.produtos || dados.produtos.length === 0) {
-        document.getElementById('sem-produtos').style.display = 'block';
+      if (dados.sem_config) {
+        mostrarEstado('config');
         return;
       }
 
+      dadosAtuais = dados;
       renderizar(dados);
-      document.getElementById('conteudo').style.display = 'block';
-      document.getElementById('last-updated').textContent =
-        'Atualizado em ' + new Date().toLocaleString('pt-BR');
+      mostrarEstado('conteudo');
+
+      if (dados.lastSync) {
+        const d = new Date(dados.lastSync);
+        document.getElementById('last-sync').textContent =
+          'Atualizado ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+      }
     } catch (e) {
-      document.getElementById('loading').style.display = 'none';
-      const el = document.getElementById('erro');
-      el.textContent = 'Erro ao carregar dados: ' + e.message;
-      el.style.display = 'block';
+      document.getElementById('state-erro-msg').textContent = e.message;
+      mostrarEstado('erro');
     } finally {
       btn.disabled = false;
-      btn.textContent = 'Atualizar';
     }
   }
 
-  function renderizar(dados) {
-    const { produtos, total_vendas_30d, total_estoque } = dados;
+  function mostrarEstado(id) {
+    ['state-loading','state-erro','state-config','conteudo'].forEach(s => {
+      document.getElementById(s).style.display = s === id ? (id === 'conteudo' ? 'block' : 'flex') : 'none';
+    });
+    if (id === 'conteudo') document.getElementById('conteudo').style.display = 'block';
+  }
 
-    // Cards de resumo
-    const row = document.getElementById('cards-row');
-    row.innerHTML = `
-      <div class="card-stat">
-        <div class="label">Produtos</div>
-        <div class="value">${produtos.length}</div>
-        <div class="sub">SKUs ativos</div>
+  // ── Renderizar dashboard ─────────────────────────────────────
+  function renderizar(dados) {
+    const { produtos, vendas_diarias, de, ate } = dados;
+
+    // Gera array de todas as datas no intervalo
+    const datas = [];
+    const cur = new Date(de);
+    const fim = new Date(ate);
+    while (cur <= fim) {
+      datas.push(cur.toISOString().slice(0, 10));
+      cur.setDate(cur.getDate() + 1);
+    }
+
+    // Calcula totais por produto
+    const totaisPorProd = {};
+    for (const p of produtos) {
+      const dias = vendas_diarias[p.mlb] || {};
+      totaisPorProd[p.mlb] = Object.values(dias).reduce((s, v) => s + v, 0);
+    }
+
+    // Totais gerais
+    const totalVendasPeriodo = Object.values(totaisPorProd).reduce((s, v) => s + v, 0);
+    const totalEstoque       = produtos.reduce((s, p) => s + (p.estoque || 0), 0);
+    const numDias            = datas.length || 1;
+    const mediaDiaria        = totalVendasPeriodo / numDias;
+
+    // Melhor produto
+    let melhorMLB = null, melhorQt = 0;
+    for (const [mlb, qt] of Object.entries(totaisPorProd)) {
+      if (qt > melhorQt) { melhorQt = qt; melhorMLB = mlb; }
+    }
+    const melhor = produtos.find(p => p.mlb === melhorMLB);
+
+    // ── Cards ────────────────────────────────────────────────
+    document.getElementById('cards').innerHTML = `
+      <div class="card">
+        <div class="card-label">Vendas no período</div>
+        <div class="card-value">${totalVendasPeriodo.toLocaleString('pt-BR')}</div>
+        <div class="card-sub">unidades vendidas</div>
       </div>
-      <div class="card-stat">
-        <div class="label">Vendas (30d)</div>
-        <div class="value">${total_vendas_30d}</div>
-        <div class="sub">unidades vendidas</div>
+      <div class="card">
+        <div class="card-label">Estoque total</div>
+        <div class="card-value">${totalEstoque.toLocaleString('pt-BR')}</div>
+        <div class="card-sub">unidades em estoque</div>
       </div>
-      <div class="card-stat">
-        <div class="label">Estoque Total</div>
-        <div class="value">${total_estoque}</div>
-        <div class="sub">unidades em estoque</div>
+      <div class="card">
+        <div class="card-label">Produtos ativos</div>
+        <div class="card-value">${produtos.length}</div>
+        <div class="card-sub">anúncios cadastrados</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Média diária</div>
+        <div class="card-value">${mediaDiaria.toFixed(1).replace('.', ',')}</div>
+        <div class="card-sub">unidades / dia</div>
       </div>
     `;
 
-    // Gráfico vendas
-    const labels = produtos.map(p => p.sku || p.titulo);
-    const vendas30 = produtos.map(p => p.vendas_30d);
-    const estoques = produtos.map(p => p.estoque);
+    // ── Legenda do gráfico ───────────────────────────────────
+    const legenda = document.getElementById('legenda');
+    legenda.innerHTML = produtos.map((p, i) =>
+      `<div class="legend-item">
+        <div class="legend-dot" style="background:${CORES[i % CORES.length]}"></div>
+        ${truncar(p.titulo, 28)}
+      </div>`
+    ).join('');
 
+    // ── Gráfico de linha ─────────────────────────────────────
     if (chartVendas) chartVendas.destroy();
+
+    // Para ranges longos, agrupa por semana para visual mais limpo
+    const agrupar = datas.length > 90;
+    let labelsChart, datasetsData;
+
+    if (agrupar) {
+      // Agrupa por semana
+      const semanas = [];
+      const semMap  = {};
+      for (const d of datas) {
+        const dt  = new Date(d);
+        const dow = dt.getDay();
+        const ini = new Date(dt);
+        ini.setDate(dt.getDate() - dow);
+        const key = ini.toISOString().slice(0, 10);
+        if (!semMap[key]) { semMap[key] = {}; semanas.push(key); }
+        for (const p of produtos) {
+          const v = (vendas_diarias[p.mlb] || {})[d] || 0;
+          semMap[key][p.mlb] = (semMap[key][p.mlb] || 0) + v;
+        }
+      }
+      labelsChart  = semanas.map(s => formatLabel(s));
+      datasetsData = produtos.map((p, i) => ({
+        label:           p.titulo,
+        data:            semanas.map(s => semMap[s][p.mlb] || 0),
+        borderColor:     CORES[i % CORES.length],
+        backgroundColor: CORES[i % CORES.length] + '18',
+        fill:            true,
+        tension:         0.35,
+        pointRadius:     2,
+        pointHoverRadius: 6,
+        borderWidth:     2,
+      }));
+    } else {
+      labelsChart  = datas.map(d => formatLabel(d));
+      datasetsData = produtos.map((p, i) => ({
+        label:           p.titulo,
+        data:            datas.map(d => (vendas_diarias[p.mlb] || {})[d] || 0),
+        borderColor:     CORES[i % CORES.length],
+        backgroundColor: CORES[i % CORES.length] + '18',
+        fill:            true,
+        tension:         0.35,
+        pointRadius:     1,
+        pointHoverRadius: 6,
+        borderWidth:     2.5,
+      }));
+    }
+
     chartVendas = new Chart(document.getElementById('chart-vendas'), {
-      type: 'bar',
-      data: {
-        labels,
-        datasets: [{
-          label: 'Vendas 30d',
-          data: vendas30,
-          backgroundColor: CORES.slice(0, produtos.length).map(c => c + 'cc'),
-          borderColor: CORES.slice(0, produtos.length),
-          borderWidth: 1.5,
-          borderRadius: 5,
-        }],
-      },
+      type: 'line',
+      data: { labels: labelsChart, datasets: datasetsData },
       options: {
         responsive: true,
-        plugins: { legend: { display: false } },
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#0f172a',
+            titleColor: '#f1f5f9',
+            bodyColor:  '#cbd5e1',
+            borderColor: '#334155',
+            borderWidth: 1,
+            padding: 12,
+            titleFont: { size: 12, weight: '600' },
+            bodyFont:  { size: 12 },
+            callbacks: {
+              title: items => agrupar
+                ? 'Semana de ' + items[0].label
+                : items[0].label,
+              label: item => {
+                const v = item.raw;
+                const nome = truncar(item.dataset.label, 24);
+                return `  ${nome}: ${v} un.`;
+              },
+              afterBody: items => {
+                const total = items.reduce((s, i) => s + i.raw, 0);
+                return total > 0 ? [`  ─────────────────`, `  Total: ${total} un.`] : [];
+              },
+            },
+          },
+        },
         scales: {
-          x: { ticks: { font: { size: 11 } } },
-          y: { beginAtZero: true, ticks: { font: { size: 11 } } },
+          x: {
+            grid:  { color: '#f1f5f9' },
+            ticks: {
+              color: '#94a3b8',
+              font: { size: 11 },
+              maxTicksLimit: labelsChart.length > 60 ? 12 : labelsChart.length > 30 ? 8 : 20,
+              maxRotation: 0,
+            },
+          },
+          y: {
+            beginAtZero: true,
+            grid:  { color: '#f1f5f9' },
+            ticks: {
+              color: '#94a3b8',
+              font: { size: 11 },
+              precision: 0,
+            },
+          },
         },
       },
     });
 
-    // Gráfico estoque
-    if (chartEstoque) chartEstoque.destroy();
-    chartEstoque = new Chart(document.getElementById('chart-estoque'), {
-      type: 'bar',
-      data: {
-        labels,
-        datasets: [{
-          label: 'Estoque',
-          data: estoques,
-          backgroundColor: estoques.map(v =>
-            v === 0 ? '#fce4ec' : v < 5 ? '#fff3e0' : '#e8f5e9'
-          ),
-          borderColor: estoques.map(v =>
-            v === 0 ? '#c62828' : v < 5 ? '#e65100' : '#2e7d32'
-          ),
-          borderWidth: 1.5,
-          borderRadius: 5,
-        }],
-      },
-      options: {
-        responsive: true,
-        plugins: { legend: { display: false } },
-        scales: {
-          x: { ticks: { font: { size: 11 } } },
-          y: { beginAtZero: true, ticks: { font: { size: 11 } } },
-        },
-      },
-    });
+    // ── Tabela ───────────────────────────────────────────────
+    // Vendas 30d (últimas 30 datas com dados dentro do intervalo)
+    const ultimos30 = datas.slice(-30);
 
-    // Tabela
-    const tbody = document.getElementById('tabela-corpo');
-    tbody.innerHTML = produtos.map(p => {
-      let badge = '';
-      if (p.estoque === 0)      badge = `<span class="badge-estoque badge-zero">${p.estoque}</span>`;
-      else if (p.estoque < 5)   badge = `<span class="badge-estoque badge-low">${p.estoque}</span>`;
-      else                       badge = `<span class="badge-estoque badge-ok">${p.estoque}</span>`;
-      return `<tr>
-        <td><b>${p.sku || '—'}</b></td>
-        <td>${p.titulo || '—'}</td>
-        <td>${badge}</td>
-        <td>${p.vendas_30d}</td>
-        <td>${p.vendas_7d}</td>
-      </tr>`;
-    }).join('');
+    document.getElementById('tabela-corpo').innerHTML = [...produtos]
+      .sort((a, b) => (totaisPorProd[b.mlb] || 0) - (totaisPorProd[a.mlb] || 0))
+      .map(p => {
+        const totalPer = totaisPorProd[p.mlb] || 0;
+        const total30d = ultimos30.reduce((s, d) => s + ((vendas_diarias[p.mlb] || {})[d] || 0), 0);
+        const media    = (totalPer / numDias).toFixed(1).replace('.', ',');
+        const est      = p.estoque || 0;
+        const estClass = est === 0 ? 'stock-zero' : est < 10 ? 'stock-low' : 'stock-ok';
+        const thumb    = p.thumbnail
+          ? `<img src="${p.thumbnail}" class="prod-thumb" alt="" loading="lazy" onerror="this.style.display='none'">`
+          : `<div class="prod-thumb-placeholder">📦</div>`;
+
+        return `<tr>
+          <td>
+            <div class="prod-cell">
+              ${thumb}
+              <div>
+                <div class="prod-name">${p.titulo}</div>
+                <div class="prod-mlb">${p.mlb}</div>
+              </div>
+            </div>
+          </td>
+          <td class="num"><span class="stock-badge ${estClass}">${est}</span></td>
+          <td class="num"><span class="num-big">${totalPer.toLocaleString('pt-BR')}</span></td>
+          <td class="num"><span class="num-med">${total30d}</span></td>
+          <td class="num"><span class="num-med">${media} / dia</span></td>
+        </tr>`;
+      }).join('');
+  }
+
+  // ── Helpers ──────────────────────────────────────────────────
+  function truncar(str, n) {
+    return str && str.length > n ? str.slice(0, n) + '…' : str || '';
+  }
+
+  function formatLabel(dateStr) {
+    const [y, m, d] = dateStr.split('-');
+    return `${d}/${m}`;
+  }
+
+  // ── Admin: salvar MLBs ────────────────────────────────────────
+  async function salvarMLBs() {
+    const raw  = document.getElementById('mlbs-input').value;
+    const mlbs = raw.split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
+    const msg  = document.getElementById('config-msg');
+    msg.textContent = '';
+    try {
+      const r = await fetch('/api/fornecedor/config-mlbs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mlbs }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'Erro');
+      msg.style.color = '#16a34a';
+      msg.textContent = `${d.mlbs.length} anúncio(s) salvos. Atualizando dados...`;
+      setTimeout(() => carregar(true), 800);
+    } catch (e) {
+      msg.style.color = '#dc2626';
+      msg.textContent = 'Erro: ' + e.message;
+    }
   }
 
   function sair() {
@@ -468,8 +909,8 @@
     location.href = '/';
   }
 
-  carregar();
+  // ── Inicia ───────────────────────────────────────────────────
+  carregar(false);
 </script>
-
 </body>
 </html>

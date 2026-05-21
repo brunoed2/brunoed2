@@ -101,6 +101,7 @@ function loadData() {
   raw.estoque_local_last_check       = raw.estoque_local_last_check       || {};
   raw.estoque_local_deducted_orders  = raw.estoque_local_deducted_orders  || {};
   raw.estoque_local_historico        = raw.estoque_local_historico        || [];
+  raw.handdry_dashboard_cache        = raw.handdry_dashboard_cache        || null;
   raw.usuarios = raw.usuarios || {};
   if (!raw.usuarios['1224']) {
     raw.usuarios['1224'] = { nome: 'Operador', abas: ['estoque', 'vendas', 'historico', 'etiquetas'], painel: 'painel2' };
@@ -5282,13 +5283,17 @@ app.post('/api/fornecedores', (req, res) => {
 
 app.put('/api/fornecedores/:id', (req, res) => {
   const data = loadData();
-  const { nome, leadTimeDias, skus, conta } = req.body;
+  const { nome, leadTimeDias, skus, mlbs, conta } = req.body;
   const { lista } = getFornecedoresConta(data, conta || req.query.conta);
   const idx = lista.findIndex(f => f.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'não encontrado' });
   if (nome) lista[idx].nome = nome.trim();
   if (leadTimeDias != null) lista[idx].leadTimeDias = Number(leadTimeDias);
   if (skus != null) lista[idx].skus = Array.isArray(skus) ? skus : (skus || '').split(',').map(s => s.trim()).filter(Boolean);
+  if (mlbs != null) {
+    lista[idx].mlbs = Array.isArray(mlbs) ? mlbs : (mlbs || '').split(',').map(s => s.trim()).filter(Boolean);
+    data.handdry_dashboard_cache = null; // invalida cache ao mudar MLBs
+  }
   saveData(data);
   res.json({ ok: true, fornecedor: lista[idx] });
 });
@@ -5303,59 +5308,131 @@ app.delete('/api/fornecedores/:id', (req, res) => {
   res.json({ ok: true });
 });
 
-// ── Dashboard do fornecedor HANDDRY ──────────────────────────
-app.get('/api/fornecedor/dashboard', (req, res) => {
-  const data = loadData();
+// ── Dashboard do fornecedor HANDDRY (ML-powered, com cache) ──
+app.get('/api/fornecedor/dashboard', async (req, res) => {
+  const data     = loadData();
   const NOME_FORN = 'HANDDRY';
 
-  // Coleta SKUs do fornecedor em todas as contas
-  let skus = [];
+  // Localiza registro HANDDRY e a conta associada
+  let handdry  = null;
+  let contaNum = null;
   for (const num of Object.keys(data.fornecedores_por_conta || {})) {
     const lista = data.fornecedores_por_conta[num] || [];
     const forn  = lista.find(f => f.nome.toUpperCase() === NOME_FORN);
-    if (forn) skus = [...new Set([...skus, ...forn.skus])];
+    if (forn) { handdry = forn; contaNum = num; break; }
   }
 
-  if (skus.length === 0) {
-    return res.json({ produtos: [], total_vendas_30d: 0, total_estoque: 0 });
+  const mlbs = (handdry?.mlbs || []).map(m => String(m).trim()).filter(Boolean);
+
+  if (mlbs.length === 0) {
+    return res.json({ produtos: [], vendas_diarias: {}, sem_config: true });
   }
 
-  const prodMap = {};
-  for (const sku of skus) {
-    prodMap[sku] = { sku, titulo: sku, vendas_30d: 0, vendas_7d: 0, estoque: 0 };
+  // Intervalo de datas (padrão: últimos 6 meses)
+  const hoje  = new Date();
+  const de    = req.query.de  || new Date(hoje.getTime() - 180 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+  const ate   = req.query.ate || hoje.toISOString().slice(0, 10);
+  const force = req.query.force === '1';
+
+  // Serve do cache se ainda válido (1 hora)
+  const cache = data.handdry_dashboard_cache;
+  if (!force && cache && cache.de === de && cache.ate === ate && cache.lastSync) {
+    const age = Date.now() - new Date(cache.lastSync).getTime();
+    if (age < 60 * 60 * 1000) return res.json({ ...cache, cached: true });
   }
 
-  const agora = Date.now();
-  const MS30  = 30 * 24 * 3600 * 1000;
-  const MS7   =  7 * 24 * 3600 * 1000;
+  // Credenciais da conta do fornecedor
+  const c = (data.contas || {})[contaNum] || contaAtiva(data);
+  if (!c?.access_token) return res.json({ error: 'Conta não conectada ao Mercado Livre' });
+  if (!c?.user_id)      return res.json({ error: 'user_id não encontrado' });
 
-  // Agrega vendas do histórico em todas as contas
-  for (const num of Object.keys(data.contas || {})) {
-    const hist = (data.contas[num] || {}).historico_vendas || [];
-    for (const h of hist) {
-      const ms   = new Date(h.data || h.dataDespacho || 0).getTime();
-      const em30 = (agora - ms) <= MS30;
-      const em7  = (agora - ms) <= MS7;
-      if (!em30) continue;
-      for (const item of (h.itensLista || [])) {
-        const p = prodMap[item.sku];
-        if (!p) continue;
-        if (item.titulo) p.titulo = item.titulo;
-        p.vendas_30d += (item.quantidade || 1);
-        if (em7) p.vendas_7d += (item.quantidade || 1);
+  try {
+    const mlbSet        = new Set(mlbs);
+    const vendasDiarias = {};
+    for (const mlb of mlbs) vendasDiarias[mlb] = {};
+
+    // Busca pedidos pagos no período, filtrando pelos MLBs do HANDDRY
+    let offset = 0;
+    const limit = 50;
+    let paginaTotal = Infinity;
+
+    while (offset < paginaTotal && offset < 5000) {
+      const resp = await axios.get('https://api.mercadolibre.com/orders/search', {
+        params: {
+          seller:                      c.user_id,
+          'order.status':              'paid',
+          'order.date_created.from':   de  + 'T00:00:00.000-03:00',
+          'order.date_created.to':     ate + 'T23:59:59.000-03:00',
+          sort:  'date_asc',
+          limit, offset,
+        },
+        headers: { Authorization: `Bearer ${c.access_token}` },
+        timeout: 15000,
+      });
+
+      const orders = resp.data.results || [];
+      paginaTotal  = resp.data.paging?.total || 0;
+
+      for (const order of orders) {
+        const date = (order.date_created || '').slice(0, 10);
+        for (const oi of (order.order_items || [])) {
+          const mlb = oi.item.id;
+          if (!mlbSet.has(mlb)) continue;
+          vendasDiarias[mlb][date] = (vendasDiarias[mlb][date] || 0) + (oi.quantity || 1);
+        }
       }
+
+      if (orders.length < limit) break;
+      offset += limit;
+    }
+
+    // Busca info e estoque real dos itens no ML
+    const produtos = [];
+    for (let i = 0; i < mlbs.length; i += 20) {
+      const chunk = mlbs.slice(i, i + 20);
+      try {
+        const r = await axios.get('https://api.mercadolibre.com/items', {
+          params: { ids: chunk.join(','), attributes: 'id,title,available_quantity,thumbnail,status' },
+          headers: { Authorization: `Bearer ${c.access_token}` },
+          timeout: 10000,
+        });
+        for (const entry of (r.data || [])) {
+          if (entry.code !== 200) continue;
+          const b = entry.body;
+          let thumb = b.thumbnail || null;
+          if (thumb) thumb = thumb.replace(/-[A-Z]\.jpg/, '-O.jpg');
+          produtos.push({ mlb: b.id, titulo: b.title || b.id, estoque: b.available_quantity ?? 0, thumbnail: thumb, status: b.status });
+        }
+      } catch {}
+    }
+
+    const resultado = { produtos, vendas_diarias: vendasDiarias, de, ate, lastSync: new Date().toISOString() };
+    data.handdry_dashboard_cache = resultado;
+    saveData(data);
+    res.json(resultado);
+  } catch (err) {
+    addLog(`[Fornecedor] Erro dashboard: ${err.response?.data?.message || err.message}`, 'error');
+    res.json({ error: 'Erro ao buscar dados: ' + (err.response?.data?.message || err.message) });
+  }
+});
+
+// Endpoint admin: configura MLBs do HANDDRY
+app.post('/api/fornecedor/config-mlbs', (req, res) => {
+  const { mlbs, conta } = req.body || {};
+  if (!Array.isArray(mlbs)) return res.status(400).json({ error: 'mlbs deve ser array' });
+  const data = loadData();
+  const NOME_FORN = 'HANDDRY';
+  let atualizado = false;
+  for (const num of Object.keys(data.fornecedores_por_conta || {})) {
+    const lista = data.fornecedores_por_conta[num] || [];
+    const idx = lista.findIndex(f => f.nome.toUpperCase() === NOME_FORN);
+    if (idx !== -1) {
+      lista[idx].mlbs = mlbs.map(m => String(m).trim()).filter(Boolean);
+      atualizado = true;
     }
   }
-
-  // Estoque local por SKU
-  for (const sku of skus) {
-    const q = (data.estoque_local || {})[sku];
-    if (q !== undefined) prodMap[sku].estoque = q;
-  }
-
-  const produtos        = Object.values(prodMap);
-  const total_vendas_30d = produtos.reduce((s, p) => s + p.vendas_30d, 0);
-  const total_estoque    = produtos.reduce((s, p) => s + p.estoque,    0);
-
-  res.json({ produtos, total_vendas_30d, total_estoque });
+  if (!atualizado) return res.status(404).json({ error: 'Fornecedor HANDDRY não encontrado — cadastre-o primeiro na aba Compras' });
+  data.handdry_dashboard_cache = null;
+  saveData(data);
+  res.json({ ok: true, mlbs: mlbs.filter(Boolean) });
 });
