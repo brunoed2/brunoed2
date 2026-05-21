@@ -67,6 +67,7 @@ function abrirAba(nome) {
   if (nome === 'promocoes')     carregarPromocoes();
   if (nome === 'contas-pagar')  contasPagarInit();
   if (nome === 'bling')         blingInit();
+  if (nome === 'fiscal')        { fiscalCarregar(); fiscalCarregarCerts(); }
   if (nome === 'compras')       comprasAbrirSub('previsao');
   if (nome === 'etiquetas')     etiquetasInit();
   if (nome === 'configuracoes') { carregarConfig(contaConfigurando); }

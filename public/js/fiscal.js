@@ -212,11 +212,3 @@ async function fiscalSalvarCert(conta) {
   } catch { msg.textContent = 'Erro ao salvar certificado.'; msg.style.color = '#f87171'; }
 }
 
-// Carrega ao entrar na aba
-document.addEventListener('DOMContentLoaded', () => {
-  document.querySelectorAll('.nav-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      if (btn.dataset.tab === 'fiscal') { fiscalCarregar(); fiscalCarregarCerts(); }
-    });
-  });
-});
