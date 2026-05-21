@@ -105,6 +105,9 @@ function loadData() {
   if (!raw.usuarios['1224']) {
     raw.usuarios['1224'] = { nome: 'Operador', abas: ['estoque', 'vendas', 'historico', 'etiquetas'], painel: 'painel2' };
   }
+  if (!raw.usuarios['0505']) {
+    raw.usuarios['0505'] = { nome: 'HANDDRY', abas: [], painel: 'fornecedor' };
+  }
   // 199412 é sempre admin no painel app — forçado mesmo se já existir com dados errados
   const adminAbas = ['estoque','ads','lucro','promocoes','contas-pagar','bling','fiscal','compras','calculadora','etiquetas','configuracoes'];
   raw.usuarios['199412'] = {
@@ -568,7 +571,9 @@ app.post('/api/login', (req, res) => {
   const data = loadData();
   const usuario = (data.usuarios || {})[String(senha)];
   if (!usuario) return res.status(401).json({ error: 'Senha incorreta' });
-  // Painel é forçado para 199412; para outros, derivado das abas escolhidas
+  if (usuario.painel === 'fornecedor') {
+    return res.json({ ok: true, nome: usuario.nome, abas: [], painel: 'fornecedor' });
+  }
   const APP_TABS = new Set(['ads','lucro','promocoes','contas-pagar','bling','fiscal','compras','calculadora','configuracoes']);
   const painel = (usuario.painel === 'app' || (usuario.abas || []).some(t => APP_TABS.has(t))) ? 'app' : 'painel2';
   res.json({ ok: true, nome: usuario.nome, abas: usuario.abas || [], painel });
@@ -5296,4 +5301,61 @@ app.delete('/api/fornecedores/:id', (req, res) => {
   if (data.fornecedores_por_conta[num].length === antes) return res.status(404).json({ error: 'não encontrado' });
   saveData(data);
   res.json({ ok: true });
+});
+
+// ── Dashboard do fornecedor HANDDRY ──────────────────────────
+app.get('/api/fornecedor/dashboard', (req, res) => {
+  const data = loadData();
+  const NOME_FORN = 'HANDDRY';
+
+  // Coleta SKUs do fornecedor em todas as contas
+  let skus = [];
+  for (const num of Object.keys(data.fornecedores_por_conta || {})) {
+    const lista = data.fornecedores_por_conta[num] || [];
+    const forn  = lista.find(f => f.nome.toUpperCase() === NOME_FORN);
+    if (forn) skus = [...new Set([...skus, ...forn.skus])];
+  }
+
+  if (skus.length === 0) {
+    return res.json({ produtos: [], total_vendas_30d: 0, total_estoque: 0 });
+  }
+
+  const prodMap = {};
+  for (const sku of skus) {
+    prodMap[sku] = { sku, titulo: sku, vendas_30d: 0, vendas_7d: 0, estoque: 0 };
+  }
+
+  const agora = Date.now();
+  const MS30  = 30 * 24 * 3600 * 1000;
+  const MS7   =  7 * 24 * 3600 * 1000;
+
+  // Agrega vendas do histórico em todas as contas
+  for (const num of Object.keys(data.contas || {})) {
+    const hist = (data.contas[num] || {}).historico_vendas || [];
+    for (const h of hist) {
+      const ms   = new Date(h.data || h.dataDespacho || 0).getTime();
+      const em30 = (agora - ms) <= MS30;
+      const em7  = (agora - ms) <= MS7;
+      if (!em30) continue;
+      for (const item of (h.itensLista || [])) {
+        const p = prodMap[item.sku];
+        if (!p) continue;
+        if (item.titulo) p.titulo = item.titulo;
+        p.vendas_30d += (item.quantidade || 1);
+        if (em7) p.vendas_7d += (item.quantidade || 1);
+      }
+    }
+  }
+
+  // Estoque local por SKU
+  for (const sku of skus) {
+    const q = (data.estoque_local || {})[sku];
+    if (q !== undefined) prodMap[sku].estoque = q;
+  }
+
+  const produtos        = Object.values(prodMap);
+  const total_vendas_30d = produtos.reduce((s, p) => s + p.vendas_30d, 0);
+  const total_estoque    = produtos.reduce((s, p) => s + p.estoque,    0);
+
+  res.json({ produtos, total_vendas_30d, total_estoque });
 });
