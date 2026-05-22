@@ -38,6 +38,7 @@
         <button class="nav-btn" data-tab="compras">🛒 Compras</button>
         <button class="nav-btn" data-tab="calculadora">🧮 Calculadora</button>
         <button class="nav-btn" data-tab="etiquetas">🖨️ Etiquetas</button>
+        <button class="nav-btn" data-tab="log-anuncio">🔍 Log Anúncio</button>
         <button class="nav-btn" data-tab="configuracoes">⚙️ Configurações</button>
       </nav>
       <!-- Mobile: barra inferior com label da aba ativa + hamburger -->
@@ -1000,6 +1001,21 @@
         </div>
       </section>
 
+      <!-- ── Aba: Log Anúncio ── -->
+      <section id="tab-log-anuncio" class="tab">
+        <h1>Log Anúncio</h1>
+        <p class="subtitle">Consulte o estado e o histórico de alterações de um anúncio pelo MLB.</p>
+
+        <div style="display:flex;gap:10px;margin-bottom:24px;max-width:480px">
+          <input type="text" id="log-mlb-input" placeholder="Ex: MLB2103362491"
+            style="flex:1;padding:9px 12px;border:1px solid #334155;border-radius:8px;background:#1e293b;color:#f1f5f9;font-size:14px"
+            onkeydown="if(event.key==='Enter')logAnuncioBuscar()">
+          <button class="btn-primary" onclick="logAnuncioBuscar()" style="white-space:nowrap">Buscar</button>
+        </div>
+
+        <div id="log-resultado"></div>
+      </section>
+
     </main>
   </div>
 
@@ -1023,6 +1039,7 @@
       <button class="mobile-drawer-btn" data-tab="compras">🛒 Compras</button>
       <button class="mobile-drawer-btn" data-tab="calculadora">🧮 Calculadora</button>
       <button class="mobile-drawer-btn" data-tab="etiquetas">🖨️ Etiquetas</button>
+      <button class="mobile-drawer-btn" data-tab="log-anuncio">🔍 Log Anúncio</button>
       <button class="mobile-drawer-btn" data-tab="configuracoes">⚙️ Configurações</button>
     </nav>
   </div>
@@ -1061,6 +1078,7 @@
   <script src="/js/compras.js?v=1"></script>
   <script src="/js/calculadora.js"></script>
   <script src="/js/etiquetas.js"></script>
+  <script src="/js/log-anuncio.js"></script>
   <script>
   // ── Gerenciamento de Usuários ─────────────────────────────────
 
@@ -1078,6 +1096,7 @@
     { id: 'compras',       label: '🛒 Compras' },
     { id: 'calculadora',   label: '🧮 Calculadora' },
     { id: 'etiquetas',     label: '🖨️ Etiquetas' },
+    { id: 'log-anuncio',   label: '🔍 Log Anúncio' },
     { id: 'configuracoes', label: '⚙️ Configurações' },
   ];
 
@@ -1241,6 +1260,6 @@
     </div>
   </div>
 
-  <div id="version-badge">v458</div>
+  <div id="version-badge">v459</div>
 </body>
 </html>

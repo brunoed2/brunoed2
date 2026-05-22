@@ -120,7 +120,7 @@ function loadData() {
     raw.usuarios['0505'] = { nome: 'HANDDRY', abas: [], painel: 'fornecedor' };
   }
   // 199412 é sempre admin no painel app — forçado mesmo se já existir com dados errados
-  const adminAbas = ['estoque','ads','lucro','promocoes','contas-pagar','bling','fiscal','compras','calculadora','etiquetas','configuracoes'];
+  const adminAbas = ['estoque','ads','lucro','promocoes','contas-pagar','bling','fiscal','compras','calculadora','etiquetas','log-anuncio','configuracoes'];
   raw.usuarios['199412'] = {
     nome:  (raw.usuarios['199412'] || {}).nome  || 'Admin',
     abas:  (raw.usuarios['199412'] || {}).abas  || adminAbas,
@@ -1890,6 +1890,66 @@ app.get('/api/ml/estoque', async (req, res) => {
   } catch (err) {
     console.error('Erro ao buscar estoque:', err.response?.data || err.message);
     res.json({ error: 'Erro ao buscar anúncios. Tente novamente.' });
+  }
+});
+
+app.get('/api/ml/item-log/:mlb', async (req, res) => {
+  const data = loadData();
+  const num  = req.query.conta || data.conta_ativa;
+  const c    = data.contas[num] || {};
+  if (!c.access_token) return res.json({ error: 'Não conectado' });
+
+  const mlb = req.params.mlb.toUpperCase();
+
+  try {
+    const [itemResp, healthResp] = await Promise.allSettled([
+      axios.get(`https://api.mercadolibre.com/items/${mlb}`, {
+        headers: { Authorization: `Bearer ${c.access_token}` },
+        timeout: 10000,
+      }),
+      axios.get(`https://api.mercadolibre.com/items/${mlb}/health`, {
+        headers: { Authorization: `Bearer ${c.access_token}` },
+        timeout: 10000,
+      }),
+    ]);
+
+    if (itemResp.status === 'rejected') {
+      const detail = itemResp.reason?.response?.data?.message || itemResp.reason?.message;
+      return res.json({ error: detail || 'Erro ao buscar anúncio' });
+    }
+
+    const item   = itemResp.value.data;
+    const health = healthResp.status === 'fulfilled' ? healthResp.value.data : null;
+
+    // Snapshot: salva se estado mudou ou é o primeiro registro
+    const snapshot = {
+      ts:                 new Date().toISOString(),
+      status:             item.status,
+      sub_status:         item.sub_status || [],
+      price:              item.price,
+      available_quantity: item.available_quantity,
+    };
+
+    if (!data.item_logs) data.item_logs = {};
+    const logs = data.item_logs[mlb] || [];
+    const last = logs[logs.length - 1];
+    const mudou = !last
+      || last.status !== snapshot.status
+      || JSON.stringify(last.sub_status) !== JSON.stringify(snapshot.sub_status)
+      || last.price !== snapshot.price
+      || last.available_quantity !== snapshot.available_quantity;
+
+    if (mudou) {
+      logs.push(snapshot);
+      if (logs.length > 200) logs.splice(0, logs.length - 200);
+      data.item_logs[mlb] = logs;
+      saveData(data);
+    }
+
+    res.json({ item, health, snapshots: logs });
+  } catch (err) {
+    const detail = err.response?.data?.message || err.message;
+    res.json({ error: detail || 'Erro ao buscar anúncio no Mercado Livre.' });
   }
 });
 
