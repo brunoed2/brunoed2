@@ -3088,8 +3088,8 @@ app.post('/api/lucro/dre-cache-mes', async (req, res) => {
   lc.dre_cache = lc.dre_cache || {};
   lc.dre_cache[ano] = lc.dre_cache[ano] || {};
   lc.dre_cache[ano][mes] = {
-    lucroML:   parseFloat(lucroML) || 0,
-    ads:       parseFloat(ads)     || 0,
+    lucroML:   (lucroML === null || lucroML === undefined) ? null : (parseFloat(lucroML) || 0),
+    ads:       parseFloat(ads) || 0,
     updatedAt: new Date().toISOString().slice(0, 10),
   };
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
