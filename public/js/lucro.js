@@ -778,90 +778,148 @@ document.addEventListener('contaMudou', () => {
 
 const NOMES_MES = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
 
-function dreInit() {
-  const anoEl = document.getElementById('dre-ano');
-  if (anoEl && !anoEl.value) anoEl.value = new Date().getFullYear();
+// Retorna { de, ate } para qualquer mês 'YYYY-MM', respeitando data de hoje
+function drePeriodoMes(mes) {
+  const hoje = lucroHoje();
+  const [ano, m] = mes.split('-').map(Number);
+  const de = `${mes}-01`;
+  const ultimoDia = new Date(ano, m, 0).getDate();
+  const ate_full  = `${mes}-${String(ultimoDia).padStart(2,'0')}`;
+  return { de, ate: ate_full > hoje ? hoje : ate_full };
 }
 
-async function dreCarregar() {
+async function dreInit() {
+  const anoEl = document.getElementById('dre-ano');
+  if (anoEl && !anoEl.value) anoEl.value = new Date().getFullYear();
+  // Carrega do cache instantaneamente (sem chamada ao ML)
+  await dreCarregarDoCache();
+}
+
+// Carrega cache + dados locais e renderiza sem chamar API ML
+async function dreCarregarDoCache() {
   const conta   = lucroContaAtual();
-  const anoEl   = document.getElementById('dre-ano');
-  const ano     = parseInt(anoEl?.value) || new Date().getFullYear();
-  const btn     = document.getElementById('btn-dre-carregar');
+  const ano     = parseInt(document.getElementById('dre-ano')?.value) || new Date().getFullYear();
   const loading = document.getElementById('dre-loading');
   const tabela  = document.getElementById('tabela-dre');
   const vazio   = document.getElementById('dre-vazio');
-
-  if (btn)     btn.disabled = true;
-  if (loading) loading.style.display = 'block';
-  if (tabela)  tabela.style.display  = 'none';
-  if (vazio)   vazio.style.display   = 'none';
-
+  if (tabela) tabela.style.display = 'none';
+  if (vazio)  vazio.style.display  = 'none';
   try {
-    // Busca dados locais + vendas ML em paralelo
+    const [localResp, cacheResp] = await Promise.all([
+      fetch(`/api/lucro/dre-local?conta=${conta}&ano=${ano}`).then(r => r.json()),
+      fetch(`/api/lucro/dre-cache?conta=${conta}&ano=${ano}`).then(r => r.json()),
+    ]);
+    dreRenderizar(localResp.meses || [], ano, cacheResp.cache || {});
+  } catch {}
+}
+
+// Atualiza todos os meses via ML (lento) e salva no cache
+async function dreCarregar() {
+  const conta   = lucroContaAtual();
+  const ano     = parseInt(document.getElementById('dre-ano')?.value) || new Date().getFullYear();
+  const btn     = document.getElementById('btn-dre-carregar');
+  const loading = document.getElementById('dre-loading');
+  const vazio   = document.getElementById('dre-vazio');
+  if (btn)     btn.disabled = true;
+  if (loading) { loading.textContent = 'Buscando vendas no ML…'; loading.style.display = 'block'; }
+  if (vazio)   vazio.style.display = 'none';
+  try {
+    const hoje     = new Date();
+    const mesAtual = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}`;
+    // Busca local + vendas do ano inteiro em paralelo
     const [localResp, vendasResp] = await Promise.all([
       fetch(`/api/lucro/dre-local?conta=${conta}&ano=${ano}`).then(r => r.json()),
       fetch(`/api/lucro/vendas?conta=${conta}&date_from=${ano}-01-01&date_to=${ano}-12-31`).then(r => r.json()),
     ]);
-
+    if (loading) loading.textContent = 'Buscando Ads por mês…';
     // Agrupa vendas por mês
     const vendasPorMes = {};
     for (const v of (vendasResp.vendas || [])) {
       const mes = v.data?.slice(0, 7);
-      if (!mes) continue;
-      if (!vendasPorMes[mes]) vendasPorMes[mes] = [];
-      vendasPorMes[mes].push(v);
+      if (mes) { vendasPorMes[mes] = vendasPorMes[mes] || []; vendasPorMes[mes].push(v); }
     }
-
-    // Busca Ads de cada mês em paralelo (só meses até o atual)
-    const hoje      = new Date();
-    const mesAtual  = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}`;
     const mesesLocal = localResp.meses || [];
-    const adsPromises = mesesLocal.map(m =>
-      m.mes > mesAtual
+    // Busca Ads de cada mês em paralelo
+    const adsResults = await Promise.all(
+      mesesLocal.map(m => m.mes > mesAtual
         ? Promise.resolve({ mes: m.mes, ads_cost: 0 })
         : fetch(`/api/lucro/gastos-auto?conta=${conta}&mes=${m.mes}`)
-            .then(r => r.json())
-            .then(d => ({ mes: m.mes, ads_cost: d.ads_cost ?? 0 }))
+            .then(r => r.json()).then(d => ({ mes: m.mes, ads_cost: d.ads_cost ?? 0 }))
             .catch(() => ({ mes: m.mes, ads_cost: 0 }))
+      )
     );
-    const adsResults = await Promise.all(adsPromises);
-    const adsPorMes  = {};
+    const adsPorMes = {};
     for (const r of adsResults) adsPorMes[r.mes] = r.ads_cost;
-
-    dreRenderizar(mesesLocal, vendasPorMes, ano, adsPorMes);
+    // Salva cada mês no cache em paralelo
+    if (loading) loading.textContent = 'Salvando cache…';
+    await Promise.all(mesesLocal.map(m => {
+      const vendas  = vendasPorMes[m.mes] || [];
+      const calc    = vendas.length ? lucroCalcular(vendas) : [];
+      const totais  = calc.length  ? lucroTotais(calc)     : null;
+      const lucroML = totais ? totais.lucro : 0;
+      const ads     = adsPorMes[m.mes] ?? 0;
+      return fetch('/api/lucro/dre-cache-mes', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conta, mes: m.mes, lucroML, ads }),
+      }).catch(() => {});
+    }));
+    // Recarrega do cache (já preenchido) e renderiza
+    await dreCarregarDoCache();
   } catch (e) {
-    if (vazio) { vazio.textContent = 'Erro ao carregar DRE. Tente novamente.'; vazio.style.display = 'block'; }
+    if (vazio) { vazio.textContent = 'Erro ao carregar. Tente novamente.'; vazio.style.display = 'block'; }
   } finally {
     if (btn)     btn.disabled = false;
     if (loading) loading.style.display = 'none';
   }
 }
 
-function dreRenderizar(meses, vendasPorMes, ano, adsPorMes = {}) {
+// Atualiza apenas um mês via ML e salva no cache
+async function dreRefreshMes(mes) {
+  const conta  = lucroContaAtual();
+  const rowEl  = document.getElementById(`dre-row-${mes}`);
+  const btnEl  = document.getElementById(`dre-btn-${mes}`);
+  if (rowEl)  rowEl.style.opacity = '0.4';
+  if (btnEl)  { btnEl.disabled = true; btnEl.textContent = '…'; }
+  try {
+    const { de, ate } = drePeriodoMes(mes);
+    const [vendasResp, adsResp] = await Promise.all([
+      fetch(`/api/lucro/vendas?conta=${conta}&date_from=${de}&date_to=${ate}`).then(r => r.json()),
+      fetch(`/api/lucro/gastos-auto?conta=${conta}&mes=${mes}`).then(r => r.json()),
+    ]);
+    const vendas  = vendasResp.vendas || [];
+    const calc    = vendas.length ? lucroCalcular(vendas) : [];
+    const totais  = calc.length  ? lucroTotais(calc)     : null;
+    const lucroML = totais ? totais.lucro : 0;
+    const ads     = adsResp.ads_cost ?? 0;
+    await fetch('/api/lucro/dre-cache-mes', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ conta, mes, lucroML, ads }),
+    });
+    await dreCarregarDoCache();
+  } catch {}
+  // Row re-rendered by dreCarregarDoCache — opacity reset happens via new DOM
+}
+
+function dreRenderizar(meses, ano, cacheML = {}) {
   const tbody  = document.getElementById('tabela-dre-body');
   const tabela = document.getElementById('tabela-dre');
   const vazio  = document.getElementById('dre-vazio');
   if (!tbody) return;
   tbody.innerHTML = '';
 
-  const hoje       = new Date();
-  const mesAtual   = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}`;
+  const hoje     = new Date();
+  const mesAtual = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}`;
   let totML = 0, totEnt = 0, totVar = 0, totFix = 0, totAds = 0, totRes = 0;
   let temDados = false;
 
   for (const m of meses) {
-    // Pula meses futuros sem qualquer dado
     const isFuturo = m.mes > mesAtual;
     const temLocal = m.totalEntradas > 0 || m.totalGastosVar > 0 || m.totalFixos > 0;
-    const vendasDoMes = vendasPorMes[m.mes] || [];
-    if (isFuturo && !temLocal && !vendasDoMes.length) continue;
+    const cached   = cacheML[m.mes];
+    if (isFuturo && !temLocal && !cached) continue;
 
-    const vendasCalc = vendasDoMes.length ? lucroCalcular(vendasDoMes) : [];
-    const totaisML   = vendasCalc.length  ? lucroTotais(vendasCalc)    : null;
-    const lucroML    = totaisML ? totaisML.lucro : null;
-
-    const ads = adsPorMes[m.mes] ?? 0;
+    const lucroML  = cached ? cached.lucroML : null;
+    const ads      = cached ? (cached.ads ?? 0) : 0;
     const resultado = lucroML !== null
       ? lucroML + m.totalEntradas - m.totalGastosVar - m.totalFixos - ads
       : null;
@@ -874,13 +932,19 @@ function dreRenderizar(meses, vendasPorMes, ano, adsPorMes = {}) {
     totRes += resultado ?? 0;
     temDados = true;
 
-    const [y, mo]   = m.mes.split('-');
-    const nomeMes   = `${NOMES_MES[parseInt(mo)-1]}/${y.slice(2)}`;
-    const resCls    = resultado !== null ? (resultado >= 0 ? 'lucro-val-pos' : 'lucro-val-neg') : '';
-    const mlCls     = lucroML   !== null ? (lucroML   >= 0 ? 'lucro-val-pos' : 'lucro-val-neg') : '';
-    const dash      = '<span style="color:#94a3b8">—</span>';
+    const [y, mo] = m.mes.split('-');
+    const nomeMes = `${NOMES_MES[parseInt(mo)-1]}/${y.slice(2)}`;
+    const resCls  = resultado !== null ? (resultado >= 0 ? 'lucro-val-pos' : 'lucro-val-neg') : '';
+    const mlCls   = lucroML   !== null ? (lucroML   >= 0 ? 'lucro-val-pos' : 'lucro-val-neg') : '';
+    const dash    = '<span style="color:#94a3b8">—</span>';
+    const semCache = !cached && !isFuturo;
+    const titleAtualizar = cached
+      ? `Atualizado em ${cached.updatedAt} — clique para buscar novamente`
+      : 'Clique para buscar dados do ML para este mês';
 
     const tr = document.createElement('tr');
+    tr.id = `dre-row-${m.mes}`;
+    if (semCache) tr.style.color = '#94a3b8';
     tr.innerHTML = `
       <td style="white-space:nowrap;font-weight:500">${nomeMes}</td>
       <td class="col-num ${mlCls}">${lucroML !== null ? lucroFmt(lucroML) : dash}</td>
@@ -889,12 +953,16 @@ function dreRenderizar(meses, vendasPorMes, ano, adsPorMes = {}) {
       <td class="col-num lucro-val-neg">${m.totalFixos > 0 ? lucroFmt(m.totalFixos) : dash}</td>
       <td class="col-num lucro-val-neg">${ads > 0 ? lucroFmt(ads) : dash}</td>
       <td class="col-num ${resCls}"><strong>${resultado !== null ? lucroFmt(resultado) : dash}</strong></td>
+      <td style="text-align:center">
+        ${!isFuturo ? `<button id="dre-btn-${m.mes}" class="lucro-btn-lock" style="opacity:.5;font-size:13px"
+          onclick="dreRefreshMes('${m.mes}')" title="${titleAtualizar}">↻</button>` : ''}
+      </td>
     `;
     tbody.appendChild(tr);
   }
 
   if (!temDados) {
-    if (vazio) vazio.style.display = 'block';
+    if (vazio) { vazio.textContent = 'Nenhum dado no cache. Clique "↻ Atualizar tudo" para carregar.'; vazio.style.display = 'block'; }
     return;
   }
 
@@ -910,6 +978,7 @@ function dreRenderizar(meses, vendasPorMes, ano, adsPorMes = {}) {
     <td class="col-num lucro-val-neg">${totFix > 0 ? lucroFmt(totFix) : '—'}</td>
     <td class="col-num lucro-val-neg">${totAds > 0 ? lucroFmt(totAds) : '—'}</td>
     <td class="col-num ${totResCls}">${lucroFmt(totRes)}</td>
+    <td></td>
   `;
   tbody.appendChild(trTot);
 

@@ -180,8 +180,9 @@ async function syncRailwayEnvVars(_dataIgnorado) {
     const lc = (data.lucro_contas || {})[num];
     if (lc) {
       // Salva custos/imposto sem gastos (evita var muito grande)
-      const { gastos: _g, ...lcSemGastos } = lc;
+      const { gastos: _g, dre_cache: _dc, ...lcSemGastos } = lc;
       variables[`LUCRO_CONFIG_${num}`] = JSON.stringify(lcSemGastos);
+      variables[`DRE_CACHE_${num}`]    = JSON.stringify(lc.dre_cache || {});
       // Gastos mensais em var separada — sempre sincroniza
       variables[`GASTOS_DATA_${num}`] = JSON.stringify(lc.gastos || {});
       // Gastos fixos (tipos + valores) — sempre sincroniza
@@ -437,6 +438,13 @@ function initFromEnvVars() {
       try {
         data.lucro_contas[num] = data.lucro_contas[num] || {};
         data.lucro_contas[num].gastos_fixos_valores = JSON.parse(process.env[`GASTOS_FIXOS_VALS_${num}`]);
+        changed = true;
+      } catch {}
+    }
+    if (process.env[`DRE_CACHE_${num}`] !== undefined) {
+      try {
+        data.lucro_contas[num] = data.lucro_contas[num] || {};
+        data.lucro_contas[num].dre_cache = JSON.parse(process.env[`DRE_CACHE_${num}`]);
         changed = true;
       } catch {}
     }
@@ -3057,6 +3065,35 @@ app.post('/api/lucro/gastos-fixos-valores-batch', async (req, res) => {
   }
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
   await syncRailwayEnvVars(data).catch(e => console.error('[gastos-fixo-batch] sync erro:', e.message));
+  res.json({ ok: true });
+});
+
+// Cache do DRE (Lucro ML + Ads por mês, calculados no front e salvos aqui)
+app.get('/api/lucro/dre-cache', (req, res) => {
+  const data = loadData();
+  const num  = String(req.query.conta || data.conta_ativa || '1');
+  const ano  = req.query.ano || String(new Date().getFullYear());
+  const lc   = (data.lucro_contas || {})[num] || {};
+  res.json({ cache: (lc.dre_cache || {})[ano] || {} });
+});
+
+app.post('/api/lucro/dre-cache-mes', async (req, res) => {
+  const { conta, mes, lucroML, ads } = req.body;
+  const num = String(conta || '1');
+  const ano = String(mes || '').slice(0, 4);
+  if (!mes || !ano) return res.status(400).json({ error: 'mes inválido' });
+  const data = loadData();
+  data.lucro_contas = data.lucro_contas || {};
+  const lc = data.lucro_contas[num] = data.lucro_contas[num] || {};
+  lc.dre_cache = lc.dre_cache || {};
+  lc.dre_cache[ano] = lc.dre_cache[ano] || {};
+  lc.dre_cache[ano][mes] = {
+    lucroML:   parseFloat(lucroML) || 0,
+    ads:       parseFloat(ads)     || 0,
+    updatedAt: new Date().toISOString().slice(0, 10),
+  };
+  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+  await syncRailwayEnvVars(data).catch(e => console.error('[dre-cache-mes] sync erro:', e.message));
   res.json({ ok: true });
 });
 

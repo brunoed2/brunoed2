@@ -297,10 +297,10 @@
             <label style="font-size:13px;color:#64748b;font-weight:500">Ano:</label>
             <input type="number" id="dre-ano" min="2020" max="2099" step="1"
               style="width:80px;padding:5px 8px;border:1px solid #334155;border-radius:6px;font-size:13px;background:#1e293b;color:#e2e8f0">
-            <button class="btn-primary" id="btn-dre-carregar" onclick="dreCarregar()" style="font-size:13px;padding:6px 18px">Carregar DRE</button>
-            <span style="font-size:12px;color:#64748b">Lucro ML já desconta taxas, frete, custo do produto e imposto.</span>
+            <button class="btn-primary" id="btn-dre-carregar" onclick="dreCarregar()" style="font-size:13px;padding:6px 18px" title="Atualiza todos os meses buscando dados no ML (lento)">↻ Atualizar tudo</button>
+            <span style="font-size:12px;color:#64748b">Lucro ML já desconta taxas, frete, custo do produto e imposto. Clique ↻ na linha para atualizar só aquele mês.</span>
           </div>
-          <div id="dre-loading" class="loading" style="display:none">Carregando DRE (buscando vendas + Ads no ML…)</div>
+          <div id="dre-loading" class="loading" style="display:none">Carregando DRE…</div>
           <div id="dre-vazio" style="display:none;color:#94a3b8;padding:20px 0;text-align:center;font-size:14px">Nenhum dado encontrado para o ano.</div>
           <div class="tabela-container">
             <table class="tabela" id="tabela-dre" style="display:none">
@@ -313,6 +313,7 @@
                   <th class="col-num">Gastos fixos</th>
                   <th class="col-num">Ads</th>
                   <th class="col-num">Resultado</th>
+                  <th style="width:36px"></th>
                 </tr>
               </thead>
               <tbody id="tabela-dre-body"></tbody>
@@ -1284,6 +1285,6 @@
     </div>
   </div>
 
-  <div id="version-badge">v464</div>
+  <div id="version-badge">v465</div>
 </body>
 </html>
