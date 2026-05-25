@@ -813,7 +813,7 @@ async function dreCarregarDoCache() {
   } catch {}
 }
 
-// Atualiza todos os meses via ML (lento) e salva no cache
+// Atualiza todos os meses via ML (mês a mês para não sobrecarregar a API)
 async function dreCarregar() {
   const conta   = lucroContaAtual();
   const ano     = parseInt(document.getElementById('dre-ano')?.value) || new Date().getFullYear();
@@ -821,51 +821,37 @@ async function dreCarregar() {
   const loading = document.getElementById('dre-loading');
   const vazio   = document.getElementById('dre-vazio');
   if (btn)     btn.disabled = true;
-  if (loading) { loading.textContent = 'Buscando vendas no ML…'; loading.style.display = 'block'; }
+  if (loading) { loading.textContent = 'Preparando…'; loading.style.display = 'block'; }
   if (vazio)   vazio.style.display = 'none';
   try {
-    // Garante que taxas/custos estão carregados antes de calcular
     await lucroCarregarConfig();
-    const hoje     = new Date();
-    const mesAtual = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}`;
-    // Busca local + vendas do ano inteiro em paralelo
-    const [localResp, vendasResp] = await Promise.all([
-      fetch(`/api/lucro/dre-local?conta=${conta}&ano=${ano}`).then(r => r.json()),
-      fetch(`/api/lucro/vendas?conta=${conta}&date_from=${ano}-01-01&date_to=${ano}-12-31`).then(r => r.json()),
-    ]);
-    if (loading) loading.textContent = 'Buscando Ads por mês…';
-    // Agrupa vendas por mês
-    const vendasPorMes = {};
-    for (const v of (vendasResp.vendas || [])) {
-      const mes = v.data?.slice(0, 7);
-      if (mes) { vendasPorMes[mes] = vendasPorMes[mes] || []; vendasPorMes[mes].push(v); }
+    const hoje       = new Date();
+    const mesAtual   = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}`;
+    const localResp  = await fetch(`/api/lucro/dre-local?conta=${conta}&ano=${ano}`).then(r => r.json());
+    // Processa só meses passados/atual (futuros não têm dados)
+    const meses = (localResp.meses || []).filter(m => m.mes <= mesAtual);
+    for (let i = 0; i < meses.length; i++) {
+      const m = meses[i];
+      if (loading) loading.textContent = `Buscando ${m.mes} (${i + 1}/${meses.length})…`;
+      try {
+        const { de, ate } = drePeriodoMes(m.mes);
+        const [vendasResp, adsResp] = await Promise.all([
+          fetch(`/api/lucro/vendas?conta=${conta}&date_from=${de}&date_to=${ate}`).then(r => r.json()),
+          fetch(`/api/lucro/gastos-auto?conta=${conta}&mes=${m.mes}`).then(r => r.json()),
+        ]);
+        const vendas  = vendasResp.vendas || [];
+        const calc    = vendas.length ? lucroCalcular(vendas) : [];
+        const totais  = calc.length  ? lucroTotais(calc)     : null;
+        const lucroML = totais ? totais.lucro : null;
+        const ads     = adsResp.ads_cost ?? 0;
+        await fetch('/api/lucro/dre-cache-mes', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ conta, mes: m.mes, lucroML, ads }),
+        }).catch(() => {});
+      } catch {}
+      // Atualiza a tabela a cada mês para mostrar progresso visual
+      dreCarregarDoCache();
     }
-    const mesesLocal = localResp.meses || [];
-    // Busca Ads de cada mês em paralelo
-    const adsResults = await Promise.all(
-      mesesLocal.map(m => m.mes > mesAtual
-        ? Promise.resolve({ mes: m.mes, ads_cost: 0 })
-        : fetch(`/api/lucro/gastos-auto?conta=${conta}&mes=${m.mes}`)
-            .then(r => r.json()).then(d => ({ mes: m.mes, ads_cost: d.ads_cost ?? 0 }))
-            .catch(() => ({ mes: m.mes, ads_cost: 0 }))
-      )
-    );
-    const adsPorMes = {};
-    for (const r of adsResults) adsPorMes[r.mes] = r.ads_cost;
-    // Salva cada mês no cache em paralelo
-    if (loading) loading.textContent = 'Salvando cache…';
-    await Promise.all(mesesLocal.map(m => {
-      const vendas  = vendasPorMes[m.mes] || [];
-      const calc    = vendas.length ? lucroCalcular(vendas) : [];
-      const totais  = calc.length  ? lucroTotais(calc)     : null;
-      const lucroML = totais ? totais.lucro : null;
-      const ads     = adsPorMes[m.mes] ?? 0;
-      return fetch('/api/lucro/dre-cache-mes', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ conta, mes: m.mes, lucroML, ads }),
-      }).catch(() => {});
-    }));
-    // Recarrega do cache (já preenchido) e renderiza
     await dreCarregarDoCache();
   } catch (e) {
     if (vazio) { vazio.textContent = 'Erro ao carregar. Tente novamente.'; vazio.style.display = 'block'; }
