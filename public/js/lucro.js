@@ -792,12 +792,13 @@ async function dreCarregar() {
   const tabela  = document.getElementById('tabela-dre');
   const vazio   = document.getElementById('dre-vazio');
 
-  if (btn)    btn.disabled = true;
+  if (btn)     btn.disabled = true;
   if (loading) loading.style.display = 'block';
   if (tabela)  tabela.style.display  = 'none';
   if (vazio)   vazio.style.display   = 'none';
 
   try {
+    // Busca dados locais + vendas ML em paralelo
     const [localResp, vendasResp] = await Promise.all([
       fetch(`/api/lucro/dre-local?conta=${conta}&ano=${ano}`).then(r => r.json()),
       fetch(`/api/lucro/vendas?conta=${conta}&date_from=${ano}-01-01&date_to=${ano}-12-31`).then(r => r.json()),
@@ -812,16 +813,32 @@ async function dreCarregar() {
       vendasPorMes[mes].push(v);
     }
 
-    dreRenderizar(localResp.meses || [], vendasPorMes, ano);
+    // Busca Ads de cada mês em paralelo (só meses até o atual)
+    const hoje      = new Date();
+    const mesAtual  = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}`;
+    const mesesLocal = localResp.meses || [];
+    const adsPromises = mesesLocal.map(m =>
+      m.mes > mesAtual
+        ? Promise.resolve({ mes: m.mes, ads_cost: 0 })
+        : fetch(`/api/lucro/gastos-auto?conta=${conta}&mes=${m.mes}`)
+            .then(r => r.json())
+            .then(d => ({ mes: m.mes, ads_cost: d.ads_cost ?? 0 }))
+            .catch(() => ({ mes: m.mes, ads_cost: 0 }))
+    );
+    const adsResults = await Promise.all(adsPromises);
+    const adsPorMes  = {};
+    for (const r of adsResults) adsPorMes[r.mes] = r.ads_cost;
+
+    dreRenderizar(mesesLocal, vendasPorMes, ano, adsPorMes);
   } catch (e) {
     if (vazio) { vazio.textContent = 'Erro ao carregar DRE. Tente novamente.'; vazio.style.display = 'block'; }
   } finally {
-    if (btn)    btn.disabled = false;
+    if (btn)     btn.disabled = false;
     if (loading) loading.style.display = 'none';
   }
 }
 
-function dreRenderizar(meses, vendasPorMes, ano) {
+function dreRenderizar(meses, vendasPorMes, ano, adsPorMes = {}) {
   const tbody  = document.getElementById('tabela-dre-body');
   const tabela = document.getElementById('tabela-dre');
   const vazio  = document.getElementById('dre-vazio');
@@ -830,7 +847,7 @@ function dreRenderizar(meses, vendasPorMes, ano) {
 
   const hoje       = new Date();
   const mesAtual   = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}`;
-  let totML = 0, totEnt = 0, totVar = 0, totFix = 0, totRes = 0;
+  let totML = 0, totEnt = 0, totVar = 0, totFix = 0, totAds = 0, totRes = 0;
   let temDados = false;
 
   for (const m of meses) {
@@ -844,14 +861,16 @@ function dreRenderizar(meses, vendasPorMes, ano) {
     const totaisML   = vendasCalc.length  ? lucroTotais(vendasCalc)    : null;
     const lucroML    = totaisML ? totaisML.lucro : null;
 
+    const ads = adsPorMes[m.mes] ?? 0;
     const resultado = lucroML !== null
-      ? lucroML + m.totalEntradas - m.totalGastosVar - m.totalFixos
+      ? lucroML + m.totalEntradas - m.totalGastosVar - m.totalFixos - ads
       : null;
 
     totML  += lucroML ?? 0;
     totEnt += m.totalEntradas;
     totVar += m.totalGastosVar;
     totFix += m.totalFixos;
+    totAds += ads;
     totRes += resultado ?? 0;
     temDados = true;
 
@@ -868,6 +887,7 @@ function dreRenderizar(meses, vendasPorMes, ano) {
       <td class="col-num lucro-val-pos">${m.totalEntradas > 0 ? '+' + lucroFmt(m.totalEntradas) : dash}</td>
       <td class="col-num lucro-val-neg">${m.totalGastosVar > 0 ? lucroFmt(m.totalGastosVar) : dash}</td>
       <td class="col-num lucro-val-neg">${m.totalFixos > 0 ? lucroFmt(m.totalFixos) : dash}</td>
+      <td class="col-num lucro-val-neg">${ads > 0 ? lucroFmt(ads) : dash}</td>
       <td class="col-num ${resCls}"><strong>${resultado !== null ? lucroFmt(resultado) : dash}</strong></td>
     `;
     tbody.appendChild(tr);
@@ -888,6 +908,7 @@ function dreRenderizar(meses, vendasPorMes, ano) {
     <td class="col-num lucro-val-pos">${totEnt > 0 ? '+' + lucroFmt(totEnt) : '—'}</td>
     <td class="col-num lucro-val-neg">${totVar > 0 ? lucroFmt(totVar) : '—'}</td>
     <td class="col-num lucro-val-neg">${totFix > 0 ? lucroFmt(totFix) : '—'}</td>
+    <td class="col-num lucro-val-neg">${totAds > 0 ? lucroFmt(totAds) : '—'}</td>
     <td class="col-num ${totResCls}">${lucroFmt(totRes)}</td>
   `;
   tbody.appendChild(trTot);
