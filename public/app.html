@@ -88,9 +88,10 @@
 
         <!-- Sub-abas -->
         <div class="lucro-subabas">
-          <button class="lucro-subaba-btn active" onclick="lucroAba('vendas')">Vendas</button>
-          <button class="lucro-subaba-btn" onclick="lucroAba('custos')">Custos por SKU</button>
-          <button class="lucro-subaba-btn" onclick="lucroAba('gastos')">Gastos</button>
+          <button class="lucro-subaba-btn active" data-aba="vendas" onclick="lucroAba('vendas')">Vendas</button>
+          <button class="lucro-subaba-btn" data-aba="custos" onclick="lucroAba('custos')">Custos por SKU</button>
+          <button class="lucro-subaba-btn" data-aba="gastos" onclick="lucroAba('gastos')">Gastos</button>
+          <button class="lucro-subaba-btn" data-aba="dre" onclick="lucroAba('dre')">DRE</button>
         </div>
 
         <!-- Aba: Vendas -->
@@ -189,32 +190,9 @@
         <!-- Aba: Gastos -->
         <div id="lucro-aba-gastos" class="lucro-aba" style="display:none">
           <!-- Seletor de mês (controla tudo) + botão Atualizar -->
-          <div style="display:flex;align-items:center;gap:10px;margin-top:4px;margin-bottom:12px">
+          <div style="display:flex;align-items:center;gap:10px;margin-top:4px;margin-bottom:16px">
             <input type="month" id="gastos-mes" class="lucro-date-input">
             <button class="btn-secondary" id="btn-gastos-atualizar" onclick="gastosAtualizarTudo()" style="font-size:13px;padding:5px 14px">↻ Atualizar</button>
-          </div>
-
-          <!-- Resumo do mês com gastos -->
-          <div class="lucro-cards" id="gastos-cards">
-            <div class="lucro-card">
-              <div style="display:flex;align-items:center;justify-content:space-between;gap:4px">
-                <div class="lucro-card-label" id="gastos-label-periodo">Lucro do período</div>
-                <span id="gastos-lucro-loading" style="font-size:11px;color:#94a3b8;display:none">carregando…</span>
-              </div>
-              <div class="lucro-card-valor" id="gastos-lucro-periodo">—</div>
-            </div>
-            <div class="lucro-card" id="gastos-entradas-card" style="display:none">
-              <div class="lucro-card-label">Entradas externas</div>
-              <div class="lucro-card-valor lucro-val-pos" id="gastos-entradas">—</div>
-            </div>
-            <div class="lucro-card">
-              <div class="lucro-card-label">Total gastos</div>
-              <div class="lucro-card-valor lucro-val-neg" id="gastos-total">—</div>
-            </div>
-            <div class="lucro-card lucro-card-destaque">
-              <div class="lucro-card-label">Resultado final</div>
-              <div class="lucro-card-valor" id="gastos-resultado">—</div>
-            </div>
           </div>
 
           <!-- Formulário para adicionar lançamento -->
@@ -309,6 +287,34 @@
                 </tr>
               </thead>
               <tbody id="tabela-gastos-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Aba: DRE -->
+        <div id="lucro-aba-dre" class="lucro-aba" style="display:none">
+          <div style="display:flex;align-items:center;gap:10px;margin-top:4px;margin-bottom:16px;flex-wrap:wrap">
+            <label style="font-size:13px;color:#64748b;font-weight:500">Ano:</label>
+            <input type="number" id="dre-ano" min="2020" max="2099" step="1"
+              style="width:80px;padding:5px 8px;border:1px solid #334155;border-radius:6px;font-size:13px;background:#1e293b;color:#e2e8f0">
+            <button class="btn-primary" id="btn-dre-carregar" onclick="dreCarregar()" style="font-size:13px;padding:6px 18px">Carregar DRE</button>
+            <span style="font-size:12px;color:#64748b">Lucro ML já desconta taxas, frete, custo do produto e imposto.</span>
+          </div>
+          <div id="dre-loading" class="loading" style="display:none">Carregando DRE (buscando vendas no ML…)</div>
+          <div id="dre-vazio" style="display:none;color:#94a3b8;padding:20px 0;text-align:center;font-size:14px">Nenhum dado encontrado para o ano.</div>
+          <div class="tabela-container">
+            <table class="tabela" id="tabela-dre" style="display:none">
+              <thead>
+                <tr>
+                  <th>Mês</th>
+                  <th class="col-num">Lucro ML</th>
+                  <th class="col-num">Entradas ext.</th>
+                  <th class="col-num">Gastos var.</th>
+                  <th class="col-num">Gastos fixos</th>
+                  <th class="col-num">Resultado</th>
+                </tr>
+              </thead>
+              <tbody id="tabela-dre-body"></tbody>
             </table>
           </div>
         </div>
@@ -1277,6 +1283,6 @@
     </div>
   </div>
 
-  <div id="version-badge">v462</div>
+  <div id="version-badge">v463</div>
 </body>
 </html>

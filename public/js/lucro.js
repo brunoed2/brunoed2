@@ -339,17 +339,16 @@ async function lucroCarregarVendas() {
 // ── Sub-abas ──────────────────────────────────────────────────
 
 function lucroAba(nome) {
-  // Atualiza botões
   document.querySelectorAll('.lucro-subaba-btn').forEach(btn => {
-    btn.classList.toggle('active', btn.textContent.trim().toLowerCase().startsWith(nome === 'vendas' ? 'ven' : nome === 'custos' ? 'cus' : 'gas'));
+    btn.classList.toggle('active', btn.dataset.aba === nome);
   });
-  // Mostra/oculta abas
-  document.getElementById('lucro-aba-vendas').style.display  = nome === 'vendas'  ? '' : 'none';
-  document.getElementById('lucro-aba-custos').style.display  = nome === 'custos'  ? '' : 'none';
-  document.getElementById('lucro-aba-gastos').style.display  = nome === 'gastos'  ? '' : 'none';
-  // Carrega conteúdo sob demanda
+  ['vendas', 'custos', 'gastos', 'dre'].forEach(a => {
+    const el = document.getElementById(`lucro-aba-${a}`);
+    if (el) el.style.display = a === nome ? '' : 'none';
+  });
   if (nome === 'custos') lucroCustosCarregar();
   if (nome === 'gastos') { gastosInitMes(); gastosAtualizarTudo(); }
+  if (nome === 'dre')    dreInit();
 }
 
 // ── Gastos mensais ────────────────────────────────────────────
@@ -404,11 +403,11 @@ async function gastosCarregarLucroMes() {
 async function gastosAtualizarTudo() {
   const btn = document.getElementById('btn-gastos-atualizar');
   if (btn) btn.disabled = true;
+  // Só dados locais — sem chamada à API do ML para evitar resultados instáveis
+  // Ads tem seu próprio botão "↻ Atualizar" na seção "Detectado automaticamente"
   await Promise.all([
     gastosCarregar(),
     gastosFixosCarregar(),
-    gastosCarregarLucroMes(),
-    gastosAutoCarregar(),
   ]);
   if (btn) btn.disabled = false;
 }
@@ -774,3 +773,124 @@ document.addEventListener('contaMudou', () => {
     lucroCarregarConfig().then(() => lucroCarregarVendas());
   }
 });
+
+// ── DRE (Demonstração do Resultado) ──────────────────────────
+
+const NOMES_MES = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+
+function dreInit() {
+  const anoEl = document.getElementById('dre-ano');
+  if (anoEl && !anoEl.value) anoEl.value = new Date().getFullYear();
+}
+
+async function dreCarregar() {
+  const conta   = lucroContaAtual();
+  const anoEl   = document.getElementById('dre-ano');
+  const ano     = parseInt(anoEl?.value) || new Date().getFullYear();
+  const btn     = document.getElementById('btn-dre-carregar');
+  const loading = document.getElementById('dre-loading');
+  const tabela  = document.getElementById('tabela-dre');
+  const vazio   = document.getElementById('dre-vazio');
+
+  if (btn)    btn.disabled = true;
+  if (loading) loading.style.display = 'block';
+  if (tabela)  tabela.style.display  = 'none';
+  if (vazio)   vazio.style.display   = 'none';
+
+  try {
+    const [localResp, vendasResp] = await Promise.all([
+      fetch(`/api/lucro/dre-local?conta=${conta}&ano=${ano}`).then(r => r.json()),
+      fetch(`/api/lucro/vendas?conta=${conta}&date_from=${ano}-01-01&date_to=${ano}-12-31`).then(r => r.json()),
+    ]);
+
+    // Agrupa vendas por mês
+    const vendasPorMes = {};
+    for (const v of (vendasResp.vendas || [])) {
+      const mes = v.data?.slice(0, 7);
+      if (!mes) continue;
+      if (!vendasPorMes[mes]) vendasPorMes[mes] = [];
+      vendasPorMes[mes].push(v);
+    }
+
+    dreRenderizar(localResp.meses || [], vendasPorMes, ano);
+  } catch (e) {
+    if (vazio) { vazio.textContent = 'Erro ao carregar DRE. Tente novamente.'; vazio.style.display = 'block'; }
+  } finally {
+    if (btn)    btn.disabled = false;
+    if (loading) loading.style.display = 'none';
+  }
+}
+
+function dreRenderizar(meses, vendasPorMes, ano) {
+  const tbody  = document.getElementById('tabela-dre-body');
+  const tabela = document.getElementById('tabela-dre');
+  const vazio  = document.getElementById('dre-vazio');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+
+  const hoje       = new Date();
+  const mesAtual   = `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}`;
+  let totML = 0, totEnt = 0, totVar = 0, totFix = 0, totRes = 0;
+  let temDados = false;
+
+  for (const m of meses) {
+    // Pula meses futuros sem qualquer dado
+    const isFuturo = m.mes > mesAtual;
+    const temLocal = m.totalEntradas > 0 || m.totalGastosVar > 0 || m.totalFixos > 0;
+    const vendasDoMes = vendasPorMes[m.mes] || [];
+    if (isFuturo && !temLocal && !vendasDoMes.length) continue;
+
+    const vendasCalc = vendasDoMes.length ? lucroCalcular(vendasDoMes) : [];
+    const totaisML   = vendasCalc.length  ? lucroTotais(vendasCalc)    : null;
+    const lucroML    = totaisML ? totaisML.lucro : null;
+
+    const resultado = lucroML !== null
+      ? lucroML + m.totalEntradas - m.totalGastosVar - m.totalFixos
+      : null;
+
+    totML  += lucroML ?? 0;
+    totEnt += m.totalEntradas;
+    totVar += m.totalGastosVar;
+    totFix += m.totalFixos;
+    totRes += resultado ?? 0;
+    temDados = true;
+
+    const [y, mo]   = m.mes.split('-');
+    const nomeMes   = `${NOMES_MES[parseInt(mo)-1]}/${y.slice(2)}`;
+    const resCls    = resultado !== null ? (resultado >= 0 ? 'lucro-val-pos' : 'lucro-val-neg') : '';
+    const mlCls     = lucroML   !== null ? (lucroML   >= 0 ? 'lucro-val-pos' : 'lucro-val-neg') : '';
+    const dash      = '<span style="color:#94a3b8">—</span>';
+
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td style="white-space:nowrap;font-weight:500">${nomeMes}</td>
+      <td class="col-num ${mlCls}">${lucroML !== null ? lucroFmt(lucroML) : dash}</td>
+      <td class="col-num lucro-val-pos">${m.totalEntradas > 0 ? '+' + lucroFmt(m.totalEntradas) : dash}</td>
+      <td class="col-num lucro-val-neg">${m.totalGastosVar > 0 ? lucroFmt(m.totalGastosVar) : dash}</td>
+      <td class="col-num lucro-val-neg">${m.totalFixos > 0 ? lucroFmt(m.totalFixos) : dash}</td>
+      <td class="col-num ${resCls}"><strong>${resultado !== null ? lucroFmt(resultado) : dash}</strong></td>
+    `;
+    tbody.appendChild(tr);
+  }
+
+  if (!temDados) {
+    if (vazio) vazio.style.display = 'block';
+    return;
+  }
+
+  // Linha de totais
+  const totResCls = totRes >= 0 ? 'lucro-val-pos' : 'lucro-val-neg';
+  const trTot = document.createElement('tr');
+  trTot.style.cssText = 'border-top:2px solid #334155;font-weight:700';
+  trTot.innerHTML = `
+    <td>Total ${ano}</td>
+    <td class="col-num ${totML >= 0 ? 'lucro-val-pos' : 'lucro-val-neg'}">${lucroFmt(totML)}</td>
+    <td class="col-num lucro-val-pos">${totEnt > 0 ? '+' + lucroFmt(totEnt) : '—'}</td>
+    <td class="col-num lucro-val-neg">${totVar > 0 ? lucroFmt(totVar) : '—'}</td>
+    <td class="col-num lucro-val-neg">${totFix > 0 ? lucroFmt(totFix) : '—'}</td>
+    <td class="col-num ${totResCls}">${lucroFmt(totRes)}</td>
+  `;
+  tbody.appendChild(trTot);
+
+  if (tabela) tabela.style.display = 'table';
+}

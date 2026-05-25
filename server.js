@@ -3060,6 +3060,32 @@ app.post('/api/lucro/gastos-fixos-valores-batch', async (req, res) => {
   res.json({ ok: true });
 });
 
+// DRE local — gastos + fixos para todos os meses de um ano (sem chamada à API ML)
+app.get('/api/lucro/dre-local', (req, res) => {
+  const data     = loadData();
+  const num      = String(req.query.conta || data.conta_ativa || '1');
+  const ano      = parseInt(req.query.ano) || new Date().getFullYear();
+  const lc       = (data.lucro_contas || {})[num] || {};
+  const travados = lc.gastos_fixos_travados || [];
+  const padrao   = lc.gastos_fixos_padrao   || {};
+  const meses    = [];
+  for (let m = 1; m <= 12; m++) {
+    const mes         = `${ano}-${String(m).padStart(2, '0')}`;
+    const gastosDoMes = (lc.gastos || {})[mes] || [];
+    const fixosRaw    = (lc.gastos_fixos_valores || {})[mes] || {};
+    // Auto-fill para itens travados sem valor no mês
+    const fixos = { ...fixosRaw };
+    for (const nome of travados) {
+      if (!(nome in fixos) && nome in padrao) fixos[nome] = padrao[nome];
+    }
+    const totalEntradas  = gastosDoMes.filter(g => g.tipo === 'entrada').reduce((s, g) => s + g.valor, 0);
+    const totalGastosVar = gastosDoMes.filter(g => g.tipo !== 'entrada').reduce((s, g) => s + g.valor, 0);
+    const totalFixos     = Object.values(fixos).reduce((s, v) => s + (parseFloat(v) || 0), 0);
+    meses.push({ mes, totalEntradas, totalGastosVar, totalFixos });
+  }
+  res.json({ meses });
+});
+
 // Ativa/desativa cadeado (valor padrão repetido todo mês)
 app.post('/api/lucro/gastos-fixo-travado', async (req, res) => {
   const { conta, nome, travado, valor } = req.body;
