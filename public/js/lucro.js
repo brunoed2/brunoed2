@@ -8,6 +8,7 @@ let lucroCarregado    = false; // evita recarregar ao trocar de aba sem trocar c
 let gastosLista       = []; // gastos carregados para o mês atual
 let gastosVendasRaw   = []; // vendas do mês completo (exclusivo para aba Gastos)
 let gastosAuto        = { ads_cost: null }; // detectados automaticamente
+let gastosFixosTravados = new Set(); // nomes dos fixos com cadeado ativo
 
 function lucroHoje() {
   const d = new Date();
@@ -406,11 +407,13 @@ async function gastosFixosCarregar() {
   const mes   = gastosMesAtual();
   try {
     const d = await fetch(`/api/lucro/gastos-fixos?conta=${conta}&mes=${mes}`).then(r => r.json());
-    gastosFixosTipos   = d.tipos   || [];
-    gastosFixosValores = d.valores || {};
+    gastosFixosTipos    = d.tipos    || [];
+    gastosFixosValores  = d.valores  || {};
+    gastosFixosTravados = new Set(d.travados || []);
   } catch {
-    gastosFixosTipos   = [];
-    gastosFixosValores = {};
+    gastosFixosTipos    = [];
+    gastosFixosValores  = {};
+    gastosFixosTravados = new Set();
   }
   gastosFixosRenderizar();
 }
@@ -439,7 +442,9 @@ function gastosFixosRenderizar() {
   if (statusEl) statusEl.textContent = '';
 
   gastosFixosTipos.forEach(nome => {
-    const valor = gastosFixosValores[nome] ?? 0;
+    const valor   = gastosFixosValores[nome] ?? 0;
+    const travado = gastosFixosTravados.has(nome);
+    const escNome = nome.replace(/'/g, "\\'");
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>${nome}</td>
@@ -450,7 +455,14 @@ function gastosFixosRenderizar() {
           oninput="gastosAtualizarCards()">
       </td>
       <td style="text-align:center">
-        <button class="lucro-btn-remover" onclick="gastosFixoRemoverTipo('${nome.replace(/'/g,"\\'")}')">✕</button>
+        <button class="lucro-btn-lock${travado ? ' ativo' : ''}"
+          onclick="gastosFixoToggleTravado('${escNome}')"
+          title="${travado ? 'Valor fixo ativo — clique para desativar' : 'Clique para repetir este valor automaticamente todo mês'}">
+          ${travado ? '&#128274;' : '&#128275;'}
+        </button>
+      </td>
+      <td style="text-align:center">
+        <button class="lucro-btn-remover" onclick="gastosFixoRemoverTipo('${escNome}')">✕</button>
       </td>
     `;
     tbody.appendChild(tr);
@@ -485,6 +497,22 @@ async function gastosFixoRemoverTipo(nome) {
     });
     gastosFixosTipos   = gastosFixosTipos.filter(t => t !== nome);
     delete gastosFixosValores[nome];
+    gastosFixosRenderizar();
+  } catch {}
+}
+
+async function gastosFixoToggleTravado(nome) {
+  const conta   = lucroContaAtual();
+  const travado = !gastosFixosTravados.has(nome);
+  const inp     = document.querySelector(`input[data-nome="${nome}"]`);
+  const valorAtual = inp ? parseFloat(inp.value.replace(',', '.')) || 0 : 0;
+  try {
+    await fetch('/api/lucro/gastos-fixo-travado', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ conta, nome, travado, valor: valorAtual }),
+    });
+    if (travado) gastosFixosTravados.add(nome); else gastosFixosTravados.delete(nome);
     gastosFixosRenderizar();
   } catch {}
 }
@@ -588,10 +616,13 @@ function gastosRenderizar() {
     vazio.style.display  = 'none';
     const mes = gastosMesAtual();
     gastosLista.forEach(g => {
+      const isEntrada = g.tipo === 'entrada';
       const tr = document.createElement('tr');
       tr.innerHTML = `
-        <td>${g.descricao || '—'}</td>
-        <td class="col-num lucro-val-neg">${lucroFmt(g.valor)}</td>
+        <td>
+          <span class="gastos-tipo-badge ${isEntrada ? 'entrada' : 'gasto'}">${isEntrada ? '+ Entrada' : '− Gasto'}</span>${g.descricao || '—'}
+        </td>
+        <td class="col-num ${isEntrada ? 'lucro-val-pos' : 'lucro-val-neg'}">${isEntrada ? '+' : ''}${lucroFmt(g.valor)}</td>
         <td style="text-align:center">
           <button class="lucro-btn-remover" onclick="gastosRemover('${g.id}')" title="Remover">✕</button>
         </td>
@@ -604,8 +635,9 @@ function gastosRenderizar() {
 }
 
 function gastosAtualizarCards() {
-  const totalManuais  = gastosLista.reduce((s, g) => s + g.valor, 0);
-  const totalAuto     = (gastosAuto.ads_cost ?? 0);
+  const totalGastosManuais = gastosLista.reduce((s, g) => g.tipo === 'entrada' ? s : s + g.valor, 0);
+  const totalEntradas      = gastosLista.reduce((s, g) => g.tipo === 'entrada' ? s + g.valor : s, 0);
+  const totalAuto          = (gastosAuto.ads_cost ?? 0);
   // Lê inputs diretamente para refletir digitação antes de salvar
   const tbody = document.getElementById('tabela-gastos-fixos-body');
   let totalFixos = 0;
@@ -616,16 +648,18 @@ function gastosAtualizarCards() {
   } else {
     totalFixos = gastosFixosTipos.reduce((s, n) => s + (gastosFixosValores[n] ?? 0), 0);
   }
-  const totalGastos   = totalManuais + totalAuto + totalFixos;
+  const totalGastos  = totalGastosManuais + totalAuto + totalFixos;
   // Lucro do mês completo (buscado independentemente da aba Vendas)
   const vendas  = gastosVendasRaw.length ? lucroCalcular(gastosVendasRaw) : [];
   const totais  = vendas.length ? lucroTotais(vendas) : null;
   const lucroPeriodo = totais ? totais.lucro : null;
 
-  const periodoEl   = document.getElementById('gastos-lucro-periodo');
-  const totalEl     = document.getElementById('gastos-total');
-  const resultadoEl = document.getElementById('gastos-resultado');
-  const labelEl     = document.getElementById('gastos-label-periodo');
+  const periodoEl    = document.getElementById('gastos-lucro-periodo');
+  const totalEl      = document.getElementById('gastos-total');
+  const resultadoEl  = document.getElementById('gastos-resultado');
+  const labelEl      = document.getElementById('gastos-label-periodo');
+  const entradasEl   = document.getElementById('gastos-entradas');
+  const entradasCard = document.getElementById('gastos-entradas-card');
 
   // Atualiza label com o período real
   if (labelEl) {
@@ -638,12 +672,14 @@ function gastosAtualizarCards() {
     periodoEl.textContent = lucroPeriodo !== null ? lucroFmt(lucroPeriodo) : '—';
     periodoEl.className   = 'lucro-card-valor' + (lucroPeriodo !== null ? (lucroPeriodo >= 0 ? ' lucro-val-pos' : ' lucro-val-neg') : '');
   }
+  if (entradasCard) entradasCard.style.display = totalEntradas > 0 ? '' : 'none';
+  if (entradasEl)   entradasEl.textContent      = totalEntradas > 0 ? lucroFmt(totalEntradas) : '—';
   if (totalEl) {
     totalEl.textContent = totalGastos > 0 ? lucroFmt(totalGastos) : '—';
   }
   if (resultadoEl) {
     if (lucroPeriodo !== null) {
-      const resultado = lucroPeriodo - totalGastos;
+      const resultado = lucroPeriodo + totalEntradas - totalGastos;
       resultadoEl.textContent = lucroFmt(resultado);
       resultadoEl.className   = 'lucro-card-valor ' + (resultado >= 0 ? 'lucro-val-pos' : 'lucro-val-neg');
     } else {
@@ -653,24 +689,32 @@ function gastosAtualizarCards() {
   }
 }
 
+function gastosTipoSel(tipo) {
+  const btnG = document.getElementById('gastos-tipo-gasto');
+  const btnE = document.getElementById('gastos-tipo-entrada');
+  if (btnG) btnG.classList.toggle('active', tipo === 'gasto');
+  if (btnE) btnE.classList.toggle('active', tipo === 'entrada');
+}
+
 async function gastosAdicionar() {
   const conta      = lucroContaAtual();
   const mes        = gastosMesAtual();
   const descricao  = document.getElementById('gastos-descricao')?.value?.trim();
   const valorInput = document.getElementById('gastos-valor');
   const valor      = parseFloat(valorInput?.value?.replace(',', '.')) || 0;
+  const tipo       = document.getElementById('gastos-tipo-entrada')?.classList.contains('active') ? 'entrada' : 'gasto';
 
-  if (!descricao) { alert('Informe a descrição do gasto.'); return; }
+  if (!descricao) { alert('Informe a descrição.'); return; }
   if (valor <= 0)  { alert('Informe um valor maior que zero.'); return; }
 
   try {
     const r = await fetch('/api/lucro/gasto', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ conta, mes, descricao, valor }),
+      body:    JSON.stringify({ conta, mes, descricao, valor, tipo }),
     }).then(r => r.json());
     if (r.ok) {
-      gastosLista.push({ id: r.id, descricao, valor });
+      gastosLista.push({ id: r.id, descricao, valor, tipo });
       document.getElementById('gastos-descricao').value = '';
       if (valorInput) valorInput.value = '';
       gastosRenderizar();

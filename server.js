@@ -185,8 +185,10 @@ async function syncRailwayEnvVars(_dataIgnorado) {
       // Gastos mensais em var separada — sempre sincroniza
       variables[`GASTOS_DATA_${num}`] = JSON.stringify(lc.gastos || {});
       // Gastos fixos (tipos + valores) — sempre sincroniza
-      variables[`GASTOS_FIXOS_TIPOS_${num}`] = JSON.stringify(lc.gastos_fixos_tipos || []);
-      variables[`GASTOS_FIXOS_VALS_${num}`]  = JSON.stringify(lc.gastos_fixos_valores || {});
+      variables[`GASTOS_FIXOS_TIPOS_${num}`] = JSON.stringify(lc.gastos_fixos_tipos    || []);
+      variables[`GASTOS_FIXOS_VALS_${num}`]  = JSON.stringify(lc.gastos_fixos_valores  || {});
+      variables[`GASTOS_FIXOS_TRAV_${num}`]  = JSON.stringify(lc.gastos_fixos_travados || []);
+      variables[`GASTOS_FIXOS_PAD_${num}`]   = JSON.stringify(lc.gastos_fixos_padrao   || {});
     }
   }
   // Certificado digital Notas de Entrada — por conta
@@ -435,6 +437,20 @@ function initFromEnvVars() {
       try {
         data.lucro_contas[num] = data.lucro_contas[num] || {};
         data.lucro_contas[num].gastos_fixos_valores = JSON.parse(process.env[`GASTOS_FIXOS_VALS_${num}`]);
+        changed = true;
+      } catch {}
+    }
+    if (process.env[`GASTOS_FIXOS_TRAV_${num}`] !== undefined) {
+      try {
+        data.lucro_contas[num] = data.lucro_contas[num] || {};
+        data.lucro_contas[num].gastos_fixos_travados = JSON.parse(process.env[`GASTOS_FIXOS_TRAV_${num}`]);
+        changed = true;
+      } catch {}
+    }
+    if (process.env[`GASTOS_FIXOS_PAD_${num}`] !== undefined) {
+      try {
+        data.lucro_contas[num] = data.lucro_contas[num] || {};
+        data.lucro_contas[num].gastos_fixos_padrao = JSON.parse(process.env[`GASTOS_FIXOS_PAD_${num}`]);
         changed = true;
       } catch {}
     }
@@ -2952,13 +2968,24 @@ app.get('/api/lucro/gastos', (req, res) => {
 // Valores: { mes: { nome: valor } } por conta
 
 app.get('/api/lucro/gastos-fixos', (req, res) => {
-  const data = loadData();
-  const num  = String(req.query.conta || data.conta_ativa || '1');
-  const mes  = req.query.mes || new Date().toISOString().slice(0, 7);
-  const lc   = (data.lucro_contas || {})[num] || {};
+  const data     = loadData();
+  const num      = String(req.query.conta || data.conta_ativa || '1');
+  const mes      = req.query.mes || new Date().toISOString().slice(0, 7);
+  const lc       = (data.lucro_contas || {})[num] || {};
+  const travados = lc.gastos_fixos_travados || [];
+  const padrao   = lc.gastos_fixos_padrao   || {};
+  const valoresMes = (lc.gastos_fixos_valores || {})[mes] || {};
+  // Itens travados sem valor no mês herdam o valor padrão (último salvo)
+  const valores = { ...valoresMes };
+  for (const nome of travados) {
+    if (!(nome in valores) && nome in padrao) {
+      valores[nome] = padrao[nome];
+    }
+  }
   res.json({
-    tipos:   lc.gastos_fixos_tipos   || [],
-    valores: (lc.gastos_fixos_valores || {})[mes] || {},
+    tipos:    lc.gastos_fixos_tipos || [],
+    valores,
+    travados,
   });
 });
 
@@ -3020,8 +3047,40 @@ app.post('/api/lucro/gastos-fixos-valores-batch', async (req, res) => {
   for (const [nome, valor] of Object.entries(valores)) {
     lc.gastos_fixos_valores[mes][nome] = parseFloat(valor) || 0;
   }
+  // Atualiza valor padrão para itens travados (cadeado)
+  const travados = lc.gastos_fixos_travados || [];
+  if (travados.length) {
+    lc.gastos_fixos_padrao = lc.gastos_fixos_padrao || {};
+    for (const nome of travados) {
+      if (nome in valores) lc.gastos_fixos_padrao[nome] = parseFloat(valores[nome]) || 0;
+    }
+  }
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
   await syncRailwayEnvVars(data).catch(e => console.error('[gastos-fixo-batch] sync erro:', e.message));
+  res.json({ ok: true });
+});
+
+// Ativa/desativa cadeado (valor padrão repetido todo mês)
+app.post('/api/lucro/gastos-fixo-travado', async (req, res) => {
+  const { conta, nome, travado, valor } = req.body;
+  const num = String(conta || '1');
+  if (!nome?.trim()) return res.status(400).json({ error: 'Nome obrigatório' });
+  const data = loadData();
+  data.lucro_contas = data.lucro_contas || {};
+  const lc = data.lucro_contas[num] = data.lucro_contas[num] || {};
+  lc.gastos_fixos_travados = lc.gastos_fixos_travados || [];
+  if (travado) {
+    if (!lc.gastos_fixos_travados.includes(nome)) lc.gastos_fixos_travados.push(nome);
+    // Salva valor atual como padrão ao travar
+    if (valor !== null && valor !== undefined) {
+      lc.gastos_fixos_padrao = lc.gastos_fixos_padrao || {};
+      lc.gastos_fixos_padrao[nome] = parseFloat(valor) || 0;
+    }
+  } else {
+    lc.gastos_fixos_travados = lc.gastos_fixos_travados.filter(t => t !== nome);
+  }
+  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+  await syncRailwayEnvVars(data).catch(e => console.error('[gastos-fixo-travado] sync erro:', e.message));
   res.json({ ok: true });
 });
 
@@ -3035,7 +3094,8 @@ app.post('/api/lucro/gasto', async (req, res) => {
   lc.gastos = lc.gastos || {};
   lc.gastos[mes] = lc.gastos[mes] || [];
   const id = Date.now().toString();
-  lc.gastos[mes].push({ id, descricao: String(descricao || '').trim(), valor: parseFloat(valor) || 0 });
+  const tipoVal = req.body.tipo === 'entrada' ? 'entrada' : 'gasto';
+  lc.gastos[mes].push({ id, descricao: String(descricao || '').trim(), valor: parseFloat(valor) || 0, tipo: tipoVal });
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
   await syncRailwayEnvVars(data).catch(e => console.error('[lucro/gasto] sync erro:', e.message));
   res.json({ ok: true, id });
