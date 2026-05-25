@@ -1819,7 +1819,7 @@ app.get('/api/ml/estoque', async (req, res) => {
       const resp  = await axios.get('https://api.mercadolibre.com/items', {
         params: {
           ids:        chunk.join(','),
-          attributes: 'id,title,permalink,seller_custom_field,available_quantity,variations,shipping,attributes,status,last_updated,catalog_product_id',
+          attributes: 'id,title,permalink,seller_custom_field,available_quantity,variations,shipping,attributes,status,sub_status,price,last_updated,catalog_product_id',
         },
         headers: { Authorization: `Bearer ${c.access_token}` },
         timeout: 15000,
@@ -1846,9 +1846,24 @@ app.get('/api/ml/estoque', async (req, res) => {
             const titulo = r.body.title || mlb;
             const conta  = (data.contas[num] || {}).nickname || `Conta ${num}`;
             notificar(`⏸ <b>Anúncio pausado — ${conta}</b>\n\n${titulo}\n<code>${mlb}</code>`).catch(() => {});
+            // Salva snapshot automático no log do anúncio
+            if (!data.item_logs) data.item_logs = {};
+            const logs = data.item_logs[mlb] || [];
+            logs.push({ ts: agora, status, sub_status: r.body.sub_status || [], price: r.body.price ?? null, available_quantity: r.body.available_quantity ?? 0 });
+            if (logs.length > 200) logs.splice(0, logs.length - 200);
+            data.item_logs[mlb] = logs;
           }
         } else {
-          if (pauseDates[mlb]) { delete pauseDates[mlb]; pauseChanged = true; }
+          if (pauseDates[mlb]) {
+            delete pauseDates[mlb];
+            pauseChanged = true;
+            // Salva snapshot automático quando anúncio é reativado
+            if (!data.item_logs) data.item_logs = {};
+            const logs = data.item_logs[mlb] || [];
+            logs.push({ ts: agora, status, sub_status: r.body.sub_status || [], price: r.body.price ?? null, available_quantity: r.body.available_quantity ?? 0 });
+            if (logs.length > 200) logs.splice(0, logs.length - 200);
+            data.item_logs[mlb] = logs;
+          }
         }
 
         return {
