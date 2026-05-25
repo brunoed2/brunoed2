@@ -349,7 +349,7 @@ function lucroAba(nome) {
   document.getElementById('lucro-aba-gastos').style.display  = nome === 'gastos'  ? '' : 'none';
   // Carrega conteúdo sob demanda
   if (nome === 'custos') lucroCustosCarregar();
-  if (nome === 'gastos') { gastosInitMes(); gastosCarregar(); gastosFixosCarregar(); gastosCarregarLucroMes(); gastosAutoCarregar(); }
+  if (nome === 'gastos') { gastosInitMes(); gastosAtualizarTudo(); }
 }
 
 // ── Gastos mensais ────────────────────────────────────────────
@@ -381,20 +381,36 @@ function gastosPeriodoMes() {
 }
 
 async function gastosCarregarLucroMes() {
-  const conta   = lucroContaAtual();
+  const conta      = lucroContaAtual();
   const { de, ate } = gastosPeriodoMes();
-  const periodoEl   = document.getElementById('gastos-lucro-periodo');
+  const loadingEl  = document.getElementById('gastos-lucro-loading');
+  const periodoEl  = document.getElementById('gastos-lucro-periodo');
   const resultadoEl = document.getElementById('gastos-resultado');
-  if (periodoEl)   { periodoEl.textContent = '…'; periodoEl.className = 'lucro-card-valor'; }
-  if (resultadoEl) { resultadoEl.textContent = '…'; resultadoEl.className = 'lucro-card-valor'; }
+  if (loadingEl)   loadingEl.style.display = 'inline';
+  if (periodoEl)   { periodoEl.textContent = '—'; periodoEl.className = 'lucro-card-valor'; }
+  if (resultadoEl) { resultadoEl.textContent = '—'; resultadoEl.className = 'lucro-card-valor'; }
   try {
     const qs = new URLSearchParams({ conta, date_from: de, date_to: ate });
     const d  = await fetch(`/api/lucro/vendas?${qs}`).then(r => r.json());
     gastosVendasRaw = d.vendas || [];
+    if (loadingEl) loadingEl.style.display = 'none';
   } catch {
     gastosVendasRaw = [];
+    if (loadingEl) { loadingEl.textContent = 'erro — clique em Atualizar'; loadingEl.style.display = 'inline'; }
   }
   gastosAtualizarCards();
+}
+
+async function gastosAtualizarTudo() {
+  const btn = document.getElementById('btn-gastos-atualizar');
+  if (btn) btn.disabled = true;
+  await Promise.all([
+    gastosCarregar(),
+    gastosFixosCarregar(),
+    gastosCarregarLucroMes(),
+    gastosAutoCarregar(),
+  ]);
+  if (btn) btn.disabled = false;
 }
 
 // ── Gastos fixos ──────────────────────────────────────────────
@@ -742,10 +758,10 @@ async function lucroInit() {
   if (!lucroCarregado) {
     await lucroCarregarVendas();
   }
-  // Recarrega gastos e lucro do mês ao trocar o mês
+  // Recarrega tudo ao trocar o mês
   const mesEl = document.getElementById('gastos-mes');
   if (mesEl && !mesEl._listenerOk) {
-    mesEl.addEventListener('change', () => { gastosCarregar(); gastosFixosCarregar(); gastosCarregarLucroMes(); gastosAutoCarregar(); });
+    mesEl.addEventListener('change', gastosAtualizarTudo);
     mesEl._listenerOk = true;
   }
 }

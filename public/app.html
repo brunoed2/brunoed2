@@ -188,10 +188,19 @@
 
         <!-- Aba: Gastos -->
         <div id="lucro-aba-gastos" class="lucro-aba" style="display:none">
+          <!-- Seletor de mês (controla tudo) + botão Atualizar -->
+          <div style="display:flex;align-items:center;gap:10px;margin-top:4px;margin-bottom:12px">
+            <input type="month" id="gastos-mes" class="lucro-date-input">
+            <button class="btn-secondary" id="btn-gastos-atualizar" onclick="gastosAtualizarTudo()" style="font-size:13px;padding:5px 14px">↻ Atualizar</button>
+          </div>
+
           <!-- Resumo do mês com gastos -->
-          <div class="lucro-cards" id="gastos-cards" style="margin-top:4px">
+          <div class="lucro-cards" id="gastos-cards">
             <div class="lucro-card">
-              <div class="lucro-card-label" id="gastos-label-periodo">Lucro do período</div>
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:4px">
+                <div class="lucro-card-label" id="gastos-label-periodo">Lucro do período</div>
+                <span id="gastos-lucro-loading" style="font-size:11px;color:#94a3b8;display:none">carregando…</span>
+              </div>
               <div class="lucro-card-valor" id="gastos-lucro-periodo">—</div>
             </div>
             <div class="lucro-card" id="gastos-entradas-card" style="display:none">
@@ -218,10 +227,6 @@
                   <button id="gastos-tipo-gasto" class="gastos-tipo-btn active" data-tipo="gasto" onclick="gastosTipoSel('gasto')">− Gasto</button>
                   <button id="gastos-tipo-entrada" class="gastos-tipo-btn" data-tipo="entrada" onclick="gastosTipoSel('entrada')">+ Entrada</button>
                 </div>
-              </div>
-              <div class="field" style="margin:0;flex:1;min-width:140px">
-                <label>Mês</label>
-                <input type="month" id="gastos-mes" class="lucro-date-input" style="width:100%">
               </div>
               <div class="field" style="margin:0;flex:3;min-width:180px">
                 <label>Descrição</label>
@@ -1272,6 +1277,6 @@
     </div>
   </div>
 
-  <div id="version-badge">v461</div>
+  <div id="version-badge">v462</div>
 </body>
 </html>
