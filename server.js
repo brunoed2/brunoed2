@@ -1547,16 +1547,25 @@ async function fetchBlingPedidosPendentes(conta) {
   }));
 }
 
-// Endpoint temporário de diagnóstico: retorna raw do detalhe de um pedido Bling
-app.get('/api/bling/debug-pedido/:id', async (req, res) => {
+// Endpoint temporário de diagnóstico: lista canal/loja de todos os pedidos pendentes de uma conta
+app.get('/api/bling/debug-canais', async (req, res) => {
   try {
     const conta = blingContaReq(req); // ?conta=2
     const token = await getBlingToken(conta);
-    const r = await axios.get(`https://api.bling.com.br/Api/v3/pedidos/vendas/${req.params.id}`, {
-      headers: { Authorization: `Bearer ${token}` }, timeout: 10000,
+    const lista = await axios.get('https://api.bling.com.br/Api/v3/pedidos/vendas', {
+      headers: { Authorization: `Bearer ${token}` },
+      params: { pagina: 1, limite: 100, idSituacao: 6 },
+      timeout: 15000,
     });
-    const d = r.data?.data || {};
-    return res.json({ canal: d.canal, loja: d.loja, numeroLoja: d.numeroLoja, situacao: d.situacao });
+    const itens = lista.data?.data || [];
+    const resultado = [];
+    for (const p of itens) {
+      const det = await axios.get(`https://api.bling.com.br/Api/v3/pedidos/vendas/${p.id}`, {
+        headers: { Authorization: `Bearer ${token}` }, timeout: 10000,
+      }).then(r => r.data?.data || {}).catch(() => ({}));
+      resultado.push({ id: p.id, numero: det.numero || p.numero, contato: det.contato?.nome, canal: det.canal, loja: det.loja, numeroLoja: det.numeroLoja });
+    }
+    return res.json(resultado);
   } catch (err) {
     return res.json({ erro: err.response?.data || err.message });
   }
