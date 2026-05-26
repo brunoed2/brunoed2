@@ -2,7 +2,7 @@
 // lucro.js — Cálculo de lucro por venda
 // ============================================================
 
-let lucroConfig       = { taxa_imposto: 0, frete_medio: 0, custos: {} };
+let lucroConfig       = { taxa_imposto: 0, taxa_imposto_por_mes: {}, frete_medio: 0, custos: {} };
 let lucroVendasRaw    = []; // dados brutos da API (sem custos/imposto aplicados)
 let lucroCarregado    = false; // evita recarregar ao trocar de aba sem trocar conta
 let gastosLista       = []; // gastos carregados para o mês atual
@@ -49,29 +49,31 @@ async function lucroCarregarConfig() {
   const conta = lucroContaAtual();
   try {
     const cfg = await fetch(`/api/lucro/config?conta=${conta}`).then(r => r.json());
-    lucroConfig = cfg;
-    const tiEl = document.getElementById('lucro-taxa-imposto');
-    if (tiEl) tiEl.value = cfg.taxa_imposto || 0;
-    // Re-renderiza se já há vendas carregadas (ex: usuário volta para a aba)
+    lucroConfig = { taxa_imposto: 0, taxa_imposto_por_mes: {}, frete_medio: 0, custos: {}, ...cfg };
     if (lucroVendasRaw.length) lucroRecalcularERenderizar();
   } catch {}
 }
 
-async function lucroSalvarConfig() {
-  const conta        = lucroContaAtual();
-  const taxa_imposto = parseFloat(document.getElementById('lucro-taxa-imposto').value) || 0;
-  const btn = document.getElementById('btn-lucro-salvar-cfg');
-  if (btn) { btn.disabled = true; btn.textContent = 'Salvando...'; }
+async function dreSetTaxaMes(input, mes) {
+  const conta = lucroContaAtual();
+  const taxa  = parseFloat(input.value.replace(',', '.'));
+  const val   = isNaN(taxa) ? null : taxa;
+  input.style.borderColor = '#cbd5e1';
   try {
-    await fetch('/api/lucro/config', {
+    await fetch('/api/lucro/taxa-imposto-mes', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ conta, taxa_imposto }),
+      body:    JSON.stringify({ conta, mes, taxa: val ?? 0 }),
     });
-    lucroConfig.taxa_imposto = taxa_imposto;
-    lucroRecalcularERenderizar();
-  } catch {}
-  if (btn) { btn.disabled = false; btn.textContent = 'Salvar'; }
+    lucroConfig.taxa_imposto_por_mes = lucroConfig.taxa_imposto_por_mes || {};
+    if (val !== null) lucroConfig.taxa_imposto_por_mes[mes] = val;
+    else delete lucroConfig.taxa_imposto_por_mes[mes];
+    if (lucroVendasRaw.length) lucroRecalcularERenderizar();
+    input.style.borderColor = '#86efac';
+    setTimeout(() => { input.style.borderColor = ''; }, 1200);
+  } catch {
+    input.style.borderColor = '#fca5a5';
+  }
 }
 
 // ── Custo por produto ─────────────────────────────────────────
@@ -116,11 +118,13 @@ async function lucroSalvarCusto(input, btn) {
 // ── Cálculo ──────────────────────────────────────────────────
 
 function lucroCalcular(raw) {
-  const { taxa_imposto, custos } = lucroConfig;
+  const { taxa_imposto = 0, taxa_imposto_por_mes = {}, custos } = lucroConfig;
   return raw.map(v => {
+    const mes     = (v.data || '').slice(0, 7);
+    const taxa    = mes in taxa_imposto_por_mes ? taxa_imposto_por_mes[mes] : taxa_imposto;
     const custo   = v.itens.reduce((s, i) => s + (custos[i.sku || i.mlb] || 0) * i.quantidade, 0);
-    const frete   = v.freteReal ?? 0; // custo real de frete do vendedor (sender_cost da API)
-    const imposto = v.receita * (taxa_imposto / 100);
+    const frete   = v.freteReal ?? 0;
+    const imposto = v.receita * (taxa / 100);
     const lucro   = v.receita - v.taxaML - frete - custo - imposto;
     const margem  = v.receita > 0 ? (lucro / v.receita) * 100 : 0;
     return { ...v, custo, frete, imposto, lucro, margem };
@@ -952,11 +956,20 @@ function dreRenderizar(meses, ano, cacheML = {}) {
       ? `Atualizado em ${cached.updatedAt} — clique para buscar novamente`
       : 'Clique para buscar dados do ML para este mês';
 
+    const taxaMes = (lucroConfig.taxa_imposto_por_mes || {})[m.mes];
+    const taxaVal = taxaMes !== undefined ? taxaMes : '';
+
     const tr = document.createElement('tr');
     tr.id = `dre-row-${m.mes}`;
     if (semCache) tr.style.color = '#94a3b8';
     tr.innerHTML = `
       <td style="white-space:nowrap;font-weight:500">${nomeMes}</td>
+      <td class="col-num">
+        <input type="number" class="lucro-custo-input dre-taxa-input" step="0.1" min="0" max="100"
+          value="${taxaVal}" placeholder="—"
+          onchange="dreSetTaxaMes(this, '${m.mes}')"
+          title="Imposto sobre receita para ${nomeMes} (%)">
+      </td>
       <td class="col-num ${mlCls}">${lucroML !== null ? lucroFmt(lucroML) : dash}</td>
       <td class="col-num lucro-val-pos">${m.totalEntradas > 0 ? '+' + lucroFmt(m.totalEntradas) : dash}</td>
       <td class="col-num lucro-val-neg">${m.totalGastosVar > 0 ? lucroFmt(m.totalGastosVar) : dash}</td>
@@ -982,6 +995,7 @@ function dreRenderizar(meses, ano, cacheML = {}) {
   trTot.style.cssText = 'border-top:2px solid #334155;font-weight:700';
   trTot.innerHTML = `
     <td>Total ${ano}</td>
+    <td></td>
     <td class="col-num ${totML >= 0 ? 'lucro-val-pos' : 'lucro-val-neg'}">${lucroFmt(totML)}</td>
     <td class="col-num lucro-val-pos">${totEnt > 0 ? '+' + lucroFmt(totEnt) : '—'}</td>
     <td class="col-num lucro-val-neg">${totVar > 0 ? lucroFmt(totVar) : '—'}</td>

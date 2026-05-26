@@ -3005,10 +3005,25 @@ app.get('/api/lucro/config', (req, res) => {
   const num   = req.query.conta || data.conta_ativa;
   const lc    = (data.lucro_contas || {})[num] || {};
   res.json({
-    taxa_imposto: lc.taxa_imposto ?? 0,
-    frete_medio:  lc.frete_medio  ?? 0,
-    custos:       lc.custos       || {},
+    taxa_imposto:        lc.taxa_imposto         ?? 0,
+    taxa_imposto_por_mes: lc.taxa_imposto_por_mes || {},
+    frete_medio:         lc.frete_medio          ?? 0,
+    custos:              lc.custos               || {},
   });
+});
+
+app.post('/api/lucro/taxa-imposto-mes', async (req, res) => {
+  const { conta, mes, taxa } = req.body;
+  const num = String(conta || '1');
+  if (!mes || !/^\d{4}-\d{2}$/.test(mes)) return res.status(400).json({ error: 'mes inválido' });
+  const data = loadData();
+  data.lucro_contas = data.lucro_contas || {};
+  const lc = data.lucro_contas[num] = data.lucro_contas[num] || {};
+  lc.taxa_imposto_por_mes = lc.taxa_imposto_por_mes || {};
+  lc.taxa_imposto_por_mes[mes] = parseFloat(taxa) || 0;
+  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+  syncRailwayEnvVars(data).catch(e => console.error('[taxa-imposto-mes] sync erro:', e.message));
+  res.json({ ok: true });
 });
 
 app.post('/api/lucro/config', async (req, res) => {

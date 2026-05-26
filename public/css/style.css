@@ -863,6 +863,8 @@ tr.venda-atendida td { opacity: .45; }
   border-color: #818cf8;
 }
 
+.dre-taxa-input { width: 60px !important; text-align: center !important; }
+
 .lucro-ok-btn {
   padding: 3px 7px;
   margin-left: 4px;
