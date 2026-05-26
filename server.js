@@ -3432,6 +3432,13 @@ app.get('/api/lucro/vendas', async (req, res) => {
       );
     }
 
+    // Pedidos num mesmo pack (mesmo shipping.id) dividem o custo do frete igualmente
+    const pedidosPorShipment = {};
+    todasOrdens.forEach(o => {
+      const sid = o.shipping?.id;
+      if (sid) pedidosPorShipment[sid] = (pedidosPorShipment[sid] || 0) + 1;
+    });
+
     // Modo debug: mostra campo shipping dos pedidos + estrutura de custo dos shipments
     if (req.query.debug === '1') {
       const ordersShipping = todasOrdens.slice(0, 5).map(o => ({
@@ -3461,7 +3468,9 @@ app.get('/api/lucro/vendas', async (req, res) => {
       }));
       const receita   = itens.reduce((s, i) => s + i.precoUnit * i.quantidade, 0);
       const taxaML    = itens.reduce((s, i) => s + i.taxaML, 0);
-      const freteReal = fretePorShipment[order.shipping?.id] ?? 0;
+      const sid       = order.shipping?.id;
+      const freteBruto = fretePorShipment[sid] ?? 0;
+      const freteReal  = sid ? freteBruto / (pedidosPorShipment[sid] || 1) : 0;
       return {
         orderId: order.id,
         data:    order.date_closed || order.date_created,
