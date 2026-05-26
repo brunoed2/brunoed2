@@ -184,7 +184,8 @@ function lucroRenderizarTabela(vendas) {
     const fmtCusto = (val) => val > 0 ? lucroFmt(val) : '—';
     tr.innerHTML = `
       <td class="lucro-td-data">${new Date(v.data).toLocaleDateString('pt-BR')}</td>
-      <td class="td-titulo lucro-titulo-copy" onclick="lucroCopiarPedido(this, '${v.orderId}')" title="Clique para copiar o número do pedido">${item0.titulo || '—'}${multi ? `<span class="lucro-multi"> +${v.itens.length - 1}</span>` : ''}</td>
+      <td class="lucro-td-pedido" onclick="lucroCopiarPedido(this, '${v.orderId}')" title="Clique para copiar">${v.orderId || '—'}</td>
+      <td class="td-titulo">${item0.titulo || '—'}${multi ? `<span class="lucro-multi"> +${v.itens.length - 1}</span>` : ''}</td>
       <td class="lucro-td-mlb">${chave0 || '—'}</td>
       <td class="col-num">${qtdTotal}</td>
       <td class="col-num">${lucroFmt(v.receita)}</td>
@@ -212,6 +213,7 @@ function lucroRenderizarTabela(vendas) {
       const trSub   = document.createElement('tr');
       trSub.classList.add('lucro-sub-item');
       trSub.innerHTML = `
+        <td></td>
         <td></td>
         <td class="td-titulo" style="color:#94a3b8;font-size:12px">↳ ${item.titulo || chaveI}</td>
         <td class="lucro-td-mlb">${chaveI || '—'}</td>
