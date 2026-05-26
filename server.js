@@ -1487,9 +1487,10 @@ async function fetchBlingPedidosPendentes(conta) {
     if (!detalhe?.contato?.numeroDocumento?.trim()) pendencias.push('CPF/CNPJ não informado');
     const itensSemProduto = (detalhe?.itens || []).filter(i => !i?.produto?.id);
     if (itensSemProduto.length > 0) pendencias.push(`Produto não cadastrado: ${itensSemProduto.map(i => i.descricao || '?').join(', ')}`);
-    const canalNome = detalhe?.canal?.descricao || detalhe?.loja?.nome || '';
-    if (conta === '2') addLog(`[bling] pedido ${p.id} canal="${canalNome}" raw_canal=${JSON.stringify(detalhe?.canal)} raw_loja=${JSON.stringify(detalhe?.loja)}`, 'info');
-    const isShopee = /shopee/i.test(canalNome);
+    const numeroLojaVal = detalhe?.numeroLoja || p.numeroLoja || '';
+    const isML     = /^\d{10,}$/.test(numeroLojaVal);
+    const isShopee = !!numeroLojaVal && !isML;
+    const canalNome = isShopee ? 'Shopee' : (isML ? 'Mercado Livre' : '');
     itensDetalhados.push({ ...p, numeroLoja: detalhe?.numeroLoja || p.numeroLoja, produtos, pendencias, canal: canalNome, isShopee });
   }
 
