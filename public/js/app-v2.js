@@ -185,9 +185,9 @@ async function trocarConta(num) {
     const abaAtiva = document.querySelector('.tab.active')?.id?.replace('tab-', '');
     if (abaAtiva === 'loja')    carregarLoja();
     if (abaAtiva === 'estoque') carregarEstoque(true);
-    if (abaAtiva === 'lucro')   { lucroCarregado = false; lucroCarregarConfig().then(() => lucroCarregarVendas()); }
     if (abaAtiva === 'compras') { const sub = document.querySelector('.compras-sub-btn.active')?.dataset.sub || 'previsao'; comprasAbrirSub(sub); }
     atualizarStatus();
+    // lucro é recarregado pelo listener contaMudou em lucro.js (evita carga dupla)
     document.dispatchEvent(new CustomEvent('contaMudou', { detail: { conta: num } }));
   } finally {
     document.querySelectorAll('.conta-btn').forEach(b => b.disabled = false);

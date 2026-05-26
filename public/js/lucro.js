@@ -46,9 +46,11 @@ function lucroFmtPct(v) {
 // ── Config ───────────────────────────────────────────────────
 
 async function lucroCarregarConfig() {
+  const gen   = contaGen;
   const conta = lucroContaAtual();
   try {
     const cfg = await fetch(`/api/lucro/config?conta=${conta}`).then(r => r.json());
+    if (contaGen !== gen) return; // resposta de conta antiga — descarta
     lucroConfig = { taxa_imposto: 0, taxa_imposto_por_mes: {}, frete_medio: 0, custos: {}, ...cfg };
     if (lucroVendasRaw.length) lucroRecalcularERenderizar();
   } catch {}
@@ -329,6 +331,7 @@ function lucroSetPeriodoRapido(dias) {
 // ── Carregamento ──────────────────────────────────────────────
 
 async function lucroCarregarVendas() {
+  const gen     = contaGen;
   const conta   = lucroContaAtual();
   const loading = document.getElementById('lucro-loading');
   const erroEl  = document.getElementById('lucro-erro');
@@ -344,6 +347,7 @@ async function lucroCarregarVendas() {
     const ate = document.getElementById('lucro-data-ate')?.value || '';
     const qs  = new URLSearchParams({ conta, date_from: de, date_to: ate });
     const d = await fetch(`/api/lucro/vendas?${qs}`).then(r => r.json());
+    if (contaGen !== gen) return; // resposta de conta antiga — descarta
     loading.style.display = 'none';
     if (d.error) {
       erroEl.textContent = d.error; erroEl.style.display = 'block';
@@ -354,6 +358,7 @@ async function lucroCarregarVendas() {
     lucroCarregado = true;
     lucroRecalcularERenderizar();
   } catch {
+    if (contaGen !== gen) return;
     loading.style.display = 'none';
     erroEl.textContent = 'Erro ao carregar vendas.'; erroEl.style.display = 'block';
   }
