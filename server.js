@@ -2514,7 +2514,7 @@ app.post('/api/vendas/atendidas-batch', async (req, res) => {
     else       c.atendidas_dados.push({ shipmentId: sid, atendida: true, atendidaEm: agora });
   });
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
-  await syncRailwayEnvVars(data).catch(e => console.error('[atendidas-batch] sync erro:', e.message));
+  syncRailwayEnvVars(data).catch(e => console.error('[atendidas-batch] sync erro:', e.message));
   res.json({ ok: true });
   verificarTodosPedidosAtendidos(shipmentIds).catch(e => addLog(`[atendidas-batch] notif-todos erro: ${e.message}`, 'warn'));
 });
@@ -2529,7 +2529,7 @@ app.delete('/api/vendas/atendidas-batch', async (req, res) => {
   const sids = new Set(shipmentIds.map(String));
   c.atendidas_dados = (c.atendidas_dados || []).filter(v => !sids.has(String(v.shipmentId)));
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
-  await syncRailwayEnvVars(data).catch(e => console.error('[atendidas-batch-del] sync erro:', e.message));
+  syncRailwayEnvVars(data).catch(e => console.error('[atendidas-batch-del] sync erro:', e.message));
   res.json({ ok: true });
 });
 
@@ -3021,7 +3021,7 @@ app.post('/api/lucro/config', async (req, res) => {
   if (taxa_imposto !== undefined) lc.taxa_imposto = parseFloat(taxa_imposto) || 0;
   if (frete_medio  !== undefined) lc.frete_medio  = parseFloat(frete_medio)  || 0;
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
-  await syncRailwayEnvVars(data).catch(e => console.error('[lucro/config] sync erro:', e.message));
+  syncRailwayEnvVars(data).catch(e => console.error('[lucro/config] sync erro:', e.message));
   res.json({ ok: true });
 });
 
@@ -3035,7 +3035,7 @@ app.post('/api/lucro/custo', async (req, res) => {
   lc.custos = lc.custos || {};
   lc.custos[sku] = parseFloat(custo) || 0;
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
-  await syncRailwayEnvVars(data).catch(e => console.error('[lucro/custo] sync erro:', e.message));
+  syncRailwayEnvVars(data).catch(e => console.error('[lucro/custo] sync erro:', e.message));
   res.json({ ok: true });
 });
 
@@ -3090,7 +3090,7 @@ app.post('/api/lucro/gastos-fixo-tipo', async (req, res) => {
     lc.gastos_fixos_tipos.push(nome.trim());
   }
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
-  await syncRailwayEnvVars(data).catch(e => console.error('[gastos-fixo-tipo] sync erro:', e.message));
+  syncRailwayEnvVars(data).catch(e => console.error('[gastos-fixo-tipo] sync erro:', e.message));
   res.json({ ok: true });
 });
 
@@ -3103,7 +3103,7 @@ app.delete('/api/lucro/gastos-fixo-tipo', async (req, res) => {
   const lc = data.lucro_contas[num] = data.lucro_contas[num] || {};
   lc.gastos_fixos_tipos = (lc.gastos_fixos_tipos || []).filter(t => t !== nome);
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
-  await syncRailwayEnvVars(data).catch(e => console.error('[gastos-fixo-tipo] sync erro:', e.message));
+  syncRailwayEnvVars(data).catch(e => console.error('[gastos-fixo-tipo] sync erro:', e.message));
   res.json({ ok: true });
 });
 
@@ -3118,7 +3118,7 @@ app.post('/api/lucro/gastos-fixo-valor', async (req, res) => {
   lc.gastos_fixos_valores[mes] = lc.gastos_fixos_valores[mes] || {};
   lc.gastos_fixos_valores[mes][nome] = parseFloat(valor) || 0;
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
-  await syncRailwayEnvVars(data).catch(e => console.error('[gastos-fixo-valor] sync erro:', e.message));
+  syncRailwayEnvVars(data).catch(e => console.error('[gastos-fixo-valor] sync erro:', e.message));
   res.json({ ok: true });
 });
 
@@ -3144,7 +3144,7 @@ app.post('/api/lucro/gastos-fixos-valores-batch', async (req, res) => {
     }
   }
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
-  await syncRailwayEnvVars(data).catch(e => console.error('[gastos-fixo-batch] sync erro:', e.message));
+  syncRailwayEnvVars(data).catch(e => console.error('[gastos-fixo-batch] sync erro:', e.message));
   res.json({ ok: true });
 });
 
@@ -3173,7 +3173,7 @@ app.post('/api/lucro/dre-cache-mes', async (req, res) => {
     updatedAt: new Date().toISOString().slice(0, 10),
   };
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
-  await syncRailwayEnvVars(data).catch(e => console.error('[dre-cache-mes] sync erro:', e.message));
+  syncRailwayEnvVars(data).catch(e => console.error('[dre-cache-mes] sync erro:', e.message));
   res.json({ ok: true });
 });
 
@@ -3223,7 +3223,7 @@ app.post('/api/lucro/gastos-fixo-travado', async (req, res) => {
     lc.gastos_fixos_travados = lc.gastos_fixos_travados.filter(t => t !== nome);
   }
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
-  await syncRailwayEnvVars(data).catch(e => console.error('[gastos-fixo-travado] sync erro:', e.message));
+  syncRailwayEnvVars(data).catch(e => console.error('[gastos-fixo-travado] sync erro:', e.message));
   res.json({ ok: true });
 });
 
@@ -3240,7 +3240,7 @@ app.post('/api/lucro/gasto', async (req, res) => {
   const tipoVal = req.body.tipo === 'entrada' ? 'entrada' : 'gasto';
   lc.gastos[mes].push({ id, descricao: String(descricao || '').trim(), valor: parseFloat(valor) || 0, tipo: tipoVal });
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
-  await syncRailwayEnvVars(data).catch(e => console.error('[lucro/gasto] sync erro:', e.message));
+  syncRailwayEnvVars(data).catch(e => console.error('[lucro/gasto] sync erro:', e.message));
   res.json({ ok: true, id });
 });
 
@@ -3253,7 +3253,7 @@ app.delete('/api/lucro/gasto', async (req, res) => {
   if (lc.gastos?.[mes]) {
     lc.gastos[mes] = lc.gastos[mes].filter(g => g.id !== id);
     fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
-    await syncRailwayEnvVars(data).catch(e => console.error('[lucro/gasto] sync erro:', e.message));
+    syncRailwayEnvVars(data).catch(e => console.error('[lucro/gasto] sync erro:', e.message));
   }
   res.json({ ok: true });
 });
