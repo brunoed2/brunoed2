@@ -1487,7 +1487,10 @@ async function fetchBlingPedidosPendentes(conta) {
     if (!detalhe?.contato?.numeroDocumento?.trim()) pendencias.push('CPF/CNPJ não informado');
     const itensSemProduto = (detalhe?.itens || []).filter(i => !i?.produto?.id);
     if (itensSemProduto.length > 0) pendencias.push(`Produto não cadastrado: ${itensSemProduto.map(i => i.descricao || '?').join(', ')}`);
-    itensDetalhados.push({ ...p, numeroLoja: detalhe?.numeroLoja || p.numeroLoja, produtos, pendencias });
+    const canalNome = detalhe?.canal?.descricao || detalhe?.loja?.nome || '';
+    if (conta === '2') addLog(`[bling] pedido ${p.id} canal="${canalNome}" raw_canal=${JSON.stringify(detalhe?.canal)} raw_loja=${JSON.stringify(detalhe?.loja)}`, 'info');
+    const isShopee = /shopee/i.test(canalNome);
+    itensDetalhados.push({ ...p, numeroLoja: detalhe?.numeroLoja || p.numeroLoja, produtos, pendencias, canal: canalNome, isShopee });
   }
 
   // Verifica no ML quais têm shipment ready_to_ship (etiqueta disponível ao emitir NF)
@@ -1500,7 +1503,7 @@ async function fetchBlingPedidosPendentes(conta) {
   if (mlTokens.length > 0) {
     const mlOrders = await Promise.all(
       itensDetalhados.map(async p => {
-        if (!p.numeroLoja) return null;
+        if (!p.numeroLoja || p.isShopee) return null;
         for (const tok of mlTokens) {
           const res = await axios.get(`https://api.mercadolibre.com/orders/${p.numeroLoja}`, {
             headers: { Authorization: `Bearer ${tok}` }, timeout: 6000,
@@ -1537,7 +1540,8 @@ async function fetchBlingPedidosPendentes(conta) {
     numeroPedidoLoja: p.numeroLoja || null,
     dataPrevista:     p.dataPrevista || null,
     produtos:         p.produtos || [],
-    temEtiqueta:      mlTokens.length > 0 ? idsComEtiqueta.has(p.id) : true,
+    canal:            p.canal || null,
+    temEtiqueta:      p.isShopee ? false : (mlTokens.length > 0 ? idsComEtiqueta.has(p.id) : true),
     pendencias:       p.pendencias || [],
     conta,
   }));

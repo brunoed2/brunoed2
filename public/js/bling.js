@@ -56,15 +56,19 @@ async function blingCarregarPedidos() {
 
     for (const p of pedidos) {
       const tr = document.createElement('tr');
-      if (p.temEtiqueta) tr.style.background = 'rgba(34,197,94,0.07)';
+      const isShopee = /shopee/i.test(p.canal || '');
+      if (p.temEtiqueta && !isShopee) tr.style.background = 'rgba(34,197,94,0.07)';
+      if (isShopee) tr.style.background = 'rgba(249,115,22,0.06)';
       const valor    = (p.valor_total || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
       const data_str = p.data ? new Date(p.data).toLocaleDateString('pt-BR') : '—';
       const contaCor = p.conta === '1' ? '#2563eb' : '#7c3aed';
       const contaBadge = `<span style="background:${contaCor};color:#fff;padding:1px 7px;border-radius:4px;font-size:11px">C${p.conta}</span>`;
-      const etqBadge = p.temEtiqueta
-        ? `<span style="background:#16a34a;color:#fff;padding:2px 7px;border-radius:4px;font-size:11px;white-space:nowrap" title="Emitir NF libera a etiqueta de envio">Emitir NF → Etiqueta</span>`
-        : `<span style="color:#9ca3af;font-size:11px">Aguardando ML</span>`;
-      const btnSuper = p.temEtiqueta
+      const etqBadge = isShopee
+        ? `<span style="background:#f97316;color:#fff;padding:2px 7px;border-radius:4px;font-size:11px;white-space:nowrap">Shopee</span>`
+        : p.temEtiqueta
+          ? `<span style="background:#16a34a;color:#fff;padding:2px 7px;border-radius:4px;font-size:11px;white-space:nowrap" title="Emitir NF libera a etiqueta de envio">Emitir NF → Etiqueta</span>`
+          : `<span style="color:#9ca3af;font-size:11px">Aguardando ML</span>`;
+      const btnSuper = (!isShopee && p.temEtiqueta)
         ? `<button class="btn-sm btn-super" data-bling-super-id="${p.id}" onclick="blingSuperEnvio('${p.id}', this, '${p.conta}')" style="background:#7c3aed;color:#fff;margin-left:4px" title="Gerar NF e enviar em um clique">⚡ Super</button>`
         : '';
       const blingEditUrl = `https://www.bling.com.br/vendas.php#edit/${p.id}`;
