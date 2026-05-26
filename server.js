@@ -4205,17 +4205,25 @@ function salvarPendentesEmbalar(set) {
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
 }
 const pendentesEmbalar = carregarPendentesEmbalar();
+let _notificarTodosTimeout = null;
 
-// Após marcar atendido: remove do Set e avisa Bruno se fila zerou
+// Após marcar atendido: remove do Set e agenda notificação com delay de segurança
 async function verificarTodosPedidosAtendidos(sids) {
   let algumRemovido = false;
   sids.forEach(sid => { if (pendentesEmbalar.delete(String(sid))) algumRemovido = true; });
   if (!algumRemovido) return;
   salvarPendentesEmbalar(pendentesEmbalar);
   if (pendentesEmbalar.size === 0) {
-    addLog('[atendidos] Fila zerou — notificando Bruno', 'ok');
-    await enviarWhatsApp(CALLMEBOT_PHONE_PEDIDOS, CALLMEBOT_APIKEY_PEDIDOS,
-      '✅ Todos os pedidos foram embalados e atendidos!');
+    // Aguarda 70s (> ciclo de polling de 60s) para capturar pedido novo que possa ter chegado
+    if (_notificarTodosTimeout) clearTimeout(_notificarTodosTimeout);
+    _notificarTodosTimeout = setTimeout(async () => {
+      _notificarTodosTimeout = null;
+      if (pendentesEmbalar.size === 0) {
+        addLog('[atendidos] Fila zerou — notificando Bruno', 'ok');
+        await enviarWhatsApp(CALLMEBOT_PHONE_PEDIDOS, CALLMEBOT_APIKEY_PEDIDOS,
+          '✅ Todos os pedidos foram embalados e atendidos!');
+      }
+    }, 70000);
   }
 }
 
@@ -4312,6 +4320,8 @@ async function verificarNovosShipmentsTelegram() {
           await notificarPedido(texto);
           pendentesEmbalar.add(sid);
           salvarPendentesEmbalar(pendentesEmbalar);
+          // Novo pedido chegou — cancela eventual timeout de "todos atendidos"
+          if (_notificarTodosTimeout) { clearTimeout(_notificarTodosTimeout); _notificarTodosTimeout = null; }
           addLog(`[pedido] Notificação enviada — #${order.id}`, 'ok');
           await new Promise(r => setTimeout(r, 4000)); // evita rate limit do CallMeBot entre pedidos
         } catch (err) {
