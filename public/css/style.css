@@ -863,6 +863,24 @@ tr.venda-atendida td { opacity: .45; }
   border-color: #818cf8;
 }
 
+.lucro-ok-btn {
+  padding: 3px 7px;
+  margin-left: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  background: #f8fafc;
+  color: #475569;
+  cursor: pointer;
+  transition: background .15s, color .15s, border-color .15s;
+  vertical-align: middle;
+}
+.lucro-ok-btn:hover:not(:disabled) { background: #e2e8f0; border-color: #94a3b8; }
+.lucro-ok-btn:disabled { opacity: .45; cursor: not-allowed; }
+.lucro-ok-btn--ok { background: #dcfce7 !important; border-color: #86efac !important; color: #166534 !important; }
+.lucro-ok-btn--err { background: #fee2e2 !important; border-color: #fca5a5 !important; color: #991b1b !important; }
+
 .lucro-date-input {
   padding: 5px 8px;
   border: 1px solid #e2e8f0;

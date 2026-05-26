@@ -76,12 +76,12 @@ async function lucroSalvarConfig() {
 
 // ── Custo por produto ─────────────────────────────────────────
 
-async function lucroSalvarCusto(input) {
+async function lucroSalvarCusto(input, btn) {
   const conta = lucroContaAtual();
   const sku   = input.dataset.sku;
   const custo = parseFloat(input.value.replace(',', '.')) || 0;
   if (!sku) return;
-  input.style.borderColor = '#cbd5e1';
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
   try {
     await fetch('/api/lucro/custo', {
       method:  'POST',
@@ -89,15 +89,27 @@ async function lucroSalvarCusto(input) {
       body:    JSON.stringify({ conta, sku, custo }),
     });
     lucroConfig.custos[sku] = custo;
-    lucroRecalcularERenderizar(); // reconstrói tabela de vendas com novo custo
-    // Atualiza inputs com mesmo SKU em todas as tabelas (custos + vendas reconstruída)
+    lucroRecalcularERenderizar();
     document.querySelectorAll(`.lucro-custo-input[data-sku="${sku}"]`).forEach(el => {
       el.value = custo || '';
     });
-    input.style.borderColor = '#86efac';
-    setTimeout(() => { input.style.borderColor = ''; }, 1500);
+    // btn pode ter sido destruído pelo rebuild da tabela de vendas; busca os novos botões pelo SKU
+    const targets = btn && btn.isConnected
+      ? [btn]
+      : [...document.querySelectorAll(`.lucro-ok-btn[data-sku="${sku}"]`)];
+    targets.forEach(b => {
+      b.disabled = false;
+      b.textContent = '✓';
+      b.classList.add('lucro-ok-btn--ok');
+      setTimeout(() => { b.textContent = 'OK'; b.classList.remove('lucro-ok-btn--ok'); }, 1500);
+    });
   } catch {
-    input.style.borderColor = '#fca5a5'; // vermelho = erro
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = 'OK';
+      btn.classList.add('lucro-ok-btn--err');
+      setTimeout(() => { btn.classList.remove('lucro-ok-btn--err'); }, 1500);
+    }
   }
 }
 
@@ -196,7 +208,9 @@ function lucroRenderizarTabela(vendas) {
           ? `${custoSalvo > 0 ? `<span class="lucro-custo-total">${fmtCusto(custoSalvo * qtdTotal)}</span>` : ''}
              <input type="number" class="lucro-custo-input" data-sku="${chave0}"
               value="${custoSalvo || ''}" placeholder="unit."
-              onchange="lucroSalvarCusto(this)" step="0.01" min="0">`
+              step="0.01" min="0">
+             <button class="lucro-ok-btn" data-sku="${chave0}"
+              onclick="lucroSalvarCusto(this.previousElementSibling, this)">OK</button>`
           : '—'}
       </td>
       <td class="col-num lucro-neg-leve">${fmtCusto(v.imposto)}</td>
@@ -225,7 +239,9 @@ function lucroRenderizarTabela(vendas) {
             ? `${cSalvo2 > 0 ? `<span class="lucro-custo-total">${lucroFmt(cSalvo2 * item.quantidade)}</span>` : ''}
                <input type="number" class="lucro-custo-input" data-sku="${chaveI}"
                 value="${cSalvo2 || ''}" placeholder="unit."
-                onchange="lucroSalvarCusto(this)" step="0.01" min="0">`
+                step="0.01" min="0">
+               <button class="lucro-ok-btn" data-sku="${chaveI}"
+                onclick="lucroSalvarCusto(this.previousElementSibling, this)">OK</button>`
             : ''}
         </td>
         <td colspan="3"></td>
@@ -270,7 +286,9 @@ async function lucroCustosCarregar() {
         <td class="col-num">
           <input type="number" class="lucro-custo-input" data-sku="${item.sku}"
             value="${custoSalvo || ''}" placeholder="—"
-            onchange="lucroSalvarCusto(this)" step="0.01" min="0">
+            step="0.01" min="0">
+          <button class="lucro-ok-btn" data-sku="${item.sku}"
+            onclick="lucroSalvarCusto(this.previousElementSibling, this)">OK</button>
         </td>
       `;
       tbody.appendChild(tr);
