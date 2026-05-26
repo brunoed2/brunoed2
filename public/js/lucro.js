@@ -127,7 +127,7 @@ function lucroCalcular(raw) {
     const imposto = v.receita * (taxa / 100);
     const lucro   = v.receita - v.taxaML - frete - custo - imposto;
     const margem  = v.receita > 0 ? (lucro / v.receita) * 100 : 0;
-    return { ...v, custo, frete, imposto, lucro, margem };
+    return { ...v, taxa, custo, frete, imposto, lucro, margem };
   });
 }
 
@@ -217,7 +217,7 @@ function lucroRenderizarTabela(vendas) {
               onclick="lucroSalvarCusto(this.previousElementSibling, this)">OK</button>`
           : '—'}
       </td>
-      <td class="col-num lucro-neg-leve">${fmtCusto(v.imposto)}</td>
+      <td class="col-num lucro-neg-leve">${fmtCusto(v.imposto)}${v.taxa > 0 ? `<span class="lucro-taxa-pct">${v.taxa}%</span>` : ''}</td>
       <td class="col-num ${margemCls}"><strong>${lucroFmt(v.lucro)}</strong></td>
       <td class="col-num ${margemCls}">${lucroFmtPct(v.margem)}</td>
     `;
