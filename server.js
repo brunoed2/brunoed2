@@ -2480,6 +2480,7 @@ app.post('/api/vendas/atendida', (req, res) => {
   if (dadosFinal) c.atendidas_dados.push({ ...dadosFinal, atendida: true, atendidaEm: existente?.atendidaEm || new Date().toISOString() });
   saveData(data);
   res.json({ ok: true });
+  verificarTodosPedidosAtendidos([sid]).catch(e => addLog(`[atendida] notif-todos erro: ${e.message}`, 'warn'));
 });
 
 app.delete('/api/vendas/atendida', (req, res) => {
@@ -2515,6 +2516,7 @@ app.post('/api/vendas/atendidas-batch', async (req, res) => {
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
   await syncRailwayEnvVars(data).catch(e => console.error('[atendidas-batch] sync erro:', e.message));
   res.json({ ok: true });
+  verificarTodosPedidosAtendidos(shipmentIds).catch(e => addLog(`[atendidas-batch] notif-todos erro: ${e.message}`, 'warn'));
 });
 
 app.delete('/api/vendas/atendidas-batch', async (req, res) => {
@@ -4192,6 +4194,31 @@ function salvarShipmentsNotificados(set) {
 }
 const shipmentsNotificados = carregarShipmentsNotificados();
 
+// Pedidos enviados ao empacotador ainda não marcados como atendidos
+function carregarPendentesEmbalar() {
+  const data = loadData();
+  return new Set(Array.isArray(data.pendentesEmbalar) ? data.pendentesEmbalar : []);
+}
+function salvarPendentesEmbalar(set) {
+  const data = loadData();
+  data.pendentesEmbalar = Array.from(set);
+  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+}
+const pendentesEmbalar = carregarPendentesEmbalar();
+
+// Após marcar atendido: remove do Set e avisa Bruno se fila zerou
+async function verificarTodosPedidosAtendidos(sids) {
+  let algumRemovido = false;
+  sids.forEach(sid => { if (pendentesEmbalar.delete(String(sid))) algumRemovido = true; });
+  if (!algumRemovido) return;
+  salvarPendentesEmbalar(pendentesEmbalar);
+  if (pendentesEmbalar.size === 0) {
+    addLog('[atendidos] Fila zerou — notificando Bruno', 'ok');
+    await enviarWhatsApp(CALLMEBOT_PHONE_PEDIDOS, CALLMEBOT_APIKEY_PEDIDOS,
+      '✅ Todos os pedidos foram embalados e atendidos!');
+  }
+}
+
 // Remove um pedido do controle de notificados (para renotificar quando etiqueta ficar disponível)
 app.delete('/api/telegram/notificado/:orderId', async (req, res) => {
   const { orderId } = req.params;
@@ -4283,6 +4310,8 @@ async function verificarNovosShipmentsTelegram() {
             `Comprador: ${order.buyer?.nickname || '—'}\n` +
             `Status: ${status}\n\n${itens}`;
           await notificarPedido(texto);
+          pendentesEmbalar.add(sid);
+          salvarPendentesEmbalar(pendentesEmbalar);
           addLog(`[pedido] Notificação enviada — #${order.id}`, 'ok');
           await new Promise(r => setTimeout(r, 4000)); // evita rate limit do CallMeBot entre pedidos
         } catch (err) {
