@@ -1547,6 +1547,21 @@ async function fetchBlingPedidosPendentes(conta) {
   }));
 }
 
+// Endpoint temporário de diagnóstico: retorna raw do detalhe de um pedido Bling
+app.get('/api/bling/debug-pedido/:id', async (req, res) => {
+  try {
+    const conta = blingContaReq(req); // ?conta=2
+    const token = await getBlingToken(conta);
+    const r = await axios.get(`https://api.bling.com.br/Api/v3/pedidos/vendas/${req.params.id}`, {
+      headers: { Authorization: `Bearer ${token}` }, timeout: 10000,
+    });
+    const d = r.data?.data || {};
+    return res.json({ canal: d.canal, loja: d.loja, numeroLoja: d.numeroLoja, situacao: d.situacao });
+  } catch (err) {
+    return res.json({ erro: err.response?.data || err.message });
+  }
+});
+
 app.get('/api/bling/pedidos-pendentes', async (req, res) => {
   try {
     const conta = blingContaReq(req);
