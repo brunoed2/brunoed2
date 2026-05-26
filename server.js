@@ -1491,7 +1491,7 @@ async function fetchBlingPedidosPendentes(conta) {
     const isML     = /^\d{10,}$/.test(numeroLojaVal);
     const isShopee = !!numeroLojaVal && !isML;
     const canalNome = isShopee ? 'Shopee' : (isML ? 'Mercado Livre' : '');
-    itensDetalhados.push({ ...p, numeroLoja: detalhe?.numeroLoja || p.numeroLoja, produtos, pendencias, canal: canalNome, isShopee });
+    itensDetalhados.push({ ...p, numeroLoja: detalhe?.numeroLoja || p.numeroLoja, produtos, pendencias, canal: canalNome, isShopee, lojaId: detalhe?.loja?.id || null });
   }
 
   // Verifica no ML quais têm shipment ready_to_ship (etiqueta disponível ao emitir NF)
@@ -1542,6 +1542,7 @@ async function fetchBlingPedidosPendentes(conta) {
     dataPrevista:     p.dataPrevista || null,
     produtos:         p.produtos || [],
     canal:            p.canal || null,
+    lojaId:           p.lojaId || null,
     temEtiqueta:      p.isShopee ? false : (mlTokens.length > 0 ? idsComEtiqueta.has(p.id) : true),
     pendencias:       p.pendencias || [],
     conta,
@@ -1670,6 +1671,31 @@ async function blingEnviarNFHelper(nfId, conta) {
   throw lastErr;
 }
 
+async function blingAguardarAutorizacaoNF(nfId, token, maxMs = 90000) {
+  const inicio = Date.now();
+  while (Date.now() - inicio < maxMs) {
+    await new Promise(r => setTimeout(r, 4000));
+    const r = await axios.get(`https://api.bling.com.br/Api/v3/nfe/${nfId}`, {
+      headers: { Authorization: `Bearer ${token}` }, timeout: 10000,
+    }).catch(() => null);
+    const sit = r?.data?.data?.situacao;
+    addLog(`[bling] aguardando NF ${nfId}: situacao id=${sit?.id} valor="${sit?.valor}"`, 'info');
+    if (sit?.id === 100 || /autorizada/i.test(sit?.valor || '')) return true;
+    if (/denegad|cancelad|rejeitad/i.test(sit?.valor || '')) throw new Error(`NF ${nfId} rejeitada pela SEFAZ: ${sit?.valor}`);
+  }
+  throw new Error(`NF ${nfId} não foi autorizada em 90s. Tente enviar para Shopee manualmente no Bling.`);
+}
+
+async function blingEnviarParaLojaHelper(nfId, lojaId, conta) {
+  const token = await getBlingToken(conta);
+  const resp = await axios.post(
+    `https://api.bling.com.br/Api/v3/nfe/${nfId}/enviar-para-loja`,
+    { idLoja: lojaId, enviarDadosNfe: true, codigoRastreamento: false },
+    { headers: { Authorization: `Bearer ${token}` }, timeout: 20000 }
+  );
+  addLog(`[bling] NF ${nfId} dados enviados para loja ${lojaId}: ${JSON.stringify(resp.data).slice(0, 150)}`, 'ok');
+}
+
 // ── Bling: emitir NF para pedido ML ──────────────────────────
 
 app.post('/api/bling/emitir-nf/:pedidoId', async (req, res) => {
@@ -1694,6 +1720,29 @@ app.post('/api/bling/enviar-nf/:notaId', async (req, res) => {
   } catch (err) {
     const detail = err.response ? JSON.stringify(err.response.data).slice(0, 300) : err.message;
     addLog(`[bling] enviar-nf: ${detail}`, 'warn');
+    return res.json({ ok: false, erro: detail });
+  }
+});
+
+// ── Bling: Shopee Super — gera NF + envia SEFAZ + envia dados para Shopee ──
+
+app.post('/api/bling/shopee-super/:pedidoId', async (req, res) => {
+  const conta  = blingContaReq(req);
+  const lojaId = req.body?.lojaId;
+  if (!lojaId) return res.json({ ok: false, erro: 'lojaId não informado' });
+  try {
+    addLog(`[bling] shopee-super pedido ${req.params.pedidoId} loja ${lojaId}`, 'info');
+    const nfId = await blingEmitirNFHelper(req.params.pedidoId, conta);
+    await new Promise(r => setTimeout(r, 3500));
+    await blingEnviarNFHelper(nfId, conta);
+    const token = await getBlingToken(conta);
+    await blingAguardarAutorizacaoNF(nfId, token);
+    await blingEnviarParaLojaHelper(nfId, lojaId, conta);
+    addLog(`[bling] shopee-super pedido ${req.params.pedidoId} concluído`, 'ok');
+    return res.json({ ok: true, nfId });
+  } catch (err) {
+    const detail = err.response ? JSON.stringify(err.response.data).slice(0, 300) : err.message;
+    addLog(`[bling] shopee-super pedido ${req.params.pedidoId}: ${detail}`, 'warn');
     return res.json({ ok: false, erro: detail });
   }
 });

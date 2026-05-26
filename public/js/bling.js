@@ -68,9 +68,11 @@ async function blingCarregarPedidos() {
         : p.temEtiqueta
           ? `<span style="background:#16a34a;color:#fff;padding:2px 7px;border-radius:4px;font-size:11px;white-space:nowrap" title="Emitir NF libera a etiqueta de envio">Emitir NF → Etiqueta</span>`
           : `<span style="color:#9ca3af;font-size:11px">Aguardando ML</span>`;
-      const btnSuper = (!isShopee && p.temEtiqueta)
-        ? `<button class="btn-sm btn-super" data-bling-super-id="${p.id}" onclick="blingSuperEnvio('${p.id}', this, '${p.conta}')" style="background:#7c3aed;color:#fff;margin-left:4px" title="Gerar NF e enviar em um clique">⚡ Super</button>`
-        : '';
+      const btnSuper = isShopee
+        ? `<button class="btn-sm btn-shopee-super" data-bling-shopee-id="${p.id}" onclick="blingShopeeSuper('${p.id}', this, '${p.conta}', ${p.lojaId || 'null'})" style="background:#f97316;color:#fff;margin-left:4px" title="Gerar NF + enviar SEFAZ + enviar dados para Shopee automaticamente">⚡ Shopee Super</button>`
+        : (!isShopee && p.temEtiqueta)
+          ? `<button class="btn-sm btn-super" data-bling-super-id="${p.id}" onclick="blingSuperEnvio('${p.id}', this, '${p.conta}')" style="background:#7c3aed;color:#fff;margin-left:4px" title="Gerar NF e enviar em um clique">⚡ Super</button>`
+          : '';
       const blingEditUrl = `https://www.bling.com.br/vendas.php#edit/${p.id}`;
       const pendencias = p.pendencias || [];
       const btnPendencia = pendencias.length > 0
@@ -217,6 +219,32 @@ async function blingSuperEnvio(pedidoId, btn, conta) {
   } catch (err) {
     btn.disabled    = false;
     btn.textContent = '⚡ Super';
+    alert('Erro: ' + err.message);
+  }
+}
+
+async function blingShopeeSuper(pedidoId, btn, conta, lojaId) {
+  conta = conta || '1';
+  btn.disabled    = true;
+  btn.textContent = 'Gerando NF...';
+  try {
+    const res = await fetch(`/api/bling/shopee-super/${pedidoId}?conta=${conta}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lojaId }),
+    }).then(r => r.json());
+    if (res.ok) {
+      btn.textContent      = '✅ Concluído';
+      btn.style.background = '#16a34a';
+      setTimeout(() => blingCarregarPedidos(), 1500);
+    } else {
+      btn.disabled    = false;
+      btn.textContent = '⚡ Shopee Super';
+      alert('Erro no Shopee Super: ' + (res.erro || 'Erro desconhecido'));
+    }
+  } catch (err) {
+    btn.disabled    = false;
+    btn.textContent = '⚡ Shopee Super';
     alert('Erro: ' + err.message);
   }
 }
