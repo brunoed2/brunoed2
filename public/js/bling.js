@@ -227,25 +227,27 @@ async function blingShopeeSuper(pedidoId, btn, conta, lojaId) {
   conta = conta || '1';
   btn.disabled    = true;
   btn.textContent = 'Gerando NF...';
+  let res;
   try {
-    const res = await fetch(`/api/bling/shopee-super/${pedidoId}?conta=${conta}`, {
+    res = await fetch(`/api/bling/shopee-super/${pedidoId}?conta=${conta}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ lojaId }),
     }).then(r => r.json());
-    if (res.ok) {
-      btn.textContent      = '✅ Concluído';
-      btn.style.background = '#16a34a';
-      setTimeout(() => blingCarregarPedidos(), 1500);
-    } else {
-      btn.disabled    = false;
-      btn.textContent = '⚡ Shopee Super';
-      alert('Erro no Shopee Super: ' + (res.erro || 'Erro desconhecido'));
-    }
   } catch (err) {
     btn.disabled    = false;
     btn.textContent = '⚡ Shopee Super';
-    alert('Erro: ' + err.message);
+    alert('Erro de rede: ' + err.message);
+    return;
+  }
+  if (res.ok) {
+    btn.textContent      = '✅ Concluído';
+    btn.style.background = '#16a34a';
+    setTimeout(() => blingCarregarPedidos(), 1500);
+  } else {
+    btn.disabled    = false;
+    btn.textContent = '⚡ Shopee Super';
+    alert('Erro no Shopee Super\nEtapa: ' + (res.etapa || '?') + '\n\n' + (res.erro || 'Sem detalhe'));
   }
 }
 
