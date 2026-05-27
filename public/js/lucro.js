@@ -1009,7 +1009,7 @@ function dreRenderizar(meses, ano, cacheML = {}) {
     trExp.style.display = 'none';
     trExp.innerHTML = `
       <td colspan="9" style="padding:0">
-        <div style="padding:6px 16px 10px 32px;background:#0f1117;border-bottom:1px solid #1e2130">
+        <div style="padding:6px 16px 10px 32px;background:#1a2235;border-bottom:1px solid #2d3a52">
           <table style="font-size:12px;border-collapse:collapse;color:#94a3b8">
             <tr><td style="padding:3px 48px 3px 0">Tarifas ML</td>
                 <td class="col-num" style="color:#fca5a5">${taxaML_b !== null ? lucroFmt(taxaML_b) : dash}</td></tr>
