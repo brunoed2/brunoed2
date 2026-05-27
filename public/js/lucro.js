@@ -1009,16 +1009,16 @@ function dreRenderizar(meses, ano, cacheML = {}) {
     trExp.style.display = 'none';
     trExp.innerHTML = `
       <td colspan="9" style="padding:0">
-        <div style="padding:6px 16px 10px 32px;background:#1a2235;border-bottom:1px solid #2d3a52">
-          <table style="font-size:12px;border-collapse:collapse;color:#94a3b8">
+        <div style="padding:6px 16px 10px 32px;background:#f1f5f9;border-bottom:1px solid #e2e8f0">
+          <table style="font-size:12px;border-collapse:collapse;color:#64748b">
             <tr><td style="padding:3px 48px 3px 0">Tarifas ML</td>
-                <td class="col-num" style="color:#fca5a5">${taxaML_b !== null ? lucroFmt(taxaML_b) : dash}</td></tr>
+                <td class="col-num" style="color:#dc2626">${taxaML_b !== null ? lucroFmt(taxaML_b) : '<span style="color:#94a3b8">—</span>'}</td></tr>
             <tr><td style="padding:3px 48px 3px 0">Frete vendedor</td>
-                <td class="col-num" style="color:#fca5a5">${frete_b !== null ? lucroFmt(frete_b) : dash}</td></tr>
+                <td class="col-num" style="color:#dc2626">${frete_b !== null ? lucroFmt(frete_b) : '<span style="color:#94a3b8">—</span>'}</td></tr>
             <tr><td style="padding:3px 48px 3px 0">Custo dos produtos</td>
-                <td class="col-num" style="color:#fca5a5">${custo_b !== null ? lucroFmt(custo_b) : dash}</td></tr>
+                <td class="col-num" style="color:#dc2626">${custo_b !== null ? lucroFmt(custo_b) : '<span style="color:#94a3b8">—</span>'}</td></tr>
             <tr><td style="padding:3px 48px 3px 0">Imposto</td>
-                <td class="col-num" style="color:#fca5a5">${imposto_b !== null ? lucroFmt(imposto_b) : dash}</td></tr>
+                <td class="col-num" style="color:#dc2626">${imposto_b !== null ? lucroFmt(imposto_b) : '<span style="color:#94a3b8">—</span>'}</td></tr>
           </table>
         </div>
       </td>
