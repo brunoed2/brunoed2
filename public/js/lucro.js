@@ -871,11 +871,15 @@ async function dreCarregar() {
         const vendas  = vendasResp.vendas || [];
         const calc    = vendas.length ? lucroCalcular(vendas) : [];
         const totais  = calc.length  ? lucroTotais(calc)     : null;
-        const lucroML = totais ? totais.lucro : null;
+        const lucroML = totais ? totais.lucro   : null;
+        const taxaML  = totais ? totais.taxaML  : null;
+        const frete   = totais ? totais.frete   : null;
+        const custo   = totais ? totais.custo   : null;
+        const imposto = totais ? totais.imposto : null;
         const ads     = adsResp.ads_cost ?? 0;
         await fetch('/api/lucro/dre-cache-mes', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ conta, mes: m.mes, lucroML, ads }),
+          body: JSON.stringify({ conta, mes: m.mes, lucroML, taxaML, frete, custo, imposto, ads }),
         }).catch(() => {});
       } catch {}
       // Atualiza a tabela a cada mês para mostrar progresso visual
@@ -908,11 +912,15 @@ async function dreRefreshMes(mes) {
     const vendas  = vendasResp.vendas || [];
     const calc    = vendas.length ? lucroCalcular(vendas) : [];
     const totais  = calc.length  ? lucroTotais(calc)     : null;
-    const lucroML = totais ? totais.lucro : null;
+    const lucroML = totais ? totais.lucro   : null;
+    const taxaML  = totais ? totais.taxaML  : null;
+    const frete   = totais ? totais.frete   : null;
+    const custo   = totais ? totais.custo   : null;
+    const imposto = totais ? totais.imposto : null;
     const ads     = adsResp.ads_cost ?? 0;
     await fetch('/api/lucro/dre-cache-mes', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ conta, mes, lucroML, ads }),
+      body: JSON.stringify({ conta, mes, lucroML, taxaML, frete, custo, imposto, ads }),
     });
     await dreCarregarDoCache();
   } catch {}
@@ -931,6 +939,7 @@ function dreRenderizar(meses, ano, cacheML = {}) {
   let totML = 0, totEnt = 0, totVar = 0, totFix = 0, totAds = 0, totRes = 0;
   let temDados = false;
 
+  const dash = '<span style="color:#94a3b8">—</span>';
   for (const m of meses) {
     const isFuturo = m.mes > mesAtual;
     const temLocal = m.totalEntradas > 0 || m.totalGastosVar > 0 || m.totalFixos > 0;
@@ -942,6 +951,10 @@ function dreRenderizar(meses, ano, cacheML = {}) {
     const resultado = lucroML !== null
       ? lucroML + m.totalEntradas - m.totalGastosVar - m.totalFixos - ads
       : null;
+    const taxaML_b  = cached?.taxaML  ?? null;
+    const frete_b   = cached?.frete   ?? null;
+    const custo_b   = cached?.custo   ?? null;
+    const imposto_b = cached?.imposto ?? null;
 
     totML  += lucroML ?? 0;
     totEnt += m.totalEntradas;
@@ -955,7 +968,6 @@ function dreRenderizar(meses, ano, cacheML = {}) {
     const nomeMes = `${NOMES_MES[parseInt(mo)-1]}/${y.slice(2)}`;
     const resCls  = resultado !== null ? (resultado >= 0 ? 'lucro-val-pos' : 'lucro-val-neg') : '';
     const mlCls   = lucroML   !== null ? (lucroML   >= 0 ? 'lucro-val-pos' : 'lucro-val-neg') : '';
-    const dash    = '<span style="color:#94a3b8">—</span>';
     const semCache = !cached && !isFuturo;
     const titleAtualizar = cached
       ? `Atualizado em ${cached.updatedAt} — clique para buscar novamente`
@@ -966,10 +978,14 @@ function dreRenderizar(meses, ano, cacheML = {}) {
 
     const tr = document.createElement('tr');
     tr.id = `dre-row-${m.mes}`;
+    tr.style.cursor = 'pointer';
+    tr.setAttribute('onclick', `dreToggleExpand('${m.mes}')`);
     if (semCache) tr.style.color = '#94a3b8';
     tr.innerHTML = `
-      <td style="white-space:nowrap;font-weight:500">${nomeMes}</td>
-      <td class="col-num">
+      <td style="white-space:nowrap;font-weight:500">
+        <span id="dre-expand-icon-${m.mes}" style="display:inline-block;font-size:9px;margin-right:5px;color:#64748b">▶</span>${nomeMes}
+      </td>
+      <td class="col-num" onclick="event.stopPropagation()">
         <input type="number" class="lucro-custo-input dre-taxa-input" step="0.1" min="0" max="100"
           value="${taxaVal}" placeholder="—"
           onchange="dreSetTaxaMes(this, '${m.mes}')"
@@ -983,10 +999,31 @@ function dreRenderizar(meses, ano, cacheML = {}) {
       <td class="col-num ${resCls}"><strong>${resultado !== null ? lucroFmt(resultado) : dash}</strong></td>
       <td style="text-align:center">
         ${!isFuturo ? `<button id="dre-btn-${m.mes}" class="lucro-btn-lock" style="opacity:.5;font-size:13px"
-          onclick="dreRefreshMes('${m.mes}')" title="${titleAtualizar}">↻</button>` : ''}
+          onclick="event.stopPropagation(); dreRefreshMes('${m.mes}')" title="${titleAtualizar}">↻</button>` : ''}
       </td>
     `;
     tbody.appendChild(tr);
+
+    const trExp = document.createElement('tr');
+    trExp.id = `dre-expand-${m.mes}`;
+    trExp.style.display = 'none';
+    trExp.innerHTML = `
+      <td colspan="9" style="padding:0">
+        <div style="padding:6px 16px 10px 32px;background:#0f1117;border-bottom:1px solid #1e2130">
+          <table style="font-size:12px;border-collapse:collapse;color:#94a3b8">
+            <tr><td style="padding:3px 48px 3px 0">Tarifas ML</td>
+                <td class="col-num" style="color:#fca5a5">${taxaML_b !== null ? lucroFmt(taxaML_b) : dash}</td></tr>
+            <tr><td style="padding:3px 48px 3px 0">Frete vendedor</td>
+                <td class="col-num" style="color:#fca5a5">${frete_b !== null ? lucroFmt(frete_b) : dash}</td></tr>
+            <tr><td style="padding:3px 48px 3px 0">Custo dos produtos</td>
+                <td class="col-num" style="color:#fca5a5">${custo_b !== null ? lucroFmt(custo_b) : dash}</td></tr>
+            <tr><td style="padding:3px 48px 3px 0">Imposto</td>
+                <td class="col-num" style="color:#fca5a5">${imposto_b !== null ? lucroFmt(imposto_b) : dash}</td></tr>
+          </table>
+        </div>
+      </td>
+    `;
+    tbody.appendChild(trExp);
   }
 
   if (!temDados) {
@@ -1012,4 +1049,13 @@ function dreRenderizar(meses, ano, cacheML = {}) {
   tbody.appendChild(trTot);
 
   if (tabela) tabela.style.display = 'table';
+}
+
+function dreToggleExpand(mes) {
+  const row  = document.getElementById(`dre-expand-${mes}`);
+  const icon = document.getElementById(`dre-expand-icon-${mes}`);
+  if (!row) return;
+  const open = row.style.display !== 'none';
+  row.style.display = open ? 'none' : '';
+  if (icon) icon.textContent = open ? '▶' : '▼';
 }

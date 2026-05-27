@@ -3182,7 +3182,7 @@ app.get('/api/lucro/dre-cache', (req, res) => {
 });
 
 app.post('/api/lucro/dre-cache-mes', async (req, res) => {
-  const { conta, mes, lucroML, ads } = req.body;
+  const { conta, mes, lucroML, taxaML, frete, custo, imposto, ads } = req.body;
   const num = String(conta || '1');
   const ano = String(mes || '').slice(0, 4);
   if (!mes || !ano) return res.status(400).json({ error: 'mes inválido' });
@@ -3191,8 +3191,13 @@ app.post('/api/lucro/dre-cache-mes', async (req, res) => {
   const lc = data.lucro_contas[num] = data.lucro_contas[num] || {};
   lc.dre_cache = lc.dre_cache || {};
   lc.dre_cache[ano] = lc.dre_cache[ano] || {};
+  const pf = v => (v === null || v === undefined) ? null : (parseFloat(v) || 0);
   lc.dre_cache[ano][mes] = {
-    lucroML:   (lucroML === null || lucroML === undefined) ? null : (parseFloat(lucroML) || 0),
+    lucroML:   pf(lucroML),
+    taxaML:    pf(taxaML),
+    frete:     pf(frete),
+    custo:     pf(custo),
+    imposto:   pf(imposto),
     ads:       parseFloat(ads) || 0,
     updatedAt: new Date().toISOString().slice(0, 10),
   };
