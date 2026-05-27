@@ -8,6 +8,8 @@ function etiquetasInit() {
   const dropzone = document.getElementById('etiquetas-dropzone');
   const fileInput = document.getElementById('etiquetas-file');
 
+  dropzone.addEventListener('click', () => fileInput.click());
+
   dropzone.addEventListener('dragover', e => {
     e.preventDefault();
     dropzone.classList.add('dragover');
