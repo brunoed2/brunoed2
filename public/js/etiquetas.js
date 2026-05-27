@@ -1,6 +1,8 @@
 let etiquetasArquivo = null;
 let etiquetasIniciado = false;
 
+const LABELARY_SIZES = { '100x150': '3.94x5.91', '104x29': '4.09x1.14' };
+
 function etiquetasInit() {
   if (etiquetasIniciado) return;
   etiquetasIniciado = true;
@@ -42,12 +44,29 @@ function zplSplitLabels(zpl) {
   return zpl.match(/\^XA[\s\S]*?\^XZ/gi) || [];
 }
 
+async function labelaryConvert(labelZpl, labelSize) {
+  const url = `https://api.labelary.com/v1/printers/8dpmm/labels/${labelSize}/0/`;
+  const MAX_RETRIES = 3;
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    const form = new FormData();
+    form.append('file', new Blob([labelZpl], { type: 'text/plain' }), 'label.zpl');
+    const resp = await fetch(url, { method: 'POST', headers: { Accept: 'application/pdf' }, body: form });
+    if (resp.ok) return resp.arrayBuffer();
+    if ((resp.status === 429 || resp.status >= 500) && attempt < MAX_RETRIES - 1) {
+      await new Promise(r => setTimeout(r, 1500 * (attempt + 1)));
+      continue;
+    }
+    throw new Error(`Labelary: Erro ${resp.status} — tente novamente em alguns minutos`);
+  }
+}
+
 async function converterZpl() {
   if (!etiquetasArquivo) return;
 
-  const tamanho = document.querySelector('input[name="etiqueta-tam"]:checked').value;
-  const btn     = document.getElementById('btn-converter-zpl');
-  const status  = document.getElementById('etiquetas-status');
+  const tamanho   = document.querySelector('input[name="etiqueta-tam"]:checked').value;
+  const labelSize = LABELARY_SIZES[tamanho];
+  const btn       = document.getElementById('btn-converter-zpl');
+  const status    = document.getElementById('etiquetas-status');
 
   btn.disabled    = true;
   btn.textContent = 'Convertendo...';
@@ -79,25 +98,13 @@ async function converterZpl() {
     const results  = new Array(labels.length);
     let concluidas = 0;
 
-    // 2 workers em paralelo, 350 ms entre cada chamada por worker
+    // 2 workers paralelos, 350 ms entre chamadas para respeitar rate limit
     const ctx = { idx: 0 };
     async function worker() {
       while (ctx.idx < labels.length) {
         const i = ctx.idx++;
         if (i > 0) await new Promise(r => setTimeout(r, 350));
-
-        const resp = await fetch(`/api/zpl-to-pdf?tamanho=${tamanho}`, {
-          method:  'POST',
-          headers: { 'Content-Type': 'text/plain' },
-          body:    labels[i],
-        });
-
-        if (!resp.ok) {
-          const err = await resp.json().catch(() => ({}));
-          throw new Error([err.erro, err.detalhe].filter(Boolean).join(' — ') || `Erro ${resp.status}`);
-        }
-
-        results[i] = await resp.arrayBuffer();
+        results[i] = await labelaryConvert(labels[i], labelSize);
         concluidas++;
         setStatus(`Convertendo etiqueta ${concluidas} de ${labels.length}...`);
       }
@@ -105,7 +112,6 @@ async function converterZpl() {
 
     await Promise.all([worker(), worker()]);
 
-    // Mescla em ordem
     for (const buf of results) {
       const doc   = await PDFDocument.load(buf);
       const pages = await merged.copyPages(doc, doc.getPageIndices());
