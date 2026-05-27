@@ -5487,7 +5487,7 @@ function zplSplitLabels(zpl) {
 
 async function singleLabelToPdf(labelSize, labelZpl) {
   const FormData = require('form-data');
-  const MAX_RETRIES = 4;
+  const MAX_RETRIES = 3;
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     const form = new FormData();
     form.append('file', Buffer.from(labelZpl, 'utf-8'), { filename: 'label.zpl' });
@@ -5498,7 +5498,7 @@ async function singleLabelToPdf(labelSize, labelZpl) {
         {
           headers: { ...form.getHeaders(), 'Accept': 'application/pdf' },
           responseType: 'arraybuffer',
-          timeout: 30000,
+          timeout: 12000,
         }
       );
       return Buffer.from(resp.data);
@@ -5506,7 +5506,7 @@ async function singleLabelToPdf(labelSize, labelZpl) {
       const status = err.response?.status;
       const retryable = status === 429 || status === 502 || status === 503 || status === 504;
       if (retryable && attempt < MAX_RETRIES - 1) {
-        await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
+        await new Promise(r => setTimeout(r, 1500 * (attempt + 1)));
         continue;
       }
       throw err;
@@ -5514,7 +5514,7 @@ async function singleLabelToPdf(labelSize, labelZpl) {
   }
 }
 
-async function convertLabelsWithConcurrency(labels, labelSize, concurrency = 4) {
+async function convertLabelsWithConcurrency(labels, labelSize, concurrency = 6) {
   const results = new Array(labels.length);
   let idx = 0;
   async function worker() {
@@ -5543,8 +5543,15 @@ app.post('/api/zpl-to-pdf', express.text({ type: '*/*', limit: '20mb' }), async 
     const labels = zplSplitLabels(zpl);
     if (labels.length === 0) return res.status(400).json({ erro: 'Nenhuma etiqueta encontrada no ZPL (^XA...^XZ)' });
 
-    // Converte até 4 etiquetas em paralelo para não ultrapassar o timeout do proxy
-    const pdfBuffers = await convertLabelsWithConcurrency(labels, labelSize, 4);
+    console.log(`[zpl-to-pdf] ${labels.length} etiqueta(s), tamanho=${tamanho}`);
+
+    // Timeout interno de 50s para retornar erro legível antes do Railway cortar com 502
+    const TIMEOUT_MS = 50000;
+    const conversao = convertLabelsWithConcurrency(labels, labelSize, 6);
+    const timeout   = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`Tempo limite atingido com ${labels.length} etiqueta(s). Tente um arquivo menor ou tente novamente.`)), TIMEOUT_MS)
+    );
+    const pdfBuffers = await Promise.race([conversao, timeout]);
 
     // Mescla todas as páginas em um único PDF
     const merged = await PDFDocument.create();
@@ -5561,6 +5568,7 @@ app.post('/api/zpl-to-pdf', express.text({ type: '*/*', limit: '20mb' }), async 
     res.set('Access-Control-Expose-Headers', 'X-Label-Count');
     res.send(finalPdf);
   } catch (err) {
+    console.error('[zpl-to-pdf] erro:', err.message);
     const detalhe = err.response?.data
       ? Buffer.from(err.response.data).toString().substring(0, 300)
       : err.message;
