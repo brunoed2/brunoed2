@@ -5504,13 +5504,27 @@ async function singleLabelToPdf(labelSize, labelZpl) {
       return Buffer.from(resp.data);
     } catch (err) {
       const status = err.response?.status;
-      if (status === 429 && attempt < MAX_RETRIES - 1) {
-        await new Promise(r => setTimeout(r, 3000 * (attempt + 1))); // 3s, 6s, 9s
+      const retryable = status === 429 || status === 502 || status === 503 || status === 504;
+      if (retryable && attempt < MAX_RETRIES - 1) {
+        await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
         continue;
       }
       throw err;
     }
   }
+}
+
+async function convertLabelsWithConcurrency(labels, labelSize, concurrency = 4) {
+  const results = new Array(labels.length);
+  let idx = 0;
+  async function worker() {
+    while (idx < labels.length) {
+      const i = idx++;
+      results[i] = await singleLabelToPdf(labelSize, labels[i]);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, labels.length) }, worker));
+  return results;
 }
 
 app.post('/api/zpl-to-pdf', express.text({ type: '*/*', limit: '20mb' }), async (req, res) => {
@@ -5529,12 +5543,8 @@ app.post('/api/zpl-to-pdf', express.text({ type: '*/*', limit: '20mb' }), async 
     const labels = zplSplitLabels(zpl);
     if (labels.length === 0) return res.status(400).json({ erro: 'Nenhuma etiqueta encontrada no ZPL (^XA...^XZ)' });
 
-    // Converte cada etiqueta sequencialmente com 700ms entre cada (respeita rate limit)
-    const pdfBuffers = [];
-    for (let i = 0; i < labels.length; i++) {
-      if (i > 0) await new Promise(r => setTimeout(r, 700));
-      pdfBuffers.push(await singleLabelToPdf(labelSize, labels[i]));
-    }
+    // Converte até 4 etiquetas em paralelo para não ultrapassar o timeout do proxy
+    const pdfBuffers = await convertLabelsWithConcurrency(labels, labelSize, 4);
 
     // Mescla todas as páginas em um único PDF
     const merged = await PDFDocument.create();
