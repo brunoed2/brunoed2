@@ -1671,19 +1671,20 @@ async function blingEnviarNFHelper(nfId, conta) {
   throw lastErr;
 }
 
-async function blingAguardarAutorizacaoNF(nfId, token, maxMs = 90000) {
+async function blingAguardarAutorizacaoNF(nfId, token, maxMs = 60000) {
   const inicio = Date.now();
   while (Date.now() - inicio < maxMs) {
-    await new Promise(r => setTimeout(r, 4000));
     const r = await axios.get(`https://api.bling.com.br/Api/v3/nfe/${nfId}`, {
       headers: { Authorization: `Bearer ${token}` }, timeout: 10000,
     }).catch(() => null);
     const sit = r?.data?.data?.situacao;
-    addLog(`[bling] aguardando NF ${nfId}: situacao id=${sit?.id} valor="${sit?.valor}"`, 'info');
-    if (sit?.id === 100 || /autorizada/i.test(sit?.valor || '')) return true;
-    if (/denegad|cancelad|rejeitad/i.test(sit?.valor || '')) throw new Error(`NF ${nfId} rejeitada pela SEFAZ: ${sit?.valor}`);
+    addLog(`[bling] aguardando NF ${nfId}: id=${sit?.id} valor="${sit?.valor}"`, 'info');
+    if (/autorizada/i.test(sit?.valor || '')) return;
+    if (/denegad|cancelad|rejeitad/i.test(sit?.valor || '')) throw new Error(`NF ${nfId} rejeitada: ${sit?.valor}`);
+    await new Promise(r => setTimeout(r, 5000));
   }
-  throw new Error(`NF ${nfId} não foi autorizada em 90s. Tente enviar para Shopee manualmente no Bling.`);
+  // Timeout sem confirmar — tenta enviar para loja mesmo assim; Bling retornará erro se NF não estiver autorizada
+  addLog(`[bling] NF ${nfId} não confirmada em ${maxMs / 1000}s — tentando enviar para loja mesmo assim`, 'warn');
 }
 
 async function blingEnviarParaLojaHelper(nfId, lojaId, conta) {
