@@ -2496,7 +2496,7 @@ app.post('/api/vendas/atendida', (req, res) => {
   if (dadosFinal) c.atendidas_dados.push({ ...dadosFinal, atendida: true, atendidaEm: existente?.atendidaEm || new Date().toISOString() });
   saveData(data);
   res.json({ ok: true });
-  verificarTodosPedidosAtendidos([sid]).catch(e => addLog(`[atendida] notif-todos erro: ${e.message}`, 'warn'));
+  verificarTodosPedidosAtendidos().catch(e => addLog(`[atendida] notif-todos erro: ${e.message}`, 'warn'));
 });
 
 app.delete('/api/vendas/atendida', (req, res) => {
@@ -2532,7 +2532,7 @@ app.post('/api/vendas/atendidas-batch', async (req, res) => {
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
   syncRailwayEnvVars(data).catch(e => console.error('[atendidas-batch] sync erro:', e.message));
   res.json({ ok: true });
-  verificarTodosPedidosAtendidos(shipmentIds).catch(e => addLog(`[atendidas-batch] notif-todos erro: ${e.message}`, 'warn'));
+  verificarTodosPedidosAtendidos().catch(e => addLog(`[atendidas-batch] notif-todos erro: ${e.message}`, 'warn'));
 });
 
 app.delete('/api/vendas/atendidas-batch', async (req, res) => {
@@ -4239,37 +4239,52 @@ function salvarShipmentsNotificados(set) {
 }
 const shipmentsNotificados = carregarShipmentsNotificados();
 
-// Pedidos enviados ao empacotador ainda não marcados como atendidos
-function carregarPendentesEmbalar() {
-  const data = loadData();
-  return new Set(Array.isArray(data.pendentesEmbalar) ? data.pendentesEmbalar : []);
-}
-function salvarPendentesEmbalar(set) {
-  const data = loadData();
-  data.pendentesEmbalar = Array.from(set);
-  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
-}
-const pendentesEmbalar = carregarPendentesEmbalar();
 let _notificarTodosTimeout = null;
 
-// Após marcar atendido: remove do Set e agenda notificação com delay de segurança
-async function verificarTodosPedidosAtendidos(sids) {
-  let algumRemovido = false;
-  sids.forEach(sid => { if (pendentesEmbalar.delete(String(sid))) algumRemovido = true; });
-  if (!algumRemovido) return;
-  salvarPendentesEmbalar(pendentesEmbalar);
-  if (pendentesEmbalar.size === 0) {
-    // Aguarda 70s (> ciclo de polling de 60s) para capturar pedido novo que possa ter chegado
-    if (_notificarTodosTimeout) clearTimeout(_notificarTodosTimeout);
-    _notificarTodosTimeout = setTimeout(async () => {
-      _notificarTodosTimeout = null;
-      if (pendentesEmbalar.size === 0) {
-        addLog('[atendidos] Fila zerou — notificando Bruno', 'ok');
-        await enviarWhatsApp(CALLMEBOT_PHONE_PEDIDOS, CALLMEBOT_APIKEY_PEDIDOS,
-          '✅ Todos os pedidos foram embalados e atendidos!');
-      }
-    }, 70000);
+// Consulta a API do ML e retorna true se não houver pedidos notificados ainda não atendidos
+async function checarNenhumPedidoPendente() {
+  const data = loadData();
+  const todasAtendidas = new Set();
+  for (const num of ['1', '2']) {
+    (data.contas?.[num]?.atendidas_dados || []).forEach(v => todasAtendidas.add(String(v.shipmentId)));
   }
+  for (const num of ['1', '2']) {
+    const c = data.contas?.[num];
+    if (!c?.access_token) continue;
+    try {
+      const resp = await axios.get('https://api.mercadolibre.com/orders/search', {
+        params: { seller: c.user_id, 'order.status': 'paid', sort: 'date_desc', limit: 50 },
+        headers: { Authorization: `Bearer ${c.access_token}` },
+        timeout: 10000,
+      });
+      for (const order of (resp.data.results || [])) {
+        if (!order.shipping?.id) continue;
+        const sid = String(order.shipping.id);
+        if (shipmentsNotificados.has(sid) && !todasAtendidas.has(sid)) return false;
+      }
+    } catch (err) {
+      addLog(`[atendidos] Erro ao checar pendentes conta ${num}: ${err.message}`, 'warn');
+      return null;
+    }
+  }
+  return true;
+}
+
+// Após marcar atendido: consulta API e notifica Bruno se fila zerou
+async function verificarTodosPedidosAtendidos() {
+  const resultado = await checarNenhumPedidoPendente();
+  if (resultado !== true) return;
+  // Aguarda 70s (> ciclo de polling de 60s) e re-verifica para evitar falso positivo
+  if (_notificarTodosTimeout) clearTimeout(_notificarTodosTimeout);
+  _notificarTodosTimeout = setTimeout(async () => {
+    _notificarTodosTimeout = null;
+    const confirmado = await checarNenhumPedidoPendente();
+    if (confirmado === true) {
+      addLog('[atendidos] Todos os pedidos atendidos — notificando Bruno', 'ok');
+      await enviarWhatsApp(CALLMEBOT_PHONE_PEDIDOS, CALLMEBOT_APIKEY_PEDIDOS,
+        '✅ Todos os pedidos foram embalados e atendidos!');
+    }
+  }, 70000);
 }
 
 // Remove um pedido do controle de notificados (para renotificar quando etiqueta ficar disponível)
@@ -4363,8 +4378,6 @@ async function verificarNovosShipmentsTelegram() {
             `Comprador: ${order.buyer?.nickname || '—'}\n` +
             `Status: ${status}\n\n${itens}`;
           await notificarPedido(texto);
-          pendentesEmbalar.add(sid);
-          salvarPendentesEmbalar(pendentesEmbalar);
           // Novo pedido chegou — cancela eventual timeout de "todos atendidos"
           if (_notificarTodosTimeout) { clearTimeout(_notificarTodosTimeout); _notificarTodosTimeout = null; }
           addLog(`[pedido] Notificação enviada — #${order.id}`, 'ok');
