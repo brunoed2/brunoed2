@@ -56,10 +56,12 @@ body {
 }
 
 .nav-btn {
+  display: block;
   background: none;
   border: none;
   color: #aaa;
   text-align: left;
+  text-decoration: none;
   padding: 11px 14px;
   border-radius: 8px;
   font-size: 14px;

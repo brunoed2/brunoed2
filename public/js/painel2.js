@@ -19,10 +19,7 @@ function abrirAba(nome) {
 }
 
 navBtns.forEach(btn => {
-  btn.addEventListener('click', () => abrirAba(btn.dataset.tab));
-  btn.addEventListener('mousedown', e => {
-    if (e.button === 1) { e.preventDefault(); window.open('?tab=' + btn.dataset.tab, '_blank'); }
-  });
+  btn.addEventListener('click', e => { e.preventDefault(); abrirAba(btn.dataset.tab); });
 });
 
 // ── Troca de conta ────────────────────────────────────────────
