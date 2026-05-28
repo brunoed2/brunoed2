@@ -10,6 +10,7 @@ const tabs    = document.querySelectorAll('.tab');
 function abrirAba(nome) {
   navBtns.forEach(b => b.classList.toggle('active', b.dataset.tab === nome));
   tabs.forEach(t => t.classList.toggle('active', t.id === `tab-${nome}`));
+  history.replaceState(null, '', '?tab=' + nome);
   if (trocandoConta) return; // aguarda trocarConta disparar o reload
   if (nome === 'estoque')      carregarEstoque(true);
   if (nome === 'vendas')       carregarVendas();
@@ -1039,9 +1040,12 @@ function aplicarPermissoesAbas() {
         tab.style.display = 'none';
       }
     });
-    if (permitidas.length > 0) abrirAba(permitidas[0]);
+    const tabParam2 = new URLSearchParams(location.search).get('tab');
+    const tabInicial = (tabParam2 && permitidas.includes(tabParam2)) ? tabParam2 : (permitidas.length > 0 ? permitidas[0] : 'vendas');
+    abrirAba(tabInicial);
   } else {
-    carregarVendas();
+    const tabParam2 = new URLSearchParams(location.search).get('tab');
+    abrirAba(tabParam2 || 'vendas');
   }
 }
 

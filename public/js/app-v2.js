@@ -50,6 +50,7 @@ function abrirAba(nome) {
   drawerBtns.forEach(b => b.classList.toggle('active', b.dataset.tab === nome));
   tabs.forEach(t => t.classList.toggle('active', t.id === `tab-${nome}`));
   localStorage.setItem('ultimaAba', nome);
+  history.replaceState(null, '', '?tab=' + nome);
 
   // Atualiza label da barra inferior mobile
   const labelEl = document.getElementById('mobile-tab-label');
