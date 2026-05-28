@@ -4731,12 +4731,26 @@ app.get('/api/fiscal/notas', (req, res) => {
     }
   }
 
+  // Constrói set de chaves NF que tiveram CP lançado (chave CP = chNFe-nDup)
+  const cpLancadas = new Set();
+  for (const num of ['1', '2']) {
+    const cp = (data.contas_pagar || {})[num] || [];
+    for (const entry of cp) {
+      if (entry.chave && entry.chave.length > 44) cpLancadas.add(entry.chave.slice(0, 44));
+    }
+  }
+
   const grupos = {};
   for (const n of Object.values(db)) {
     const cnpj = n.filial || '';
     if (!/^\d{14}$/.test(cnpj)) continue; // ignora entradas inválidas
     if (!grupos[cnpj]) grupos[cnpj] = { cnpj, nome: n.tomanome || cnpj, notas: [] };
-    grupos[cnpj].notas.push({ ...n, zip: undefined, temXml: !!(n.zip || (n.chave && chavesComXml.has(n.chave))) });
+    grupos[cnpj].notas.push({
+      ...n,
+      zip: undefined,
+      temXml:    !!(n.zip || (n.chave && chavesComXml.has(n.chave))),
+      cpLancado: !!(n.chave && cpLancadas.has(n.chave)),
+    });
   }
   // Ordena notas de cada grupo por data decrescente
   for (const g of Object.values(grupos)) {
