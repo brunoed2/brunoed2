@@ -102,6 +102,7 @@ function loadData() {
   raw.estoque_local_deducted_orders  = raw.estoque_local_deducted_orders  || {};
   raw.estoque_local_historico        = raw.estoque_local_historico        || [];
   raw.handdry_dashboard_cache        = raw.handdry_dashboard_cache        || null;
+  raw.fiscal_baixados                = raw.fiscal_baixados                || [];
   // Auto-configura fornecedor HANDDRY na conta 1
   raw.fornecedores_por_conta = raw.fornecedores_por_conta || {};
   raw.fornecedores_por_conta['1'] = raw.fornecedores_por_conta['1'] || [];
@@ -272,6 +273,7 @@ async function syncContasPagar() {
   for (const num of ['1', '2']) {
     variables[`CONTAS_PAGAR_${num}`] = JSON.stringify((data.contas_pagar || {})[num] || []);
   }
+  variables.FISCAL_BAIXADOS = JSON.stringify(data.fiscal_baixados || []);
 
   const payloadKB = Math.round(JSON.stringify(variables).length / 1024);
   addLog(`[sync-cp] Sincronizando contas a pagar (${payloadKB}KB)…`, 'info');
@@ -508,6 +510,11 @@ function initFromEnvVars() {
         changed = true;
       } catch {}
     }
+  }
+
+  // Restaura lista de chaves com XML baixado — Railway é fonte verdade
+  if (process.env.FISCAL_BAIXADOS !== undefined) {
+    try { data.fiscal_baixados = JSON.parse(process.env.FISCAL_BAIXADOS); changed = true; } catch {}
   }
 
   if (changed) fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
@@ -4731,6 +4738,9 @@ app.get('/api/fiscal/notas', (req, res) => {
     }
   }
 
+  // Chaves que já foram baixadas em algum momento (persiste via Railway env var FISCAL_BAIXADOS)
+  const fiscalBaixados = new Set(data.fiscal_baixados || []);
+
   // Constrói set de chaves NF que tiveram CP lançado (chave CP = chNFe-nDup)
   const cpLancadas = new Set();
   for (const num of ['1', '2']) {
@@ -4748,7 +4758,7 @@ app.get('/api/fiscal/notas', (req, res) => {
     grupos[cnpj].notas.push({
       ...n,
       zip: undefined,
-      temXml:    !!(n.zip || (n.chave && chavesComXml.has(n.chave))),
+      temXml:    !!(n.zip || (n.chave && (chavesComXml.has(n.chave) || fiscalBaixados.has(n.chave) || cpLancadas.has(n.chave)))),
       cpLancado: !!(n.chave && cpLancadas.has(n.chave)),
     });
   }
@@ -4915,20 +4925,17 @@ async function queryNFeByChave(pfxBuffer, senha, cnpj, cUF, chNFe) {
   });
 }
 
-// Baixa XML de uma NF fiscal pela chave e salva no fiscal-notas.json
-app.post('/api/fiscal/baixar-xml', async (req, res) => {
-  const { chave } = req.body;
-  if (!chave || chave.length !== 44) return res.json({ ok: false, erro: 'Chave inválida (deve ter 44 dígitos)' });
-  const cUF  = chave.slice(0, 2);
+// Busca cert correto para uma nota e baixa o XML do SEFAZ, salvando em fiscal-notas.json
+// e registrando a chave em data.fiscal_baixados (persistido via Railway env vars).
+// Retorna o zip (base64 gzip) ou lança erro.
+async function baixarXmlDoSefaz(chave) {
+  const cUF = chave.slice(0, 2);
   const data = loadData();
-
-  // Encontra o filial (CNPJ destinatário) desta nota para usar o cert correto
-  const db        = loadFiscalNotas();
-  const notaKey   = Object.keys(db).find(k => db[k].chave === chave);
+  const db   = loadFiscalNotas();
+  const notaKey    = Object.keys(db).find(k => db[k].chave === chave);
   const filialCnpj = notaKey ? (db[notaKey].filial || '') : '';
 
   let pfxBuffer, senha, cnpj;
-  // Primeiro tenta o certificado cujo CNPJ bate com o filial da nota
   for (const num of ['1', '2']) {
     const nc = (data.notas_contas || {})[num] || {};
     if (nc.cert_b64 && nc.senha && nc.cnpj) {
@@ -4936,16 +4943,33 @@ app.post('/api/fiscal/baixar-xml', async (req, res) => {
       if (nc.cnpj === filialCnpj) { pfxBuffer = Buffer.from(nc.cert_b64, 'base64'); senha = nc.senha; cnpj = nc.cnpj; break; }
     }
   }
-  if (!pfxBuffer) return res.json({ ok: false, erro: 'Nenhum certificado digital configurado. Configure em NF Entrada.' });
-  if (filialCnpj && cnpj !== filialCnpj) return res.json({ ok: false, erro: `Certificado configurado (${cnpj}) não corresponde ao destinatário desta NF (${filialCnpj}). Configure o certificado correto em NF Entrada.` });
+  if (!pfxBuffer) throw new Error('Nenhum certificado digital configurado. Configure em NF Entrada.');
+  if (filialCnpj && cnpj !== filialCnpj) throw new Error(`Certificado (${cnpj}) não corresponde ao destinatário desta NF (${filialCnpj}). Configure o certificado correto.`);
+
+  const xmlResp = await queryNFeByChave(pfxBuffer, senha, cnpj, cUF, chave);
+  const { cStat, xMotivo, docs } = parsearRespostaSefaz(xmlResp);
+  if (!docs.length) throw new Error(`SEFAZ: ${cStat} - ${xMotivo}`);
+
+  // Salva zip em fiscal-notas.json
+  const db2 = loadFiscalNotas();
+  const key = Object.keys(db2).find(k => db2[k].chave === chave);
+  if (key) { db2[key].zip = docs[0].zip; saveFiscalNotas(db2); }
+
+  // Registra chave em data.fiscal_baixados para persistência via Railway env vars
+  const data2 = loadData();
+  data2.fiscal_baixados = [...new Set([...(data2.fiscal_baixados || []), chave])];
+  saveData(data2);
+  agendarSyncContasPagar();
+
+  addLog(`[fiscal] XML baixado para chave ${chave.slice(0, 10)}...`, 'ok');
+  return docs[0].zip;
+}
+
+app.post('/api/fiscal/baixar-xml', async (req, res) => {
+  const { chave } = req.body;
+  if (!chave || chave.length !== 44) return res.json({ ok: false, erro: 'Chave inválida (deve ter 44 dígitos)' });
   try {
-    const xmlResp = await queryNFeByChave(pfxBuffer, senha, cnpj, cUF, chave);
-    const { cStat, xMotivo, docs } = parsearRespostaSefaz(xmlResp);
-    if (!docs.length) return res.json({ ok: false, erro: `SEFAZ: ${cStat} - ${xMotivo}` });
-    const db  = loadFiscalNotas();
-    const key = Object.keys(db).find(k => db[k].chave === chave);
-    if (key) { db[key].zip = docs[0].zip; saveFiscalNotas(db); }
-    addLog(`[fiscal] XML baixado para chave ${chave.slice(0,10)}...`, 'ok');
+    await baixarXmlDoSefaz(chave);
     return res.json({ ok: true });
   } catch (err) {
     addLog(`[fiscal] baixar-xml erro: ${err.message}`, 'warn');
@@ -4966,11 +4990,21 @@ app.get('/api/fiscal/xml/:chave', (req, res) => {
   } catch { res.status(500).json({ error: 'Erro ao descompactar XML' }); }
 });
 
-app.get('/api/fiscal/danfe/:chave', (req, res) => {
+app.get('/api/fiscal/danfe/:chave', async (req, res) => {
   const { chave } = req.params;
-  const db  = loadFiscalNotas();
-  const key = Object.keys(db).find(k => db[k].chave === chave);
-  if (!key || !db[key].zip) return res.status(404).send('<h2>XML não disponível para esta nota.</h2>');
+  let db  = loadFiscalNotas();
+  let key = Object.keys(db).find(k => db[k].chave === chave);
+  // Se zip sumir (ex: redeploy sem volume), tenta re-baixar automaticamente do SEFAZ
+  if (!key || !db[key].zip) {
+    try {
+      await baixarXmlDoSefaz(chave);
+      db  = loadFiscalNotas();
+      key = Object.keys(db).find(k => db[k].chave === chave);
+    } catch (e) {
+      return res.status(404).send(`<h2 style="font-family:sans-serif">XML não disponível.<br><small>${e.message}</small></h2>`);
+    }
+  }
+  if (!key || !db[key].zip) return res.status(404).send('<h2 style="font-family:sans-serif">XML não disponível para esta nota.</h2>');
   try {
     const xml = zlib.gunzipSync(Buffer.from(db[key].zip, 'base64')).toString('utf8');
     res.setHeader('Content-Type', 'text/html; charset=utf-8');

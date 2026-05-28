@@ -85,11 +85,12 @@ function fiscalRenderGrupo(g) {
     const xmlBadge = `<span title="Clique para ver DANFE" style="background:#16a34a;color:#fff;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:600;cursor:pointer" onclick="fiscalAbrirDanfe('${n.chave}')">XML</span>`;
     const cpBadge  = `<span title="Contas a Pagar lançado" style="background:#1d4ed8;color:#fff;padding:1px 5px;border-radius:3px;font-size:10px;font-weight:600;margin-left:3px">CP✓</span>`;
     const cpBtn    = `<button onclick="fiscalLancarCP('${n.chave}', this)" style="background:none;border:1px solid #16a34a;color:#16a34a;border-radius:4px;padding:1px 5px;font-size:10px;cursor:pointer;margin-left:3px" title="Lançar Contas a Pagar">💰</button>`;
+    const dlBtn    = n.chave ? `<button onclick="fiscalBaixarXml('${n.chave}', this)" style="background:none;border:1px solid #475569;color:#94a3b8;border-radius:4px;padding:1px 6px;font-size:10px;cursor:pointer" title="Baixar XML da SEFAZ">📥</button>` : '';
     const xmlCol   = n.temXml
       ? xmlBadge + (n.cpLancado ? cpBadge : cpBtn)
       : n.cpLancado
-        ? cpBadge
-        : (n.chave ? `<button onclick="fiscalBaixarXml('${n.chave}', this)" style="background:none;border:1px solid #475569;color:#94a3b8;border-radius:4px;padding:1px 6px;font-size:10px;cursor:pointer" title="Baixar XML da SEFAZ">📥</button>` : '');
+        ? dlBtn + cpBadge
+        : dlBtn;
     return `<tr>
       <td>${data}</td>
       <td>${n.num || '—'}-${n.serie || ''}</td>
