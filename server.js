@@ -161,7 +161,6 @@ function loadData() {
 
 function saveData(data) {
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
-  syncRailwayEnvVars(data).catch(() => {});
 }
 
 // Retorna as credenciais da conta atualmente ativa
@@ -177,171 +176,10 @@ let lastSyncStatus = { ok: null, ts: null, erro: null };
 // Throttle: atualizar env vars do Railway dispara um novo deploy automaticamente.
 // Com volume montado, o disco já é fonte de verdade — env vars são só backup.
 // Limita a 1 sync a cada 10 minutos para evitar fila de deploys desnecessários.
-let _lastEnvVarsSyncTs = Date.now(); // Inicia throttled — evita sync imediato no startup que gera loop de deploys
-const ENV_VARS_SYNC_MIN_INTERVAL = 10 * 60 * 1000; // 10 minutos
-
-async function syncRailwayEnvVars(_dataIgnorado) {
-  const agora = Date.now();
-  if (agora - _lastEnvVarsSyncTs < ENV_VARS_SYNC_MIN_INTERVAL) return { ok: true, throttled: true };
-  _lastEnvVarsSyncTs = agora;
-  const token = process.env.RAILWAY_TOKEN;
-  if (!token) { addLog('[sync] RAILWAY_TOKEN não configurado — dados não serão persistidos entre restarts', 'warn'); return { ok: false, erro: 'RAILWAY_TOKEN ausente' }; }
-  const projectId     = process.env.RAILWAY_PROJECT_ID;
-  const environmentId = process.env.RAILWAY_ENVIRONMENT_ID;
-  const serviceId     = process.env.RAILWAY_SERVICE_ID;
-  if (!projectId || !environmentId || !serviceId) { addLog('[sync] RAILWAY IDs ausentes (PROJECT_ID/ENVIRONMENT_ID/SERVICE_ID)', 'warn'); return { ok: false, erro: 'Railway IDs ausentes' }; }
-
-  // Sempre relê do disco para pegar o estado mais recente, evitando race conditions
-  // entre requests concorrentes que poderiam mandar dados antigos pro Railway
-  const data = loadData();
-
-  const variables = { ML_CONTA_ATIVA: data.conta_ativa || '1' };
-  for (const num of ['1', '2']) {
-    const c = data.contas[num] || {};
-    if (c.client_id)        variables[`ML_CLIENT_ID_${num}`]        = c.client_id;
-    if (c.client_secret)    variables[`ML_CLIENT_SECRET_${num}`]    = c.client_secret;
-    if (c.access_token)     variables[`ML_ACCESS_TOKEN_${num}`]     = c.access_token;
-    if (c.refresh_token)    variables[`ML_REFRESH_TOKEN_${num}`]    = c.refresh_token;
-    if (c.user_id)          variables[`ML_USER_ID_${num}`]          = String(c.user_id);
-    if (c.token_expires_at) variables[`ML_TOKEN_EXPIRES_AT_${num}`] = String(c.token_expires_at);
-    // Tokens Bling — essenciais para sobreviver a restarts
-    const b = data[`bling_${num}`] || (num === '1' ? data.bling : null) || {};
-    if (b.access_token)  variables[`BLING_ACCESS_TOKEN_${num}`]  = b.access_token;
-    if (b.refresh_token) variables[`BLING_REFRESH_TOKEN_${num}`] = b.refresh_token;
-    if (b.expires_at)    variables[`BLING_EXPIRES_AT_${num}`]    = String(b.expires_at);
-  }
-  // Configuração de lucro (custos + impostos) — por conta
-  for (const num of ['1', '2']) {
-    const lc = (data.lucro_contas || {})[num];
-    if (lc) {
-      // Salva custos/imposto sem gastos (evita var muito grande)
-      const { gastos: _g, dre_cache: _dc, ...lcSemGastos } = lc;
-      variables[`LUCRO_CONFIG_${num}`] = JSON.stringify(lcSemGastos);
-      variables[`DRE_CACHE_${num}`]    = JSON.stringify(lc.dre_cache || {});
-      // Gastos mensais em var separada — sempre sincroniza
-      variables[`GASTOS_DATA_${num}`] = JSON.stringify(lc.gastos || {});
-      // Gastos fixos (tipos + valores) — sempre sincroniza
-      variables[`GASTOS_FIXOS_TIPOS_${num}`] = JSON.stringify(lc.gastos_fixos_tipos    || []);
-      variables[`GASTOS_FIXOS_VALS_${num}`]  = JSON.stringify(lc.gastos_fixos_valores  || {});
-      variables[`GASTOS_FIXOS_TRAV_${num}`]  = JSON.stringify(lc.gastos_fixos_travados || []);
-      variables[`GASTOS_FIXOS_PAD_${num}`]   = JSON.stringify(lc.gastos_fixos_padrao   || {});
-    }
-  }
-  // Certificado digital Notas de Entrada — por conta
-  for (const num of ['1', '2']) {
-    const n = (data.notas_contas || {})[num] || {};
-    if (n.cert_b64)  variables[`NOTAS_CERT_B64_${num}`]  = n.cert_b64;
-    if (n.cert_nome) variables[`NOTAS_CERT_NOME_${num}`] = n.cert_nome;
-    if (n.senha)     variables[`NOTAS_SENHA_${num}`]     = n.senha;
-    if (n.cnpj)      variables[`NOTAS_CNPJ_${num}`]      = n.cnpj;
-    if (n.titular)   variables[`NOTAS_TITULAR_${num}`]   = n.titular;
-    // Lista de notas (sem o campo zip para economizar espaço nas env vars)
-    if (n.lista && n.lista.length > 0) {
-      const listaSemZip = n.lista.map(({ zip, ...resto }) => resto);
-      variables[`NOTAS_LISTA_${num}`] = JSON.stringify(listaSemZip);
-    }
-    if (n.ultNSU) variables[`NOTAS_ULTNSU_${num}`] = n.ultNSU;
-    if (n.maxNSU) variables[`NOTAS_MAXNSU_${num}`] = n.maxNSU;
-    if (n.ultimaRejeicao656) variables[`NOTAS_REJEICAO656_${num}`] = String(n.ultimaRejeicao656);
-    // IDs dos pedidos flagados como atendidos — sempre sincroniza, mesmo vazio,
-    // para sobrescrever lista antiga no Railway quando o usuário desmarcar todos
-    const sidsAtendidos = ((data.contas[num] || {}).atendidas_dados || []).map(v => String(v.shipmentId));
-    variables[`ATENDIDAS_SIDS_${num}`] = JSON.stringify(sidsAtendidos);
-    // Contas a pagar — sempre sincroniza
-    variables[`CONTAS_PAGAR_${num}`] = JSON.stringify((data.contas_pagar || {})[num] || []);
-  }
-
-  // Avisa se alguma variável está muito grande (limite Railway ~32 KB por var)
-  for (const [k, v] of Object.entries(variables)) {
-    if (typeof v === 'string' && v.length > 28000) {
-      addLog(`[sync] ⚠️ Variável ${k} grande (${Math.round(v.length/1024)}KB) — pode falhar no Railway`, 'warn');
-    }
-  }
-
-  // Retry até 3 vezes com backoff simples
-  for (let tentativa = 1; tentativa <= 3; tentativa++) {
-    try {
-      const resp = await axios.post(
-        'https://backboard.railway.app/graphql/v2',
-        {
-          query: `mutation Upsert($input: VariableCollectionUpsertInput!) {
-            variableCollectionUpsert(input: $input)
-          }`,
-          variables: { input: { projectId, environmentId, serviceId, variables } },
-        },
-        { headers: { Authorization: `Bearer ${token}` }, timeout: 15000 }
-      );
-      // Railway retorna errors no body mesmo com HTTP 200
-      if (resp.data?.errors?.length) {
-        const msg = resp.data.errors[0]?.message || 'Erro GraphQL';
-        addLog(`[sync] ⚠️ Railway retornou erro (tentativa ${tentativa}/3): ${msg}`, 'warn');
-        if (tentativa < 3) { await new Promise(r => setTimeout(r, 2000 * tentativa)); continue; }
-        lastSyncStatus = { ok: false, ts: Date.now(), erro: msg };
-        return { ok: false, erro: msg };
-      }
-      addLog(`[sync] ✅ Dados salvos no Railway (tentativa ${tentativa})`, 'ok');
-      lastSyncStatus = { ok: true, ts: Date.now(), erro: null };
-      return { ok: true };
-    } catch (e) {
-      addLog(`[sync] ❌ Erro tentativa ${tentativa}/3: ${e.message}`, 'erro');
-      if (tentativa < 3) await new Promise(r => setTimeout(r, 2000 * tentativa));
-    }
-  }
-  lastSyncStatus = { ok: false, ts: Date.now(), erro: 'Falha após 3 tentativas' };
-  return { ok: false, erro: 'Falha após 3 tentativas' };
-}
-
-// ── Sync dedicado e mínimo para Contas a Pagar ────────────────
-// Envia APENAS as 2 variáveis CONTAS_PAGAR_1 e CONTAS_PAGAR_2.
-// Payload pequeno = muito mais confiável que o sync completo.
-async function syncContasPagar() {
-  const token = process.env.RAILWAY_TOKEN;
-  if (!token) return { ok: false, erro: 'RAILWAY_TOKEN ausente' };
-  const projectId     = process.env.RAILWAY_PROJECT_ID;
-  const environmentId = process.env.RAILWAY_ENVIRONMENT_ID;
-  const serviceId     = process.env.RAILWAY_SERVICE_ID;
-  if (!projectId || !environmentId || !serviceId) return { ok: false, erro: 'Railway IDs ausentes' };
-
-  const data = loadData();
-  const variables = {};
-  for (const num of ['1', '2']) {
-    variables[`CONTAS_PAGAR_${num}`] = JSON.stringify((data.contas_pagar || {})[num] || []);
-  }
-  variables.FISCAL_BAIXADOS = JSON.stringify(data.fiscal_baixados || []);
-
-  const payloadKB = Math.round(JSON.stringify(variables).length / 1024);
-  addLog(`[sync-cp] Sincronizando contas a pagar (${payloadKB}KB)…`, 'info');
-
-  for (let tentativa = 1; tentativa <= 5; tentativa++) {
-    try {
-      const resp = await axios.post(
-        'https://backboard.railway.app/graphql/v2',
-        {
-          query: `mutation Upsert($input: VariableCollectionUpsertInput!) {
-            variableCollectionUpsert(input: $input)
-          }`,
-          variables: { input: { projectId, environmentId, serviceId, variables } },
-        },
-        { headers: { Authorization: `Bearer ${token}` }, timeout: 20000 }
-      );
-      if (resp.data?.errors?.length) {
-        const msg = resp.data.errors[0]?.message || 'Erro GraphQL';
-        addLog(`[sync-cp] ⚠️ Railway erro (tentativa ${tentativa}/5): ${msg}`, 'warn');
-        if (tentativa < 5) { await new Promise(r => setTimeout(r, 5000)); continue; }
-        lastSyncStatus = { ok: false, ts: Date.now(), erro: msg };
-        return { ok: false, erro: msg };
-      }
-      addLog(`[sync-cp] ✅ Contas a pagar salvas no Railway (tentativa ${tentativa})`, 'ok');
-      lastSyncStatus = { ok: true, ts: Date.now(), erro: null };
-      return { ok: true };
-    } catch (e) {
-      addLog(`[sync-cp] ❌ Erro tentativa ${tentativa}/5: ${e.message}`, 'erro');
-      if (tentativa < 5) await new Promise(r => setTimeout(r, 5000));
-    }
-  }
-  lastSyncStatus = { ok: false, ts: Date.now(), erro: 'Falha após 5 tentativas' };
-  return { ok: false, erro: 'Falha após 5 tentativas' };
-}
+// Sync para Railway env vars DESATIVADO — causava loop infinito de deploys.
+// Dados persistidos no volume Railway (/data/data.json) + backups diários automáticos.
+async function syncRailwayEnvVars(_dataIgnorado) { return { ok: true }; }
+async function syncContasPagar()                  { return { ok: true }; }
 
 // ── Fila de sync em background ─────────────────────────────────
 // Os endpoints escrevem no disco e chamam agendarSyncContasPagar()
@@ -370,11 +208,7 @@ async function _executarFilaSyncCp() {
   _syncCpRodando = false;
 }
 
-// Sync periódico de segurança: a cada 15 minutos (volume já garante persistência no disco)
-setInterval(() => {
-  agendarSyncContasPagar();
-  syncRailwayEnvVars().catch(() => {});
-}, 15 * 60 * 1000);
+// Sync periódico removido — syncRailwayEnvVars desativado.
 
 function initFromEnvVars() {
   // Se estiver usando Volume Railway E o arquivo já existir, o Volume é a fonte de verdade.
