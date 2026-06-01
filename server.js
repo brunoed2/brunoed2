@@ -152,7 +152,7 @@ let lastSyncStatus = { ok: null, ts: null, erro: null };
 // Throttle: atualizar env vars do Railway dispara um novo deploy automaticamente.
 // Com volume montado, o disco já é fonte de verdade — env vars são só backup.
 // Limita a 1 sync a cada 10 minutos para evitar fila de deploys desnecessários.
-let _lastEnvVarsSyncTs = 0;
+let _lastEnvVarsSyncTs = Date.now(); // Inicia throttled — evita sync imediato no startup que gera loop de deploys
 const ENV_VARS_SYNC_MIN_INTERVAL = 10 * 60 * 1000; // 10 minutos
 
 async function syncRailwayEnvVars(_dataIgnorado) {
