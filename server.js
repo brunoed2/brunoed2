@@ -4942,6 +4942,18 @@ app.post('/api/sync/force', (req, res) => {
   res.json({ ok: true, msg: 'Sync agendado — acompanhe /api/sync/status' });
 });
 
+// Restauração de emergência: força releitura de TODAS as env vars mesmo com volume presente.
+// Útil quando data.json ficou corrompido/vazio após falha de deploy.
+app.post('/api/admin/restore-envvars', (req, res) => {
+  try {
+    const bak = DATA_FILE + '.bak';
+    if (fs.existsSync(DATA_FILE)) fs.copyFileSync(DATA_FILE, bak);
+    fs.unlinkSync(DATA_FILE);
+  } catch {}
+  initFromEnvVars();
+  res.json({ ok: true, msg: 'Dados restaurados das env vars. Acesse o app normalmente.' });
+});
+
 // ── Notas de Entrada (SEFAZ NF-e) ────────────────────────────────────────────
 
 function extrairCnpjDoCert(_pfxBuffer, _senha) {
