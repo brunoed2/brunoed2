@@ -4943,7 +4943,6 @@ app.post('/api/sync/force', (req, res) => {
 });
 
 // Restauração de emergência: força releitura de TODAS as env vars mesmo com volume presente.
-// Útil quando data.json ficou corrompido/vazio após falha de deploy.
 app.post('/api/admin/restore-envvars', (req, res) => {
   try {
     const bak = DATA_FILE + '.bak';
@@ -4952,6 +4951,42 @@ app.post('/api/admin/restore-envvars', (req, res) => {
   } catch {}
   initFromEnvVars();
   res.json({ ok: true, msg: 'Dados restaurados das env vars. Acesse o app normalmente.' });
+});
+
+// Mescla o backup (data.json.bak) com dados atuais.
+// Estratégia: backup é a base (tem estoque local, fornecedores, contas a pagar, etc.)
+// Tokens ML e Bling do estado atual (env vars) sobrescrevem o backup por serem mais recentes.
+app.post('/api/admin/merge-backup', (req, res) => {
+  const bak = DATA_FILE + '.bak';
+  if (!fs.existsSync(bak)) return res.status(404).json({ error: 'Backup não encontrado' });
+  let backup, current;
+  try { backup = JSON.parse(fs.readFileSync(bak, 'utf-8')); } catch { return res.status(500).json({ error: 'Backup corrompido/ilegível' }); }
+  try { current = loadData(); } catch { current = {}; }
+
+  // Base = backup (preserva estoque local, fornecedores, etc.)
+  const merged = JSON.parse(JSON.stringify(backup));
+
+  // Tokens ML mais recentes das env vars sobrescrevem o backup
+  for (const num of ['1', '2']) {
+    const cur = (current.contas || {})[num] || {};
+    merged.contas = merged.contas || {};
+    merged.contas[num] = merged.contas[num] || {};
+    ['client_id','client_secret','access_token','refresh_token','user_id','token_expires_at'].forEach(k => {
+      if (cur[k]) merged.contas[num][k] = cur[k];
+    });
+    // Tokens Bling
+    const bKey = `bling_${num}`;
+    if ((current[bKey] || {}).access_token) merged[bKey] = current[bKey];
+    // Contas a pagar: usa o conjunto com mais registros
+    const cpBak = ((backup.contas_pagar || {})[num] || []);
+    const cpCur = ((current.contas_pagar || {})[num] || []);
+    merged.contas_pagar = merged.contas_pagar || {};
+    merged.contas_pagar[num] = cpBak.length >= cpCur.length ? cpBak : cpCur;
+  }
+  if ((current.bling || {}).access_token) merged.bling = current.bling;
+
+  fs.writeFileSync(DATA_FILE, JSON.stringify(merged, null, 2));
+  res.json({ ok: true, msg: 'Dados mesclados: backup restaurado com tokens atualizados das env vars.' });
 });
 
 // ── Notas de Entrada (SEFAZ NF-e) ────────────────────────────────────────────
