@@ -877,13 +877,16 @@ async function dreCarregar() {
         const custo   = totais ? totais.custo   : null;
         const imposto = totais ? totais.imposto : null;
         const ads     = adsResp.ads_cost ?? 0;
-        await fetch('/api/lucro/dre-cache-mes', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ conta, mes: m.mes, lucroML, taxaML, frete, custo, imposto, ads }),
-        }).catch(() => {});
+        // Só salva se a API retornou dados — evita sobrescrever cache bom com null em caso de erro/timeout
+        if (lucroML !== null) {
+          await fetch('/api/lucro/dre-cache-mes', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ conta, mes: m.mes, lucroML, taxaML, frete, custo, imposto, ads }),
+          }).catch(() => {});
+        }
       } catch {}
       // Atualiza a tabela a cada mês para mostrar progresso visual
-      dreCarregarDoCache();
+      await dreCarregarDoCache();
     }
     await dreCarregarDoCache();
   } catch (e) {
@@ -918,10 +921,15 @@ async function dreRefreshMes(mes) {
     const custo   = totais ? totais.custo   : null;
     const imposto = totais ? totais.imposto : null;
     const ads     = adsResp.ads_cost ?? 0;
-    await fetch('/api/lucro/dre-cache-mes', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ conta, mes, lucroML, taxaML, frete, custo, imposto, ads }),
-    });
+    // Só salva no cache se a API retornou dados reais — evita sobrescrever cache bom com null em caso de erro/timeout
+    if (lucroML !== null) {
+      await fetch('/api/lucro/dre-cache-mes', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conta, mes, lucroML, taxaML, frete, custo, imposto, ads }),
+      });
+    } else {
+      if (btnEl) btnEl.title = 'Nenhuma venda encontrada — cache anterior mantido';
+    }
     await dreCarregarDoCache();
   } catch {}
   // Row re-rendered by dreCarregarDoCache — opacity reset happens via new DOM
