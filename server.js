@@ -149,7 +149,16 @@ function contaAtiva(data) {
 // Estado do último sync — visível via /api/sync/status
 let lastSyncStatus = { ok: null, ts: null, erro: null };
 
+// Throttle: atualizar env vars do Railway dispara um novo deploy automaticamente.
+// Com volume montado, o disco já é fonte de verdade — env vars são só backup.
+// Limita a 1 sync a cada 10 minutos para evitar fila de deploys desnecessários.
+let _lastEnvVarsSyncTs = 0;
+const ENV_VARS_SYNC_MIN_INTERVAL = 10 * 60 * 1000; // 10 minutos
+
 async function syncRailwayEnvVars(_dataIgnorado) {
+  const agora = Date.now();
+  if (agora - _lastEnvVarsSyncTs < ENV_VARS_SYNC_MIN_INTERVAL) return { ok: true, throttled: true };
+  _lastEnvVarsSyncTs = agora;
   const token = process.env.RAILWAY_TOKEN;
   if (!token) { addLog('[sync] RAILWAY_TOKEN não configurado — dados não serão persistidos entre restarts', 'warn'); return { ok: false, erro: 'RAILWAY_TOKEN ausente' }; }
   const projectId     = process.env.RAILWAY_PROJECT_ID;
@@ -336,11 +345,11 @@ async function _executarFilaSyncCp() {
   _syncCpRodando = false;
 }
 
-// Sync periódico de segurança: a cada 3 minutos garante que Railway tem o estado atual
+// Sync periódico de segurança: a cada 15 minutos (volume já garante persistência no disco)
 setInterval(() => {
   agendarSyncContasPagar();
   syncRailwayEnvVars().catch(() => {});
-}, 3 * 60 * 1000);
+}, 15 * 60 * 1000);
 
 function initFromEnvVars() {
   // Se estiver usando Volume Railway E o arquivo já existir, o Volume é a fonte de verdade.
