@@ -554,8 +554,9 @@
 
         <!-- Sub-abas -->
         <div style="display:flex;gap:8px;margin-bottom:20px">
-          <button class="filtro-btn active" id="bling-sub-pedidos"  onclick="blingAbrirSub('pedidos')">📋 Pedidos pendentes</button>
-          <button class="filtro-btn"        id="bling-sub-notas"    onclick="blingAbrirSub('notas')">🧾 Notas pendentes de envio</button>
+          <button class="filtro-btn active" id="bling-sub-pedidos"      onclick="blingAbrirSub('pedidos')">📋 Pedidos pendentes</button>
+          <button class="filtro-btn"        id="bling-sub-notas"      onclick="blingAbrirSub('notas')">🧾 Notas pendentes de envio</button>
+          <button class="filtro-btn"        id="bling-sub-marketplace" onclick="blingAbrirSub('marketplace')" style="background:#f97316;color:#fff;border-color:#f97316">🛍 Shopee Marketplace</button>
         </div>
 
         <!-- Sub-aba: Pedidos pendentes -->
@@ -617,6 +618,34 @@
             </table>
           </div>
         </div>
+
+        <!-- Sub-aba: Shopee Marketplace -->
+        <div id="bling-painel-marketplace" style="display:none">
+          <div class="tabela-container">
+            <div class="tabela-topo">
+              <span id="bling-marketplace-total"></span>
+              <button class="btn-secondary" onclick="blingCarregarMarketplace()">↻ Atualizar</button>
+            </div>
+            <div id="bling-marketplace-loading" class="loading" style="display:none">Carregando NFs Shopee...</div>
+            <div id="bling-marketplace-erro" class="estoque-erro" style="display:none"></div>
+            <table class="tabela" id="tabela-bling-marketplace" style="display:none">
+              <thead>
+                <tr>
+                  <th>Número NF</th>
+                  <th>Destinatário</th>
+                  <th class="col-num">Valor</th>
+                  <th>Status SEFAZ</th>
+                  <th>Data</th>
+                  <th>Nº Loja (Shopee)</th>
+                  <th>Ação</th>
+                </tr>
+              </thead>
+              <tbody id="tabela-bling-marketplace-body"></tbody>
+            </table>
+            <div id="bling-marketplace-resultado" style="margin-top:16px;font-family:monospace;font-size:12px;white-space:pre-wrap;background:#111;color:#0f0;padding:12px;border-radius:6px;display:none"></div>
+          </div>
+        </div>
+
       </section>
 
       <!-- ── Aba: Promoções ── -->
@@ -1310,6 +1339,6 @@
     </div>
   </div>
 
-  <div id="version-badge">v517</div>
+  <div id="version-badge">v518</div>
 </body>
 </html>

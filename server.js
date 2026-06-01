@@ -1678,6 +1678,78 @@ app.get('/api/bling/notas-pendentes', async (req, res) => {
   }
 });
 
+// ── Bling: NFs Shopee autorizadas (pendentes de envio para marketplace) ──
+
+app.get('/api/bling/nfs-shopee-marketplace', async (req, res) => {
+  try {
+    const conta = blingContaReq(req);
+    const token = await getBlingToken(conta);
+    const resp  = await axios.get('https://api.bling.com.br/Api/v3/nfe', {
+      headers: { Authorization: `Bearer ${token}` },
+      params: { pagina: 1, limite: 50 },
+      timeout: 15000,
+    });
+    const nfs = resp.data?.data || [];
+    const resultado = [];
+    for (const nf of nfs) {
+      const det = await axios.get(`https://api.bling.com.br/Api/v3/nfe/${nf.id}`, {
+        headers: { Authorization: `Bearer ${token}` }, timeout: 10000,
+      }).then(r => r.data?.data || {}).catch(() => ({}));
+      const numeroLoja = det.numeroLoja || '';
+      const isML     = /^\d{10,}$/.test(numeroLoja);
+      const isShopee = !!numeroLoja && !isML;
+      if (!isShopee) continue;
+      resultado.push({
+        id:           nf.id,
+        numero:       nf.numero || det.numero || '—',
+        destinatario: det.contato?.nome || nf.contato?.nome || '—',
+        valor_total:  det.totalProdutos || nf.totalProdutos || 0,
+        situacao:     det.situacao?.valor || String(nf.situacao || '—'),
+        situacaoId:   det.situacao?.id ?? nf.situacao ?? null,
+        data:         det.dataEmissao || nf.dataEmissao,
+        numeroLoja,
+        lojaId:       det.loja?.id || null,
+      });
+    }
+    return res.json({ nfs: resultado });
+  } catch (err) {
+    const detail = err.response ? `HTTP ${err.response.status}: ${JSON.stringify(err.response.data).slice(0, 200)}` : err.message;
+    return res.json({ erro: detail });
+  }
+});
+
+// ── Bling: tentar enviar NF para marketplace (debug) ──────────
+
+app.post('/api/bling/enviar-marketplace/:nfId', async (req, res) => {
+  const conta  = blingContaReq(req);
+  const lojaId = req.body?.lojaId;
+  try {
+    const token = await getBlingToken(conta);
+    const endpoints = [
+      { url: `https://api.bling.com.br/Api/v3/nfe/${req.params.nfId}/enviar-para-loja`,             body: { idLoja: lojaId, enviarDadosNfe: true, codigoRastreamento: false } },
+      { url: `https://api.bling.com.br/Api/v3/nfe/${req.params.nfId}/enviar-dados-lojas-virtuais`,   body: { idLoja: lojaId, enviarDadosNfe: true } },
+      { url: `https://api.bling.com.br/Api/v3/nfe/${req.params.nfId}/enviar-marketplace`,            body: { idLoja: lojaId } },
+    ];
+    const tentativas = [];
+    for (const ep of endpoints) {
+      try {
+        const r = await axios.post(ep.url, ep.body, {
+          headers: { Authorization: `Bearer ${token}` }, timeout: 15000,
+        });
+        addLog(`[bling] enviar-marketplace NF ${req.params.nfId} SUCESSO: ${ep.url}`, 'ok');
+        return res.json({ ok: true, endpoint: ep.url, resposta: r.data });
+      } catch (err) {
+        const t = { endpoint: ep.url, status: err.response?.status, body: err.response?.data };
+        tentativas.push(t);
+        addLog(`[bling] enviar-marketplace ${ep.url}: ${t.status} ${JSON.stringify(t.body).slice(0,150)}`, 'warn');
+      }
+    }
+    return res.json({ ok: false, tentativas });
+  } catch (err) {
+    return res.json({ ok: false, erro: err.message });
+  }
+});
+
 // ── Bling: helpers de emissão ─────────────────────────────────
 
 async function blingEmitirNFHelper(pedidoId, conta) {

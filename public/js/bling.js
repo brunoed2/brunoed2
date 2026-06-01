@@ -13,11 +13,14 @@ function blingAbrirSub(sub) {
   blingSubAtual = sub;
   document.getElementById('bling-sub-pedidos').classList.toggle('active', sub === 'pedidos');
   document.getElementById('bling-sub-notas').classList.toggle('active', sub === 'notas');
-  document.getElementById('bling-painel-pedidos').style.display = sub === 'pedidos' ? '' : 'none';
-  document.getElementById('bling-painel-notas').style.display   = sub === 'notas'   ? '' : 'none';
+  document.getElementById('bling-sub-marketplace').classList.toggle('active', sub === 'marketplace');
+  document.getElementById('bling-painel-pedidos').style.display     = sub === 'pedidos'     ? '' : 'none';
+  document.getElementById('bling-painel-notas').style.display       = sub === 'notas'       ? '' : 'none';
+  document.getElementById('bling-painel-marketplace').style.display = sub === 'marketplace' ? '' : 'none';
 
-  if (sub === 'pedidos') blingCarregarPedidos();
-  if (sub === 'notas')   blingCarregarNotas();
+  if (sub === 'pedidos')     blingCarregarPedidos();
+  if (sub === 'notas')       blingCarregarNotas();
+  if (sub === 'marketplace') blingCarregarMarketplace();
 }
 
 // ── Pedidos pendentes de NF ───────────────────────────────────
@@ -405,4 +408,96 @@ function escapeHtml(str) {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
+}
+
+// ── Shopee Marketplace: NFs autorizadas pendentes de envio para Shopee ──
+
+async function blingCarregarMarketplace() {
+  const loading  = document.getElementById('bling-marketplace-loading');
+  const erro     = document.getElementById('bling-marketplace-erro');
+  const tabela   = document.getElementById('tabela-bling-marketplace');
+  const tbody    = document.getElementById('tabela-bling-marketplace-body');
+  const total    = document.getElementById('bling-marketplace-total');
+  const resultado = document.getElementById('bling-marketplace-resultado');
+
+  loading.style.display  = '';
+  erro.style.display     = 'none';
+  tabela.style.display   = 'none';
+  resultado.style.display = 'none';
+  tbody.innerHTML        = '';
+  total.textContent      = '';
+
+  try {
+    const data = await fetch('/api/bling/nfs-shopee-marketplace?conta=2').then(r => r.json());
+    loading.style.display = 'none';
+
+    if (data.erro) {
+      erro.textContent   = data.erro;
+      erro.style.display = '';
+      return;
+    }
+
+    const nfs = data.nfs || [];
+    total.textContent = `${nfs.length} NF${nfs.length !== 1 ? 's' : ''} Shopee encontrada${nfs.length !== 1 ? 's' : ''}`;
+
+    if (nfs.length === 0) {
+      erro.textContent   = 'Nenhuma NF Shopee encontrada nas últimas 50.';
+      erro.style.display = '';
+      return;
+    }
+
+    for (const n of nfs) {
+      const tr = document.createElement('tr');
+      const valor    = (n.valor_total || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+      const data_str = n.data ? new Date(n.data).toLocaleDateString('pt-BR') : '—';
+      const sitCor   = /autorizada/i.test(n.situacao) ? '#16a34a' : '#f59e0b';
+      tr.innerHTML = `
+        <td>${escapeHtml(n.numero)}</td>
+        <td>${escapeHtml(n.destinatario)}</td>
+        <td class="col-num">${valor}</td>
+        <td><span style="color:${sitCor};font-weight:600">${escapeHtml(n.situacao)}</span><br><small style="color:#888">id=${n.situacaoId}</small></td>
+        <td>${data_str}</td>
+        <td style="font-size:11px;color:#f97316">${escapeHtml(n.numeroLoja)}</td>
+        <td><button class="btn-sm" style="background:#f97316;color:#fff" onclick="blingEnviarParaShopee('${n.id}', '${n.lojaId || ''}', this)">Enviar para Shopee</button></td>
+      `;
+      tbody.appendChild(tr);
+    }
+    tabela.style.display = '';
+  } catch (err) {
+    loading.style.display = 'none';
+    erro.textContent      = 'Erro: ' + err.message;
+    erro.style.display    = '';
+  }
+}
+
+async function blingEnviarParaShopee(nfId, lojaId, btn) {
+  btn.disabled    = true;
+  btn.textContent = 'Enviando...';
+  const resultado = document.getElementById('bling-marketplace-resultado');
+  resultado.style.display = '';
+  resultado.textContent   = 'Aguardando resposta do Bling...';
+
+  try {
+    const res = await fetch(`/api/bling/enviar-marketplace/${nfId}?conta=2`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lojaId: lojaId ? Number(lojaId) : null }),
+    }).then(r => r.json());
+
+    resultado.textContent = JSON.stringify(res, null, 2);
+    if (res.ok) {
+      btn.textContent      = '✅ Enviado';
+      btn.style.background = '#16a34a';
+      resultado.style.color = '#0f0';
+    } else {
+      btn.disabled    = false;
+      btn.textContent = 'Enviar para Shopee';
+      resultado.style.color = '#f87171';
+    }
+  } catch (err) {
+    btn.disabled    = false;
+    btn.textContent = 'Enviar para Shopee';
+    resultado.textContent = 'Erro de rede: ' + err.message;
+    resultado.style.color = '#f87171';
+  }
 }
