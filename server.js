@@ -4894,6 +4894,23 @@ app.post('/api/contas-pagar/:id/pago', async (req, res) => {
   res.json({ ok: true, pago: item.pago });
 });
 
+app.put('/api/contas-pagar/:id', (req, res) => {
+  const { dVenc, vDup } = req.body;
+  if (!dVenc || !/^\d{4}-\d{2}-\d{2}$/.test(dVenc)) return res.status(400).json({ error: 'dVenc inválido' });
+  const vDupNum = parseFloat(vDup);
+  if (isNaN(vDupNum) || vDupNum < 0) return res.status(400).json({ error: 'vDup inválido' });
+  const data = loadData();
+  const num  = String(data.conta_ativa || '1');
+  const lista = (data.contas_pagar || {})[num] || [];
+  const item  = lista.find(c => c.id === req.params.id);
+  if (!item) return res.status(404).json({ error: 'Não encontrado' });
+  item.dVenc = dVenc;
+  item.vDup  = vDupNum;
+  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+  agendarSyncContasPagar();
+  res.json({ ok: true });
+});
+
 app.delete('/api/contas-pagar/:id', async (req, res) => {
   const data = loadData();
   const num  = String(data.conta_ativa || '1');

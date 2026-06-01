@@ -107,6 +107,7 @@ function contasPagarRenderizar() {
       : '';
 
     const tr = document.createElement('tr');
+    tr.dataset.cpId = c.id;
     if (vencido) tr.style.background = '#fff8f8';
     tr.innerHTML = `
       <td style="${vencido ? 'color:#dc2626;font-weight:600' : ''}">${dataFmt}</td>
@@ -118,6 +119,8 @@ function contasPagarRenderizar() {
       <td style="text-align:center;white-space:nowrap">
         <button class="btn-secondary" style="font-size:11px;padding:3px 8px;margin-right:4px"
           onclick="contasPagarTogglePago('${c.id}')">${c.pago ? '↩ Reabrir' : '✔ Pago'}</button>
+        <button class="btn-secondary" style="font-size:11px;padding:3px 8px;margin-right:4px"
+          onclick="contasPagarEditar('${c.id}')" title="Editar vencimento / valor">✏️</button>
         <button class="lucro-btn-remover" onclick="contasPagarRemover('${c.id}')">✕</button>
       </td>
     `;
@@ -280,6 +283,55 @@ async function contasPagarRemover(id) {
   } catch { alert('Erro ao remover. Tente novamente.'); }
 }
 
+
+// ── Editar vencimento / valor ──────────────────────────────────
+function contasPagarEditar(id) {
+  const item = contasPagarLista.find(c => c.id === id);
+  if (!item) return;
+  const tbody = document.getElementById('tabela-contas-body');
+  const row = tbody?.querySelector(`tr[data-cp-id="${id}"]`);
+  if (!row) return;
+
+  const inp = 'font-size:13px;padding:2px 6px;border:1px solid #cbd5e1;border-radius:4px';
+  row.style.background = '#fffbeb';
+  row.innerHTML = `
+    <td><input type="date" id="edit-dvenc-${id}" value="${item.dVenc}" style="${inp}"></td>
+    <td title="${escHtml(item.fornecedor)}">${escHtml(item.fornecedor)}</td>
+    <td style="font-size:12px;color:#64748b">NF ${escHtml(item.nNF)}${item.serie ? '/' + escHtml(item.serie) : ''}</td>
+    <td style="font-size:12px">${escHtml(item.nDup)}</td>
+    <td><input type="number" id="edit-vdup-${id}" value="${item.vDup.toFixed(2)}" step="0.01" min="0" style="${inp};width:90px"></td>
+    <td></td>
+    <td style="text-align:center;white-space:nowrap">
+      <button class="btn-secondary" style="font-size:11px;padding:3px 8px;margin-right:4px"
+        onclick="contasPagarSalvarEdicao('${id}')">✔ Salvar</button>
+      <button class="btn-secondary" style="font-size:11px;padding:3px 8px"
+        onclick="contasPagarRenderizar()">✕</button>
+    </td>
+  `;
+  document.getElementById(`edit-dvenc-${id}`)?.focus();
+}
+
+async function contasPagarSalvarEdicao(id) {
+  const dVenc = document.getElementById(`edit-dvenc-${id}`)?.value;
+  const vDupStr = document.getElementById(`edit-vdup-${id}`)?.value;
+  if (!dVenc) { alert('Data de vencimento inválida.'); return; }
+  const vDup = parseFloat(vDupStr);
+  if (isNaN(vDup) || vDup < 0) { alert('Valor inválido.'); return; }
+
+  try {
+    const r = await fetch(`/api/contas-pagar/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dVenc, vDup }),
+    });
+    if (!r.ok) throw new Error();
+    const item = contasPagarLista.find(c => c.id === id);
+    if (item) { item.dVenc = dVenc; item.vDup = vDup; }
+    contasPagarRenderizar();
+    _syncRetryIniciar();
+    contasPagarAtualizarSyncStatus();
+  } catch { alert('Erro ao salvar. Tente novamente.'); }
+}
 
 // ── Helpers ────────────────────────────────────────────────────
 function fmtBRL(v) {
