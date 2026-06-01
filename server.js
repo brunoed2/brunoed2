@@ -48,7 +48,31 @@ function detectarDirDados() {
 const DATA_DIR      = detectarDirDados();
 const DATA_FILE     = path.join(DATA_DIR, 'data.json');
 const FISCAL_FILE   = path.join(DATA_DIR, 'fiscal-notas.json');
+const BACKUP_DIR    = path.join(DATA_DIR, 'backups');
 const USA_VOLUME    = DATA_DIR === '/data'; // true = volume persistente Railway
+
+// ── Snapshots automáticos diários ────────────────────────────
+function criarSnapshotDiario() {
+  if (!fs.existsSync(DATA_FILE)) return;
+  try {
+    fs.mkdirSync(BACKUP_DIR, { recursive: true });
+    const hoje = new Date().toISOString().slice(0, 10);
+    const dest = path.join(BACKUP_DIR, `data.backup.${hoje}.json`);
+    if (!fs.existsSync(dest)) {
+      fs.copyFileSync(DATA_FILE, dest);
+      // Apaga backups com mais de 7 dias
+      const arquivos = fs.readdirSync(BACKUP_DIR)
+        .filter(f => f.startsWith('data.backup.') && f.endsWith('.json'))
+        .sort().reverse();
+      arquivos.slice(7).forEach(f => { try { fs.unlinkSync(path.join(BACKUP_DIR, f)); } catch {} });
+    }
+  } catch (e) { console.error('[backup] Erro ao criar snapshot:', e.message); }
+}
+// Snapshot no startup e depois a cada 24h
+setTimeout(() => {
+  criarSnapshotDiario();
+  setInterval(criarSnapshotDiario, 24 * 60 * 60 * 1000);
+}, 30000); // aguarda 30s para o app inicializar antes do primeiro snapshot
 const FISCAL_TOKEN  = process.env.FISCAL_TOKEN || 'fiscal-sync-2025';
 
 // ── Log ao vivo (aba Conexão) ─────────────────────────────────
@@ -4935,6 +4959,56 @@ app.delete('/api/contas-pagar/:id', async (req, res) => {
 
 app.get('/api/sync/status', (req, res) => {
   res.json(lastSyncStatus);
+});
+
+// ── Backup / Restore ─────────────────────────────────────────
+app.get('/api/admin/backup', (req, res) => {
+  if (!fs.existsSync(DATA_FILE)) return res.status(404).json({ error: 'Sem dados' });
+  const hoje = new Date().toISOString().slice(0, 10);
+  res.setHeader('Content-Disposition', `attachment; filename="backup-${hoje}.json"`);
+  res.setHeader('Content-Type', 'application/json');
+  res.send(fs.readFileSync(DATA_FILE, 'utf-8'));
+});
+
+app.post('/api/admin/restore', express.json({ limit: '20mb' }), (req, res) => {
+  const data = req.body;
+  if (!data || !data.contas) return res.status(400).json({ error: 'Arquivo inválido — falta campo contas' });
+  if (fs.existsSync(DATA_FILE)) fs.copyFileSync(DATA_FILE, DATA_FILE + '.pre-restore');
+  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+  res.json({ ok: true });
+});
+
+app.get('/api/admin/backup-snapshots', (req, res) => {
+  try {
+    fs.mkdirSync(BACKUP_DIR, { recursive: true });
+    const arquivos = fs.readdirSync(BACKUP_DIR)
+      .filter(f => f.startsWith('data.backup.') && f.endsWith('.json'))
+      .sort().reverse();
+    const snapshots = arquivos.map(nome => {
+      const stat = fs.statSync(path.join(BACKUP_DIR, nome));
+      const kb = Math.round(stat.size / 1024);
+      return { nome, tamanho: `${kb} KB` };
+    });
+    res.json({ snapshots });
+  } catch { res.json({ snapshots: [] }); }
+});
+
+app.get('/api/admin/backup-snapshot/:nome', (req, res) => {
+  const nome = path.basename(req.params.nome); // evita path traversal
+  const arquivo = path.join(BACKUP_DIR, nome);
+  if (!fs.existsSync(arquivo)) return res.status(404).json({ error: 'Não encontrado' });
+  res.setHeader('Content-Disposition', `attachment; filename="${nome}"`);
+  res.setHeader('Content-Type', 'application/json');
+  res.send(fs.readFileSync(arquivo, 'utf-8'));
+});
+
+app.post('/api/admin/backup-snapshot-restore/:nome', (req, res) => {
+  const nome = path.basename(req.params.nome);
+  const arquivo = path.join(BACKUP_DIR, nome);
+  if (!fs.existsSync(arquivo)) return res.status(404).json({ error: 'Snapshot não encontrado' });
+  if (fs.existsSync(DATA_FILE)) fs.copyFileSync(DATA_FILE, DATA_FILE + '.pre-restore');
+  fs.copyFileSync(arquivo, DATA_FILE);
+  res.json({ ok: true });
 });
 
 app.post('/api/sync/force', (req, res) => {
