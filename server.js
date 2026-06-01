@@ -4953,6 +4953,26 @@ app.post('/api/admin/restore-envvars', (req, res) => {
   res.json({ ok: true, msg: 'Dados restaurados das env vars. Acesse o app normalmente.' });
 });
 
+// Restaura apenas configuração de lucro/gastos/DRE das env vars, sem tocar no resto.
+app.post('/api/admin/restore-lucro-envvars', (req, res) => {
+  const data = loadData();
+  data.lucro_contas = data.lucro_contas || {};
+  for (const num of ['1', '2']) {
+    const lc = data.lucro_contas[num] = data.lucro_contas[num] || {};
+    if (process.env[`LUCRO_CONFIG_${num}`]) {
+      try { const cfg = JSON.parse(process.env[`LUCRO_CONFIG_${num}`]); Object.assign(lc, cfg); } catch {}
+    }
+    if (process.env[`DRE_CACHE_${num}`])          { try { lc.dre_cache             = JSON.parse(process.env[`DRE_CACHE_${num}`]);          } catch {} }
+    if (process.env[`GASTOS_DATA_${num}`])         { try { lc.gastos               = JSON.parse(process.env[`GASTOS_DATA_${num}`]);         } catch {} }
+    if (process.env[`GASTOS_FIXOS_TIPOS_${num}`])  { try { lc.gastos_fixos_tipos   = JSON.parse(process.env[`GASTOS_FIXOS_TIPOS_${num}`]);  } catch {} }
+    if (process.env[`GASTOS_FIXOS_VALS_${num}`])   { try { lc.gastos_fixos_valores = JSON.parse(process.env[`GASTOS_FIXOS_VALS_${num}`]);   } catch {} }
+    if (process.env[`GASTOS_FIXOS_TRAV_${num}`])   { try { lc.gastos_fixos_travados= JSON.parse(process.env[`GASTOS_FIXOS_TRAV_${num}`]);   } catch {} }
+    if (process.env[`GASTOS_FIXOS_PAD_${num}`])    { try { lc.gastos_fixos_padrao  = JSON.parse(process.env[`GASTOS_FIXOS_PAD_${num}`]);    } catch {} }
+  }
+  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+  res.json({ ok: true, msg: 'Lucro/gastos/DRE restaurados das env vars.' });
+});
+
 // Mescla o backup (data.json.bak) com dados atuais.
 // Estratégia: backup é a base (tem estoque local, fornecedores, contas a pagar, etc.)
 // Tokens ML e Bling do estado atual (env vars) sobrescrevem o backup por serem mais recentes.
