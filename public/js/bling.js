@@ -241,8 +241,11 @@ async function blingShopeeSuper(pedidoId, btn, conta, lojaId) {
     return;
   }
   if (res.ok) {
-    btn.textContent      = '✅ Concluído';
+    btn.textContent      = '✅ NF transmitida';
     btn.style.background = '#16a34a';
+    const urlNF = `https://www.bling.com.br/nfe.php#edit/${res.nfId}`;
+    const ir = confirm('NF gerada e transmitida para SEFAZ!\n\nFalta só 1 passo manual no Bling:\n"Enviar dados para loja virtual → Shopee"\n\nAbrir a NF no Bling agora?');
+    if (ir) window.open(urlNF, '_blank');
     setTimeout(() => blingCarregarPedidos(), 1500);
   } else {
     btn.disabled    = false;

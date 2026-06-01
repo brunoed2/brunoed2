@@ -1728,15 +1728,6 @@ async function blingAguardarAutorizacaoNF(nfId, token, maxMs = 60000) {
   addLog(`[bling] NF ${nfId} não confirmada em ${maxMs / 1000}s — tentando enviar para loja mesmo assim`, 'warn');
 }
 
-async function blingEnviarParaLojaHelper(nfId, lojaId, conta) {
-  const token = await getBlingToken(conta);
-  const resp = await axios.post(
-    `https://api.bling.com.br/Api/v3/nfe/${nfId}/enviar-para-loja`,
-    { idLoja: lojaId, enviarDadosNfe: true, codigoRastreamento: false },
-    { headers: { Authorization: `Bearer ${token}` }, timeout: 20000 }
-  );
-  addLog(`[bling] NF ${nfId} dados enviados para loja ${lojaId}: ${JSON.stringify(resp.data).slice(0, 150)}`, 'ok');
-}
 
 // ── Bling: emitir NF para pedido ML ──────────────────────────
 
@@ -1769,26 +1760,19 @@ app.post('/api/bling/enviar-nf/:notaId', async (req, res) => {
 // ── Bling: Shopee Super — gera NF + envia SEFAZ + envia dados para Shopee ──
 
 app.post('/api/bling/shopee-super/:pedidoId', async (req, res) => {
-  const conta  = blingContaReq(req);
-  const lojaId = req.body?.lojaId;
-  if (!lojaId) return res.json({ ok: false, etapa: 'validação', erro: 'lojaId não informado' });
+  const conta = blingContaReq(req);
   const blingErrDetail = err => {
     try { return err.response ? `HTTP ${err.response.status}: ${JSON.stringify(err.response.data ?? null).slice(0, 300)}` : (err.message || 'erro'); }
     catch { return err.message || 'erro'; }
   };
   let etapa = 'gerar-nf';
   try {
-    addLog(`[bling] shopee-super pedido ${req.params.pedidoId} loja ${lojaId}`, 'info');
+    addLog(`[bling] shopee-super pedido ${req.params.pedidoId}`, 'info');
     const nfId = await blingEmitirNFHelper(req.params.pedidoId, conta);
     etapa = 'enviar-sefaz';
     await new Promise(r => setTimeout(r, 3500));
     await blingEnviarNFHelper(nfId, conta);
-    etapa = 'aguardar-autorizacao';
-    const token = await getBlingToken(conta);
-    await blingAguardarAutorizacaoNF(nfId, token);
-    etapa = 'enviar-loja';
-    await blingEnviarParaLojaHelper(nfId, lojaId, conta);
-    addLog(`[bling] shopee-super pedido ${req.params.pedidoId} concluído`, 'ok');
+    addLog(`[bling] shopee-super pedido ${req.params.pedidoId} NF ${nfId} transmitida`, 'ok');
     return res.json({ ok: true, nfId });
   } catch (err) {
     const detail = blingErrDetail(err);
