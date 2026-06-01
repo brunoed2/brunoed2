@@ -4962,6 +4962,35 @@ app.get('/api/sync/status', (req, res) => {
   res.json(lastSyncStatus);
 });
 
+// Lista NFs que tiveram XML baixado — útil para saber o que relançar no contas a pagar
+app.get('/api/admin/nfs-baixadas', (req, res) => {
+  const data = loadData();
+  const baixados = new Set(data.fiscal_baixados || []);
+  if (!baixados.size) return res.json({ total: 0, nfs: [] });
+
+  const nfs = [];
+  for (const num of ['1', '2']) {
+    const lista = ((data.notas_contas || {})[num] || {}).lista || [];
+    for (const n of lista) {
+      if (n.chave && baixados.has(n.chave)) {
+        nfs.push({
+          chave:      n.chave,
+          conta:      num,
+          fornecedor: n.emit?.xNome || n.tomanome || '—',
+          cnpjForn:   n.emit?.CNPJ  || n.filial   || '—',
+          nNF:        n.nNF  || '—',
+          serie:      n.serie || '—',
+          dEmi:       n.dEmi  || n.dtemi || '—',
+          valor:      n.vNF   || n.valor || 0,
+        });
+      }
+    }
+  }
+  // Ordena por data decrescente
+  nfs.sort((a, b) => (b.dEmi || '').localeCompare(a.dEmi || ''));
+  res.json({ total: nfs.size, nfs });
+});
+
 // ── Backup / Restore ─────────────────────────────────────────
 app.get('/api/admin/backup', (req, res) => {
   if (!fs.existsSync(DATA_FILE)) return res.status(404).json({ error: 'Sem dados' });
