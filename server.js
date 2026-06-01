@@ -5529,22 +5529,26 @@ app.post('/api/notas/certificado', uploadMem.single('cert'), (req, res) => {
   const senha = req.body.senha || '';
   const data  = loadData();
   const num   = req.body.conta || data.conta_ativa;
+  let cnpj = (req.body.cnpj || '').replace(/\D/g, '');
+  let titular = req.body.titular || '';
+  // Tenta extrair CNPJ/titular do certificado automaticamente; se falhar usa os campos manuais
   try {
-    const { cnpj, titular } = extrairCnpjDoCert(req.file.buffer, senha);
-    data.notas_contas = data.notas_contas || {};
-    data.notas_contas[num] = data.notas_contas[num] || {};
-    const n = data.notas_contas[num];
-    n.cert_b64  = req.file.buffer.toString('base64');
-    n.cert_nome = req.file.originalname;
-    n.senha     = senha;
-    n.cnpj      = cnpj;
-    n.titular   = titular;
-    saveData(data);
-    addLog(`Notas conta ${num}: certificado carregado — ${titular} (${cnpj})`, 'info');
-    res.json({ ok: true, cnpj, titular });
-  } catch (err) {
-    res.json({ error: err.message });
-  }
+    const extraido = extrairCnpjDoCert(req.file.buffer, senha);
+    cnpj    = extraido.cnpj    || cnpj;
+    titular = extraido.titular || titular;
+  } catch {}
+  if (!cnpj) return res.json({ error: 'Informe o CNPJ da empresa no campo abaixo.' });
+  data.notas_contas = data.notas_contas || {};
+  data.notas_contas[num] = data.notas_contas[num] || {};
+  const n = data.notas_contas[num];
+  n.cert_b64  = req.file.buffer.toString('base64');
+  n.cert_nome = req.file.originalname;
+  n.senha     = senha;
+  n.cnpj      = cnpj;
+  n.titular   = titular || cnpj;
+  saveData(data);
+  addLog(`Notas conta ${num}: certificado carregado — ${n.titular} (${cnpj})`, 'info');
+  res.json({ ok: true, cnpj, titular: n.titular });
 });
 
 app.get('/api/notas/config', (req, res) => {

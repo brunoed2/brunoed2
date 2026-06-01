@@ -199,10 +199,14 @@ async function fiscalSalvarCert(conta) {
   if (!fileInput.files[0]) { msg.textContent = 'Selecione o arquivo .pfx'; msg.style.color = '#f87171'; msg.style.display = 'block'; return; }
   if (!senha)              { msg.textContent = 'Informe a senha'; msg.style.color = '#f87171'; msg.style.display = 'block'; return; }
   msg.textContent = 'Processando...'; msg.style.color = '#94a3b8'; msg.style.display = 'block';
+  const cnpj    = (document.getElementById(`fiscal-cert-cnpj-${conta}`)?.value    || '').replace(/\D/g, '');
+  const titular = document.getElementById(`fiscal-cert-titular-${conta}`)?.value || '';
   const form = new FormData();
   form.append('cert', fileInput.files[0]);
   form.append('senha', senha);
   form.append('conta', conta);
+  if (cnpj)    form.append('cnpj', cnpj);
+  if (titular) form.append('titular', titular);
   try {
     const d = await fetch('/api/notas/certificado', { method: 'POST', body: form }).then(r => r.json());
     if (d.error) { msg.textContent = d.error; msg.style.color = '#f87171'; return; }
