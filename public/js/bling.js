@@ -460,7 +460,7 @@ async function blingCarregarMarketplace() {
         <td>${data_str}</td>
         <td style="font-size:11px;color:#f97316;font-weight:600">${escapeHtml(n.numeroPedidoLoja)}</td>
         <td style="font-size:11px">${n.lojaId ? `id=${n.lojaId}` : '—'}</td>
-        <td><button class="btn-sm" style="background:#f97316;color:#fff" onclick="blingEnviarParaShopee('${n.id}', '${n.lojaId || ''}', this)">Enviar</button></td>
+        <td><button class="btn-sm" style="background:#f97316;color:#fff" onclick="blingEnviarParaShopee('${n.id}','${n.lojaId||''}','${n.numeroPedidoLoja}','${n.chaveAcesso}',this)">Enviar</button></td>
       `;
       tbody.appendChild(tr);
     }
@@ -472,20 +472,20 @@ async function blingCarregarMarketplace() {
   }
 }
 
-async function blingEnviarParaShopee(nfId, lojaId, btn) {
+async function blingEnviarParaShopee(nfId, lojaId, orderSn, chaveAcesso, btn) {
   btn.disabled    = true;
   btn.textContent = 'Enviando...';
   const resultado = document.getElementById('bling-marketplace-resultado');
   resultado.style.display  = '';
   resultado.style.color    = '#e0e0e0';
-  resultado.textContent    = `⏳ Enviando NF ${nfId} para loja ${lojaId || '(sem lojaId)'}...`;
+  resultado.textContent    = `⏳ Enviando NF para Shopee\nPedido: ${orderSn}\nChave: ${chaveAcesso ? chaveAcesso.slice(0,20)+'...' : '(sem chave)'}`;
   resultado.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 
   try {
-    const res = await fetch(`/api/bling/enviar-marketplace/${nfId}?conta=2`, {
+    const res = await fetch('/api/shopee/enviar-nf', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ lojaId: lojaId ? Number(lojaId) : null }),
+      body: JSON.stringify({ orderSn, chaveAcesso }),
     }).then(r => r.json());
 
     resultado.textContent = JSON.stringify(res, null, 2);

@@ -1643,6 +1643,57 @@ app.post('/api/bling/enviar-marketplace/:nfId', async (req, res) => {
   }
 });
 
+// ── Shopee: envia NF diretamente pela API da Shopee ───────────
+// O botão "Enviar dados para Loja Virtual" do Bling usa XAJAX interno (requer sessão browser).
+// Replicamos chamando a API pública da Shopee com os dados da NF.
+app.post('/api/shopee/enviar-nf', async (req, res) => {
+  const { orderSn, chaveAcesso, nfNumero } = req.body;
+  if (!orderSn || !chaveAcesso) return res.json({ ok: false, erro: 'orderSn e chaveAcesso obrigatórios' });
+
+  const data = loadData();
+  const sp   = data.shopee || {};
+  if (!sp.access_token) return res.json({ ok: false, erro: 'Shopee não conectada' });
+
+  const tentativas = [];
+
+  // Endpoints candidatos da Shopee para NF-e Brasil
+  const candidatos = [
+    {
+      label: 'upload_doc',
+      path:  '/api/v2/logistics/upload_doc',
+      method: 'POST',
+      body: { order_sn: orderSn, package_number: null, doc_type: 'NF_KEY', doc_data: chaveAcesso },
+    },
+    {
+      label: 'set_actual_shipping_info (non_integrated)',
+      path:  '/api/v2/logistics/set_actual_shipping_info',
+      method: 'POST',
+      body: { order_sn: orderSn, package_number: null, non_integrated: { tracking_number: chaveAcesso } },
+    },
+    {
+      label: 'ship_order (non_integrated)',
+      path:  '/api/v2/logistics/ship_order',
+      method: 'POST',
+      body: { order_sn: orderSn, package_number: null, non_integrated: { tracking_number: chaveAcesso } },
+    },
+  ];
+
+  for (const c of candidatos) {
+    await new Promise(r => setTimeout(r, 1000));
+    try {
+      const params = shopeeParams(c.path, sp.partner_key, sp.partner_id, sp.access_token, sp.shop_id);
+      const r = await axios.post(`${SHOPEE_BASE}${c.path.replace('/api/v2', '')}`, c.body, { params, timeout: 15000 });
+      addLog(`[shopee] enviar-nf ${orderSn} SUCESSO via ${c.label}`, 'ok');
+      return res.json({ ok: true, endpoint: c.label, resposta: r.data });
+    } catch (err) {
+      const t = { endpoint: c.label, status: err.response?.status, body: err.response?.data, msg: err.message };
+      tentativas.push(t);
+      addLog(`[shopee] enviar-nf ${c.label}: ${t.status} ${JSON.stringify(t.body).slice(0, 150)}`, 'warn');
+    }
+  }
+  return res.json({ ok: false, tentativas });
+});
+
 // ── Bling: helpers de emissão ─────────────────────────────────
 
 async function blingEmitirNFHelper(pedidoId, conta) {
