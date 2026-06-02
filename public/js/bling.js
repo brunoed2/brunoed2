@@ -482,11 +482,20 @@ async function blingEnviarParaShopee(nfId, lojaId, orderSn, chaveAcesso, btn) {
   resultado.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 
   try {
-    const res = await fetch('/api/shopee/enviar-nf', {
+    // Tenta primeiro via API Shopee direta; se não conectada, tenta via Bling
+    let res = await fetch('/api/shopee/enviar-nf', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ orderSn, chaveAcesso }),
     }).then(r => r.json());
+    if (res.erro && res.erro.includes('não conectada')) {
+      // Fallback: tenta via Bling REST API (situação 6 / enviar-dados-lojas-virtuais)
+      res = await fetch(`/api/bling/enviar-marketplace/${nfId}?conta=2`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lojaId: Number(lojaId) || null, numeroPedidoLoja: orderSn, chaveAcesso }),
+      }).then(r => r.json());
+    }
 
     resultado.textContent = JSON.stringify(res, null, 2);
     if (res.ok) {

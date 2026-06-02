@@ -1595,46 +1595,50 @@ app.get('/api/bling/nf-raw/:nfId', async (req, res) => {
 
 app.post('/api/bling/enviar-marketplace/:nfId', async (req, res) => {
   const conta  = blingContaReq(req);
-  const lojaId = req.body?.lojaId;
-  // enviar-para-loja retornou 404 — removido. Apenas os dois endpoints válidos de marketplace.
-  const endpoints = [
-    { url: `https://api.bling.com.br/Api/v3/nfe/${req.params.nfId}/enviar-dados-lojas-virtuais`, body: { idLoja: lojaId, enviarDadosNfe: true } },
-    { url: `https://api.bling.com.br/Api/v3/nfe/${req.params.nfId}/enviar-marketplace`,          body: { idLoja: lojaId } },
-  ];
+  const { lojaId, numeroPedidoLoja, chaveAcesso } = req.body;
+  const nfId = req.params.nfId;
+
+  // Tenta todas as estratégias conhecidas, com delays para não estourar 3 req/s
   const tentativas = [];
   try {
     const token = await getBlingToken(conta);
-    for (const ep of endpoints) {
-      // Aguarda 1.5s antes de cada tentativa para não estourar limite de 3 req/s do Bling
+
+    const estrategias = [
+      // 1. Mudar situação NF para 6 (o XAJAX enviava situacao:6) — pode acionar marketplace
+      { label: 'PUT /nfe situacao:6', fn: async () => {
+        return axios.put(`https://api.bling.com.br/Api/v3/nfe/${nfId}`, { situacao: { id: 6 } },
+          { headers: { Authorization: `Bearer ${token}` }, timeout: 15000 });
+      }},
+      // 2. PATCH situação
+      { label: 'PATCH situacoes', fn: async () => {
+        return axios.post(`https://api.bling.com.br/Api/v3/nfe/${nfId}/situacoes`, { situacao: { id: 6 } },
+          { headers: { Authorization: `Bearer ${token}` }, timeout: 15000 });
+      }},
+      // 3. enviar-dados-lojas-virtuais com corpo completo extraído do XAJAX
+      { label: 'enviar-dados-lojas-virtuais (corpo completo)', fn: async () => {
+        return axios.post(`https://api.bling.com.br/Api/v3/nfe/${nfId}/enviar-dados-lojas-virtuais`,
+          { idLoja: lojaId, enviarDadosNfe: true, codigoRastreamento: false, numeroLojaVirtual: numeroPedidoLoja, chaveAcesso },
+          { headers: { Authorization: `Bearer ${token}` }, timeout: 15000 });
+      }},
+    ];
+
+    for (const e of estrategias) {
       await new Promise(r => setTimeout(r, 1500));
-      let respData, status;
       try {
-        const r = await axios.post(ep.url, ep.body, {
-          headers: { Authorization: `Bearer ${token}` }, timeout: 15000,
-        });
-        addLog(`[bling] enviar-marketplace NF ${req.params.nfId} SUCESSO: ${ep.url}`, 'ok');
-        return res.json({ ok: true, endpoint: ep.url, resposta: r.data });
+        const r = await e.fn();
+        addLog(`[bling] enviar-marketplace NF ${nfId} SUCESSO via [${e.label}]`, 'ok');
+        return res.json({ ok: true, estrategia: e.label, resposta: r.data });
       } catch (err) {
-        status   = err.response?.status;
-        respData = err.response?.data;
-        // 429: aguarda 3s e tenta de novo uma vez
+        let status = err.response?.status, body = err.response?.data;
         if (status === 429) {
-          addLog(`[bling] enviar-marketplace 429 em ${ep.url} — aguardando 3s`, 'warn');
           await new Promise(r => setTimeout(r, 3000));
           try {
-            const r2 = await axios.post(ep.url, ep.body, {
-              headers: { Authorization: `Bearer ${token}` }, timeout: 15000,
-            });
-            addLog(`[bling] enviar-marketplace NF ${req.params.nfId} SUCESSO (retry): ${ep.url}`, 'ok');
-            return res.json({ ok: true, endpoint: ep.url, resposta: r2.data });
-          } catch (err2) {
-            status   = err2.response?.status;
-            respData = err2.response?.data;
-          }
+            const r2 = await e.fn();
+            return res.json({ ok: true, estrategia: e.label + ' (retry)', resposta: r2.data });
+          } catch (e2) { status = e2.response?.status; body = e2.response?.data; }
         }
-        const t = { endpoint: ep.url, status, body: respData };
-        tentativas.push(t);
-        addLog(`[bling] enviar-marketplace ${ep.url}: ${status} ${JSON.stringify(respData).slice(0,150)}`, 'warn');
+        tentativas.push({ estrategia: e.label, status, body });
+        addLog(`[bling] enviar-marketplace [${e.label}]: ${status} ${JSON.stringify(body).slice(0,150)}`, 'warn');
       }
     }
     return res.json({ ok: false, tentativas });
@@ -1652,7 +1656,7 @@ app.post('/api/shopee/enviar-nf', async (req, res) => {
 
   const data = loadData();
   const sp   = data.shopee || {};
-  if (!sp.access_token) return res.json({ ok: false, erro: 'Shopee não conectada' });
+  if (!sp.access_token) return res.json({ ok: false, erro: 'Shopee não conectada — use a opção via Bling situação 6' });
 
   const tentativas = [];
 
