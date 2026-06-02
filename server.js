@@ -1548,9 +1548,14 @@ app.get('/api/bling/nfs-shopee-marketplace', async (req, res) => {
       const det = await axios.get(`https://api.bling.com.br/Api/v3/nfe/${nf.id}`, {
         headers: { Authorization: `Bearer ${token}` }, timeout: 10000,
       }).then(r => r.data?.data || {}).catch(() => ({}));
-      const numeroLoja = det.numeroLoja || '';
-      // Mostra todas as NFs com número de pedido de loja (ML e Shopee têm pedidos numéricos longos)
-      if (!numeroLoja) continue;
+
+      // Coleta todos os campos que podem conter o número do pedido de loja
+      const numeroLoja   = det.numeroLoja   || nf.numeroLoja   || '';
+      const numeroPedido = det.numeroPedido || nf.numeroPedido || '';
+      const pedidoNumero = det.pedido?.numero || '';
+      const lojaNome     = det.loja?.nome || det.loja?.descricao || '';
+      const lojaId       = det.loja?.id || nf.loja?.id || null;
+
       resultado.push({
         id:           nf.id,
         numero:       nf.numero || det.numero || '—',
@@ -1560,13 +1565,30 @@ app.get('/api/bling/nfs-shopee-marketplace', async (req, res) => {
         situacaoId:   det.situacao?.id ?? nf.situacao ?? null,
         data:         det.dataEmissao || nf.dataEmissao,
         numeroLoja,
-        lojaNome:     det.loja?.nome || det.loja?.descricao || '',
-        lojaId:       det.loja?.id || null,
+        numeroPedido,
+        pedidoNumero,
+        lojaNome,
+        lojaId,
       });
     }
     return res.json({ nfs: resultado });
   } catch (err) {
     const detail = err.response ? `HTTP ${err.response.status}: ${JSON.stringify(err.response.data).slice(0, 200)}` : err.message;
+    return res.json({ erro: detail });
+  }
+});
+
+// Debug: retorna dados brutos do Bling para uma NF específica
+app.get('/api/bling/nf-raw/:nfId', async (req, res) => {
+  try {
+    const conta = blingContaReq(req);
+    const token = await getBlingToken(conta);
+    const det = await axios.get(`https://api.bling.com.br/Api/v3/nfe/${req.params.nfId}`, {
+      headers: { Authorization: `Bearer ${token}` }, timeout: 10000,
+    });
+    return res.json(det.data);
+  } catch (err) {
+    const detail = err.response ? { status: err.response.status, body: err.response.data } : { message: err.message };
     return res.json({ erro: detail });
   }
 });
