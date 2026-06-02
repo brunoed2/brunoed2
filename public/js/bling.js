@@ -438,10 +438,10 @@ async function blingCarregarMarketplace() {
     }
 
     const nfs = data.nfs || [];
-    total.textContent = `${nfs.length} NFs (últimas 50 — todas exibidas para debug)`;
+    total.textContent = `${nfs.length} NF${nfs.length !== 1 ? 's' : ''} de marketplace (últimas 50)`;
 
     if (nfs.length === 0) {
-      erro.textContent   = 'Nenhuma NF encontrada nas últimas 50.';
+      erro.textContent   = 'Nenhuma NF com pedido de loja encontrada nas últimas 50.';
       erro.style.display = '';
       return;
     }
@@ -450,22 +450,16 @@ async function blingCarregarMarketplace() {
       const tr = document.createElement('tr');
       const valor    = (n.valor_total || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
       const data_str = n.data ? new Date(n.data).toLocaleDateString('pt-BR') : '—';
-      const sitCor   = /autorizada/i.test(n.situacao) ? '#16a34a' : '#f59e0b';
-      const lojaNome = n.lojaNome || (n.lojaId ? `id=${n.lojaId}` : '—');
-      // Mostra todos os campos de pedido disponíveis para diagnóstico
-      const pedidoInfo = [
-        n.numeroLoja   ? `nLoja=${n.numeroLoja}`   : '',
-        n.numeroPedido ? `nPed=${n.numeroPedido}`  : '',
-        n.pedidoNumero ? `ped.n=${n.pedidoNumero}` : '',
-      ].filter(Boolean).join(' | ') || '—';
+      const sitCor   = n.situacao === '5' || n.situacao === 5 ? '#16a34a' : '#f59e0b';
+      const sitLabel = n.situacao === '5' || n.situacao === 5 ? 'Autorizada' : `sit.${n.situacao}`;
       tr.innerHTML = `
         <td>${escapeHtml(n.numero)}</td>
         <td>${escapeHtml(n.destinatario)}</td>
         <td class="col-num">${valor}</td>
-        <td><span style="color:${sitCor};font-weight:600">${escapeHtml(n.situacao)}</span><br><small style="color:#888">id=${n.situacaoId}</small></td>
+        <td><span style="color:${sitCor};font-weight:600">${sitLabel}</span></td>
         <td>${data_str}</td>
-        <td style="font-size:11px;color:#f97316">${escapeHtml(pedidoInfo)}</td>
-        <td style="font-size:11px">${escapeHtml(lojaNome)}</td>
+        <td style="font-size:11px;color:#f97316;font-weight:600">${escapeHtml(n.numeroPedidoLoja)}</td>
+        <td style="font-size:11px">${n.lojaId ? `id=${n.lojaId}` : '—'}</td>
         <td><button class="btn-sm" style="background:#f97316;color:#fff" onclick="blingEnviarParaShopee('${n.id}', '${n.lojaId || ''}', this)">Enviar</button></td>
       `;
       tbody.appendChild(tr);

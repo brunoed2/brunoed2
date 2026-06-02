@@ -1549,26 +1549,24 @@ app.get('/api/bling/nfs-shopee-marketplace', async (req, res) => {
         headers: { Authorization: `Bearer ${token}` }, timeout: 10000,
       }).then(r => r.data?.data || {}).catch(() => ({}));
 
-      // Coleta todos os campos que podem conter o número do pedido de loja
-      const numeroLoja   = det.numeroLoja   || nf.numeroLoja   || '';
-      const numeroPedido = det.numeroPedido || nf.numeroPedido || '';
-      const pedidoNumero = det.pedido?.numero || '';
-      const lojaNome     = det.loja?.nome || det.loja?.descricao || '';
-      const lojaId       = det.loja?.id || nf.loja?.id || null;
+      // numeroPedidoLoja é o campo correto no Bling v3 (não numeroLoja)
+      const numeroPedidoLoja = det.numeroPedidoLoja || nf.numeroPedidoLoja || '';
+      const lojaId           = det.loja?.id || nf.loja?.id || null;
+      const chaveAcesso      = det.chaveAcesso || '';
+
+      // Filtra apenas NFs com pedido de loja (Shopee, ML, etc.)
+      if (!numeroPedidoLoja) continue;
 
       resultado.push({
-        id:           nf.id,
-        numero:       nf.numero || det.numero || '—',
-        destinatario: det.contato?.nome || nf.contato?.nome || '—',
-        valor_total:  det.totalProdutos || nf.totalProdutos || 0,
-        situacao:     det.situacao?.valor || String(nf.situacao || '—'),
-        situacaoId:   det.situacao?.id ?? nf.situacao ?? null,
-        data:         det.dataEmissao || nf.dataEmissao,
-        numeroLoja,
-        numeroPedido,
-        pedidoNumero,
-        lojaNome,
+        id:               nf.id,
+        numero:           nf.numero || det.numero || '—',
+        destinatario:     det.contato?.nome || nf.contato?.nome || '—',
+        valor_total:      det.valorNota || nf.valorNota || 0,
+        situacao:         String(det.situacao || nf.situacao || '—'),
+        data:             det.dataEmissao || nf.dataEmissao,
+        numeroPedidoLoja,
         lojaId,
+        chaveAcesso,
       });
     }
     return res.json({ nfs: resultado });
