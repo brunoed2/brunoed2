@@ -482,8 +482,10 @@ async function blingEnviarParaShopee(nfId, lojaId, btn) {
   btn.disabled    = true;
   btn.textContent = 'Enviando...';
   const resultado = document.getElementById('bling-marketplace-resultado');
-  resultado.style.display = '';
-  resultado.textContent   = 'Aguardando resposta do Bling...';
+  resultado.style.display  = '';
+  resultado.style.color    = '#e0e0e0';
+  resultado.textContent    = `⏳ Enviando NF ${nfId} para loja ${lojaId || '(sem lojaId)'}...`;
+  resultado.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 
   try {
     const res = await fetch(`/api/bling/enviar-marketplace/${nfId}?conta=2`, {
@@ -496,15 +498,15 @@ async function blingEnviarParaShopee(nfId, lojaId, btn) {
     if (res.ok) {
       btn.textContent      = '✅ Enviado';
       btn.style.background = '#16a34a';
-      resultado.style.color = '#0f0';
+      resultado.style.color = '#4ade80';
     } else {
       btn.disabled    = false;
-      btn.textContent = 'Enviar para Shopee';
+      btn.textContent = 'Tentar novamente';
       resultado.style.color = '#f87171';
     }
   } catch (err) {
     btn.disabled    = false;
-    btn.textContent = 'Enviar para Shopee';
+    btn.textContent = 'Tentar novamente';
     resultado.textContent = 'Erro de rede: ' + err.message;
     resultado.style.color = '#f87171';
   }
