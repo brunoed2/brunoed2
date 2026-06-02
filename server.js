@@ -1549,9 +1549,8 @@ app.get('/api/bling/nfs-shopee-marketplace', async (req, res) => {
         headers: { Authorization: `Bearer ${token}` }, timeout: 10000,
       }).then(r => r.data?.data || {}).catch(() => ({}));
       const numeroLoja = det.numeroLoja || '';
-      const isML     = /^\d{10,}$/.test(numeroLoja);
-      const isShopee = !!numeroLoja && !isML;
-      if (!isShopee) continue;
+      // Mostra todas as NFs com número de pedido de loja (ML e Shopee têm pedidos numéricos longos)
+      if (!numeroLoja) continue;
       resultado.push({
         id:           nf.id,
         numero:       nf.numero || det.numero || '—',
@@ -1561,6 +1560,7 @@ app.get('/api/bling/nfs-shopee-marketplace', async (req, res) => {
         situacaoId:   det.situacao?.id ?? nf.situacao ?? null,
         data:         det.dataEmissao || nf.dataEmissao,
         numeroLoja,
+        lojaNome:     det.loja?.nome || det.loja?.descricao || '',
         lojaId:       det.loja?.id || null,
       });
     }

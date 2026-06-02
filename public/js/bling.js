@@ -438,10 +438,10 @@ async function blingCarregarMarketplace() {
     }
 
     const nfs = data.nfs || [];
-    total.textContent = `${nfs.length} NF${nfs.length !== 1 ? 's' : ''} Shopee encontrada${nfs.length !== 1 ? 's' : ''}`;
+    total.textContent = `${nfs.length} NF${nfs.length !== 1 ? 's' : ''} com pedido de loja (últimas 50)`;
 
     if (nfs.length === 0) {
-      erro.textContent   = 'Nenhuma NF Shopee encontrada nas últimas 50.';
+      erro.textContent   = 'Nenhuma NF com número de pedido de loja encontrada nas últimas 50.';
       erro.style.display = '';
       return;
     }
@@ -451,6 +451,7 @@ async function blingCarregarMarketplace() {
       const valor    = (n.valor_total || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
       const data_str = n.data ? new Date(n.data).toLocaleDateString('pt-BR') : '—';
       const sitCor   = /autorizada/i.test(n.situacao) ? '#16a34a' : '#f59e0b';
+      const lojaNome = n.lojaNome || `id=${n.lojaId || '?'}`;
       tr.innerHTML = `
         <td>${escapeHtml(n.numero)}</td>
         <td>${escapeHtml(n.destinatario)}</td>
@@ -458,7 +459,8 @@ async function blingCarregarMarketplace() {
         <td><span style="color:${sitCor};font-weight:600">${escapeHtml(n.situacao)}</span><br><small style="color:#888">id=${n.situacaoId}</small></td>
         <td>${data_str}</td>
         <td style="font-size:11px;color:#f97316">${escapeHtml(n.numeroLoja)}</td>
-        <td><button class="btn-sm" style="background:#f97316;color:#fff" onclick="blingEnviarParaShopee('${n.id}', '${n.lojaId || ''}', this)">Enviar para Shopee</button></td>
+        <td style="font-size:11px">${escapeHtml(lojaNome)}</td>
+        <td><button class="btn-sm" style="background:#f97316;color:#fff" onclick="blingEnviarParaShopee('${n.id}', '${n.lojaId || ''}', this)">Enviar para Marketplace</button></td>
       `;
       tbody.appendChild(tr);
     }
