@@ -1269,8 +1269,25 @@ async function _executarRefreshBling(conta) {
       { headers: { Authorization: `Basic ${creds}`, 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 15000 }
     );
   } catch (err) {
-    const detalhe = err.response?.data ? JSON.stringify(err.response.data) : err.message;
+    const status = err.response?.status;
+    const body   = err.response?.data;
+    const detalhe = body ? JSON.stringify(body) : err.message;
     addLog(`[bling] ❌ Falha ao renovar token conta ${conta}: ${detalhe}`, 'erro');
+
+    // invalid_grant = refresh token inválido/expirado — limpa tokens para evitar loop infinito de tentativas
+    if (body?.error?.type === 'invalid_grant' || body?.error === 'invalid_grant') {
+      addLog(`[bling] ⚠️ Conta ${conta}: refresh_token inválido — desconectando conta (reconexão manual necessária)`, 'warn');
+      const dataClean = loadData();
+      delete dataClean[`bling_${conta}`];
+      if (conta === '1') delete dataClean.bling;
+      saveData(dataClean);
+    }
+
+    // 429 = rate limit — aguarda 5s antes de lançar erro
+    if (status === 429) {
+      await new Promise(r => setTimeout(r, 5000));
+    }
+
     throw new Error(`Falha ao renovar token Bling conta ${conta}: ${detalhe}`);
   }
   const updated = {
@@ -1297,15 +1314,17 @@ async function getBlingToken(conta) {
 }
 
 // Renovação proativa: verifica a cada 30 min e renova tokens com menos de 2h de vida
+// Contas são renovadas sequencialmente (3s de intervalo) para evitar 429 no Bling
 setInterval(async () => {
-  const data = loadData();
   for (const conta of ['1', '2']) {
+    const data = loadData();
     const b = getBlingDataConta(data, conta);
     if (!b?.access_token || !b?.refresh_token) continue;
     const minutosRestantes = Math.round(((b.expires_at || 0) - Date.now()) / 60000);
     if (minutosRestantes < 120) {
       addLog(`[bling] Renovação proativa conta ${conta} (${minutosRestantes}min restantes)`, 'info');
-      blingRefreshToken(conta).catch(e => addLog(`[bling] Renovação proativa conta ${conta} falhou: ${e.message}`, 'warn'));
+      await blingRefreshToken(conta).catch(e => addLog(`[bling] Renovação proativa conta ${conta} falhou: ${e.message}`, 'warn'));
+      await new Promise(r => setTimeout(r, 3000));
     }
   }
 }, 30 * 60 * 1000);
