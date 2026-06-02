@@ -1598,15 +1598,18 @@ app.get('/api/bling/nf-raw/:nfId', async (req, res) => {
 app.post('/api/bling/enviar-marketplace/:nfId', async (req, res) => {
   const conta  = blingContaReq(req);
   const lojaId = req.body?.lojaId;
+  // enviar-para-loja retornou 404 — removido. Apenas os dois endpoints válidos de marketplace.
+  const endpoints = [
+    { url: `https://api.bling.com.br/Api/v3/nfe/${req.params.nfId}/enviar-dados-lojas-virtuais`, body: { idLoja: lojaId, enviarDadosNfe: true } },
+    { url: `https://api.bling.com.br/Api/v3/nfe/${req.params.nfId}/enviar-marketplace`,          body: { idLoja: lojaId } },
+  ];
+  const tentativas = [];
   try {
     const token = await getBlingToken(conta);
-    const endpoints = [
-      { url: `https://api.bling.com.br/Api/v3/nfe/${req.params.nfId}/enviar-para-loja`,             body: { idLoja: lojaId, enviarDadosNfe: true, codigoRastreamento: false } },
-      { url: `https://api.bling.com.br/Api/v3/nfe/${req.params.nfId}/enviar-dados-lojas-virtuais`,   body: { idLoja: lojaId, enviarDadosNfe: true } },
-      { url: `https://api.bling.com.br/Api/v3/nfe/${req.params.nfId}/enviar-marketplace`,            body: { idLoja: lojaId } },
-    ];
-    const tentativas = [];
     for (const ep of endpoints) {
+      // Aguarda 1.5s antes de cada tentativa para não estourar limite de 3 req/s do Bling
+      await new Promise(r => setTimeout(r, 1500));
+      let respData, status;
       try {
         const r = await axios.post(ep.url, ep.body, {
           headers: { Authorization: `Bearer ${token}` }, timeout: 15000,
@@ -1614,9 +1617,26 @@ app.post('/api/bling/enviar-marketplace/:nfId', async (req, res) => {
         addLog(`[bling] enviar-marketplace NF ${req.params.nfId} SUCESSO: ${ep.url}`, 'ok');
         return res.json({ ok: true, endpoint: ep.url, resposta: r.data });
       } catch (err) {
-        const t = { endpoint: ep.url, status: err.response?.status, body: err.response?.data };
+        status   = err.response?.status;
+        respData = err.response?.data;
+        // 429: aguarda 3s e tenta de novo uma vez
+        if (status === 429) {
+          addLog(`[bling] enviar-marketplace 429 em ${ep.url} — aguardando 3s`, 'warn');
+          await new Promise(r => setTimeout(r, 3000));
+          try {
+            const r2 = await axios.post(ep.url, ep.body, {
+              headers: { Authorization: `Bearer ${token}` }, timeout: 15000,
+            });
+            addLog(`[bling] enviar-marketplace NF ${req.params.nfId} SUCESSO (retry): ${ep.url}`, 'ok');
+            return res.json({ ok: true, endpoint: ep.url, resposta: r2.data });
+          } catch (err2) {
+            status   = err2.response?.status;
+            respData = err2.response?.data;
+          }
+        }
+        const t = { endpoint: ep.url, status, body: respData };
         tentativas.push(t);
-        addLog(`[bling] enviar-marketplace ${ep.url}: ${t.status} ${JSON.stringify(t.body).slice(0,150)}`, 'warn');
+        addLog(`[bling] enviar-marketplace ${ep.url}: ${status} ${JSON.stringify(respData).slice(0,150)}`, 'warn');
       }
     }
     return res.json({ ok: false, tentativas });
