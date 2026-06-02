@@ -13,14 +13,11 @@ function blingAbrirSub(sub) {
   blingSubAtual = sub;
   document.getElementById('bling-sub-pedidos').classList.toggle('active', sub === 'pedidos');
   document.getElementById('bling-sub-notas').classList.toggle('active', sub === 'notas');
-  document.getElementById('bling-sub-marketplace').classList.toggle('active', sub === 'marketplace');
-  document.getElementById('bling-painel-pedidos').style.display     = sub === 'pedidos'     ? '' : 'none';
-  document.getElementById('bling-painel-notas').style.display       = sub === 'notas'       ? '' : 'none';
-  document.getElementById('bling-painel-marketplace').style.display = sub === 'marketplace' ? '' : 'none';
+  document.getElementById('bling-painel-pedidos').style.display = sub === 'pedidos' ? '' : 'none';
+  document.getElementById('bling-painel-notas').style.display   = sub === 'notas'   ? '' : 'none';
 
-  if (sub === 'pedidos')     blingCarregarPedidos();
-  if (sub === 'notas')       blingCarregarNotas();
-  if (sub === 'marketplace') blingCarregarMarketplace();
+  if (sub === 'pedidos') blingCarregarPedidos();
+  if (sub === 'notas')   blingCarregarNotas();
 }
 
 // ── Pedidos pendentes de NF ───────────────────────────────────
@@ -71,11 +68,9 @@ async function blingCarregarPedidos() {
         : p.temEtiqueta
           ? `<span style="background:#16a34a;color:#fff;padding:2px 7px;border-radius:4px;font-size:11px;white-space:nowrap" title="Emitir NF libera a etiqueta de envio">Emitir NF → Etiqueta</span>`
           : `<span style="color:#9ca3af;font-size:11px">Aguardando ML</span>`;
-      const btnSuper = isShopee
-        ? `<button class="btn-sm btn-shopee-super" data-bling-shopee-id="${p.id}" onclick="blingShopeeSuper('${p.id}', this, '${p.conta}', ${p.lojaId || 'null'})" style="background:#f97316;color:#fff;margin-left:4px" title="Gerar NF + enviar SEFAZ + enviar dados para Shopee automaticamente">⚡ Shopee Super</button>`
-        : (!isShopee && p.temEtiqueta)
-          ? `<button class="btn-sm btn-super" data-bling-super-id="${p.id}" onclick="blingSuperEnvio('${p.id}', this, '${p.conta}')" style="background:#7c3aed;color:#fff;margin-left:4px" title="Gerar NF e enviar em um clique">⚡ Super</button>`
-          : '';
+      const btnSuper = (!isShopee && p.temEtiqueta)
+        ? `<button class="btn-sm btn-super" data-bling-super-id="${p.id}" onclick="blingSuperEnvio('${p.id}', this, '${p.conta}')" style="background:#7c3aed;color:#fff;margin-left:4px" title="Gerar NF e enviar em um clique">⚡ Super</button>`
+        : '';
       const blingEditUrl = `https://www.bling.com.br/vendas.php#edit/${p.id}`;
       const pendencias = p.pendencias || [];
       const btnPendencia = pendencias.length > 0
