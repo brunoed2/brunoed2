@@ -314,13 +314,14 @@ async function carregarHistorico() {
   if (vazio)   vazio.style.display   = 'none';
 
   try {
-    await apiFetch('/api/vendas/historico/sincronizar', { method: 'POST' });
+    await apiFetch('/api/vendas/historico/sincronizar', { method: 'POST', body: JSON.stringify({ conta: window.CONTA_ATIVA }) });
   } catch {}
 
   try {
     const params = new URLSearchParams();
     if (ini) params.set('de', ini);
     if (fim) params.set('ate', fim);
+    params.set('conta', window.CONTA_ATIVA);
     const d = await apiFetch(`/api/vendas/historico?${params}`);
     histDados = d.historico || [];
   } catch {

@@ -2472,7 +2472,7 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
 
 app.get('/api/vendas/historico', (req, res) => {
   const data = loadData();
-  const num  = data.conta_ativa;
+  const num  = req.query.conta || data.conta_ativa;
   const c    = data.contas[num];
   if (!c) return res.json({ historico: [] });
   const { de, ate } = req.query;
@@ -2486,7 +2486,7 @@ app.get('/api/vendas/historico', (req, res) => {
 
 app.post('/api/vendas/historico/sincronizar', async (req, res) => {
   const data = loadData();
-  const num  = data.conta_ativa;
+  const num  = req.body.conta || req.query.conta || data.conta_ativa;
   const c    = data.contas[num];
   if (!c?.access_token) return res.json({ ok: false, erro: 'Não conectado' });
 
@@ -2525,7 +2525,7 @@ app.post('/api/vendas/atendida', (req, res) => {
   const { shipmentId, venda } = req.body;
   if (!shipmentId) return res.json({ error: 'shipmentId obrigatório' });
   const data = loadData();
-  const num  = data.conta_ativa;
+  const num  = req.body.conta || data.conta_ativa;
   const c    = data.contas[num];
   if (!c) return res.json({ error: 'Conta não encontrada' });
   if (!c.atendidas_dados) c.atendidas_dados = [];
@@ -2544,7 +2544,7 @@ app.delete('/api/vendas/atendida', (req, res) => {
   const { shipmentId } = req.body;
   if (!shipmentId) return res.json({ error: 'shipmentId obrigatório' });
   const data = loadData();
-  const num  = data.conta_ativa;
+  const num  = req.body.conta || data.conta_ativa;
   const c    = data.contas[num];
   if (!c) return res.json({ error: 'Conta não encontrada' });
   c.atendidas_dados = (c.atendidas_dados || []).filter(v => String(v.shipmentId) !== String(shipmentId));
@@ -2557,7 +2557,7 @@ app.post('/api/vendas/atendidas-batch', async (req, res) => {
   const { shipmentIds, vendasDados } = req.body;
   if (!Array.isArray(shipmentIds) || !shipmentIds.length) return res.status(400).json({ error: 'shipmentIds obrigatório' });
   const data = loadData();
-  const num  = data.conta_ativa;
+  const num  = req.body.conta || data.conta_ativa;
   const c    = data.contas[num];
   if (!c) return res.json({ error: 'Conta não encontrada' });
   if (!c.atendidas_dados) c.atendidas_dados = [];
@@ -2580,7 +2580,7 @@ app.delete('/api/vendas/atendidas-batch', async (req, res) => {
   const { shipmentIds } = req.body;
   if (!Array.isArray(shipmentIds) || !shipmentIds.length) return res.status(400).json({ error: 'shipmentIds obrigatório' });
   const data = loadData();
-  const num  = data.conta_ativa;
+  const num  = req.body.conta || data.conta_ativa;
   const c    = data.contas[num];
   if (!c) return res.json({ error: 'Conta não encontrada' });
   const sids = new Set(shipmentIds.map(String));
