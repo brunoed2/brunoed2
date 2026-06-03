@@ -60,7 +60,7 @@ async function fiscalCarregar() {
   const container = document.getElementById('fiscal-container');
   if (!container) return;
   try {
-    const grupos = await fetch('/api/fiscal/notas').then(r => r.json());
+    const grupos = await fetch(`/api/fiscal/notas?conta=${window.CONTA_ATIVA}`).then(r => r.json());
     fiscalGruposCache = grupos;
     if (!grupos.length) {
       container.innerHTML = '<p style="color:#888;font-size:14px">Nenhuma nota importada ainda. Clique em Atualizar para sincronizar.</p>';

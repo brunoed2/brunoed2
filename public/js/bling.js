@@ -36,7 +36,7 @@ async function blingCarregarPedidos() {
   total.textContent     = '';
 
   try {
-    const data = await fetch('/api/bling/pedidos-pendentes-todas').then(r => r.json());
+    const data = await fetch(`/api/bling/pedidos-pendentes-todas?conta=${window.CONTA_ATIVA}`).then(r => r.json());
     loading.style.display = 'none';
 
     if (data.erro) {
@@ -290,7 +290,7 @@ async function blingCarregarNotas() {
   total.textContent     = '';
 
   try {
-    const data = await fetch('/api/bling/notas-pendentes').then(r => r.json());
+    const data = await fetch(`/api/bling/notas-pendentes?conta=${window.CONTA_ATIVA}`).then(r => r.json());
     loading.style.display = 'none';
 
     if (data.erro) {
@@ -356,7 +356,7 @@ async function blingEnviarSelecionadas() {
     const id      = chk.dataset.id;
     const btnLinha = document.querySelector(`button[data-bling-nota-id="${id}"]`);
     if (btnLinha) { btnLinha.disabled = true; btnLinha.textContent = 'Enviando...'; }
-    const res = await fetch(`/api/bling/enviar-nf/${id}`, { method: 'POST' }).then(r => r.json()).catch(() => ({ ok: false }));
+    const res = await fetch(`/api/bling/enviar-nf/${id}?conta=${window.CONTA_ATIVA}`, { method: 'POST' }).then(r => r.json()).catch(() => ({ ok: false }));
     if (res.ok) {
       ok++;
       if (btnLinha) { btnLinha.textContent = '✅ Enviada'; btnLinha.style.color = 'green'; }
@@ -379,7 +379,7 @@ async function blingEnviarNF(notaId, btn) {
   btn.disabled    = true;
   btn.textContent = 'Enviando...';
   try {
-    const data = await fetch(`/api/bling/enviar-nf/${notaId}`, { method: 'POST' }).then(r => r.json());
+    const data = await fetch(`/api/bling/enviar-nf/${notaId}?conta=${window.CONTA_ATIVA}`, { method: 'POST' }).then(r => r.json());
     if (data.ok) {
       btn.textContent = '✅ Enviada';
       btn.style.color = 'green';
@@ -485,7 +485,7 @@ async function blingEnviarParaShopee(nfId, lojaId, orderSn, chaveAcesso, btn) {
     }).then(r => r.json());
     if (res.erro && res.erro.includes('não conectada')) {
       // Fallback: tenta via Bling REST API (situação 6 / enviar-dados-lojas-virtuais)
-      res = await fetch(`/api/bling/enviar-marketplace/${nfId}?conta=2`, {
+      res = await fetch(`/api/bling/enviar-marketplace/${nfId}?conta=${window.CONTA_ATIVA}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ lojaId: Number(lojaId) || null, numeroPedidoLoja: orderSn, chaveAcesso }),

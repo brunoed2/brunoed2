@@ -193,7 +193,7 @@ async function atualizarStatus() {
   const dot = document.getElementById('status-dot');
   const txt = document.getElementById('status-text');
   try {
-    const resp = await fetch('/api/ml/status', { signal: AbortSignal.timeout(5000) });
+    const resp = await fetch(`/api/ml/status?conta=${window.CONTA_ATIVA}`, { signal: AbortSignal.timeout(5000) });
     const data = await resp.json();
     if (data.connected) {
       dot.className   = 'dot conectado';
@@ -268,7 +268,7 @@ async function carregarLoja() {
   erroEl.style.display  = 'none';
 
   try {
-    const data = await apiFetch('/api/ml/store');
+    const data = await apiFetch(`/api/ml/store?conta=${window.CONTA_ATIVA}`);
     clog(`carregarLoja() resposta recebida: ${JSON.stringify(data).slice(0,100)}`);
     if (contaGen !== gen) { clog(`carregarLoja() descartado (gen mudou)`, 'warn'); return; }
     loading.style.display = 'none';

@@ -106,8 +106,8 @@ async function carregarPrevisao() {
 
   try {
     const [estoqueData, vendas30d, fornData, estoqueLocalData] = await Promise.all([
-      apiFetch('/api/ml/estoque'),
-      apiFetch('/api/ml/vendas30dias'),
+      apiFetch(`/api/ml/estoque?conta=${getContaAtiva()}`),
+      apiFetch(`/api/ml/vendas30dias?conta=${getContaAtiva()}`),
       apiFetch(`/api/fornecedores?conta=${getContaAtiva()}`),
       apiFetch('/api/estoque-local'),
     ]);

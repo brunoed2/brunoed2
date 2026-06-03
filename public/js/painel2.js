@@ -678,7 +678,7 @@ async function marcarAtendidoSelecionadas() {
   try {
     const r = await apiFetch('/api/vendas/atendidas-batch', {
       method: remover ? 'DELETE' : 'POST',
-      body: JSON.stringify({ shipmentIds, vendasDados }),
+      body: JSON.stringify({ shipmentIds, vendasDados, conta: window.CONTA_ATIVA }),
     });
     if (r.ok) {
       checks.forEach(cb => {
@@ -780,7 +780,7 @@ async function carregarVendas() {
   tbody.innerHTML       = '';
 
   try {
-    const data = await apiFetch('/api/ml/vendas-etiquetas');
+    const data = await apiFetch(`/api/ml/vendas-etiquetas?conta=${window.CONTA_ATIVA}`);
     if (contaGen !== gen) return;
     loading.style.display = 'none';
 
@@ -871,7 +871,7 @@ async function toggleFlag(shipmentId, btn) {
     if (!atendida && vendaCache[sid]) vendasDados[sid] = vendaCache[sid];
     await apiFetch('/api/vendas/atendidas-batch', {
       method: atendida ? 'DELETE' : 'POST',
-      body: JSON.stringify({ shipmentIds: [sid], vendasDados }),
+      body: JSON.stringify({ shipmentIds: [sid], vendasDados, conta: window.CONTA_ATIVA }),
     });
     tr.classList.toggle('venda-atendida');
     btn.classList.toggle('btn-flag-ativo');

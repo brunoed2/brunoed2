@@ -269,7 +269,7 @@ async function lucroCustosCarregar() {
   if (tabela)  tabela.style.display  = 'none';
 
   try {
-    const d = await fetch('/api/ml/estoque').then(r => r.json());
+    const d = await fetch(`/api/ml/estoque?conta=${lucroContaAtual()}`).then(r => r.json());
     if (loading) loading.style.display = 'none';
     if (d.error || !d.items?.length) return;
 

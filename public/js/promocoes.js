@@ -74,7 +74,7 @@ async function carregarPromocoes() {
   totalEl.textContent     = '';
 
   try {
-    const d = await fetch('/api/ml/promocoes').then(r => r.json());
+    const d = await fetch(`/api/ml/promocoes?conta=${window.CONTA_ATIVA}`).then(r => r.json());
     loadingEl.style.display = 'none';
 
     if (d.error) {
@@ -281,7 +281,7 @@ async function promoParticipar(promotionId, mlb, precoPromo, btn) {
   if (precoPromo != null) body.preco = precoPromo;
 
   try {
-    const d = await fetch('/api/ml/promocoes/participar', {
+    const d = await fetch(`/api/ml/promocoes/participar?conta=${window.CONTA_ATIVA}`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify(body),
