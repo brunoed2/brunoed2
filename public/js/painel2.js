@@ -554,7 +554,7 @@ async function carregarEstoque(reiniciar = false) {
 
   let estoqueData;
   try {
-    estoqueData = await apiFetch('/api/ml/estoque');
+    estoqueData = await apiFetch(`/api/ml/estoque?conta=${window.CONTA_ATIVA}`);
     if (contaGen !== gen) return;
     loading.style.display = 'none';
 
@@ -579,7 +579,7 @@ async function carregarEstoque(reiniciar = false) {
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 40000);
-    const resp = await fetch('/api/ml/vendas30dias', { signal: controller.signal });
+    const resp = await fetch(`/api/ml/vendas30dias?conta=${window.CONTA_ATIVA}`, { signal: controller.signal });
     clearTimeout(timer);
     if (contaGen !== gen) return;
     const vendasData = await resp.json();

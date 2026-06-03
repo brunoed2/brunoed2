@@ -777,7 +777,7 @@ async function carregarEstoque(reiniciar = false) {
 
   let estoqueData;
   try {
-    estoqueData = await apiFetch('/api/ml/estoque');
+    estoqueData = await apiFetch(`/api/ml/estoque?conta=${window.CONTA_ATIVA}`);
     clog(`carregarEstoque() resposta: ${JSON.stringify(estoqueData).slice(0,100)}`);
     if (contaGen !== gen) { clog(`carregarEstoque() descartado (gen mudou)`, 'warn'); return; }
     loading.style.display = 'none';
@@ -804,7 +804,7 @@ async function carregarEstoque(reiniciar = false) {
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 40000);
-    const resp = await fetch('/api/ml/vendas30dias', { signal: controller.signal });
+    const resp = await fetch(`/api/ml/vendas30dias?conta=${window.CONTA_ATIVA}`, { signal: controller.signal });
     clearTimeout(timer);
     if (contaGen !== gen) return;
     const vendasData = await resp.json();
@@ -953,7 +953,7 @@ async function carregarAds() {
   document.getElementById('tabela-ads-body').innerHTML = '';
 
   try {
-    const data = await apiFetch('/api/ml/ads-roas');
+    const data = await apiFetch(`/api/ml/ads-roas?conta=${window.CONTA_ATIVA}`);
     loading.style.display = 'none';
 
     if (data.error) {
