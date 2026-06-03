@@ -163,9 +163,9 @@ function saveData(data) {
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
 }
 
-// Retorna as credenciais da conta atualmente ativa
-function contaAtiva(data) {
-  return data.contas[data.conta_ativa] || {};
+// Retorna as credenciais da conta — usa num se fornecido, senão usa conta_ativa
+function contaAtiva(data, num) {
+  return data.contas[num || data.conta_ativa] || {};
 }
 
 // ── Persistência via Railway Environment Variables ────────────
@@ -768,7 +768,7 @@ app.get('/api/conexao/status', (req, res) => {
 
 app.get('/api/ml/status', (req, res) => {
   const data = loadData();
-  const num  = data.conta_ativa;
+  const num  = req.query.conta || data.conta_ativa;
   const c    = data.contas[num];
   if (!c || !c.access_token) return res.json({ connected: false });
   res.json({ connected: true, nickname: c.nickname || null });
@@ -776,8 +776,9 @@ app.get('/api/ml/status', (req, res) => {
 
 app.get('/api/ml/store', async (req, res) => {
   const data = loadData();
-  let c      = contaAtiva(data);
-  addLog(`[Loja] conta_ativa=${data.conta_ativa} access_token=${c.access_token ? 'OK' : 'AUSENTE'}`, 'info');
+  const num  = req.query.conta || data.conta_ativa;
+  let c      = contaAtiva(data, num);
+  addLog(`[Loja] conta_ativa=${num} access_token=${c.access_token ? 'OK' : 'AUSENTE'}`, 'info');
   if (!c.access_token) return res.json({ error: 'Não conectado' });
 
   const fetchStore = async (token) => {
@@ -1905,7 +1906,7 @@ app.get('/api/bling/confirmar/:token', async (req, res) => {
 
 app.get('/api/ml/estoque', async (req, res) => {
   const data = loadData();
-  const num  = data.conta_ativa;
+  const num  = req.query.conta || data.conta_ativa;
   let c      = data.contas[num];
   addLog(`[Estoque] conta_ativa=${num} access_token=${c.access_token ? 'OK' : 'AUSENTE'}`, 'info');
   if (!c.access_token) return res.json({ error: 'Não conectado' });
@@ -2149,7 +2150,8 @@ app.get('/api/ml/item/:mlb', async (req, res) => {
 
 app.get('/api/ml/vendas30dias', async (req, res) => {
   const data = loadData();
-  const c    = contaAtiva(data);
+  const num  = req.query.conta || data.conta_ativa;
+  const c    = contaAtiva(data, num);
   if (!c.access_token) return res.json({ error: 'Não conectado' });
   if (!c.user_id)      return res.json({ error: 'user_id não encontrado' });
 
@@ -2198,7 +2200,8 @@ app.get('/api/ml/vendas30dias', async (req, res) => {
 app.get('/api/ml/vendas-etiquetas', async (req, res) => {
   const data   = loadData();
   const rawMode = req.query.raw === '1'; // ?raw=1 retorna o shipment bruto do primeiro pedido
-  const c    = contaAtiva(data);
+  const num  = req.query.conta || data.conta_ativa;
+  const c    = contaAtiva(data, num);
   if (!c.access_token) return res.json({ error: 'Não conectado' });
   if (!c.user_id)      return res.json({ error: 'user_id não encontrado' });
 
@@ -2741,7 +2744,8 @@ app.get('/api/ml/promocoes/debug-item', async (req, res) => {
 
 app.get('/api/ml/promocoes', async (req, res) => {
   const data = loadData();
-  const c    = contaAtiva(data);
+  const num  = req.query.conta || data.conta_ativa;
+  const c    = contaAtiva(data, num);
   if (!c.access_token) return res.json({ error: 'Não conectado ao Mercado Livre' });
   if (!c.user_id)      return res.json({ error: 'user_id não encontrado — reconecte a conta' });
 
@@ -2878,7 +2882,8 @@ app.post('/api/ml/promocoes/participar', async (req, res) => {
   const { mlb, promotion_id, preco } = req.body;
   if (!mlb || !promotion_id) return res.json({ error: 'mlb e promotion_id obrigatórios' });
   const data = loadData();
-  const c    = contaAtiva(data);
+  const num  = req.query.conta || data.conta_ativa;
+  const c    = contaAtiva(data, num);
   if (!c.access_token) return res.json({ error: 'Não conectado' });
 
   try {
@@ -2897,7 +2902,7 @@ app.post('/api/ml/promocoes/participar', async (req, res) => {
 
 app.get('/api/ml/ads-roas', async (req, res) => {
   const data = loadData();
-  const num  = data.conta_ativa;
+  const num  = req.query.conta || data.conta_ativa;
   const c    = data.contas[num];
   if (!c || !c.access_token) return res.json({ error: 'Não conectado' });
   if (!c.user_id)            return res.json({ error: 'user_id não encontrado. Reconecte a conta.' });
