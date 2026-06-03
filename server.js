@@ -1015,7 +1015,8 @@ app.get('/api/ml/pesquisa', async (req, res) => {
     }
 
     const resp = await axios.get('https://api.mercadolibre.com/sites/MLB/search', {
-      params: { q, limit: 50, sort: 'sold_quantity', ...(tok ? { access_token: tok } : {}) },
+      params: { q, limit: 50, sort: 'sold_quantity' },
+      headers: tok ? { Authorization: `Bearer ${tok}` } : {},
       timeout: 15000,
     });
 
