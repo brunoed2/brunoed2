@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Painel 2</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>ðŸ“¦</text></svg>">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📦</text></svg>">
   <link rel="stylesheet" href="/css/style.css?v=10">
 </head>
 <body>
@@ -22,14 +22,14 @@
         <span>Painel</span>
       </div>
       <div class="conta-seletor">
-        <button class="conta-btn active" data-conta="1" onclick="trocarConta('1')">Â·</button>
-        <button class="conta-btn" data-conta="2" onclick="trocarConta('2')">Â·</button>
+        <button class="conta-btn active" data-conta="1" onclick="trocarConta('1')">·</button>
+        <button class="conta-btn" data-conta="2" onclick="trocarConta('2')">·</button>
       </div>
       <nav>
-        <a class="nav-btn" href="?tab=estoque" data-tab="estoque">ðŸ“¦ Estoque</a>
-        <a class="nav-btn active" href="?tab=vendas" data-tab="vendas">ðŸ·ï¸ Vendas</a>
-        <a class="nav-btn" href="?tab=historico" data-tab="historico">ðŸ“‹ HistÃ³rico</a>
-        <a class="nav-btn" href="?tab=etiquetas" data-tab="etiquetas">ðŸ–¨ï¸ Etiquetas</a>
+        <a class="nav-btn" href="?tab=estoque" data-tab="estoque">📦 Estoque</a>
+        <a class="nav-btn active" href="?tab=vendas" data-tab="vendas">🏷️ Vendas</a>
+        <a class="nav-btn" href="?tab=historico" data-tab="historico">📋 Histórico</a>
+        <a class="nav-btn" href="?tab=etiquetas" data-tab="etiquetas">🖨️ Etiquetas</a>
       </nav>
       <div class="sidebar-footer">
         <button class="btn-sair" onclick="sair()">Sair</button>
@@ -37,30 +37,30 @@
     </aside>
 
     <main class="content">
-      <!-- Topbar visÃ­vel sÃ³ no mobile -->
+      <!-- Topbar visível só no mobile -->
       <div class="mobile-topbar">
         <div class="mobile-conta-seletor">
-          <button class="conta-btn active" data-conta="1" onclick="trocarConta('1')">Â·</button>
-          <button class="conta-btn" data-conta="2" onclick="trocarConta('2')">Â·</button>
+          <button class="conta-btn active" data-conta="1" onclick="trocarConta('1')">·</button>
+          <button class="conta-btn" data-conta="2" onclick="trocarConta('2')">·</button>
         </div>
         <button class="btn-sair" onclick="sair()" style="width:auto;padding:7px 14px;font-size:13px">Sair</button>
       </div>
 
-      <!-- â”€â”€ Aba: Estoque â”€â”€ -->
+      <!-- ── Aba: Estoque ── -->
       <section id="tab-estoque" class="tab">
         <h1>Estoque</h1>
-        <p class="subtitle">AnÃºncios ativos com SKU, tÃ­tulo, MLB e quantidade em estoque.</p>
+        <p class="subtitle">Anúncios ativos com SKU, título, MLB e quantidade em estoque.</p>
 
         <div id="estoque-erro" class="estoque-erro" style="display:none"></div>
 
         <div class="filtros-bar">
           <input type="text" id="filtro-sku" class="filtro-sku-input" placeholder="Filtrar por SKU..." oninput="renderizarTabela()">
-          <input type="text" id="filtro-titulo" class="filtro-sku-input" placeholder="Filtrar por tÃ­tulo..." oninput="renderizarTabela()">
+          <input type="text" id="filtro-titulo" class="filtro-sku-input" placeholder="Filtrar por título..." oninput="renderizarTabela()">
           <div class="filtros-bar-row">
-            <label class="filtro-label">DepÃ³sito:</label>
+            <label class="filtro-label">Depósito:</label>
             <button class="filtro-btn active" data-filtro="deposito" data-valor="todos">Todos</button>
             <button class="filtro-btn" data-filtro="deposito" data-valor="fulfillment">Full</button>
-            <button class="filtro-btn" data-filtro="deposito" data-valor="proprio">PrÃ³prio</button>
+            <button class="filtro-btn" data-filtro="deposito" data-valor="proprio">Próprio</button>
           </div>
           <div class="filtros-bar-row">
             <label class="filtro-label">Status:</label>
@@ -74,25 +74,25 @@
         <div class="tabela-container">
           <div class="tabela-topo">
             <span id="estoque-total"></span>
-            <button class="btn-secondary" onclick="carregarEstoque(true)" id="btn-atualizar">â†» Atualizar</button>
+            <button class="btn-secondary" onclick="carregarEstoque(true)" id="btn-atualizar">↻ Atualizar</button>
           </div>
 
-          <div id="estoque-loading" class="loading" style="display:none">Carregando anÃºncios...</div>
+          <div id="estoque-loading" class="loading" style="display:none">Carregando anúncios...</div>
 
           <table class="tabela" id="tabela-estoque" style="display:none">
             <thead>
               <tr>
                 <th class="th-sort" data-sort="sku">SKU <span class="sort-icon"></span></th>
-                <th class="th-sort" data-sort="titulo">TÃ­tulo <span class="sort-icon"></span></th>
+                <th class="th-sort" data-sort="titulo">Título <span class="sort-icon"></span></th>
                 <th class="th-sort" data-sort="mlb">MLB <span class="sort-icon"></span></th>
-                <th class="th-sort" data-sort="depositoLabel">DepÃ³sito <span class="sort-icon"></span></th>
+                <th class="th-sort" data-sort="depositoLabel">Depósito <span class="sort-icon"></span></th>
                 <th class="th-sort" data-sort="status">Status <span class="sort-icon"></span></th>
                 <th class="col-num">Estoque Local</th>
                 <th class="col-num">Transferir</th>
                 <th class="col-num">Estoque Fora Full</th>
                 <th class="col-num">Estoque Full</th>
                 <th class="th-sort col-num" data-sort="vendas30d">Vendas 30d <span class="sort-icon"></span></th>
-                <th class="th-sort col-num" data-sort="diasEstoque">DuraÃ§Ã£o <span class="sort-icon"></span></th>
+                <th class="th-sort col-num" data-sort="diasEstoque">Duração <span class="sort-icon"></span></th>
               </tr>
             </thead>
             <tbody id="tabela-estoque-body"></tbody>
@@ -101,10 +101,10 @@
         </div>
       </section>
 
-      <!-- â”€â”€ Aba: Vendas â”€â”€ -->
+      <!-- ── Aba: Vendas ── -->
       <section id="tab-vendas" class="tab active">
         <h1>Vendas</h1>
-        <p class="subtitle">Vendas com etiqueta de envio disponÃ­vel para baixar.</p>
+        <p class="subtitle">Vendas com etiqueta de envio disponível para baixar.</p>
 
         <div id="vendas-erro" class="estoque-erro" style="display:none"></div>
 
@@ -113,9 +113,9 @@
             <span id="vendas-total"></span>
             <div style="display:flex;gap:8px;align-items:center">
               <button class="btn-secondary" id="btn-filtro-atendidos" onclick="toggleFiltroAtendidos()">Atendidos</button>
-              <button class="btn-primary" id="btn-baixar-selecionadas" onclick="baixarSelecionadas()" style="display:none">â¬‡ Baixar selecionadas</button>
-              <button class="btn-primary" id="btn-marcar-atendido" onclick="marcarAtendidoSelecionadas()" style="display:none;background:#16a34a">âœ” Marcar atendido</button>
-              <button class="btn-secondary" onclick="carregarVendas()" id="btn-atualizar-vendas">â†» Atualizar</button>
+              <button class="btn-primary" id="btn-baixar-selecionadas" onclick="baixarSelecionadas()" style="display:none">⬇ Baixar selecionadas</button>
+              <button class="btn-primary" id="btn-marcar-atendido" onclick="marcarAtendidoSelecionadas()" style="display:none;background:#16a34a">✔ Marcar atendido</button>
+              <button class="btn-secondary" onclick="carregarVendas()" id="btn-atualizar-vendas">↻ Atualizar</button>
             </div>
           </div>
 
@@ -141,9 +141,9 @@
         </div>
       </section>
 
-      <!-- â”€â”€ Aba: HistÃ³rico â”€â”€ -->
+      <!-- ── Aba: Histórico ── -->
       <section id="tab-historico" class="tab">
-        <h1>HistÃ³rico de Vendas</h1>
+        <h1>Histórico de Vendas</h1>
         <p class="subtitle">Todos os pedidos que passaram pela tela, independente de terem sido marcados como atendidos.</p>
 
         <div class="tabela-container">
@@ -151,17 +151,17 @@
             <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
               <span style="font-size:12px;color:#94a3b8">de</span>
               <input type="date" id="hist-data-ini" style="font-size:12px;padding:3px 6px;border:1px solid #e2e8f0;border-radius:6px;color:#334155" onchange="carregarHistorico()">
-              <span style="font-size:12px;color:#94a3b8">atÃ©</span>
+              <span style="font-size:12px;color:#94a3b8">até</span>
               <input type="date" id="hist-data-fim" style="font-size:12px;padding:3px 6px;border:1px solid #e2e8f0;border-radius:6px;color:#334155" onchange="carregarHistorico()">
               <input type="text" id="hist-busca" placeholder="Buscar por pedido, comprador, SKU, item..." oninput="renderizarHistorico()" style="font-size:12px;padding:3px 8px;border:1px solid #e2e8f0;border-radius:6px;color:#334155;width:280px">
             </div>
             <div style="display:flex;gap:8px;align-items:center">
               <span id="hist-total" style="font-size:13px;color:#64748b"></span>
-              <button class="btn-secondary" onclick="carregarHistorico()" id="btn-atualizar-hist">â†» Atualizar</button>
+              <button class="btn-secondary" onclick="carregarHistorico()" id="btn-atualizar-hist">↻ Atualizar</button>
             </div>
           </div>
-          <div id="hist-loading" class="loading" style="display:none">Carregando histÃ³rico...</div>
-          <div id="hist-vazio" style="display:none;color:#94a3b8;padding:30px 0;text-align:center;font-size:14px">Nenhum pedido encontrado neste perÃ­odo.</div>
+          <div id="hist-loading" class="loading" style="display:none">Carregando histórico...</div>
+          <div id="hist-vazio" style="display:none;color:#94a3b8;padding:30px 0;text-align:center;font-size:14px">Nenhum pedido encontrado neste período.</div>
           <table class="tabela" id="tabela-hist" style="display:none">
             <thead>
               <tr>
@@ -181,10 +181,10 @@
       </section>
 
 
-      <!-- â”€â”€ Aba: Etiquetas â”€â”€ -->
+      <!-- ── Aba: Etiquetas ── -->
       <section id="tab-etiquetas" class="tab">
-        <h1>ZPL â†’ PDF</h1>
-        <p class="subtitle">Converta arquivos ZPL em PDF prontos para impressÃ£o.</p>
+        <h1>ZPL → PDF</h1>
+        <p class="subtitle">Converta arquivos ZPL em PDF prontos para impressão.</p>
 
         <div class="etiquetas-container">
 
@@ -192,21 +192,21 @@
             <label class="etiqueta-tam-label">
               <input type="radio" name="etiqueta-tam" value="100x150" checked>
               <div class="etiqueta-tam-card">
-                <span class="etiqueta-tam-titulo">100 Ã— 150 mm</span>
+                <span class="etiqueta-tam-titulo">100 × 150 mm</span>
                 <span class="etiqueta-tam-sub">Etiqueta de envio</span>
               </div>
             </label>
             <label class="etiqueta-tam-label">
               <input type="radio" name="etiqueta-tam" value="104x29">
               <div class="etiqueta-tam-card">
-                <span class="etiqueta-tam-titulo">104 Ã— 29 mm</span>
+                <span class="etiqueta-tam-titulo">104 × 29 mm</span>
                 <span class="etiqueta-tam-sub">Etiqueta pequena</span>
               </div>
             </label>
           </div>
 
           <div id="etiquetas-dropzone" class="etiquetas-dropzone">
-            <div class="etiquetas-drop-icon">ðŸ“„</div>
+            <div class="etiquetas-drop-icon">📄</div>
             <div class="etiquetas-drop-text">Arraste o arquivo <strong>.zpl</strong> aqui</div>
             <div class="etiquetas-drop-sub">ou clique para selecionar</div>
             <input type="file" id="etiquetas-file" accept=".zpl,.txt" style="display:none">
@@ -229,20 +229,20 @@
   <script src="/js/painel2.js?v=171"></script>
   <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
   <script src="/js/etiquetas.js"></script>
-  <!-- Modal histÃ³rico de estoque -->
+  <!-- Modal histórico de estoque -->
   <div id="modal-hist-estoque" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;align-items:center;justify-content:center" onclick="if(event.target===this)this.style.display='none'">
     <div style="background:#1e2130;border-radius:10px;padding:24px;max-width:720px;width:95%;max-height:80vh;display:flex;flex-direction:column">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-shrink:0">
-        <h3 style="margin:0;color:#e2e8f0;font-size:15px">HistÃ³rico de estoque â€” SKU: <span id="hist-estoque-sku" style="color:#60a5fa"></span></h3>
-        <button onclick="document.getElementById('modal-hist-estoque').style.display='none'" style="background:none;border:none;color:#94a3b8;font-size:20px;cursor:pointer;line-height:1">âœ•</button>
+        <h3 style="margin:0;color:#e2e8f0;font-size:15px">Histórico de estoque — SKU: <span id="hist-estoque-sku" style="color:#60a5fa"></span></h3>
+        <button onclick="document.getElementById('modal-hist-estoque').style.display='none'" style="background:none;border:none;color:#94a3b8;font-size:20px;cursor:pointer;line-height:1">✕</button>
       </div>
       <div style="overflow-y:auto;flex:1">
         <table style="width:100%;border-collapse:collapse;font-size:13px;color:#e2e8f0">
           <thead style="position:sticky;top:0;background:#1e2130">
             <tr style="color:#94a3b8;border-bottom:1px solid #334155">
               <th style="text-align:left;padding:6px 8px;font-weight:500">Data/Hora</th>
-              <th style="text-align:left;padding:6px 8px;font-weight:500">UsuÃ¡rio</th>
-              <th style="text-align:left;padding:6px 8px;font-weight:500">AlteraÃ§Ã£o</th>
+              <th style="text-align:left;padding:6px 8px;font-weight:500">Usuário</th>
+              <th style="text-align:left;padding:6px 8px;font-weight:500">Alteração</th>
               <th style="text-align:left;padding:6px 8px;font-weight:500">Tipo</th>
               <th style="text-align:left;padding:6px 8px;font-weight:500">Pedido</th>
             </tr>
@@ -253,8 +253,6 @@
     </div>
   </div>
 
-  <div id="version-badge">v536</div>
+  <div id="version-badge">v537</div>
 </body>
 </html>
-
-
