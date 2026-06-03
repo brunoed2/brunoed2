@@ -3,7 +3,7 @@
 let notasCountdownInterval = null;
 
 function notasContaAtual() {
-  return document.querySelector('.conta-btn.active')?.dataset?.conta || '1';
+  return window.CONTA_ATIVA || '1';
 }
 
 function notasFormatarCnpj(c) {

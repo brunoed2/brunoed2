@@ -423,7 +423,7 @@ async function blingCarregarMarketplace() {
   total.textContent      = '';
 
   try {
-    const data = await fetch('/api/bling/nfs-shopee-marketplace?conta=2').then(r => r.json());
+    const data = await fetch(`/api/bling/nfs-shopee-marketplace?conta=${window.CONTA_ATIVA || '1'}`).then(r => r.json());
     loading.style.display = 'none';
 
     if (data.erro) {

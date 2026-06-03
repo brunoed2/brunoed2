@@ -2,6 +2,9 @@
 // painel2.js — Lógica do Painel 2
 // ============================================================
 
+// ── Conta ativa (fonte da verdade: URL ?conta=) ───────────────
+window.CONTA_ATIVA = new URLSearchParams(location.search).get('conta') || '1';
+
 // ── Navegação entre abas ──────────────────────────────────────
 
 const navBtns = document.querySelectorAll('.nav-btn');
@@ -10,8 +13,8 @@ const tabs    = document.querySelectorAll('.tab');
 function abrirAba(nome) {
   navBtns.forEach(b => b.classList.toggle('active', b.dataset.tab === nome));
   tabs.forEach(t => t.classList.toggle('active', t.id === `tab-${nome}`));
-  history.replaceState(null, '', '?tab=' + nome);
-  if (trocandoConta) return; // aguarda trocarConta disparar o reload
+  history.replaceState(null, '', '/painel2.html?conta=' + (window.CONTA_ATIVA || '1') + '&tab=' + nome);
+  if (trocandoConta) return;
   if (nome === 'estoque')      carregarEstoque(true);
   if (nome === 'vendas')       carregarVendas();
   if (nome === 'historico')    { histIniciarDatas(); carregarHistorico(); }
@@ -26,45 +29,21 @@ navBtns.forEach(btn => {
 
 let trocandoConta = false;
 
-async function trocarConta(num) {
-  if (trocandoConta) return;
-  trocandoConta = true;
-
-  // Invalida qualquer requisição em andamento da conta anterior
-  contaGen++;
-
-  document.querySelectorAll('.conta-btn').forEach(b => b.disabled = true);
-
-  try {
-    await fetch('/api/conta/ativa', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ conta: num }),
-    });
-
-    document.querySelectorAll('.conta-btn').forEach(b => {
-      b.classList.toggle('active', b.dataset.conta === num);
-    });
-
-    // Recarrega a aba atual só após confirmação do servidor
-    const abaAtiva = document.querySelector('.tab.active')?.id?.replace('tab-', '');
-    if (abaAtiva === 'estoque')     carregarEstoque(true);
-    if (abaAtiva === 'vendas')      carregarVendas();
-    if (abaAtiva === 'historico')   carregarHistorico();
-  } finally {
-    document.querySelectorAll('.conta-btn').forEach(b => b.disabled = false);
-    trocandoConta = false;
-  }
+function trocarConta(num) {
+  const abaAtiva = document.querySelector('.tab.active')?.id?.replace('tab-', '') || 'vendas';
+  location.href = '/painel2.html?conta=' + num + '&tab=' + abaAtiva;
 }
 
+// Inicializa seletor de conta — ativo vem da URL, nickname do servidor
 async function inicializarSeletorConta() {
+  document.querySelectorAll('.conta-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.conta === window.CONTA_ATIVA);
+  });
   try {
     const data = await apiFetch('/api/conta/ativa');
     document.querySelectorAll('.conta-btn').forEach(b => {
-      const num      = b.dataset.conta;
-      const nickname = data.contas?.[num]?.nickname;
+      const nickname = data.contas?.[b.dataset.conta]?.nickname;
       if (nickname) b.textContent = nickname;
-      b.classList.toggle('active', num === data.conta_ativa);
     });
   } catch {}
 }
@@ -84,7 +63,7 @@ async function apiFetch(url, opts = {}) {
 }
 
 function painel2ContaAtual() {
-  return document.querySelector('.conta-btn.active')?.dataset?.conta || '1';
+  return window.CONTA_ATIVA || '1';
 }
 
 // ── Estoque ───────────────────────────────────────────────────

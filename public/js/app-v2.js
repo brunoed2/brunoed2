@@ -19,6 +19,9 @@ window.onunhandledrejection = (e) => {
   clog(`Promise rejection: ${e.reason}`, 'erro');
 };
 
+// ── Conta ativa (fonte da verdade: URL ?conta=) ───────────────
+window.CONTA_ATIVA = new URLSearchParams(location.search).get('conta') || '1';
+
 // ── Estado ────────────────────────────────────────────────────
 
 let contaConfigurando = '1'; // conta sendo editada na aba config
@@ -50,7 +53,7 @@ function abrirAba(nome) {
   drawerBtns.forEach(b => b.classList.toggle('active', b.dataset.tab === nome));
   tabs.forEach(t => t.classList.toggle('active', t.id === `tab-${nome}`));
   localStorage.setItem('ultimaAba', nome);
-  history.replaceState(null, '', '?tab=' + nome);
+  history.replaceState(null, '', '/app.html?conta=' + (window.CONTA_ATIVA || '1') + '&tab=' + nome);
 
   // Atualiza label da barra inferior mobile
   const labelEl = document.getElementById('mobile-tab-label');
@@ -136,7 +139,7 @@ navBtns.forEach(btn => {
     mostrarMsg('msg-config', '❌ ' + (erros[params.get('error')] || 'Erro desconhecido.') + detalhe, 'erro');
   }
 
-  history.replaceState({}, '', '/app.html');
+  history.replaceState({}, '', '/app.html?conta=' + window.CONTA_ATIVA);
 })();
 
 // ── Helpers ───────────────────────────────────────────────────
@@ -160,53 +163,26 @@ async function apiFetch(url, opts = {}) {
 }
 
 function app2ContaAtual() {
-  return document.querySelector('.conta-btn.active')?.dataset?.conta || '1';
+  return window.CONTA_ATIVA || '1';
 }
 
 // ── Troca de conta ────────────────────────────────────────────
 
-async function trocarConta(num) {
-  if (trocandoConta) return;
-  trocandoConta = true;
-  contaGen++;
-
-  // Desabilita botões durante a troca
-  document.querySelectorAll('.conta-btn').forEach(b => b.disabled = true);
-
-  try {
-    await apiFetch('/api/conta/ativa', {
-      method: 'POST',
-      body:   JSON.stringify({ conta: num }),
-    });
-
-    // Atualiza visual do seletor
-    document.querySelectorAll('.conta-btn').forEach(b => {
-      b.classList.toggle('active', b.dataset.conta === num);
-    });
-
-    // Recarrega dados da aba atual só após o servidor confirmar a troca
-    const abaAtiva = document.querySelector('.tab.active')?.id?.replace('tab-', '');
-    if (abaAtiva === 'loja')    carregarLoja();
-    if (abaAtiva === 'estoque') carregarEstoque(true);
-    if (abaAtiva === 'compras') { const sub = document.querySelector('.compras-sub-btn.active')?.dataset.sub || 'previsao'; comprasAbrirSub(sub); }
-    atualizarStatus();
-    // lucro é recarregado pelo listener contaMudou em lucro.js (evita carga dupla)
-    document.dispatchEvent(new CustomEvent('contaMudou', { detail: { conta: num } }));
-  } finally {
-    document.querySelectorAll('.conta-btn').forEach(b => b.disabled = false);
-    trocandoConta = false;
-  }
+function trocarConta(num) {
+  const abaAtiva = document.querySelector('.tab.active')?.id?.replace('tab-', '') || 'estoque';
+  location.href = '/app.html?conta=' + num + '&tab=' + abaAtiva;
 }
 
-// Inicializa seletor de conta com o estado do servidor
+// Inicializa seletor de conta — ativo vem da URL, nickname do servidor
 async function inicializarSeletorConta() {
+  document.querySelectorAll('.conta-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.conta === window.CONTA_ATIVA);
+  });
   try {
     const data = await apiFetch('/api/conta/ativa');
     document.querySelectorAll('.conta-btn').forEach(b => {
-      const num      = b.dataset.conta;
-      const nickname = data.contas?.[num]?.nickname;
+      const nickname = data.contas?.[b.dataset.conta]?.nickname;
       if (nickname) b.textContent = nickname;
-      b.classList.toggle('active', num === data.conta_ativa);
     });
   } catch {}
 }

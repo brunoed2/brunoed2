@@ -21,7 +21,7 @@ function comprasAbrirSub(sub) {
 // ── Fornecedores ──────────────────────────────────────────────
 
 function getContaAtiva() {
-  return document.querySelector('.conta-btn.active')?.dataset.conta || '1';
+  return window.CONTA_ATIVA || '1';
 }
 
 async function carregarFornecedores() {
