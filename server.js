@@ -1014,9 +1014,11 @@ app.get('/api/ml/pesquisa', async (req, res) => {
       if (tok) break;
     }
 
+    if (!tok) return res.status(500).json({ erro: 'Sem token ML — reconecte a conta.' });
+
     const resp = await axios.get('https://api.mercadolibre.com/sites/MLB/search', {
-      params: { q, limit: 50, sort: 'sold_quantity' },
-      headers: tok ? { Authorization: `Bearer ${tok}` } : {},
+      params: { q, limit: 50 },
+      headers: { Authorization: `Bearer ${tok}` },
       timeout: 15000,
     });
 
