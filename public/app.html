@@ -1,15 +1,15 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Painel</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📦</text></svg>">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>ðŸ“¦</text></svg>">
   <link rel="stylesheet" href="/css/style.css?v=10">
 </head>
 <body>
 
-  <!-- Verifica autenticação antes de mostrar o app -->
+  <!-- Verifica autenticaÃ§Ã£o antes de mostrar o app -->
   <script>
     if (localStorage.getItem('auth') !== '1') {
       location.href = '/';
@@ -22,28 +22,28 @@
     <aside class="sidebar">
       <div class="sidebar-logo">Painel</div>
       <div class="conta-seletor">
-        <button class="conta-btn active" data-conta="1" onclick="trocarConta('1')">·</button>
-        <button class="conta-btn" data-conta="2" onclick="trocarConta('2')">·</button>
+        <button class="conta-btn active" data-conta="1" onclick="trocarConta('1')">Â·</button>
+        <button class="conta-btn" data-conta="2" onclick="trocarConta('2')">Â·</button>
       </div>
       <nav>
-        <a class="nav-btn active" href="?tab=estoque" data-tab="estoque">📦 Estoque</a>
-        <a class="nav-btn" href="?tab=vendas" data-tab="vendas">🏷️ Vendas</a>
-        <a class="nav-btn" href="?tab=historico" data-tab="historico">📋 Histórico</a>
-        <a class="nav-btn" href="?tab=ads" data-tab="ads">📊 Ads</a>
-        <a class="nav-btn" href="?tab=lucro" data-tab="lucro">💰 Lucro</a>
-        <a class="nav-btn" href="?tab=promocoes" data-tab="promocoes">🏷️ Promoções</a>
-        <a class="nav-btn" href="?tab=contas-pagar" data-tab="contas-pagar">💳 Contas a Pagar</a>
-        <a class="nav-btn" href="?tab=bling" data-tab="bling">🧾 Bling</a>
-        <a class="nav-btn" href="?tab=fiscal" data-tab="fiscal">🗂️ NF Compras</a>
-        <a class="nav-btn" href="?tab=compras" data-tab="compras">🛒 Compras</a>
-        <a class="nav-btn" href="?tab=calculadora" data-tab="calculadora">🧮 Calculadora</a>
-        <a class="nav-btn" href="?tab=etiquetas" data-tab="etiquetas">🖨️ Etiquetas</a>
-        <a class="nav-btn" href="?tab=log-anuncio" data-tab="log-anuncio">🔍 Log Anúncio</a>
-        <a class="nav-btn" href="?tab=configuracoes" data-tab="configuracoes">⚙️ Configurações</a>
+        <a class="nav-btn active" href="?tab=estoque" data-tab="estoque">ðŸ“¦ Estoque</a>
+        <a class="nav-btn" href="?tab=vendas" data-tab="vendas">ðŸ·ï¸ Vendas</a>
+        <a class="nav-btn" href="?tab=historico" data-tab="historico">ðŸ“‹ HistÃ³rico</a>
+        <a class="nav-btn" href="?tab=ads" data-tab="ads">ðŸ“Š Ads</a>
+        <a class="nav-btn" href="?tab=lucro" data-tab="lucro">ðŸ’° Lucro</a>
+        <a class="nav-btn" href="?tab=promocoes" data-tab="promocoes">ðŸ·ï¸ PromoÃ§Ãµes</a>
+        <a class="nav-btn" href="?tab=contas-pagar" data-tab="contas-pagar">ðŸ’³ Contas a Pagar</a>
+        <a class="nav-btn" href="?tab=bling" data-tab="bling">ðŸ§¾ Bling</a>
+        <a class="nav-btn" href="?tab=fiscal" data-tab="fiscal">ðŸ—‚ï¸ NF Compras</a>
+        <a class="nav-btn" href="?tab=compras" data-tab="compras">ðŸ›’ Compras</a>
+        <a class="nav-btn" href="?tab=calculadora" data-tab="calculadora">ðŸ§® Calculadora</a>
+        <a class="nav-btn" href="?tab=etiquetas" data-tab="etiquetas">ðŸ–¨ï¸ Etiquetas</a>
+        <a class="nav-btn" href="?tab=log-anuncio" data-tab="log-anuncio">ðŸ” Log AnÃºncio</a>
+        <a class="nav-btn" href="?tab=configuracoes" data-tab="configuracoes">âš™ï¸ ConfiguraÃ§Ãµes</a>
       </nav>
       <!-- Mobile: barra inferior com label da aba ativa + hamburger -->
       <div class="mobile-hamburger-bar">
-        <span id="mobile-tab-label">📦 Estoque</span>
+        <span id="mobile-tab-label">ðŸ“¦ Estoque</span>
         <button class="hamburger-btn" onclick="toggleMobileMenu()" aria-label="Abrir menu">
           <span></span><span></span><span></span>
         </button>
@@ -53,21 +53,21 @@
       </div>
     </aside>
 
-    <!-- Conteúdo principal -->
+    <!-- ConteÃºdo principal -->
     <main class="content">
-      <!-- Topbar visível só no mobile -->
+      <!-- Topbar visÃ­vel sÃ³ no mobile -->
       <div class="mobile-topbar">
         <div class="mobile-conta-seletor">
-          <button class="conta-btn active" data-conta="1" onclick="trocarConta('1')">·</button>
-          <button class="conta-btn" data-conta="2" onclick="trocarConta('2')">·</button>
+          <button class="conta-btn active" data-conta="1" onclick="trocarConta('1')">Â·</button>
+          <button class="conta-btn" data-conta="2" onclick="trocarConta('2')">Â·</button>
         </div>
         <button class="btn-sair" onclick="sair()" style="width:auto;padding:7px 14px;font-size:13px">Sair</button>
       </div>
 
-      <!-- ── Aba: Lucro ── -->
+      <!-- â”€â”€ Aba: Lucro â”€â”€ -->
       <section id="tab-lucro" class="tab">
         <h1>Lucro</h1>
-        <p class="subtitle">Análise de lucro por venda — taxas ML, frete, custo do produto e imposto.</p>
+        <p class="subtitle">AnÃ¡lise de lucro por venda â€” taxas ML, frete, custo do produto e imposto.</p>
 
         <div id="lucro-erro" class="estoque-erro" style="display:none"></div>
 
@@ -85,31 +85,31 @@
           <div class="lucro-cards" id="lucro-cards" style="display:none">
             <div class="lucro-card">
               <div class="lucro-card-label">Receita</div>
-              <div class="lucro-card-valor" id="lucro-sum-receita">—</div>
+              <div class="lucro-card-valor" id="lucro-sum-receita">â€”</div>
             </div>
             <div class="lucro-card">
               <div class="lucro-card-label">Taxa ML</div>
-              <div class="lucro-card-valor lucro-val-neg" id="lucro-sum-taxaml">—</div>
+              <div class="lucro-card-valor lucro-val-neg" id="lucro-sum-taxaml">â€”</div>
             </div>
             <div class="lucro-card">
               <div class="lucro-card-label">Frete</div>
-              <div class="lucro-card-valor lucro-val-neg" id="lucro-sum-frete">—</div>
+              <div class="lucro-card-valor lucro-val-neg" id="lucro-sum-frete">â€”</div>
             </div>
             <div class="lucro-card">
               <div class="lucro-card-label">Custo produto</div>
-              <div class="lucro-card-valor lucro-val-neg" id="lucro-sum-custo">—</div>
+              <div class="lucro-card-valor lucro-val-neg" id="lucro-sum-custo">â€”</div>
             </div>
             <div class="lucro-card">
               <div class="lucro-card-label">Imposto</div>
-              <div class="lucro-card-valor lucro-val-neg" id="lucro-sum-imposto">—</div>
+              <div class="lucro-card-valor lucro-val-neg" id="lucro-sum-imposto">â€”</div>
             </div>
             <div class="lucro-card lucro-card-destaque">
-              <div class="lucro-card-label">Lucro líquido</div>
-              <div class="lucro-card-valor" id="lucro-sum-lucro">—</div>
+              <div class="lucro-card-label">Lucro lÃ­quido</div>
+              <div class="lucro-card-valor" id="lucro-sum-lucro">â€”</div>
             </div>
             <div class="lucro-card lucro-card-destaque">
               <div class="lucro-card-label">Margem</div>
-              <div class="lucro-card-valor" id="lucro-sum-margem">—</div>
+              <div class="lucro-card-valor" id="lucro-sum-margem">â€”</div>
             </div>
           </div>
 
@@ -119,11 +119,11 @@
               <span id="lucro-total"></span>
               <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
                 <input type="date" id="lucro-data-de" class="lucro-date-input">
-                <span style="color:#64748b;font-size:13px">até</span>
+                <span style="color:#64748b;font-size:13px">atÃ©</span>
                 <input type="date" id="lucro-data-ate" class="lucro-date-input">
                 <button class="filtro-btn" onclick="lucroSetPeriodoRapido(0)">Hoje</button>
-                <button class="filtro-btn" onclick="lucroSetMesAtual()">Mês</button>
-                <button class="btn-secondary" onclick="lucroCarregarVendas()" id="btn-atualizar-lucro">↻ Atualizar</button>
+                <button class="filtro-btn" onclick="lucroSetMesAtual()">MÃªs</button>
+                <button class="btn-secondary" onclick="lucroCarregarVendas()" id="btn-atualizar-lucro">â†» Atualizar</button>
               </div>
             </div>
 
@@ -156,16 +156,16 @@
           <div class="card" style="margin-top:4px">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
               <h2 style="margin:0">Custos por SKU</h2>
-              <button class="btn-secondary" onclick="lucroCustosCarregar()" style="font-size:12px;padding:5px 10px">↻ Recarregar</button>
+              <button class="btn-secondary" onclick="lucroCustosCarregar()" style="font-size:12px;padding:5px 10px">â†» Recarregar</button>
             </div>
-            <p class="card-desc" style="margin-bottom:12px">Informe o custo unitário de cada SKU. O valor é aplicado automaticamente em todas as vendas do produto.</p>
+            <p class="card-desc" style="margin-bottom:12px">Informe o custo unitÃ¡rio de cada SKU. O valor Ã© aplicado automaticamente em todas as vendas do produto.</p>
             <div id="lucro-custos-loading" class="loading" style="display:none">Carregando produtos...</div>
             <table class="tabela" id="tabela-custos" style="display:none">
               <thead>
                 <tr>
                   <th>SKU</th>
                   <th>Produto</th>
-                  <th class="col-num">Custo unitário (R$)</th>
+                  <th class="col-num">Custo unitÃ¡rio (R$)</th>
                 </tr>
               </thead>
               <tbody id="tabela-custos-body"></tbody>
@@ -175,26 +175,26 @@
 
         <!-- Aba: Gastos -->
         <div id="lucro-aba-gastos" class="lucro-aba" style="display:none">
-          <!-- Seletor de mês (controla tudo) + botão Atualizar -->
+          <!-- Seletor de mÃªs (controla tudo) + botÃ£o Atualizar -->
           <div style="display:flex;align-items:center;gap:10px;margin-top:4px;margin-bottom:16px">
             <input type="month" id="gastos-mes" class="lucro-date-input">
-            <button class="btn-secondary" id="btn-gastos-atualizar" onclick="gastosAtualizarTudo()" style="font-size:13px;padding:5px 14px">↻ Atualizar</button>
+            <button class="btn-secondary" id="btn-gastos-atualizar" onclick="gastosAtualizarTudo()" style="font-size:13px;padding:5px 14px">â†» Atualizar</button>
           </div>
 
-          <!-- Formulário para adicionar lançamento -->
+          <!-- FormulÃ¡rio para adicionar lanÃ§amento -->
           <div class="card" style="margin-top:16px;margin-bottom:16px">
-            <h2 style="margin-bottom:12px">Adicionar lançamento</h2>
+            <h2 style="margin-bottom:12px">Adicionar lanÃ§amento</h2>
             <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
               <div class="field" style="margin:0;flex:0;min-width:auto">
                 <label>Tipo</label>
                 <div style="display:flex;gap:4px">
-                  <button id="gastos-tipo-gasto" class="gastos-tipo-btn active" data-tipo="gasto" onclick="gastosTipoSel('gasto')">− Gasto</button>
+                  <button id="gastos-tipo-gasto" class="gastos-tipo-btn active" data-tipo="gasto" onclick="gastosTipoSel('gasto')">âˆ’ Gasto</button>
                   <button id="gastos-tipo-entrada" class="gastos-tipo-btn" data-tipo="entrada" onclick="gastosTipoSel('entrada')">+ Entrada</button>
                 </div>
               </div>
               <div class="field" style="margin:0;flex:3;min-width:180px">
-                <label>Descrição</label>
-                <input type="text" id="gastos-descricao" placeholder="Ex: Embalagens, Venda extra…" style="width:100%">
+                <label>DescriÃ§Ã£o</label>
+                <input type="text" id="gastos-descricao" placeholder="Ex: Embalagens, Venda extraâ€¦" style="width:100%">
               </div>
               <div class="field" style="margin:0;flex:1;min-width:110px">
                 <label>Valor (R$)</label>
@@ -204,24 +204,24 @@
             </div>
           </div>
 
-          <!-- Gastos automáticos (só Ads) -->
+          <!-- Gastos automÃ¡ticos (sÃ³ Ads) -->
           <div class="card" style="margin-bottom:16px">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
               <h2 style="margin:0">Detectado automaticamente</h2>
-              <button class="btn-secondary" onclick="gastosAutoCarregar()" id="btn-gastos-auto" style="font-size:12px;padding:5px 10px">↻ Atualizar</button>
+              <button class="btn-secondary" onclick="gastosAutoCarregar()" id="btn-gastos-auto" style="font-size:12px;padding:5px 10px">â†» Atualizar</button>
             </div>
-            <div id="gastos-auto-loading" class="loading" style="display:none">Buscando dados na API…</div>
+            <div id="gastos-auto-loading" class="loading" style="display:none">Buscando dados na APIâ€¦</div>
             <table class="tabela" id="tabela-gastos-auto" style="display:none">
               <thead>
                 <tr>
                   <th>Origem</th>
-                  <th class="col-num">Valor no mês</th>
+                  <th class="col-num">Valor no mÃªs</th>
                 </tr>
               </thead>
               <tbody>
                 <tr>
                   <td>Ads (Product Ads)</td>
-                  <td class="col-num lucro-val-neg" id="gastos-auto-ads">—</td>
+                  <td class="col-num lucro-val-neg" id="gastos-auto-ads">â€”</td>
                 </tr>
               </tbody>
             </table>
@@ -232,7 +232,7 @@
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
               <h2 style="margin:0">Gastos fixos</h2>
             </div>
-            <p class="card-desc" style="margin-bottom:12px">Despesas recorrentes (aluguel, energia, funcionário…). O nome fica salvo todo mês — só atualize o valor.</p>
+            <p class="card-desc" style="margin-bottom:12px">Despesas recorrentes (aluguel, energia, funcionÃ¡rioâ€¦). O nome fica salvo todo mÃªs â€” sÃ³ atualize o valor.</p>
             <!-- Adicionar novo tipo -->
             <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
               <input type="text" id="gastos-fixo-novo-nome" placeholder="Nome do gasto fixo (ex: Aluguel)"
@@ -244,9 +244,9 @@
             <table class="tabela" id="tabela-gastos-fixos" style="display:none">
               <thead>
                 <tr>
-                  <th>Descrição</th>
-                  <th class="col-num">Valor neste mês (R$)</th>
-                  <th style="width:44px;text-align:center" title="Repetir automaticamente todo mês">Fixo</th>
+                  <th>DescriÃ§Ã£o</th>
+                  <th class="col-num">Valor neste mÃªs (R$)</th>
+                  <th style="width:44px;text-align:center" title="Repetir automaticamente todo mÃªs">Fixo</th>
                   <th style="width:40px"></th>
                 </tr>
               </thead>
@@ -263,11 +263,11 @@
           <!-- Lista de gastos -->
           <div class="tabela-container">
             <div id="gastos-loading" class="loading" style="display:none">Carregando gastos...</div>
-            <div id="gastos-vazio" style="display:none;color:#94a3b8;padding:20px 0;text-align:center;font-size:14px">Nenhum gasto registrado neste mês.</div>
+            <div id="gastos-vazio" style="display:none;color:#94a3b8;padding:20px 0;text-align:center;font-size:14px">Nenhum gasto registrado neste mÃªs.</div>
             <table class="tabela" id="tabela-gastos" style="display:none">
               <thead>
                 <tr>
-                  <th>Descrição</th>
+                  <th>DescriÃ§Ã£o</th>
                   <th class="col-num">Valor</th>
                   <th style="width:40px"></th>
                 </tr>
@@ -283,16 +283,16 @@
             <label style="font-size:13px;color:#64748b;font-weight:500">Ano:</label>
             <input type="number" id="dre-ano" min="2020" max="2099" step="1"
               style="width:80px;padding:5px 8px;border:1px solid #334155;border-radius:6px;font-size:13px;background:#1e293b;color:#e2e8f0">
-            <button class="btn-primary" id="btn-dre-carregar" onclick="dreCarregar()" style="font-size:13px;padding:6px 18px" title="Atualiza todos os meses buscando dados no ML (lento)">↻ Atualizar tudo</button>
-            <span style="font-size:12px;color:#64748b">Lucro ML já desconta taxas, frete, custo do produto e imposto. Clique ↻ na linha para atualizar só aquele mês.</span>
+            <button class="btn-primary" id="btn-dre-carregar" onclick="dreCarregar()" style="font-size:13px;padding:6px 18px" title="Atualiza todos os meses buscando dados no ML (lento)">â†» Atualizar tudo</button>
+            <span style="font-size:12px;color:#64748b">Lucro ML jÃ¡ desconta taxas, frete, custo do produto e imposto. Clique â†» na linha para atualizar sÃ³ aquele mÃªs.</span>
           </div>
-          <div id="dre-loading" class="loading" style="display:none">Carregando DRE…</div>
+          <div id="dre-loading" class="loading" style="display:none">Carregando DREâ€¦</div>
           <div id="dre-vazio" style="display:none;color:#94a3b8;padding:20px 0;text-align:center;font-size:14px">Nenhum dado encontrado para o ano.</div>
           <div class="tabela-container">
             <table class="tabela" id="tabela-dre" style="display:none">
               <thead>
                 <tr>
-                  <th>Mês</th>
+                  <th>MÃªs</th>
                   <th class="col-num">Imp. %</th>
                   <th class="col-num">Lucro ML</th>
                   <th class="col-num">Entradas ext.</th>
@@ -310,17 +310,17 @@
 
       </section>
 
-      <!-- ── Aba: Ads ── -->
+      <!-- â”€â”€ Aba: Ads â”€â”€ -->
       <section id="tab-ads" class="tab">
         <h1>Ads</h1>
-        <p class="subtitle">ROAS objetivo, ROAS entregando e custo por unidade vendida nos últimos 30 dias.</p>
+        <p class="subtitle">ROAS objetivo, ROAS entregando e custo por unidade vendida nos Ãºltimos 30 dias.</p>
 
         <div id="ads-erro" class="estoque-erro" style="display:none"></div>
 
         <div class="tabela-container">
           <div class="tabela-topo">
             <span id="ads-total"></span>
-            <button class="btn-secondary" onclick="carregarAds()" id="btn-atualizar-ads">↻ Atualizar</button>
+            <button class="btn-secondary" onclick="carregarAds()" id="btn-atualizar-ads">â†» Atualizar</button>
           </div>
 
           <div id="ads-loading" class="loading" style="display:none">Carregando dados de ads (pode levar alguns segundos)...</div>
@@ -329,7 +329,7 @@
             <thead>
               <tr>
                 <th class="th-sort-ads" data-sort-ads="campanha">Campanha <span class="sort-icon"></span></th>
-                <th class="th-sort-ads" data-sort-ads="titulos">Anúncios <span class="sort-icon"></span></th>
+                <th class="th-sort-ads" data-sort-ads="titulos">AnÃºncios <span class="sort-icon"></span></th>
                 <th class="th-sort-ads col-num" data-sort-ads="targetRoas">ROAS Objetivo <span class="sort-icon"></span></th>
                 <th class="th-sort-ads col-num" data-sort-ads="roasEntregando">ROAS Real <span class="sort-icon"></span></th>
                 <th class="th-sort-ads col-num" data-sort-ads="custoPorUnidade">Custo/Unid. <span class="sort-icon"></span></th>
@@ -342,7 +342,7 @@
         </div>
       </section>
 
-      <!-- ── Aba: Contas a Pagar ── -->
+      <!-- â”€â”€ Aba: Contas a Pagar â”€â”€ -->
       <section id="tab-contas-pagar" class="tab">
         <h1>Contas a Pagar</h1>
         <p class="subtitle">Importe XMLs de notas de compra. O sistema extrai boletos e datas de vencimento automaticamente.</p>
@@ -350,7 +350,7 @@
         <!-- Upload -->
         <div class="card" style="margin-bottom:24px">
           <h2>Importar NF-e (XML)</h2>
-          <p class="card-desc">Selecione um ou mais arquivos XML de nota fiscal de compra. Os boletos/duplicatas são extraídos automaticamente.</p>
+          <p class="card-desc">Selecione um ou mais arquivos XML de nota fiscal de compra. Os boletos/duplicatas sÃ£o extraÃ­dos automaticamente.</p>
           <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
             <input type="file" id="contas-xml-input" accept=".xml" multiple style="font-size:13px;flex:1;min-width:200px">
             <button class="btn-primary" id="btn-importar-xml" onclick="contasPagarImportarXML()">Importar</button>
@@ -362,19 +362,19 @@
         <div class="lucro-cards" style="margin-bottom:20px">
           <div class="lucro-card" style="border-color:#fca5a5">
             <div class="lucro-card-label">Vencido (em aberto)</div>
-            <div class="lucro-card-valor lucro-val-neg" id="contas-card-vencido">—</div>
+            <div class="lucro-card-valor lucro-val-neg" id="contas-card-vencido">â€”</div>
           </div>
           <div class="lucro-card">
             <div class="lucro-card-label">A vencer</div>
-            <div class="lucro-card-valor lucro-val-neg" id="contas-card-avencer">—</div>
+            <div class="lucro-card-valor lucro-val-neg" id="contas-card-avencer">â€”</div>
           </div>
           <div class="lucro-card lucro-card-destaque">
             <div class="lucro-card-label">Total em aberto</div>
-            <div class="lucro-card-valor" id="contas-card-total">—</div>
+            <div class="lucro-card-valor" id="contas-card-total">â€”</div>
           </div>
           <div class="lucro-card">
-            <div class="lucro-card-label">Próximo vencimento</div>
-            <div class="lucro-card-valor" id="contas-card-proximo" style="font-size:13px;font-weight:600">—</div>
+            <div class="lucro-card-label">PrÃ³ximo vencimento</div>
+            <div class="lucro-card-valor" id="contas-card-proximo" style="font-size:13px;font-weight:600">â€”</div>
           </div>
         </div>
 
@@ -388,10 +388,10 @@
               <button class="filtro-btn"        data-cf="todos"   onclick="contasFiltrar('todos',this)">Todos</button>
               <span style="font-size:12px;color:#94a3b8;margin-left:4px">de</span>
               <input type="date" id="contas-data-ini" style="font-size:12px;padding:3px 6px;border:1px solid #e2e8f0;border-radius:6px;color:#334155" onchange="contasPagarRenderizar()">
-              <span style="font-size:12px;color:#94a3b8">até</span>
+              <span style="font-size:12px;color:#94a3b8">atÃ©</span>
               <input type="date" id="contas-data-fim" style="font-size:12px;padding:3px 6px;border:1px solid #e2e8f0;border-radius:6px;color:#334155" onchange="contasPagarRenderizar()">
             </div>
-            <div style="display:flex;align-items:center;gap:12px"><span id="contas-total-label" style="font-size:13px;color:#64748b"></span><button class="btn-secondary" onclick="contasPagarCarregar()" id="btn-atualizar-contas">↻ Atualizar</button></div>
+            <div style="display:flex;align-items:center;gap:12px"><span id="contas-total-label" style="font-size:13px;color:#64748b"></span><button class="btn-secondary" onclick="contasPagarCarregar()" id="btn-atualizar-contas">â†» Atualizar</button></div>
           </div>
           <div id="contas-sync-status" style="padding:4px 0 2px;min-height:18px"></div>
           <div id="contas-loading" class="loading" style="display:none">Carregando...</div>
@@ -401,7 +401,7 @@
               <tr>
                 <th>Vencimento</th>
                 <th>Fornecedor</th>
-                <th>NF / Série</th>
+                <th>NF / SÃ©rie</th>
                 <th>Parcela</th>
                 <th class="col-num">Valor</th>
                 <th>Status</th>
@@ -413,21 +413,21 @@
         </div>
       </section>
 
-      <!-- ── Aba: Estoque ── -->
+      <!-- â”€â”€ Aba: Estoque â”€â”€ -->
       <section id="tab-estoque" class="tab">
         <h1>Estoque</h1>
-        <p class="subtitle">Anúncios ativos com SKU, título, MLB e quantidade em estoque.</p>
+        <p class="subtitle">AnÃºncios ativos com SKU, tÃ­tulo, MLB e quantidade em estoque.</p>
 
         <div id="estoque-erro" class="estoque-erro" style="display:none"></div>
 
         <div class="filtros-bar">
           <input type="text" id="filtro-sku" class="filtro-sku-input" placeholder="Filtrar por SKU..." oninput="renderizarTabela()">
-          <input type="text" id="filtro-titulo" class="filtro-sku-input" placeholder="Filtrar por título..." oninput="renderizarTabela()">
+          <input type="text" id="filtro-titulo" class="filtro-sku-input" placeholder="Filtrar por tÃ­tulo..." oninput="renderizarTabela()">
           <div class="filtros-bar-row">
-            <label class="filtro-label">Depósito:</label>
+            <label class="filtro-label">DepÃ³sito:</label>
             <button class="filtro-btn active" data-filtro="deposito" data-valor="todos">Todos</button>
             <button class="filtro-btn" data-filtro="deposito" data-valor="fulfillment">Full</button>
-            <button class="filtro-btn" data-filtro="deposito" data-valor="proprio">Próprio</button>
+            <button class="filtro-btn" data-filtro="deposito" data-valor="proprio">PrÃ³prio</button>
           </div>
           <div class="filtros-bar-row">
             <label class="filtro-label">Status:</label>
@@ -441,25 +441,25 @@
         <div class="tabela-container">
           <div class="tabela-topo">
             <span id="estoque-total"></span>
-            <button class="btn-secondary" onclick="carregarEstoque(true)" id="btn-atualizar">↻ Atualizar</button>
+            <button class="btn-secondary" onclick="carregarEstoque(true)" id="btn-atualizar">â†» Atualizar</button>
           </div>
 
-          <div id="estoque-loading" class="loading" style="display:none">Carregando anúncios...</div>
+          <div id="estoque-loading" class="loading" style="display:none">Carregando anÃºncios...</div>
 
           <table class="tabela" id="tabela-estoque" style="display:none">
             <thead>
               <tr>
                 <th class="th-sort" data-sort="sku">SKU <span class="sort-icon"></span></th>
-                <th class="th-sort" data-sort="titulo">Título <span class="sort-icon"></span></th>
+                <th class="th-sort" data-sort="titulo">TÃ­tulo <span class="sort-icon"></span></th>
                 <th class="th-sort" data-sort="mlb">MLB <span class="sort-icon"></span></th>
-                <th class="th-sort" data-sort="depositoLabel">Depósito <span class="sort-icon"></span></th>
+                <th class="th-sort" data-sort="depositoLabel">DepÃ³sito <span class="sort-icon"></span></th>
                 <th class="th-sort" data-sort="status">Status <span class="sort-icon"></span></th>
                 <th class="col-num">Estoque Local</th>
                 <th class="col-num">Transferir</th>
                 <th class="col-num">Estoque Fora Full</th>
                 <th class="col-num">Estoque Full</th>
                 <th class="th-sort col-num" data-sort="vendas30d">Vendas 30d <span class="sort-icon"></span></th>
-                <th class="th-sort col-num" data-sort="diasEstoque">Duração <span class="sort-icon"></span></th>
+                <th class="th-sort col-num" data-sort="diasEstoque">DuraÃ§Ã£o <span class="sort-icon"></span></th>
               </tr>
             </thead>
             <tbody id="tabela-estoque-body"></tbody>
@@ -468,10 +468,10 @@
         </div>
       </section>
 
-      <!-- ── Aba: Vendas ── -->
+      <!-- â”€â”€ Aba: Vendas â”€â”€ -->
       <section id="tab-vendas" class="tab">
         <h1>Vendas</h1>
-        <p class="subtitle">Vendas com etiqueta de envio disponível para baixar.</p>
+        <p class="subtitle">Vendas com etiqueta de envio disponÃ­vel para baixar.</p>
 
         <div id="vendas-erro" class="estoque-erro" style="display:none"></div>
 
@@ -480,9 +480,9 @@
             <span id="vendas-total"></span>
             <div style="display:flex;gap:8px;align-items:center">
               <button class="btn-secondary" id="btn-filtro-atendidos" onclick="toggleFiltroAtendidos()">Atendidos</button>
-              <button class="btn-primary" id="btn-baixar-selecionadas" onclick="baixarSelecionadas()" style="display:none">⬇ Baixar selecionadas</button>
-              <button class="btn-primary" id="btn-marcar-atendido" onclick="marcarAtendidoSelecionadas()" style="display:none;background:#16a34a">✔ Marcar atendido</button>
-              <button class="btn-secondary" onclick="carregarVendas()" id="btn-atualizar-vendas">↻ Atualizar</button>
+              <button class="btn-primary" id="btn-baixar-selecionadas" onclick="baixarSelecionadas()" style="display:none">â¬‡ Baixar selecionadas</button>
+              <button class="btn-primary" id="btn-marcar-atendido" onclick="marcarAtendidoSelecionadas()" style="display:none;background:#16a34a">âœ” Marcar atendido</button>
+              <button class="btn-secondary" onclick="carregarVendas()" id="btn-atualizar-vendas">â†» Atualizar</button>
             </div>
           </div>
 
@@ -508,9 +508,9 @@
         </div>
       </section>
 
-      <!-- ── Aba: Histórico ── -->
+      <!-- â”€â”€ Aba: HistÃ³rico â”€â”€ -->
       <section id="tab-historico" class="tab">
-        <h1>Histórico de Vendas</h1>
+        <h1>HistÃ³rico de Vendas</h1>
         <p class="subtitle">Todos os pedidos que passaram pela tela, independente de terem sido marcados como atendidos.</p>
 
         <div class="tabela-container">
@@ -518,17 +518,17 @@
             <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
               <span style="font-size:12px;color:#94a3b8">de</span>
               <input type="date" id="hist-data-ini" style="font-size:12px;padding:3px 6px;border:1px solid #e2e8f0;border-radius:6px;color:#334155" onchange="carregarHistorico()">
-              <span style="font-size:12px;color:#94a3b8">até</span>
+              <span style="font-size:12px;color:#94a3b8">atÃ©</span>
               <input type="date" id="hist-data-fim" style="font-size:12px;padding:3px 6px;border:1px solid #e2e8f0;border-radius:6px;color:#334155" onchange="carregarHistorico()">
               <input type="text" id="hist-busca" placeholder="Buscar por pedido, comprador, SKU, item..." oninput="renderizarHistorico()" style="font-size:12px;padding:3px 8px;border:1px solid #e2e8f0;border-radius:6px;color:#334155;width:280px">
             </div>
             <div style="display:flex;gap:8px;align-items:center">
               <span id="hist-total" style="font-size:13px;color:#64748b"></span>
-              <button class="btn-secondary" onclick="carregarHistorico()" id="btn-atualizar-hist">↻ Atualizar</button>
+              <button class="btn-secondary" onclick="carregarHistorico()" id="btn-atualizar-hist">â†» Atualizar</button>
             </div>
           </div>
-          <div id="hist-loading" class="loading" style="display:none">Carregando histórico...</div>
-          <div id="hist-vazio" style="display:none;color:#94a3b8;padding:30px 0;text-align:center;font-size:14px">Nenhum pedido encontrado neste período.</div>
+          <div id="hist-loading" class="loading" style="display:none">Carregando histÃ³rico...</div>
+          <div id="hist-vazio" style="display:none;color:#94a3b8;padding:30px 0;text-align:center;font-size:14px">Nenhum pedido encontrado neste perÃ­odo.</div>
           <table class="tabela" id="tabela-hist" style="display:none">
             <thead>
               <tr>
@@ -547,15 +547,15 @@
         </div>
       </section>
 
-      <!-- ── Aba: Bling ── -->
+      <!-- â”€â”€ Aba: Bling â”€â”€ -->
       <section id="tab-bling" class="tab">
         <h1>Bling</h1>
-        <p class="subtitle">Emissão de notas fiscais integrada ao Bling ERP.</p>
+        <p class="subtitle">EmissÃ£o de notas fiscais integrada ao Bling ERP.</p>
 
         <!-- Sub-abas -->
         <div style="display:flex;gap:8px;margin-bottom:20px">
-          <button class="filtro-btn active" id="bling-sub-pedidos"      onclick="blingAbrirSub('pedidos')">📋 Pedidos pendentes</button>
-          <button class="filtro-btn"        id="bling-sub-notas"      onclick="blingAbrirSub('notas')">🧾 Notas pendentes de envio</button>
+          <button class="filtro-btn active" id="bling-sub-pedidos"      onclick="blingAbrirSub('pedidos')">ðŸ“‹ Pedidos pendentes</button>
+          <button class="filtro-btn"        id="bling-sub-notas"      onclick="blingAbrirSub('notas')">ðŸ§¾ Notas pendentes de envio</button>
         </div>
 
         <!-- Sub-aba: Pedidos pendentes -->
@@ -564,9 +564,9 @@
             <div class="tabela-topo">
               <span id="bling-pedidos-total"></span>
               <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-                <button class="btn-primary" id="btn-super-selecionadas" onclick="blingSuperSelecionadas()" style="display:none;background:#7c3aed">⚡ Super selecionadas</button>
+                <button class="btn-primary" id="btn-super-selecionadas" onclick="blingSuperSelecionadas()" style="display:none;background:#7c3aed">âš¡ Super selecionadas</button>
                 <button class="btn-primary" id="btn-emitir-selecionadas" onclick="blingEmitirSelecionadas()" style="display:none">Emitir NF selecionadas</button>
-                <button class="btn-secondary" onclick="blingCarregarPedidos()" id="btn-atualizar-bling-pedidos">↻ Atualizar</button>
+                <button class="btn-secondary" onclick="blingCarregarPedidos()" id="btn-atualizar-bling-pedidos">â†» Atualizar</button>
               </div>
             </div>
             <div id="bling-pedidos-loading" class="loading" style="display:none">Carregando pedidos...</div>
@@ -576,12 +576,12 @@
                 <tr>
                   <th><input type="checkbox" id="bling-check-all" onchange="blingToggleAll(this)"></th>
                   <th>Conta</th>
-                  <th>Nº Pedido</th>
+                  <th>NÂº Pedido</th>
                   <th>Cliente</th>
                   <th class="col-num">Valor</th>
                   <th>Data</th>
-                  <th title="Etiqueta disponível = ML autorizou despacho, emitir NF libera a etiqueta">Etiqueta</th>
-                  <th>Ação</th>
+                  <th title="Etiqueta disponÃ­vel = ML autorizou despacho, emitir NF libera a etiqueta">Etiqueta</th>
+                  <th>AÃ§Ã£o</th>
                 </tr>
               </thead>
               <tbody id="tabela-bling-pedidos-body"></tbody>
@@ -596,7 +596,7 @@
               <span id="bling-notas-total"></span>
               <div style="display:flex;gap:8px;align-items:center">
                 <button class="btn-primary" id="btn-enviar-selecionadas" onclick="blingEnviarSelecionadas()" style="display:none">Enviar selecionadas</button>
-                <button class="btn-secondary" onclick="blingCarregarNotas()" id="btn-atualizar-bling-notas">↻ Atualizar</button>
+                <button class="btn-secondary" onclick="blingCarregarNotas()" id="btn-atualizar-bling-notas">â†» Atualizar</button>
               </div>
             </div>
             <div id="bling-notas-loading" class="loading" style="display:none">Carregando notas...</div>
@@ -605,12 +605,12 @@
               <thead>
                 <tr>
                   <th><input type="checkbox" id="bling-check-all-notas" onchange="blingToggleAllNotas(this)"></th>
-                  <th>Número</th>
-                  <th>Destinatário</th>
+                  <th>NÃºmero</th>
+                  <th>DestinatÃ¡rio</th>
                   <th class="col-num">Valor</th>
                   <th>Status</th>
                   <th>Data</th>
-                  <th>Ação</th>
+                  <th>AÃ§Ã£o</th>
                 </tr>
               </thead>
               <tbody id="tabela-bling-notas-body"></tbody>
@@ -621,37 +621,37 @@
 
       </section>
 
-      <!-- ── Aba: Promoções ── -->
+      <!-- â”€â”€ Aba: PromoÃ§Ãµes â”€â”€ -->
       <section id="tab-promocoes" class="tab">
-        <h1>Promoções</h1>
-        <p class="subtitle">Promoções disponíveis nos seus anúncios — participe com um clique.</p>
+        <h1>PromoÃ§Ãµes</h1>
+        <p class="subtitle">PromoÃ§Ãµes disponÃ­veis nos seus anÃºncios â€” participe com um clique.</p>
 
         <div class="tabela-container">
           <div class="tabela-topo">
             <span id="promocoes-total"></span>
-            <button class="btn-secondary" onclick="carregarPromocoes()" id="btn-atualizar-promocoes">↻ Atualizar</button>
+            <button class="btn-secondary" onclick="carregarPromocoes()" id="btn-atualizar-promocoes">â†» Atualizar</button>
           </div>
-          <div id="promocoes-loading" class="loading" style="display:none">Carregando promoções...</div>
+          <div id="promocoes-loading" class="loading" style="display:none">Carregando promoÃ§Ãµes...</div>
           <div id="promocoes-erro" class="estoque-erro" style="display:none"></div>
           <div id="promocoes-lista"></div>
         </div>
       </section>
 
-      <!-- ── Aba: Configurações (sub-abas: ML + Conexão) ── -->
+      <!-- â”€â”€ Aba: ConfiguraÃ§Ãµes (sub-abas: ML + ConexÃ£o) â”€â”€ -->
       <section id="tab-configuracoes" class="tab">
         <div style="display:flex;gap:8px;margin-bottom:20px;border-bottom:1px solid #334155;padding-bottom:12px">
-          <button class="filtro-btn active" id="subtab-btn-ml" onclick="abrirSubConfig('ml')">⚙️ Mercado Livre</button>
-          <button class="filtro-btn" id="subtab-btn-conexao" onclick="abrirSubConfig('conexao')">🔌 Conexão</button>
-          <button class="filtro-btn" id="subtab-btn-usuarios" onclick="abrirSubConfig('usuarios')">👥 Usuários</button>
-          <button class="filtro-btn" id="subtab-btn-backup" onclick="abrirSubConfig('backup')">💾 Backup</button>
+          <button class="filtro-btn active" id="subtab-btn-ml" onclick="abrirSubConfig('ml')">âš™ï¸ Mercado Livre</button>
+          <button class="filtro-btn" id="subtab-btn-conexao" onclick="abrirSubConfig('conexao')">ðŸ”Œ ConexÃ£o</button>
+          <button class="filtro-btn" id="subtab-btn-usuarios" onclick="abrirSubConfig('usuarios')">ðŸ‘¥ UsuÃ¡rios</button>
+          <button class="filtro-btn" id="subtab-btn-backup" onclick="abrirSubConfig('backup')">ðŸ’¾ Backup</button>
         </div>
 
-        <!-- Sub-aba: Mercado Livre (conteúdo de config) -->
+        <!-- Sub-aba: Mercado Livre (conteÃºdo de config) -->
         <div id="subtab-ml">
-          <!-- Status da conexão -->
+          <!-- Status da conexÃ£o -->
           <div class="status-bar" id="status-bar">
             <span class="dot" id="status-dot"></span>
-            <span id="status-text">Verificando conexão...</span>
+            <span id="status-text">Verificando conexÃ£o...</span>
           </div>
 
           <div style="display:flex;gap:10px;margin-bottom:20px">
@@ -660,7 +660,7 @@
           </div>
 
           <div class="card">
-            <h2 id="cfg-titulo">Credenciais — Conta 1</h2>
+            <h2 id="cfg-titulo">Credenciais â€” Conta 1</h2>
             <p class="card-desc">
               Obtenha suas credenciais em
               <a href="https://developers.mercadolivre.com.br/pt_br/api-docs-en" target="_blank">developers.mercadolivre.com.br</a>.
@@ -675,7 +675,7 @@
                 <input type="password" id="client_secret" placeholder="Seu client secret" autocomplete="off">
               </div>
               <div class="field">
-                <label>Access Token <span class="opcional">(opcional — preenchido automaticamente via OAuth)</span></label>
+                <label>Access Token <span class="opcional">(opcional â€” preenchido automaticamente via OAuth)</span></label>
                 <input type="password" id="access_token" placeholder="APP_USR-..." autocomplete="off">
               </div>
               <div class="field">
@@ -683,8 +683,8 @@
                 <input type="password" id="refresh_token" placeholder="TG-..." autocomplete="off">
               </div>
               <div class="btn-row">
-                <button type="submit" class="btn-primary">💾 Salvar</button>
-                <button type="button" class="btn-secondary" onclick="conectarOAuth()">🔗 Conectar via OAuth</button>
+                <button type="submit" class="btn-primary">ðŸ’¾ Salvar</button>
+                <button type="button" class="btn-secondary" onclick="conectarOAuth()">ðŸ”— Conectar via OAuth</button>
               </div>
             </form>
             <div class="msg" id="msg-config"></div>
@@ -698,21 +698,21 @@
               <li>Selecione a conta acima, preencha os campos e clique em <strong>Salvar</strong></li>
               <li>Clique em <strong>Conectar via OAuth</strong> para autorizar automaticamente</li>
             </ol>
-            <p class="obs">⚠️ Configure a URL de retorno (Redirect URI) no seu app ML como:<br>
+            <p class="obs">âš ï¸ Configure a URL de retorno (Redirect URI) no seu app ML como:<br>
               <code id="callback-url"></code>
             </p>
           </div>
         </div>
 
-        <!-- Sub-aba: Usuários -->
+        <!-- Sub-aba: UsuÃ¡rios -->
         <div id="subtab-usuarios" style="display:none">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-            <h2 style="font-size:16px;font-weight:600">Usuários do Painel</h2>
-            <button class="btn-primary" onclick="usuariosAbrirForm()">+ Novo Usuário</button>
+            <h2 style="font-size:16px;font-weight:600">UsuÃ¡rios do Painel</h2>
+            <button class="btn-primary" onclick="usuariosAbrirForm()">+ Novo UsuÃ¡rio</button>
           </div>
 
           <div id="usuarios-form-novo" class="card" style="display:none;margin-bottom:16px">
-            <h2>Novo Usuário</h2>
+            <h2>Novo UsuÃ¡rio</h2>
             <div class="field">
               <label>Senha de acesso</label>
               <input type="text" id="nu-senha" placeholder="Ex: 5678" autocomplete="off" style="letter-spacing:0">
@@ -722,11 +722,11 @@
               <input type="text" id="nu-nome" placeholder="Ex: Estoque" autocomplete="off" style="letter-spacing:0">
             </div>
             <div class="field">
-              <label>Módulos permitidos</label>
+              <label>MÃ³dulos permitidos</label>
               <div id="nu-abas-container" style="display:flex;gap:12px;flex-wrap:wrap;margin-top:8px"></div>
             </div>
             <div class="btn-row">
-              <button class="btn-primary" onclick="usuariosCriar()">💾 Salvar</button>
+              <button class="btn-primary" onclick="usuariosCriar()">ðŸ’¾ Salvar</button>
               <button class="btn-secondary" onclick="document.getElementById('usuarios-form-novo').style.display='none'">Cancelar</button>
             </div>
             <div class="msg" id="usuarios-msg-novo"></div>
@@ -735,26 +735,26 @@
           <div id="usuarios-lista"></div>
         </div>
 
-        <!-- Sub-aba: Conexão -->
+        <!-- Sub-aba: ConexÃ£o -->
         <div id="subtab-conexao" style="display:none">
           <div class="cx-layout">
             <div class="cx-form-col">
               <div id="cx-status-box" class="cx-status-box">
                 <span id="cx-status-dot" class="dot"></span>
                 <span id="cx-status-txt">Verificando...</span>
-                <button class="btn-sm" onclick="verificarConexao()">↻</button>
+                <button class="btn-sm" onclick="verificarConexao()">â†»</button>
               </div>
               <div id="bling-status-box" class="cx-status-box" style="margin-top:8px">
                 <span id="bling-status-dot" class="dot"></span>
                 <span id="bling-status-txt">Bling: verificando...</span>
-                <button class="btn-sm" onclick="verificarBling()">↻</button>
+                <button class="btn-sm" onclick="verificarBling()">â†»</button>
               </div>
               <div class="card" style="margin-top:12px">
                 <h2>Bling ERP</h2>
                 <p class="card-desc">Conecte cada conta do Bling separadamente.</p>
                 <div class="btn-row" style="flex-direction:column;gap:8px;align-items:flex-start">
-                  <button id="btn-bling-conectar-1" class="btn-primary" onclick="location.href='/api/bling/auth?conta=1'">🔗 Conectar Bling Conta 1</button>
-                  <button id="btn-bling-conectar-2" class="btn-primary" onclick="location.href='/api/bling/auth?conta=2'">🔗 Conectar Bling Conta 2</button>
+                  <button id="btn-bling-conectar-1" class="btn-primary" onclick="location.href='/api/bling/auth?conta=1'">ðŸ”— Conectar Bling Conta 1</button>
+                  <button id="btn-bling-conectar-2" class="btn-primary" onclick="location.href='/api/bling/auth?conta=2'">ðŸ”— Conectar Bling Conta 2</button>
                 </div>
                 <div class="msg" id="bling-msg"></div>
               </div>
@@ -780,25 +780,25 @@
                   <input type="password" id="cx-client-secret" placeholder="Seu client secret" autocomplete="off">
                 </div>
                 <div class="btn-row">
-                  <button class="btn-primary" onclick="cxSalvarEConectar()">🔗 Salvar e Conectar via OAuth</button>
+                  <button class="btn-primary" onclick="cxSalvarEConectar()">ðŸ”— Salvar e Conectar via OAuth</button>
                 </div>
                 <div class="msg" id="cx-msg"></div>
               </div>
               <div class="card card-info">
                 <h2>Redirect URI</h2>
-                <p>Configure este endereço no seu app do ML:</p>
+                <p>Configure este endereÃ§o no seu app do ML:</p>
                 <code id="cx-callback-url" style="word-break:break-all;font-size:13px"></code>
               </div>
             </div>
             <div class="cx-log-col">
               <div class="cx-log-header">
-                <span>📋 Log ao vivo</span>
+                <span>ðŸ“‹ Log ao vivo</span>
                 <div style="display:flex;gap:6px">
-                  <button class="btn-sm" onclick="cxPing()">🏓 Ping</button>
-                  <button class="btn-sm" onclick="cxTestarTelegram()" id="btn-telegram-teste" title="Envia mensagem de teste no Telegram">📱 Telegram</button>
-                  <button class="btn-sm" onclick="cxTestarWhatsappPedidos()" id="btn-whatsapp-pedidos-teste" title="Envia mensagem de teste para o número de pedidos">📲 WA Pedidos</button>
-                  <button class="btn-sm" onclick="cxTestarEstoqueBaixo()" id="btn-estoque-baixo-teste" title="Envia mensagem de teste para o número de estoque/anúncios">📦 WA Estoque</button>
-                  <button class="btn-sm" onclick="cxReenviarEstoqueBaixo()" id="btn-reenviar-estoque" title="Força reenvio de todos os itens com estoque baixo agora">🔄 Reenviar Estoque</button>
+                  <button class="btn-sm" onclick="cxPing()">ðŸ“ Ping</button>
+                  <button class="btn-sm" onclick="cxTestarTelegram()" id="btn-telegram-teste" title="Envia mensagem de teste no Telegram">ðŸ“± Telegram</button>
+                  <button class="btn-sm" onclick="cxTestarWhatsappPedidos()" id="btn-whatsapp-pedidos-teste" title="Envia mensagem de teste para o nÃºmero de pedidos">ðŸ“² WA Pedidos</button>
+                  <button class="btn-sm" onclick="cxTestarEstoqueBaixo()" id="btn-estoque-baixo-teste" title="Envia mensagem de teste para o nÃºmero de estoque/anÃºncios">ðŸ“¦ WA Estoque</button>
+                  <button class="btn-sm" onclick="cxReenviarEstoqueBaixo()" id="btn-reenviar-estoque" title="ForÃ§a reenvio de todos os itens com estoque baixo agora">ðŸ”„ Reenviar Estoque</button>
                   <button class="btn-sm" onclick="cxLimparLog()">Limpar</button>
                 </div>
               </div>
@@ -811,12 +811,12 @@
         <div id="subtab-backup" style="display:none">
           <div style="max-width:600px">
             <h2 style="font-size:16px;font-weight:600;margin-bottom:4px">Backup dos dados</h2>
-            <p style="font-size:13px;color:#64748b;margin-bottom:24px">O sistema salva snapshots automáticos diários no servidor (últimos 7 dias). Use os botões abaixo para baixar uma cópia local ou restaurar de um arquivo salvo.</p>
+            <p style="font-size:13px;color:#64748b;margin-bottom:24px">O sistema salva snapshots automÃ¡ticos diÃ¡rios no servidor (Ãºltimos 7 dias). Use os botÃµes abaixo para baixar uma cÃ³pia local ou restaurar de um arquivo salvo.</p>
 
             <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:20px;margin-bottom:16px">
               <div style="font-weight:600;font-size:14px;margin-bottom:8px">Baixar backup completo</div>
-              <p style="font-size:13px;color:#64748b;margin-bottom:12px">Salva todos os dados (estoque local, DRE, gastos, fornecedores, contas a pagar, tokens) em um arquivo JSON na sua máquina.</p>
-              <button class="btn-primary" onclick="backupDownload()">⬇️ Baixar agora</button>
+              <p style="font-size:13px;color:#64748b;margin-bottom:12px">Salva todos os dados (estoque local, DRE, gastos, fornecedores, contas a pagar, tokens) em um arquivo JSON na sua mÃ¡quina.</p>
+              <button class="btn-primary" onclick="backupDownload()">â¬‡ï¸ Baixar agora</button>
             </div>
 
             <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:20px;margin-bottom:16px">
@@ -824,42 +824,42 @@
               <p style="font-size:13px;color:#64748b;margin-bottom:12px">Selecione um arquivo de backup baixado anteriormente para restaurar.</p>
               <div style="display:flex;align-items:center;gap:10px">
                 <input type="file" id="backup-file-input" accept=".json" style="font-size:13px">
-                <button class="btn-primary" onclick="backupRestaurar()">⬆️ Restaurar</button>
+                <button class="btn-primary" onclick="backupRestaurar()">â¬†ï¸ Restaurar</button>
               </div>
               <div id="backup-restore-status" style="margin-top:8px;font-size:13px"></div>
             </div>
 
             <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:20px">
-              <div style="font-weight:600;font-size:14px;margin-bottom:8px">Snapshots automáticos no servidor</div>
-              <p style="font-size:13px;color:#64748b;margin-bottom:12px">O sistema salva 1 snapshot por dia automaticamente. Clique para ver os disponíveis e restaurar um deles.</p>
-              <button class="btn-secondary" onclick="backupListarSnapshots()">📋 Ver snapshots</button>
+              <div style="font-weight:600;font-size:14px;margin-bottom:8px">Snapshots automÃ¡ticos no servidor</div>
+              <p style="font-size:13px;color:#64748b;margin-bottom:12px">O sistema salva 1 snapshot por dia automaticamente. Clique para ver os disponÃ­veis e restaurar um deles.</p>
+              <button class="btn-secondary" onclick="backupListarSnapshots()">ðŸ“‹ Ver snapshots</button>
               <div id="backup-snapshots-lista" style="margin-top:12px;font-size:13px"></div>
             </div>
           </div>
         </div>
       </section>
 
-      <!-- ── Aba: NF Compras ── -->
+      <!-- â”€â”€ Aba: NF Compras â”€â”€ -->
       <section id="tab-fiscal" class="tab">
         <h1>NF de Compras</h1>
         <p class="subtitle">Notas fiscais de compra recebidas, importadas do Fiscal.io.</p>
         <div style="display:flex;gap:8px;align-items:center;margin-bottom:16px;flex-wrap:wrap">
-          <button class="btn-primary" onclick="fiscalSincronizar()" id="btn-fiscal-sync">⬇️ Atualizar</button>
+          <button class="btn-primary" onclick="fiscalSincronizar()" id="btn-fiscal-sync">â¬‡ï¸ Atualizar</button>
           <select id="fiscal-periodo" onchange="fiscalFiltrar()" style="padding:6px 10px;border-radius:6px;border:1px solid #ddd;font-size:13px">
-            <option value="1" selected>Último mês</option>
-            <option value="3">Últimos 3 meses</option>
-            <option value="6">Últimos 6 meses</option>
-            <option value="12">Último ano</option>
+            <option value="1" selected>Ãšltimo mÃªs</option>
+            <option value="3">Ãšltimos 3 meses</option>
+            <option value="6">Ãšltimos 6 meses</option>
+            <option value="12">Ãšltimo ano</option>
             <option value="0">Tudo</option>
           </select>
           <span id="fiscal-status" style="font-size:13px;color:#888"></span>
         </div>
         <div id="fiscal-agente-erro" style="display:none;background:#fff3cd;color:#856404;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:13px">
-          ⚠️ Agente local não encontrado em <b>localhost:4001</b>. Abra o arquivo <b>C:\fiscal-agente\iniciar.bat</b> para iniciar.
+          âš ï¸ Agente local nÃ£o encontrado em <b>localhost:4001</b>. Abra o arquivo <b>C:\fiscal-agente\iniciar.bat</b> para iniciar.
         </div>
-        <!-- Configuração de certificado digital para download de XML -->
+        <!-- ConfiguraÃ§Ã£o de certificado digital para download de XML -->
         <details id="fiscal-cert-config" style="margin-bottom:16px;background:#1e293b;border-radius:8px;padding:12px 16px">
-          <summary style="cursor:pointer;font-size:13px;color:#94a3b8;user-select:none">🔐 Certificados digitais (para baixar XML da SEFAZ)</summary>
+          <summary style="cursor:pointer;font-size:13px;color:#94a3b8;user-select:none">ðŸ” Certificados digitais (para baixar XML da SEFAZ)</summary>
           <div style="margin-top:12px;display:flex;flex-direction:column;gap:14px">
             <div id="fiscal-cert-status" style="font-size:12px;color:#64748b"></div>
             <div style="display:flex;gap:16px;flex-wrap:wrap">
@@ -868,7 +868,7 @@
                 <div id="fiscal-cert-info-1" style="font-size:12px;color:#4ade80;margin-bottom:6px;display:none"></div>
                 <input type="file" id="fiscal-cert-file-1" accept=".pfx,.p12" style="font-size:12px;color:#cbd5e1;display:block;margin-bottom:4px">
                 <input type="password" id="fiscal-cert-senha-1" placeholder="Senha do certificado" style="width:100%;padding:5px 8px;border-radius:5px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;font-size:12px;box-sizing:border-box;margin-bottom:4px">
-                <input type="text" id="fiscal-cert-cnpj-1" placeholder="CNPJ da empresa (só números)" style="width:100%;padding:5px 8px;border-radius:5px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;font-size:12px;box-sizing:border-box;margin-bottom:4px">
+                <input type="text" id="fiscal-cert-cnpj-1" placeholder="CNPJ da empresa (sÃ³ nÃºmeros)" style="width:100%;padding:5px 8px;border-radius:5px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;font-size:12px;box-sizing:border-box;margin-bottom:4px">
                 <input type="text" id="fiscal-cert-titular-1" placeholder="Nome da empresa (opcional)" style="width:100%;padding:5px 8px;border-radius:5px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;font-size:12px;box-sizing:border-box;margin-bottom:6px">
                 <button class="btn-sm" onclick="fiscalSalvarCert('1')">Salvar certificado C1</button>
               </div>
@@ -877,7 +877,7 @@
                 <div id="fiscal-cert-info-2" style="font-size:12px;color:#4ade80;margin-bottom:6px;display:none"></div>
                 <input type="file" id="fiscal-cert-file-2" accept=".pfx,.p12" style="font-size:12px;color:#cbd5e1;display:block;margin-bottom:4px">
                 <input type="password" id="fiscal-cert-senha-2" placeholder="Senha do certificado" style="width:100%;padding:5px 8px;border-radius:5px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;font-size:12px;box-sizing:border-box;margin-bottom:4px">
-                <input type="text" id="fiscal-cert-cnpj-2" placeholder="CNPJ da empresa (só números)" style="width:100%;padding:5px 8px;border-radius:5px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;font-size:12px;box-sizing:border-box;margin-bottom:4px">
+                <input type="text" id="fiscal-cert-cnpj-2" placeholder="CNPJ da empresa (sÃ³ nÃºmeros)" style="width:100%;padding:5px 8px;border-radius:5px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;font-size:12px;box-sizing:border-box;margin-bottom:4px">
                 <input type="text" id="fiscal-cert-titular-2" placeholder="Nome da empresa (opcional)" style="width:100%;padding:5px 8px;border-radius:5px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;font-size:12px;box-sizing:border-box;margin-bottom:6px">
                 <button class="btn-sm" onclick="fiscalSalvarCert('2')">Salvar certificado C2</button>
               </div>
@@ -889,17 +889,17 @@
       </section>
 
 
-      <!-- ── Aba: Compras ── -->
+      <!-- â”€â”€ Aba: Compras â”€â”€ -->
       <section id="tab-compras" class="tab">
-        <h1>Previsão de Compra</h1>
-        <p class="subtitle">Controle de fornecedores e previsão de quando fazer novos pedidos.</p>
+        <h1>PrevisÃ£o de Compra</h1>
+        <p class="subtitle">Controle de fornecedores e previsÃ£o de quando fazer novos pedidos.</p>
 
         <div class="compras-sub-bar">
-          <button class="compras-sub-btn active" data-sub="previsao" onclick="comprasAbrirSub('previsao')">📊 Previsão</button>
-          <button class="compras-sub-btn" data-sub="fornecedores" onclick="comprasAbrirSub('fornecedores')">🏭 Fornecedores</button>
+          <button class="compras-sub-btn active" data-sub="previsao" onclick="comprasAbrirSub('previsao')">ðŸ“Š PrevisÃ£o</button>
+          <button class="compras-sub-btn" data-sub="fornecedores" onclick="comprasAbrirSub('fornecedores')">ðŸ­ Fornecedores</button>
         </div>
 
-        <!-- Painel: Previsão -->
+        <!-- Painel: PrevisÃ£o -->
         <div id="compras-painel-previsao" class="compras-painel">
           <div class="tabela-topo">
             <div style="display:flex;align-items:center;gap:10px">
@@ -908,19 +908,19 @@
                 <option value="">Todos os fornecedores</option>
               </select>
             </div>
-            <button class="btn-secondary" onclick="carregarPrevisao()">↻ Atualizar</button>
+            <button class="btn-secondary" onclick="carregarPrevisao()">â†» Atualizar</button>
           </div>
-          <div id="previsao-loading" class="loading" style="display:none">Carregando previsão...</div>
+          <div id="previsao-loading" class="loading" style="display:none">Carregando previsÃ£o...</div>
           <div id="previsao-erro" class="estoque-erro" style="display:none"></div>
           <table class="tabela" id="tabela-previsao" style="display:none">
             <thead>
               <tr>
                 <th class="th-sort-prev" onclick="prevOrdenar('sku')">SKU <span class="sort-icon" data-sort="sku"></span></th>
-                <th>Título</th>
+                <th>TÃ­tulo</th>
                 <th class="th-sort-prev col-num" onclick="prevOrdenar('full')">Full <span class="sort-icon" data-sort="full"></span></th>
-                <th class="th-sort-prev col-num" onclick="prevOrdenar('proprio')">Próprio <span class="sort-icon" data-sort="proprio"></span></th>
+                <th class="th-sort-prev col-num" onclick="prevOrdenar('proprio')">PrÃ³prio <span class="sort-icon" data-sort="proprio"></span></th>
                 <th class="th-sort-prev col-num" onclick="prevOrdenar('total')">Total <span class="sort-icon" data-sort="total"></span></th>
-                <th class="th-sort-prev col-num" onclick="prevOrdenar('vendasDia')">Vend/mês <span class="sort-icon" data-sort="vendasDia"></span></th>
+                <th class="th-sort-prev col-num" onclick="prevOrdenar('vendasDia')">Vend/mÃªs <span class="sort-icon" data-sort="vendasDia"></span></th>
                 <th class="th-sort-prev col-num" onclick="prevOrdenar('diasRestantes')">Dias rest. <span class="sort-icon" data-sort="diasRestantes"></span></th>
                 <th class="th-sort-prev" onclick="prevOrdenar('fornecedor')">Fornecedor <span class="sort-icon" data-sort="fornecedor"></span></th>
                 <th class="col-num">Pedir em</th>
@@ -951,10 +951,10 @@
         </div>
       </section>
 
-      <!-- ── Aba: Calculadora ── -->
+      <!-- â”€â”€ Aba: Calculadora â”€â”€ -->
       <section id="tab-calculadora" class="tab">
         <h1>Calculadora de Lucro</h1>
-        <p class="subtitle">Simule lucros ajustando custos, preços e impostos.</p>
+        <p class="subtitle">Simule lucros ajustando custos, preÃ§os e impostos.</p>
 
         <div class="calculadora-container">
           <!-- Lado esquerdo: Dados atuais -->
@@ -965,27 +965,27 @@
               <input type="text" id="calc-mlb" placeholder="Ex: MLB123456789">
             </div>
             <button class="btn-primary" id="btn-calc-carregar" onclick="calcCarregarDados()">Carregar Dados</button>
-            <div id="calc-status" style="display:none; margin-top:10px; color:#64748b; font-size:14px;">🔄 Carregando dados da última venda... Aguarde um momentinho!</div>
+            <div id="calc-status" style="display:none; margin-top:10px; color:#64748b; font-size:14px;">ðŸ”„ Carregando dados da Ãºltima venda... Aguarde um momentinho!</div>
             <div id="calc-dados" class="calc-dados" style="display:none">
-              <div class="calc-item"><strong>Preço de Venda:</strong> <span id="calc-preco-venda">—</span></div>
-              <div class="calc-item"><strong>Custo do Produto:</strong> <span id="calc-custo-produto">—</span></div>
-              <div class="calc-item"><strong>Taxa ML:</strong> <span id="calc-taxa-ml">—</span></div>
-              <div class="calc-item"><strong>Frete:</strong> <span id="calc-frete">—</span></div>
-              <div class="calc-item"><strong>Imposto:</strong> <span id="calc-imposto">—</span></div>
-              <div class="calc-item"><strong>Lucro:</strong> <span id="calc-lucro">—</span></div>
-              <div class="calc-item"><strong>Margem:</strong> <span id="calc-margem">—</span></div>
+              <div class="calc-item"><strong>PreÃ§o de Venda:</strong> <span id="calc-preco-venda">â€”</span></div>
+              <div class="calc-item"><strong>Custo do Produto:</strong> <span id="calc-custo-produto">â€”</span></div>
+              <div class="calc-item"><strong>Taxa ML:</strong> <span id="calc-taxa-ml">â€”</span></div>
+              <div class="calc-item"><strong>Frete:</strong> <span id="calc-frete">â€”</span></div>
+              <div class="calc-item"><strong>Imposto:</strong> <span id="calc-imposto">â€”</span></div>
+              <div class="calc-item"><strong>Lucro:</strong> <span id="calc-lucro">â€”</span></div>
+              <div class="calc-item"><strong>Margem:</strong> <span id="calc-margem">â€”</span></div>
             </div>
           </div>
 
-          <!-- Lado direito: Simulação -->
+          <!-- Lado direito: SimulaÃ§Ã£o -->
           <div class="calculadora-simulacao">
-            <h2>Simulação</h2>
+            <h2>SimulaÃ§Ã£o</h2>
             <div class="field">
               <label>Custo do Produto</label>
               <input type="number" id="sim-custo-produto" step="0.01" min="0">
             </div>
             <div class="field">
-              <label>Preço de Venda</label>
+              <label>PreÃ§o de Venda</label>
               <input type="number" id="sim-preco-venda" step="0.01" min="0">
             </div>
             <div class="field">
@@ -1002,17 +1002,17 @@
             </div>
             <button class="btn-primary" onclick="calcSimular()">Simular</button>
             <div id="calc-simulacao-resultado" class="calc-simulacao-resultado" style="display:none">
-              <div class="calc-item"><strong>Lucro Simulado:</strong> <span id="sim-lucro">—</span></div>
-              <div class="calc-item"><strong>Margem:</strong> <span id="sim-margem">—</span></div>
+              <div class="calc-item"><strong>Lucro Simulado:</strong> <span id="sim-lucro">â€”</span></div>
+              <div class="calc-item"><strong>Margem:</strong> <span id="sim-margem">â€”</span></div>
             </div>
           </div>
         </div>
       </section>
 
-      <!-- ── Aba: Etiquetas ── -->
+      <!-- â”€â”€ Aba: Etiquetas â”€â”€ -->
       <section id="tab-etiquetas" class="tab">
-        <h1>ZPL → PDF</h1>
-        <p class="subtitle">Converta arquivos ZPL em PDF prontos para impressão.</p>
+        <h1>ZPL â†’ PDF</h1>
+        <p class="subtitle">Converta arquivos ZPL em PDF prontos para impressÃ£o.</p>
 
         <div class="etiquetas-container">
 
@@ -1020,21 +1020,21 @@
             <label class="etiqueta-tam-label">
               <input type="radio" name="etiqueta-tam" value="100x150" checked>
               <div class="etiqueta-tam-card">
-                <span class="etiqueta-tam-titulo">100 × 150 mm</span>
+                <span class="etiqueta-tam-titulo">100 Ã— 150 mm</span>
                 <span class="etiqueta-tam-sub">Etiqueta de envio</span>
               </div>
             </label>
             <label class="etiqueta-tam-label">
               <input type="radio" name="etiqueta-tam" value="104x29">
               <div class="etiqueta-tam-card">
-                <span class="etiqueta-tam-titulo">104 × 29 mm</span>
+                <span class="etiqueta-tam-titulo">104 Ã— 29 mm</span>
                 <span class="etiqueta-tam-sub">Etiqueta pequena</span>
               </div>
             </label>
           </div>
 
           <div id="etiquetas-dropzone" class="etiquetas-dropzone">
-            <div class="etiquetas-drop-icon">📄</div>
+            <div class="etiquetas-drop-icon">ðŸ“„</div>
             <div class="etiquetas-drop-text">Arraste o arquivo <strong>.zpl</strong> aqui</div>
             <div class="etiquetas-drop-sub">ou clique para selecionar</div>
             <input type="file" id="etiquetas-file" accept=".zpl,.txt" style="display:none">
@@ -1051,10 +1051,10 @@
         </div>
       </section>
 
-      <!-- ── Aba: Log Anúncio ── -->
+      <!-- â”€â”€ Aba: Log AnÃºncio â”€â”€ -->
       <section id="tab-log-anuncio" class="tab">
-        <h1>Log Anúncio</h1>
-        <p class="subtitle">Consulte o estado e o histórico de alterações de um anúncio pelo MLB.</p>
+        <h1>Log AnÃºncio</h1>
+        <p class="subtitle">Consulte o estado e o histÃ³rico de alteraÃ§Ãµes de um anÃºncio pelo MLB.</p>
 
         <div style="display:flex;gap:10px;margin-bottom:24px;max-width:480px">
           <input type="text" id="log-mlb-input" placeholder="Ex: MLB2103362491"
@@ -1069,28 +1069,28 @@
     </main>
   </div>
 
-  <!-- Mobile: drawer de navegação -->
+  <!-- Mobile: drawer de navegaÃ§Ã£o -->
   <div class="mobile-drawer-overlay" id="mobileOverlay" onclick="fecharMobileMenu()"></div>
   <div class="mobile-drawer" id="mobileDrawer">
     <div class="mobile-drawer-header">
       <span>Menu</span>
-      <button class="mobile-drawer-close" onclick="fecharMobileMenu()">✕</button>
+      <button class="mobile-drawer-close" onclick="fecharMobileMenu()">âœ•</button>
     </div>
     <nav class="mobile-drawer-nav">
-      <button class="mobile-drawer-btn" data-tab="estoque">📦 Estoque</button>
-      <button class="mobile-drawer-btn" data-tab="vendas">🏷️ Vendas</button>
-      <button class="mobile-drawer-btn" data-tab="historico">📋 Histórico</button>
-      <button class="mobile-drawer-btn" data-tab="ads">📊 Ads</button>
-      <button class="mobile-drawer-btn" data-tab="lucro">💰 Lucro</button>
-      <button class="mobile-drawer-btn" data-tab="promocoes">🏷️ Promoções</button>
-      <button class="mobile-drawer-btn" data-tab="contas-pagar">💳 Contas a Pagar</button>
-      <button class="mobile-drawer-btn" data-tab="bling">🧾 Bling</button>
-      <button class="mobile-drawer-btn" data-tab="fiscal">🗂️ NF Compras</button>
-      <button class="mobile-drawer-btn" data-tab="compras">🛒 Compras</button>
-      <button class="mobile-drawer-btn" data-tab="calculadora">🧮 Calculadora</button>
-      <button class="mobile-drawer-btn" data-tab="etiquetas">🖨️ Etiquetas</button>
-      <button class="mobile-drawer-btn" data-tab="log-anuncio">🔍 Log Anúncio</button>
-      <button class="mobile-drawer-btn" data-tab="configuracoes">⚙️ Configurações</button>
+      <button class="mobile-drawer-btn" data-tab="estoque">ðŸ“¦ Estoque</button>
+      <button class="mobile-drawer-btn" data-tab="vendas">ðŸ·ï¸ Vendas</button>
+      <button class="mobile-drawer-btn" data-tab="historico">ðŸ“‹ HistÃ³rico</button>
+      <button class="mobile-drawer-btn" data-tab="ads">ðŸ“Š Ads</button>
+      <button class="mobile-drawer-btn" data-tab="lucro">ðŸ’° Lucro</button>
+      <button class="mobile-drawer-btn" data-tab="promocoes">ðŸ·ï¸ PromoÃ§Ãµes</button>
+      <button class="mobile-drawer-btn" data-tab="contas-pagar">ðŸ’³ Contas a Pagar</button>
+      <button class="mobile-drawer-btn" data-tab="bling">ðŸ§¾ Bling</button>
+      <button class="mobile-drawer-btn" data-tab="fiscal">ðŸ—‚ï¸ NF Compras</button>
+      <button class="mobile-drawer-btn" data-tab="compras">ðŸ›’ Compras</button>
+      <button class="mobile-drawer-btn" data-tab="calculadora">ðŸ§® Calculadora</button>
+      <button class="mobile-drawer-btn" data-tab="etiquetas">ðŸ–¨ï¸ Etiquetas</button>
+      <button class="mobile-drawer-btn" data-tab="log-anuncio">ðŸ” Log AnÃºncio</button>
+      <button class="mobile-drawer-btn" data-tab="configuracoes">âš™ï¸ ConfiguraÃ§Ãµes</button>
     </nav>
   </div>
 
@@ -1107,7 +1107,7 @@
         <input type="number" id="forn-lead" class="input-padrao" placeholder="Ex: 15" min="1">
       </div>
       <div class="modal-campo">
-        <label>SKUs fornecidos <span style="color:#94a3b8;font-weight:400">(separados por vírgula)</span></label>
+        <label>SKUs fornecidos <span style="color:#94a3b8;font-weight:400">(separados por vÃ­rgula)</span></label>
         <input type="text" id="forn-skus" class="input-padrao" placeholder="Ex: 346, 30, 112">
       </div>
       <div class="modal-acoes">
@@ -1132,24 +1132,24 @@
   <script src="/js/etiquetas.js"></script>
   <script src="/js/log-anuncio.js"></script>
   <script>
-  // ── Gerenciamento de Usuários ─────────────────────────────────
+  // â”€â”€ Gerenciamento de UsuÃ¡rios â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-  // Todos os módulos disponíveis no sistema (ambos os painéis)
+  // Todos os mÃ³dulos disponÃ­veis no sistema (ambos os painÃ©is)
   const TODOS_MODULOS = [
-    { id: 'estoque',       label: '📦 Estoque' },
-    { id: 'vendas',        label: '🏷️ Vendas' },
-    { id: 'historico',     label: '📋 Histórico' },
-    { id: 'ads',           label: '📊 Ads' },
-    { id: 'lucro',         label: '💰 Lucro' },
-    { id: 'promocoes',     label: '🏷️ Promoções' },
-    { id: 'contas-pagar',  label: '💳 Contas a Pagar' },
-    { id: 'bling',         label: '🧾 Bling' },
-    { id: 'fiscal',        label: '🗂️ NF Compras' },
-    { id: 'compras',       label: '🛒 Compras' },
-    { id: 'calculadora',   label: '🧮 Calculadora' },
-    { id: 'etiquetas',     label: '🖨️ Etiquetas' },
-    { id: 'log-anuncio',   label: '🔍 Log Anúncio' },
-    { id: 'configuracoes', label: '⚙️ Configurações' },
+    { id: 'estoque',       label: 'ðŸ“¦ Estoque' },
+    { id: 'vendas',        label: 'ðŸ·ï¸ Vendas' },
+    { id: 'historico',     label: 'ðŸ“‹ HistÃ³rico' },
+    { id: 'ads',           label: 'ðŸ“Š Ads' },
+    { id: 'lucro',         label: 'ðŸ’° Lucro' },
+    { id: 'promocoes',     label: 'ðŸ·ï¸ PromoÃ§Ãµes' },
+    { id: 'contas-pagar',  label: 'ðŸ’³ Contas a Pagar' },
+    { id: 'bling',         label: 'ðŸ§¾ Bling' },
+    { id: 'fiscal',        label: 'ðŸ—‚ï¸ NF Compras' },
+    { id: 'compras',       label: 'ðŸ›’ Compras' },
+    { id: 'calculadora',   label: 'ðŸ§® Calculadora' },
+    { id: 'etiquetas',     label: 'ðŸ–¨ï¸ Etiquetas' },
+    { id: 'log-anuncio',   label: 'ðŸ” Log AnÃºncio' },
+    { id: 'configuracoes', label: 'âš™ï¸ ConfiguraÃ§Ãµes' },
   ];
 
   function usuariosAbrirForm() {
@@ -1173,7 +1173,7 @@
       const resp = await fetch('/api/usuarios');
       const usuarios = await resp.json();
       if (!usuarios.length) {
-        lista.innerHTML = '<p style="color:#94a3b8;font-size:13px">Nenhum usuário cadastrado.</p>';
+        lista.innerHTML = '<p style="color:#94a3b8;font-size:13px">Nenhum usuÃ¡rio cadastrado.</p>';
         return;
       }
       lista.innerHTML = '';
@@ -1183,7 +1183,7 @@
         lista.appendChild(usuariosRenderCard(u));
       }
     } catch {
-      lista.innerHTML = '<p style="color:#e74c3c;font-size:13px">Erro ao carregar usuários.</p>';
+      lista.innerHTML = '<p style="color:#e74c3c;font-size:13px">Erro ao carregar usuÃ¡rios.</p>';
     }
   }
 
@@ -1204,7 +1204,7 @@
 
     const deleteBtn = isAdmin
       ? ''
-      : `<button class="btn-secondary" style="padding:5px 12px;font-size:12px;color:#e74c3c" onclick="usuariosDeletar('${u.senha}', this)">🗑️</button>`;
+      : `<button class="btn-secondary" style="padding:5px 12px;font-size:12px;color:#e74c3c" onclick="usuariosDeletar('${u.senha}', this)">ðŸ—‘ï¸</button>`;
 
     card.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
@@ -1218,7 +1218,7 @@
           <div style="display:flex;gap:16px;flex-wrap:wrap">${abasHtml}</div>
         </div>
         <div style="display:flex;gap:6px;flex-shrink:0">
-          <button class="btn-primary" style="padding:5px 12px;font-size:12px" onclick="usuariosSalvar('${u.senha}', this)">💾 Salvar</button>
+          <button class="btn-primary" style="padding:5px 12px;font-size:12px" onclick="usuariosSalvar('${u.senha}', this)">ðŸ’¾ Salvar</button>
           ${deleteBtn}
         </div>
       </div>
@@ -1241,12 +1241,12 @@
       });
       const data = await resp.json();
       if (!resp.ok) { msg.textContent = data.error; msg.className = 'msg erro'; return; }
-      msg.textContent = 'Usuário criado!';
+      msg.textContent = 'UsuÃ¡rio criado!';
       msg.className = 'msg ok';
       document.getElementById('usuarios-form-novo').style.display = 'none';
       usuariosCarregar();
     } catch {
-      msg.textContent = 'Erro ao criar usuário.';
+      msg.textContent = 'Erro ao criar usuÃ¡rio.';
       msg.className = 'msg erro';
     }
   }
@@ -1264,7 +1264,7 @@
       });
       const data = await resp.json();
       if (!resp.ok) { msg.textContent = data.error; msg.className = 'msg erro'; return; }
-      msg.textContent = 'Salvo! O usuário precisa fazer login novamente para ver as mudanças.';
+      msg.textContent = 'Salvo! O usuÃ¡rio precisa fazer login novamente para ver as mudanÃ§as.';
       msg.className = 'msg ok';
       setTimeout(() => { msg.textContent = ''; }, 4000);
     } catch {
@@ -1274,7 +1274,7 @@
   }
 
   async function usuariosDeletar(senha, btn) {
-    if (!confirm(`Remover o usuário com senha "${senha}"?`)) return;
+    if (!confirm(`Remover o usuÃ¡rio com senha "${senha}"?`)) return;
     const card = btn.closest('.card');
     try {
       const resp = await fetch(`/api/usuarios/${encodeURIComponent(senha)}`, { method: 'DELETE' });
@@ -1282,26 +1282,26 @@
       if (!resp.ok) { alert(data.error); return; }
       card.remove();
       const lista = document.getElementById('usuarios-lista');
-      if (!lista.children.length) lista.innerHTML = '<p style="color:#94a3b8;font-size:13px">Nenhum usuário cadastrado.</p>';
+      if (!lista.children.length) lista.innerHTML = '<p style="color:#94a3b8;font-size:13px">Nenhum usuÃ¡rio cadastrado.</p>';
     } catch {
-      alert('Erro ao remover usuário.');
+      alert('Erro ao remover usuÃ¡rio.');
     }
   }
   </script>
-  <!-- Modal histórico de estoque -->
+  <!-- Modal histÃ³rico de estoque -->
   <div id="modal-hist-estoque" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;align-items:center;justify-content:center" onclick="if(event.target===this)this.style.display='none'">
     <div style="background:#1e2130;border-radius:10px;padding:24px;max-width:720px;width:95%;max-height:80vh;display:flex;flex-direction:column">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-shrink:0">
-        <h3 style="margin:0;color:#e2e8f0;font-size:15px">Histórico de estoque — SKU: <span id="hist-estoque-sku" style="color:#60a5fa"></span></h3>
-        <button onclick="document.getElementById('modal-hist-estoque').style.display='none'" style="background:none;border:none;color:#94a3b8;font-size:20px;cursor:pointer;line-height:1">✕</button>
+        <h3 style="margin:0;color:#e2e8f0;font-size:15px">HistÃ³rico de estoque â€” SKU: <span id="hist-estoque-sku" style="color:#60a5fa"></span></h3>
+        <button onclick="document.getElementById('modal-hist-estoque').style.display='none'" style="background:none;border:none;color:#94a3b8;font-size:20px;cursor:pointer;line-height:1">âœ•</button>
       </div>
       <div style="overflow-y:auto;flex:1">
         <table style="width:100%;border-collapse:collapse;font-size:13px;color:#e2e8f0">
           <thead style="position:sticky;top:0;background:#1e2130">
             <tr style="color:#94a3b8;border-bottom:1px solid #334155">
               <th style="text-align:left;padding:6px 8px;font-weight:500">Data/Hora</th>
-              <th style="text-align:left;padding:6px 8px;font-weight:500">Usuário</th>
-              <th style="text-align:left;padding:6px 8px;font-weight:500">Alteração</th>
+              <th style="text-align:left;padding:6px 8px;font-weight:500">UsuÃ¡rio</th>
+              <th style="text-align:left;padding:6px 8px;font-weight:500">AlteraÃ§Ã£o</th>
               <th style="text-align:left;padding:6px 8px;font-weight:500">Tipo</th>
               <th style="text-align:left;padding:6px 8px;font-weight:500">Pedido</th>
             </tr>
@@ -1312,6 +1312,6 @@
     </div>
   </div>
 
-  <div id="version-badge">v538</div>
+  <div id="version-badge">v539</div>
 </body>
 </html>

@@ -2362,7 +2362,7 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
           dataDespacho:   shipment.date_shipped || prazo || order.date_created,
           comprador:      order.buyer?.nickname || '—',
           shipmentId:     shipment.id,
-          conta:          data.conta_ativa,
+          conta:          num,
           status:         shipment.status,
           statusLabel:    STATUS_PT[shipment.status] || shipment.status,
           acaoLabel:      SUBSTATUS_LABEL[shipment.substatus] || 'Baixar',
