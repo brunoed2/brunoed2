@@ -1987,9 +1987,11 @@ app.get('/api/ml/estoque', async (req, res) => {
       detalhes.push(...resp.data);
     }
 
-    const pauseDates = c.pause_dates || {};
-    const agora      = new Date().toISOString();
-    let pauseChanged = false;
+    const pauseDates    = c.pause_dates || {};
+    const catalogStates = c.catalog_states || {};
+    const agora         = new Date().toISOString();
+    let pauseChanged    = false;
+    let catalogChanged  = false;
 
     const items = detalhes
       .filter(r => r.code === 200)
@@ -2026,6 +2028,16 @@ app.get('/api/ml/estoque', async (req, res) => {
           }
         }
 
+        // Detecta quando ML associa este anúncio a um catálogo
+        const novoCatalogId = r.body.catalog_product_id || null;
+        if (novoCatalogId && !catalogStates[mlb]) {
+          catalogStates[mlb] = novoCatalogId;
+          catalogChanged = true;
+          const tituloC   = r.body.title || mlb;
+          const contaNome = (data.contas[num] || {}).nickname || `Conta ${num}`;
+          notificar(`📦 *Anúncio virou catálogo!*\n\n${tituloC}\n${mlb}\nID catálogo: ${novoCatalogId}\nConta: ${contaNome}`).catch(() => {});
+        }
+
         return {
           mlb,
           titulo:        r.body.title,
@@ -2045,8 +2057,9 @@ app.get('/api/ml/estoque', async (req, res) => {
         };
       });
 
-    if (pauseChanged) {
-      c.pause_dates = pauseDates;
+    if (pauseChanged || catalogChanged) {
+      c.pause_dates    = pauseDates;
+      c.catalog_states = catalogStates;
       saveData(data);
     }
 
