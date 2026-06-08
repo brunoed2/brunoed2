@@ -4934,14 +4934,14 @@ function parseNFeXML(xmlStr) {
 
 app.get('/api/contas-pagar', (req, res) => {
   const data = loadData();
-  const num  = String(data.conta_ativa || '1');
+  const num  = String(req.query.conta || data.conta_ativa || '1');
   const cp   = (data.contas_pagar || {})[num] || [];
   res.json({ contas: cp });
 });
 
 app.post('/api/contas-pagar/xml', uploadMem.single('xml'), async (req, res) => {
   const data = loadData();
-  const num  = String(data.conta_ativa || '1');
+  const num  = String(req.query.conta || data.conta_ativa || '1');
   data.contas_pagar = data.contas_pagar || {};
   data.contas_pagar[num] = data.contas_pagar[num] || [];
 
@@ -4990,7 +4990,7 @@ app.post('/api/contas-pagar/xml', uploadMem.single('xml'), async (req, res) => {
 
 app.post('/api/contas-pagar/:id/pago', async (req, res) => {
   const data = loadData();
-  const num  = String(data.conta_ativa || '1');
+  const num  = String(req.query.conta || data.conta_ativa || '1');
   const lista = (data.contas_pagar || {})[num] || [];
   const item  = lista.find(c => c.id === req.params.id);
   if (!item) return res.status(404).json({ error: 'Não encontrado' });
@@ -5007,7 +5007,7 @@ app.put('/api/contas-pagar/:id', (req, res) => {
   const vDupNum = parseFloat(vDup);
   if (isNaN(vDupNum) || vDupNum < 0) return res.status(400).json({ error: 'vDup inválido' });
   const data = loadData();
-  const num  = String(data.conta_ativa || '1');
+  const num  = String(req.query.conta || data.conta_ativa || '1');
   const lista = (data.contas_pagar || {})[num] || [];
   const item  = lista.find(c => c.id === req.params.id);
   if (!item) return res.status(404).json({ error: 'Não encontrado' });
@@ -5020,7 +5020,7 @@ app.put('/api/contas-pagar/:id', (req, res) => {
 
 app.delete('/api/contas-pagar/:id', async (req, res) => {
   const data = loadData();
-  const num  = String(data.conta_ativa || '1');
+  const num  = String(req.query.conta || data.conta_ativa || '1');
   if (data.contas_pagar?.[num]) {
     data.contas_pagar[num] = data.contas_pagar[num].filter(c => c.id !== req.params.id);
   }

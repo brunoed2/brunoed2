@@ -34,7 +34,7 @@ async function contasPagarCarregar() {
   const loading = document.getElementById('contas-loading');
   if (loading) loading.style.display = 'block';
   try {
-    const d = await fetch('/api/contas-pagar').then(r => r.json());
+    const d = await fetch(`/api/contas-pagar?conta=${window.CONTA_ATIVA}`).then(r => r.json());
     contasPagarLista    = d.contas || [];
     contasPagarCarregado = true;
   } catch {
@@ -231,7 +231,7 @@ async function contasPagarImportarXML() {
       const xmlText = await file.text();
       const form    = new FormData();
       form.append('xml', new Blob([xmlText], { type: 'application/xml' }), file.name);
-      const r = await fetch('/api/contas-pagar/xml', { method: 'POST', body: form });
+      const r = await fetch(`/api/contas-pagar/xml?conta=${window.CONTA_ATIVA}`, { method: 'POST', body: form });
       const d = await r.json();
       if (d.error)      { erros++; }
       else if (d.dup)   { duplicados += d.dup; importados += d.importados || 0; }
@@ -259,7 +259,7 @@ async function contasPagarImportarXML() {
 // ── Marcar como pago / reabrir ─────────────────────────────────
 async function contasPagarTogglePago(id) {
   try {
-    await fetch(`/api/contas-pagar/${id}/pago`, { method: 'POST' });
+    await fetch(`/api/contas-pagar/${id}/pago?conta=${window.CONTA_ATIVA}`, { method: 'POST' });
     const item = contasPagarLista.find(c => c.id === id);
     if (item) {
       item.pago   = !item.pago;
@@ -275,7 +275,7 @@ async function contasPagarTogglePago(id) {
 async function contasPagarRemover(id) {
   if (!confirm('Remover esta conta a pagar?')) return;
   try {
-    await fetch(`/api/contas-pagar/${id}`, { method: 'DELETE' });
+    await fetch(`/api/contas-pagar/${id}?conta=${window.CONTA_ATIVA}`, { method: 'DELETE' });
     contasPagarLista = contasPagarLista.filter(c => c.id !== id);
     contasPagarRenderizar();
     _syncRetryIniciar();
@@ -319,7 +319,7 @@ async function contasPagarSalvarEdicao(id) {
   if (isNaN(vDup) || vDup < 0) { alert('Valor inválido.'); return; }
 
   try {
-    const r = await fetch(`/api/contas-pagar/${id}`, {
+    const r = await fetch(`/api/contas-pagar/${id}?conta=${window.CONTA_ATIVA}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ dVenc, vDup }),
