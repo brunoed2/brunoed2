@@ -4511,6 +4511,54 @@ async function verificarAnunciosPausadosTelegram() {
   }
 }
 
+// ── Polling em background: detecção de anúncios que viraram catálogo ─
+async function verificarCatalogosML() {
+  if (!CALLMEBOT_PHONE || !CALLMEBOT_APIKEY) return;
+  const data = loadData();
+  for (const num of ['1', '2']) {
+    const c = data.contas[num];
+    if (!c || !c.access_token) continue;
+    try {
+      const catalogStates = c.catalog_states || {};
+      let catalogChanged  = false;
+
+      const idsAtivos = await buscarIdsStatus(c, 'active');
+      if (!idsAtivos.length) continue;
+
+      for (let i = 0; i < idsAtivos.length; i += 20) {
+        const chunk = idsAtivos.slice(i, i + 20);
+        try {
+          const resp = await axios.get('https://api.mercadolibre.com/items', {
+            params: { ids: chunk.join(','), attributes: 'id,title,catalog_product_id' },
+            headers: { Authorization: `Bearer ${c.access_token}` },
+            timeout: 10000,
+          });
+          for (const item of (resp.data || [])) {
+            if (item.code !== 200) continue;
+            const mlb       = item.body.id;
+            const catalogId = item.body.catalog_product_id || null;
+            if (catalogId && !catalogStates[mlb]) {
+              catalogStates[mlb] = catalogId;
+              catalogChanged = true;
+              const titulo    = item.body.title || mlb;
+              const contaNome = c.nickname || `Conta ${num}`;
+              notificar(`📦 *Anúncio virou catálogo!*\n\n${titulo}\n${mlb}\nID catálogo: ${catalogId}\nConta: ${contaNome}`).catch(() => {});
+              addLog(`Catálogo ML detectado: ${mlb} → ${catalogId}`, 'info');
+            }
+          }
+        } catch {}
+      }
+
+      if (catalogChanged) {
+        c.catalog_states = catalogStates;
+        saveData(data);
+      }
+    } catch (err) {
+      addLog(`Monitor catálogo conta ${num}: ${err.message}`, 'warn');
+    }
+  }
+}
+
 async function buscarIdsStatus(c, status) {
   const ids = [];
   let offset = 0;
@@ -5935,6 +5983,13 @@ app.listen(PORT, () => {
       verificarAnunciosPausadosTelegram().catch(() => {});
       setInterval(() => verificarAnunciosPausadosTelegram().catch(() => {}), 5 * 60_000);
     }, 30_000);
+  }
+  // Catálogos ML: detecta quando ML cria anúncio de catálogo a partir de um item
+  if (CALLMEBOT_PHONE && CALLMEBOT_APIKEY) {
+    setTimeout(() => {
+      verificarCatalogosML().catch(() => {});
+      setInterval(() => verificarCatalogosML().catch(() => {}), 15 * 60_000);
+    }, 120_000);
   }
 });
 
