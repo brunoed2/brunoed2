@@ -167,7 +167,8 @@
 
       <div class="cards" id="cards">
         <div class="card"><div class="card-label">Entradas</div><div class="card-valor pos" id="card-entradas">—</div></div>
-        <div class="card"><div class="card-label">Saídas</div><div class="card-valor neg" id="card-saidas">—</div></div>
+        <div class="card"><div class="card-label">Saídas pagas</div><div class="card-valor" style="color:#64748b" id="card-saidas-pagas">—</div></div>
+        <div class="card"><div class="card-label">Saídas a pagar</div><div class="card-valor neg" id="card-saidas-apagar">—</div></div>
         <div class="card"><div class="card-label">Saldo do Mês</div><div class="card-valor neu" id="card-saldo">—</div></div>
       </div>
 
@@ -180,7 +181,8 @@
             <option value="entrada">+ Entrada</option>
             <option value="saida">− Saída</option>
           </select>
-          <select id="f-categoria"><option value="">Categoria...</option></select>
+          <input id="f-categoria" placeholder="Categoria" maxlength="40" list="cat-sugestoes">
+          <datalist id="cat-sugestoes"></datalist>
           <input name="data" id="f-data" type="date">
           <label style="display:flex;align-items:center;gap:6px;white-space:nowrap;font-size:13px;color:#64748b;cursor:pointer;flex-shrink:0">
             <input type="checkbox" id="f-recorrente" style="width:15px;height:15px;accent-color:#2563eb;cursor:pointer"> 🔁 Recorrente
@@ -245,16 +247,6 @@
         <button class="modal-close" onclick="fecharModalConfig()">✕</button>
       </div>
       <div class="modal-body">
-        <!-- Categorias -->
-        <div class="modal-section">
-          <div class="modal-section-title">Categorias</div>
-          <div class="tag-list" id="cat-lista"></div>
-          <div class="tag-add-row">
-            <input id="cat-nova" placeholder="Nova categoria..." maxlength="40" onkeydown="if(event.key==='Enter') adicionarCategoria()">
-            <button class="btn-primary" onclick="adicionarCategoria()">Adicionar</button>
-          </div>
-        </div>
-
         <!-- Recorrentes -->
         <div class="modal-section">
           <div class="modal-section-title">Lançamentos Recorrentes</div>
@@ -266,7 +258,7 @@
               <option value="saida">− Saída</option>
               <option value="entrada">+ Entrada</option>
             </select>
-            <select id="rec-cat"><option value="">Categoria...</option></select>
+            <input id="rec-cat" placeholder="Categoria" maxlength="40" list="cat-sugestoes">
             <input id="rec-dia" type="number" placeholder="Dia do mês (ex: 5)" min="1" max="28">
             <button class="btn-primary" onclick="adicionarRecorrente()" style="grid-column:2">Adicionar</button>
           </div>
@@ -308,7 +300,7 @@
             </div>
             <div class="edit-field">
               <label>Categoria</label>
-              <select id="edit-categoria"><option value="">Categoria...</option></select>
+              <input id="edit-categoria" placeholder="Categoria" maxlength="40" list="cat-sugestoes">
             </div>
           </div>
           <div id="edit-rec-aviso" style="display:none;font-size:13px;color:#64748b;background:#f8fafc;border-radius:8px;padding:10px 12px">
@@ -370,12 +362,14 @@
     function renderizarLancamentos() {
       const lista = dadosCarregados.lancamentos || [];
       const tbody = document.getElementById('tbody-lancamentos');
-      const totalEntradas = lista.filter(l => l.tipo === 'entrada').reduce((s, l) => s + l.valor, 0);
-      const totalSaidas = lista.filter(l => l.tipo === 'saida').reduce((s, l) => s + l.valor, 0);
-      const saldo = totalEntradas - totalSaidas;
+      const totalEntradas   = lista.filter(l => l.tipo === 'entrada').reduce((s, l) => s + (l.valor || 0), 0);
+      const saidasPagas     = lista.filter(l => l.tipo === 'saida' && l.pago).reduce((s, l) => s + (l.valor || 0), 0);
+      const saidasAPagar    = lista.filter(l => l.tipo === 'saida' && !l.pago).reduce((s, l) => s + (l.valor || 0), 0);
+      const saldo = totalEntradas - saidasPagas - saidasAPagar;
 
       document.getElementById('card-entradas').textContent = fmt(totalEntradas);
-      document.getElementById('card-saidas').textContent = fmt(totalSaidas);
+      document.getElementById('card-saidas-pagas').textContent = fmt(saidasPagas);
+      document.getElementById('card-saidas-apagar').textContent = fmt(saidasAPagar);
       const cs = document.getElementById('card-saldo');
       cs.textContent = fmt(saldo);
       cs.className = 'card-valor ' + (saldo >= 0 ? 'pos' : 'neg');
@@ -416,13 +410,10 @@
     }
 
     function popularSelectCategorias() {
-      const cats = dadosCarregados.categorias || [];
-      ['f-categoria', 'rec-cat'].forEach(id => {
-        const sel = document.getElementById(id);
-        const val = sel.value;
-        sel.innerHTML = '<option value="">Categoria...</option>' + cats.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
-        sel.value = val;
-      });
+      // Coleta todas as categorias já usadas nos lançamentos para sugestão
+      const usadas = [...new Set((dadosCarregados.lancamentos || []).map(l => l.categoria).filter(Boolean))];
+      const dl = document.getElementById('cat-sugestoes');
+      if (dl) dl.innerHTML = usadas.map(c => `<option value="${esc(c)}">`).join('');
     }
 
     async function salvarLancamento() {
@@ -479,9 +470,7 @@
       document.getElementById('edit-valor').value = l.valor || '';
       document.getElementById('edit-data').value = l.data || '';
       document.getElementById('edit-tipo').value = l.tipo || 'saida';
-      const cats = dadosCarregados.categorias || [];
-      const catSel = document.getElementById('edit-categoria');
-      catSel.innerHTML = '<option value="">Categoria...</option>' + cats.map(c => `<option value="${esc(c)}"${c === l.categoria ? ' selected' : ''}>${esc(c)}</option>`).join('');
+      document.getElementById('edit-categoria').value = l.categoria || '';
       document.getElementById('edit-rec-aviso').style.display = l.recorrente_id ? '' : 'none';
       document.getElementById('modal-editar').classList.remove('hidden');
     }
@@ -533,46 +522,12 @@
 
     function abrirModalConfig() {
       document.getElementById('modal-config').classList.remove('hidden');
-      renderizarCategorias();
       renderizarRecorrentes();
     }
 
     function fecharModalConfig() {
       document.getElementById('modal-config').classList.add('hidden');
       carregarMes();
-    }
-
-    function renderizarCategorias() {
-      const lista = document.getElementById('cat-lista');
-      lista.innerHTML = (dadosCarregados.categorias || []).map(c => `
-        <span class="tag">${esc(c)}<button class="tag-del" onclick="removerCategoria('${esc(c)}')" title="Remover">✕</button></span>
-      `).join('');
-    }
-
-    async function adicionarCategoria() {
-      const nome = document.getElementById('cat-nova').value.trim();
-      if (!nome) return;
-      const r = await fetch('/api/pessoal/categorias', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nome, acao: 'add' })
-      });
-      const j = await r.json();
-      dadosCarregados.categorias = j.categorias;
-      document.getElementById('cat-nova').value = '';
-      renderizarCategorias();
-      popularSelectCategorias();
-    }
-
-    async function removerCategoria(nome) {
-      if (!confirm(`Remover categoria "${nome}"?`)) return;
-      const r = await fetch('/api/pessoal/categorias', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nome, acao: 'remove' })
-      });
-      const j = await r.json();
-      dadosCarregados.categorias = j.categorias;
-      renderizarCategorias();
-      popularSelectCategorias();
     }
 
     function renderizarRecorrentes() {
