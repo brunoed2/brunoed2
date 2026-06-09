@@ -245,7 +245,7 @@
           <div class="rec-list" id="rec-lista"></div>
           <div class="rec-add-grid" id="rec-form">
             <input id="rec-desc" placeholder="Descrição (ex: Aluguel)" maxlength="60">
-            <input id="rec-valor" type="number" placeholder="Valor (R$)" step="0.01" min="0">
+            <input id="rec-valor" type="number" placeholder="Valor (vazio = variável)" step="0.01" min="0">
             <select id="rec-tipo">
               <option value="saida">− Saída</option>
               <option value="entrada">+ Entrada</option>
@@ -320,16 +320,21 @@
         tbody.innerHTML = '<tr class="empty-row"><td colspan="6">Nenhum lançamento neste mês</td></tr>';
         return;
       }
-      tbody.innerHTML = lista.map(l => `
+      tbody.innerHTML = lista.map(l => {
+        const semValor = !l.valor || l.valor === 0;
+        const valorCell = semValor
+          ? `<button onclick="editarValor('${l.id}')" style="background:none;border:1px dashed #f59e0b;color:#f59e0b;border-radius:6px;padding:3px 10px;font-size:12px;cursor:pointer">Preencher →</button>`
+          : `<span class="${l.tipo === 'entrada' ? 'td-valor-pos' : 'td-valor-neg'}">${fmt(l.valor)}</span>`;
+        return `
         <tr>
           <td>${fmtData(l.data)}</td>
           <td>${esc(l.descricao)}${l.recorrente_id ? '<br><span class="td-rec">↻ recorrente</span>' : ''}</td>
           <td class="td-cat">${esc(l.categoria)}</td>
           <td><span class="td-tipo-badge ${l.tipo}">${l.tipo === 'entrada' ? '+ Entrada' : '− Saída'}</span></td>
-          <td style="text-align:right" class="${l.tipo === 'entrada' ? 'td-valor-pos' : 'td-valor-neg'}">${fmt(l.valor)}</td>
+          <td style="text-align:right">${valorCell}</td>
           <td><button class="btn-del" onclick="excluirLancamento('${l.id}')" title="Excluir">✕</button></td>
-        </tr>
-      `).join('');
+        </tr>`;
+      }).join('');
     }
 
     function esc(s) {
@@ -366,6 +371,19 @@
       if (!confirm('Excluir este lançamento?')) return;
       const mes = String(mesAtual + 1).padStart(2, '0');
       await fetch(`/api/pessoal/lancamentos/${id}?ano=${anoAtual}&mes=${mes}`, { method: 'DELETE' });
+      await carregarMes();
+    }
+
+    async function editarValor(id) {
+      const input = prompt('Valor deste mês (R$):');
+      if (input === null) return;
+      const valor = parseFloat(input.replace(',', '.'));
+      if (isNaN(valor) || valor <= 0) return alert('Valor inválido.');
+      const mes = String(mesAtual + 1).padStart(2, '0');
+      await fetch(`/api/pessoal/lancamentos/${id}?ano=${anoAtual}&mes=${mes}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ valor })
+      });
       await carregarMes();
     }
 
@@ -422,24 +440,59 @@
         lista.innerHTML = '<div style="color:#94a3b8;font-size:13px;padding:4px 0">Nenhum recorrente cadastrado</div>';
         return;
       }
-      lista.innerHTML = recs.map(r => `
+      lista.innerHTML = recs.map(r => {
+        const temValor = r.valor && r.valor > 0;
+        const valorTexto = temValor ? fmt(r.valor) : '<span style="color:#f59e0b">variável</span>';
+        const cadeado = temValor
+          ? `<button onclick="desbloquearRecorrente('${r.id}')" title="Desbloquear valor (tornar variável)" style="background:none;border:none;cursor:pointer;font-size:16px;padding:2px 4px">🔒</button>`
+          : `<button onclick="bloquearRecorrente('${r.id}')" title="Fixar valor para os próximos meses" style="background:none;border:none;cursor:pointer;font-size:16px;padding:2px 4px;opacity:.5">🔓</button>`;
+        return `
         <div class="rec-item">
           <div class="rec-item-info">
             <div class="rec-item-desc">${esc(r.descricao)}</div>
-            <div class="rec-item-meta">${r.tipo === 'entrada' ? '+ Entrada' : '− Saída'} · ${esc(r.categoria)} · dia ${r.dia} · ${fmt(r.valor)}</div>
+            <div class="rec-item-meta">${r.tipo === 'entrada' ? '+ Entrada' : '− Saída'} · ${esc(r.categoria)} · dia ${r.dia} · ${valorTexto}</div>
           </div>
-          <button class="btn-del" onclick="excluirRecorrente('${r.id}')" title="Excluir">✕</button>
-        </div>
-      `).join('');
+          <div style="display:flex;align-items:center;gap:4px">
+            ${cadeado}
+            <button class="btn-del" onclick="excluirRecorrente('${r.id}')" title="Excluir">✕</button>
+          </div>
+        </div>`;
+      }).join('');
+    }
+
+    async function bloquearRecorrente(id) {
+      const input = prompt('Valor fixo para os próximos meses (R$):');
+      if (input === null) return;
+      const valor = parseFloat(input.replace(',', '.'));
+      if (isNaN(valor) || valor <= 0) return alert('Valor inválido.');
+      const r = await fetch(`/api/pessoal/recorrentes/${id}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ valor })
+      });
+      const j = await r.json();
+      dadosCarregados.recorrentes = dadosCarregados.recorrentes.map(x => x.id === id ? j.item : x);
+      renderizarRecorrentes();
+    }
+
+    async function desbloquearRecorrente(id) {
+      if (!confirm('Tornar o valor variável? Você preencherá o valor todo mês manualmente.')) return;
+      const r = await fetch(`/api/pessoal/recorrentes/${id}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ valor: null })
+      });
+      const j = await r.json();
+      dadosCarregados.recorrentes = dadosCarregados.recorrentes.map(x => x.id === id ? j.item : x);
+      renderizarRecorrentes();
     }
 
     async function adicionarRecorrente() {
       const descricao = document.getElementById('rec-desc').value.trim();
-      const valor = parseFloat(document.getElementById('rec-valor').value);
+      const valorRaw = document.getElementById('rec-valor').value;
+      const valor = valorRaw ? parseFloat(valorRaw) : null;
       const tipo = document.getElementById('rec-tipo').value;
       const categoria = document.getElementById('rec-cat').value;
       const dia = parseInt(document.getElementById('rec-dia').value);
-      if (!descricao || !valor || !categoria || !dia || dia < 1 || dia > 28) return alert('Preencha todos os campos. O dia deve ser entre 1 e 28.');
+      if (!descricao || !categoria || !dia || dia < 1 || dia > 28) return alert('Preencha descrição, categoria e dia (1–28). Valor pode ficar em branco se variar todo mês.');
       const r = await fetch('/api/pessoal/recorrentes', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ descricao, valor, tipo, categoria, dia })

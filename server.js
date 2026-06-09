@@ -6252,13 +6252,24 @@ app.post('/api/pessoal/categorias', (req, res) => {
 
 app.post('/api/pessoal/recorrentes', (req, res) => {
   const { descricao, valor, tipo, categoria, dia } = req.body || {};
-  if (!descricao || !valor || !tipo || !categoria || !dia) return res.status(400).json({ error: 'descricao, valor, tipo, categoria e dia são obrigatórios' });
+  if (!descricao || !tipo || !categoria || !dia) return res.status(400).json({ error: 'descricao, tipo, categoria e dia são obrigatórios' });
   const data = loadData();
   const pessoal = data.pessoal;
-  const item = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), descricao, valor: Number(valor), tipo, categoria, dia: Number(dia) };
+  const item = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), descricao, valor: valor ? Number(valor) : null, tipo, categoria, dia: Number(dia) };
   pessoal.recorrentes.push(item);
   saveData(data);
   res.json({ ok: true, item });
+});
+
+app.put('/api/pessoal/recorrentes/:id', (req, res) => {
+  const data = loadData();
+  const pessoal = data.pessoal;
+  const idx = pessoal.recorrentes.findIndex(r => r.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Recorrente não encontrado' });
+  const { valor } = req.body || {};
+  pessoal.recorrentes[idx].valor = valor ? Number(valor) : null;
+  saveData(data);
+  res.json({ ok: true, item: pessoal.recorrentes[idx] });
 });
 
 app.delete('/api/pessoal/recorrentes/:id', (req, res) => {
