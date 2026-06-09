@@ -181,8 +181,6 @@
             <option value="entrada">+ Entrada</option>
             <option value="saida">− Saída</option>
           </select>
-          <input id="f-categoria" placeholder="Categoria" maxlength="40" list="cat-sugestoes">
-          <datalist id="cat-sugestoes"></datalist>
           <input name="data" id="f-data" type="date">
           <label style="display:flex;align-items:center;gap:6px;white-space:nowrap;font-size:13px;color:#64748b;cursor:pointer;flex-shrink:0">
             <input type="checkbox" id="f-recorrente" style="width:15px;height:15px;accent-color:#2563eb;cursor:pointer"> 🔁 Recorrente
@@ -201,7 +199,6 @@
             <tr>
               <th>Data</th>
               <th>Descrição</th>
-              <th>Categoria</th>
               <th>Tipo</th>
               <th style="text-align:right">Valor</th>
               <th style="text-align:center">Pago</th>
@@ -258,7 +255,6 @@
               <option value="saida">− Saída</option>
               <option value="entrada">+ Entrada</option>
             </select>
-            <input id="rec-cat" placeholder="Categoria" maxlength="40" list="cat-sugestoes">
             <input id="rec-dia" type="number" placeholder="Dia do mês (ex: 5)" min="1" max="28">
             <button class="btn-primary" onclick="adicionarRecorrente()" style="grid-column:2">Adicionar</button>
           </div>
@@ -297,10 +293,6 @@
                 <option value="entrada">+ Entrada</option>
                 <option value="saida">− Saída</option>
               </select>
-            </div>
-            <div class="edit-field">
-              <label>Categoria</label>
-              <input id="edit-categoria" placeholder="Categoria" maxlength="40" list="cat-sugestoes">
             </div>
           </div>
           <div id="edit-rec-aviso" style="display:none;font-size:13px;color:#64748b;background:#f8fafc;border-radius:8px;padding:10px 12px">
@@ -389,7 +381,6 @@
         <tr class="${pago ? 'pago' : ''}">
           <td>${fmtData(l.data)}</td>
           <td class="td-descricao">${esc(l.descricao)}${l.recorrente_id ? '<br><span class="td-rec">↻ recorrente</span>' : ''}</td>
-          <td class="td-cat">${esc(l.categoria)}</td>
           <td><span class="td-tipo-badge ${l.tipo}">${l.tipo === 'entrada' ? '+ Entrada' : '− Saída'}</span></td>
           <td style="text-align:right">${valorCell}</td>
           <td style="text-align:center">
@@ -409,34 +400,28 @@
       return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     }
 
-    function popularSelectCategorias() {
-      // Coleta todas as categorias já usadas nos lançamentos para sugestão
-      const usadas = [...new Set((dadosCarregados.lancamentos || []).map(l => l.categoria).filter(Boolean))];
-      const dl = document.getElementById('cat-sugestoes');
-      if (dl) dl.innerHTML = usadas.map(c => `<option value="${esc(c)}">`).join('');
-    }
+    function popularSelectCategorias() { /* removido */ }
 
     async function salvarLancamento() {
       const descricao = document.getElementById('f-descricao').value.trim();
       const valorRaw = document.getElementById('f-valor').value;
       const valor = valorRaw ? parseFloat(valorRaw) : null;
       const tipo = document.getElementById('f-tipo').value;
-      const categoria = document.getElementById('f-categoria').value;
       const data = document.getElementById('f-data').value;
       const recorrente = document.getElementById('f-recorrente').checked;
-      if (!descricao || !categoria || !data) return alert('Preencha descrição, categoria e data.');
+      if (!descricao || !data) return alert('Preencha descrição e data.');
       if (!valor && !recorrente) return alert('Preencha o valor.');
       if (valor) {
         await fetch('/api/pessoal/lancamentos', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ descricao, valor, tipo, categoria, data })
+          body: JSON.stringify({ descricao, valor, tipo, data })
         });
       }
       if (recorrente) {
         const dia = parseInt(data.split('-')[2]);
         await fetch('/api/pessoal/recorrentes', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ descricao, valor, tipo, categoria, dia })
+          body: JSON.stringify({ descricao, valor, tipo, dia })
         });
       }
       document.getElementById('f-descricao').value = '';
@@ -470,7 +455,6 @@
       document.getElementById('edit-valor').value = l.valor || '';
       document.getElementById('edit-data').value = l.data || '';
       document.getElementById('edit-tipo').value = l.tipo || 'saida';
-      document.getElementById('edit-categoria').value = l.categoria || '';
       document.getElementById('edit-rec-aviso').style.display = l.recorrente_id ? '' : 'none';
       document.getElementById('modal-editar').classList.remove('hidden');
     }
@@ -487,12 +471,11 @@
       const valor = valorRaw ? parseFloat(valorRaw) : null;
       const data = document.getElementById('edit-data').value;
       const tipo = document.getElementById('edit-tipo').value;
-      const categoria = document.getElementById('edit-categoria').value;
-      if (!descricao || !data || !categoria) return alert('Preencha descrição, data e categoria.');
+      if (!descricao || !data) return alert('Preencha descrição e data.');
       const mes = String(mesAtual + 1).padStart(2, '0');
       await fetch(`/api/pessoal/lancamentos/${id}?ano=${anoAtual}&mes=${mes}`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ descricao, valor, data, tipo, categoria })
+        body: JSON.stringify({ descricao, valor, data, tipo })
       });
       if (recorrenteId && data) {
         const dia = parseInt(data.split('-')[2]);
@@ -547,7 +530,7 @@
         <div class="rec-item">
           <div class="rec-item-info">
             <div class="rec-item-desc">${esc(r.descricao)}</div>
-            <div class="rec-item-meta">${r.tipo === 'entrada' ? '+ Entrada' : '− Saída'} · ${esc(r.categoria)} · dia ${r.dia} · ${valorTexto}</div>
+            <div class="rec-item-meta">${r.tipo === 'entrada' ? '+ Entrada' : '− Saída'} · dia ${r.dia} · ${valorTexto}</div>
           </div>
           <div style="display:flex;align-items:center;gap:4px">
             ${cadeado}
@@ -587,12 +570,11 @@
       const valorRaw = document.getElementById('rec-valor').value;
       const valor = valorRaw ? parseFloat(valorRaw) : null;
       const tipo = document.getElementById('rec-tipo').value;
-      const categoria = document.getElementById('rec-cat').value;
       const dia = parseInt(document.getElementById('rec-dia').value);
-      if (!descricao || !categoria || !dia || dia < 1 || dia > 28) return alert('Preencha descrição, categoria e dia (1–28). Valor pode ficar em branco se variar todo mês.');
+      if (!descricao || !dia || dia < 1 || dia > 28) return alert('Preencha descrição e dia (1–28). Valor pode ficar em branco se variar todo mês.');
       const r = await fetch('/api/pessoal/recorrentes', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ descricao, valor, tipo, categoria, dia })
+        body: JSON.stringify({ descricao, valor, tipo, dia })
       });
       const j = await r.json();
       dadosCarregados.recorrentes = [...(dadosCarregados.recorrentes || []), j.item];
