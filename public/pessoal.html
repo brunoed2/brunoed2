@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DRE Pessoal</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💼</text></svg>">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f0f2f5; color: #1a1a1a; min-height: 100vh; }
+
+    /* Header */
+    .header { background: #111; color: #fff; padding: 0 24px; display: flex; align-items: center; gap: 20px; height: 56px; position: sticky; top: 0; z-index: 100; }
+    .header-logo { font-size: 17px; font-weight: 700; letter-spacing: .3px; }
+    .header-back { color: #888; font-size: 13px; text-decoration: none; margin-right: 4px; }
+    .header-back:hover { color: #fff; }
+    .header-tabs { display: flex; gap: 4px; margin-left: auto; }
+    .header-tab { background: none; border: none; color: #888; padding: 8px 16px; border-radius: 6px; font-size: 14px; cursor: pointer; font-family: inherit; transition: background .15s, color .15s; }
+    .header-tab:hover { background: #1e1e1e; color: #fff; }
+    .header-tab.active { background: #2a2a2a; color: #fff; font-weight: 500; }
+    .header-actions { display: flex; gap: 8px; margin-left: 12px; }
+
+    /* Content */
+    .content { max-width: 1000px; margin: 0 auto; padding: 28px 20px 60px; }
+
+    /* Tab sections */
+    .tab-section { display: none; }
+    .tab-section.active { display: block; }
+
+    /* Nav de mês */
+    .mes-nav { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
+    .mes-nav-btn { background: #fff; border: 1px solid #ddd; color: #333; padding: 8px 14px; border-radius: 8px; cursor: pointer; font-size: 18px; transition: background .15s; }
+    .mes-nav-btn:hover { background: #f5f5f5; }
+    .mes-label { font-size: 20px; font-weight: 700; min-width: 180px; text-align: center; }
+
+    /* Cards */
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 24px; }
+    .card { background: #fff; border-radius: 12px; padding: 16px 20px; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+    .card-label { font-size: 12px; color: #64748b; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 6px; }
+    .card-valor { font-size: 22px; font-weight: 700; }
+    .card-valor.pos { color: #16a34a; }
+    .card-valor.neg { color: #dc2626; }
+    .card-valor.neu { color: #2563eb; }
+
+    /* Formulário de lançamento */
+    .form-card { background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,.06); margin-bottom: 24px; }
+    .form-card h3 { font-size: 14px; font-weight: 600; margin-bottom: 14px; color: #374151; }
+    .form-row { display: flex; gap: 10px; flex-wrap: wrap; }
+    .form-row input, .form-row select { flex: 1; min-width: 120px; padding: 9px 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px; font-family: inherit; background: #f8fafc; }
+    .form-row input:focus, .form-row select:focus { outline: none; border-color: #3b82f6; background: #fff; }
+    .form-row input[name="descricao"] { flex: 2; min-width: 200px; }
+
+    /* Tabela */
+    .tabela-wrap { background: #fff; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.06); overflow: hidden; }
+    .tabela-topo { padding: 14px 20px; border-bottom: 1px solid #f1f5f9; font-size: 14px; font-weight: 600; color: #374151; display: flex; align-items: center; justify-content: space-between; }
+    .tabela-topo span { color: #64748b; font-weight: 400; font-size: 13px; }
+    table { width: 100%; border-collapse: collapse; }
+    th { text-align: left; padding: 10px 16px; font-size: 12px; color: #64748b; text-transform: uppercase; letter-spacing: .5px; border-bottom: 1px solid #f1f5f9; background: #f8fafc; }
+    td { padding: 11px 16px; font-size: 14px; border-bottom: 1px solid #f8fafc; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #fafbfc; }
+    .td-valor-pos { color: #16a34a; font-weight: 600; }
+    .td-valor-neg { color: #dc2626; font-weight: 600; }
+    .td-tipo-badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+    .td-tipo-badge.entrada { background: #dcfce7; color: #16a34a; }
+    .td-tipo-badge.saida { background: #fee2e2; color: #dc2626; }
+    .td-cat { color: #64748b; font-size: 13px; }
+    .td-rec { font-size: 11px; color: #94a3b8; }
+    .btn-del { background: none; border: none; color: #94a3b8; cursor: pointer; padding: 4px 6px; border-radius: 4px; font-size: 15px; }
+    .btn-del:hover { color: #dc2626; background: #fee2e2; }
+    .empty-row td { text-align: center; color: #94a3b8; padding: 32px; font-size: 14px; }
+
+    /* Botões */
+    .btn-primary { background: #2563eb; color: #fff; border: none; padding: 9px 20px; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; font-family: inherit; white-space: nowrap; }
+    .btn-primary:hover { background: #1d4ed8; }
+    .btn-secondary { background: #fff; color: #374151; border: 1px solid #e2e8f0; padding: 8px 16px; border-radius: 8px; font-size: 13px; cursor: pointer; font-family: inherit; }
+    .btn-secondary:hover { background: #f8fafc; }
+
+    /* DRE Anual */
+    .dre-header { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
+    .dre-year-input { padding: 8px 14px; border: 1px solid #ddd; border-radius: 8px; font-size: 16px; font-weight: 600; width: 100px; text-align: center; font-family: inherit; }
+    .dre-table-wrap { background: #fff; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.06); overflow-x: auto; }
+    .dre-table { width: 100%; border-collapse: collapse; min-width: 700px; }
+    .dre-table th { padding: 10px 14px; font-size: 12px; color: #64748b; text-transform: uppercase; letter-spacing: .4px; border-bottom: 1px solid #f1f5f9; background: #f8fafc; text-align: right; }
+    .dre-table th:first-child { text-align: left; }
+    .dre-table td { padding: 10px 14px; font-size: 13px; border-bottom: 1px solid #f8fafc; text-align: right; }
+    .dre-table td:first-child { text-align: left; font-weight: 500; }
+    .dre-table tr:last-child td { border-bottom: none; }
+    .dre-section-header td { background: #f1f5f9; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: #64748b; font-weight: 700; padding: 7px 14px; }
+    .dre-total-row td { font-weight: 700; border-top: 2px solid #e2e8f0; font-size: 14px; }
+    .dre-resultado-row td { font-weight: 700; font-size: 15px; }
+    .pos { color: #16a34a; }
+    .neg { color: #dc2626; }
+    .neu { color: #2563eb; }
+
+    /* Modal */
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.5); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 20px; }
+    .modal-overlay.hidden { display: none; }
+    .modal { background: #fff; border-radius: 14px; width: 100%; max-width: 500px; box-shadow: 0 20px 60px rgba(0,0,0,.2); max-height: 90vh; display: flex; flex-direction: column; }
+    .modal-header { padding: 20px 24px 16px; border-bottom: 1px solid #f1f5f9; display: flex; align-items: center; justify-content: space-between; }
+    .modal-header h2 { font-size: 17px; font-weight: 700; }
+    .modal-close { background: none; border: none; font-size: 20px; cursor: pointer; color: #94a3b8; padding: 4px; }
+    .modal-close:hover { color: #1a1a1a; }
+    .modal-body { padding: 20px 24px; overflow-y: auto; flex: 1; }
+    .modal-footer { padding: 16px 24px; border-top: 1px solid #f1f5f9; display: flex; gap: 10px; justify-content: flex-end; }
+    .modal-section { margin-bottom: 24px; }
+    .modal-section-title { font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 10px; text-transform: uppercase; letter-spacing: .4px; }
+    .tag-list { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+    .tag { display: inline-flex; align-items: center; gap: 5px; background: #f1f5f9; border-radius: 20px; padding: 4px 10px 4px 12px; font-size: 13px; }
+    .tag-del { background: none; border: none; color: #94a3b8; cursor: pointer; font-size: 14px; line-height: 1; padding: 0 2px; }
+    .tag-del:hover { color: #dc2626; }
+    .tag-add-row { display: flex; gap: 8px; }
+    .tag-add-row input { flex: 1; padding: 8px 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px; font-family: inherit; }
+    .rec-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+    .rec-item { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .rec-item-info { flex: 1; }
+    .rec-item-desc { font-size: 14px; font-weight: 500; }
+    .rec-item-meta { font-size: 12px; color: #64748b; margin-top: 2px; }
+    .rec-add-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .rec-add-grid input, .rec-add-grid select { padding: 8px 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px; font-family: inherit; }
+    .rec-add-grid input:first-child { grid-column: 1 / -1; }
+
+    @media (max-width: 640px) {
+      .header { padding: 0 14px; gap: 12px; }
+      .header-tab { padding: 7px 10px; font-size: 13px; }
+      .content { padding: 16px 12px 60px; }
+      .form-row { flex-direction: column; }
+      .form-row input, .form-row select { min-width: 0; width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <script>if (localStorage.getItem('auth') !== '1') location.href = '/';</script>
+
+  <header class="header">
+    <a href="/app.html" class="header-back">← App</a>
+    <div class="header-logo">💼 DRE Pessoal</div>
+    <div class="header-tabs">
+      <button class="header-tab active" onclick="abaAtiva('lancamentos')">Lançamentos</button>
+      <button class="header-tab" onclick="abaAtiva('dre')">DRE Anual</button>
+    </div>
+    <div class="header-actions">
+      <button class="btn-secondary" onclick="abrirModalConfig()">⚙ Configurar</button>
+    </div>
+  </header>
+
+  <!-- ── Lançamentos ── -->
+  <div class="content">
+    <section id="tab-lancamentos" class="tab-section active">
+      <div class="mes-nav">
+        <button class="mes-nav-btn" onclick="navegarMes(-1)">‹</button>
+        <div class="mes-label" id="mes-label">—</div>
+        <button class="mes-nav-btn" onclick="navegarMes(1)">›</button>
+      </div>
+
+      <div class="cards" id="cards">
+        <div class="card"><div class="card-label">Entradas</div><div class="card-valor pos" id="card-entradas">—</div></div>
+        <div class="card"><div class="card-label">Saídas</div><div class="card-valor neg" id="card-saidas">—</div></div>
+        <div class="card"><div class="card-label">Saldo do Mês</div><div class="card-valor neu" id="card-saldo">—</div></div>
+      </div>
+
+      <div class="form-card">
+        <h3>Novo Lançamento</h3>
+        <div class="form-row">
+          <input name="descricao" id="f-descricao" placeholder="Descrição" maxlength="100">
+          <input name="valor" id="f-valor" type="number" placeholder="Valor (R$)" step="0.01" min="0">
+          <select id="f-tipo">
+            <option value="entrada">+ Entrada</option>
+            <option value="saida">− Saída</option>
+          </select>
+          <select id="f-categoria"><option value="">Categoria...</option></select>
+          <input name="data" id="f-data" type="date">
+          <button class="btn-primary" onclick="salvarLancamento()">Adicionar</button>
+        </div>
+      </div>
+
+      <div class="tabela-wrap">
+        <div class="tabela-topo">
+          Lançamentos
+          <span id="total-label"></span>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Data</th>
+              <th>Descrição</th>
+              <th>Categoria</th>
+              <th>Tipo</th>
+              <th style="text-align:right">Valor</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="tbody-lancamentos">
+            <tr class="empty-row"><td colspan="6">Nenhum lançamento neste mês</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ── DRE Anual ── -->
+    <section id="tab-dre" class="tab-section">
+      <div class="dre-header">
+        <input class="dre-year-input" id="dre-ano" type="number" value="" min="2020" max="2099">
+        <button class="btn-primary" onclick="carregarDRE()">Ver DRE</button>
+      </div>
+      <div class="dre-table-wrap">
+        <table class="dre-table" id="dre-tabela">
+          <thead>
+            <tr>
+              <th>Item</th>
+              <th>Jan</th><th>Fev</th><th>Mar</th><th>Abr</th><th>Mai</th><th>Jun</th>
+              <th>Jul</th><th>Ago</th><th>Set</th><th>Out</th><th>Nov</th><th>Dez</th>
+              <th>Total</th>
+            </tr>
+          </thead>
+          <tbody id="dre-tbody">
+            <tr class="empty-row"><td colspan="14" style="text-align:center;padding:32px;color:#94a3b8">Selecione o ano e clique em "Ver DRE"</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <!-- Modal Configurações -->
+  <div class="modal-overlay hidden" id="modal-config">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>⚙ Configurações</h2>
+        <button class="modal-close" onclick="fecharModalConfig()">✕</button>
+      </div>
+      <div class="modal-body">
+        <!-- Categorias -->
+        <div class="modal-section">
+          <div class="modal-section-title">Categorias</div>
+          <div class="tag-list" id="cat-lista"></div>
+          <div class="tag-add-row">
+            <input id="cat-nova" placeholder="Nova categoria..." maxlength="40" onkeydown="if(event.key==='Enter') adicionarCategoria()">
+            <button class="btn-primary" onclick="adicionarCategoria()">Adicionar</button>
+          </div>
+        </div>
+
+        <!-- Recorrentes -->
+        <div class="modal-section">
+          <div class="modal-section-title">Lançamentos Recorrentes</div>
+          <div class="rec-list" id="rec-lista"></div>
+          <div class="rec-add-grid" id="rec-form">
+            <input id="rec-desc" placeholder="Descrição (ex: Aluguel)" maxlength="60">
+            <input id="rec-valor" type="number" placeholder="Valor (R$)" step="0.01" min="0">
+            <select id="rec-tipo">
+              <option value="saida">− Saída</option>
+              <option value="entrada">+ Entrada</option>
+            </select>
+            <select id="rec-cat"><option value="">Categoria...</option></select>
+            <input id="rec-dia" type="number" placeholder="Dia do mês (ex: 5)" min="1" max="28">
+            <button class="btn-primary" onclick="adicionarRecorrente()" style="grid-column:2">Adicionar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const MESES_NOMES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+    let anoAtual, mesAtual, dadosCarregados = { categorias: [], recorrentes: [], lancamentos: [] };
+
+    function fmt(v) {
+      return 'R$ ' + Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function fmtData(d) {
+      if (!d) return '';
+      const [a, m, dia] = d.split('-');
+      return `${dia}/${m}`;
+    }
+
+    function abaAtiva(aba) {
+      document.querySelectorAll('.tab-section').forEach(s => s.classList.remove('active'));
+      document.querySelectorAll('.header-tab').forEach(b => b.classList.remove('active'));
+      document.getElementById('tab-' + aba).classList.add('active');
+      document.querySelectorAll('.header-tab').forEach(b => {
+        if (b.textContent.toLowerCase().includes(aba === 'lancamentos' ? 'lança' : 'dre')) b.classList.add('active');
+      });
+    }
+
+    function navegarMes(delta) {
+      mesAtual += delta;
+      if (mesAtual > 11) { mesAtual = 0; anoAtual++; }
+      if (mesAtual < 0) { mesAtual = 11; anoAtual--; }
+      carregarMes();
+    }
+
+    async function carregarMes() {
+      const mes = String(mesAtual + 1).padStart(2, '0');
+      document.getElementById('mes-label').textContent = `${MESES_NOMES[mesAtual]} ${anoAtual}`;
+      try {
+        const r = await fetch(`/api/pessoal/dados?ano=${anoAtual}&mes=${mes}`);
+        dadosCarregados = await r.json();
+        renderizarLancamentos();
+        popularSelectCategorias();
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    function renderizarLancamentos() {
+      const lista = dadosCarregados.lancamentos || [];
+      const tbody = document.getElementById('tbody-lancamentos');
+      const totalEntradas = lista.filter(l => l.tipo === 'entrada').reduce((s, l) => s + l.valor, 0);
+      const totalSaidas = lista.filter(l => l.tipo === 'saida').reduce((s, l) => s + l.valor, 0);
+      const saldo = totalEntradas - totalSaidas;
+
+      document.getElementById('card-entradas').textContent = fmt(totalEntradas);
+      document.getElementById('card-saidas').textContent = fmt(totalSaidas);
+      const cs = document.getElementById('card-saldo');
+      cs.textContent = fmt(saldo);
+      cs.className = 'card-valor ' + (saldo >= 0 ? 'pos' : 'neg');
+      document.getElementById('total-label').textContent = lista.length + ' lançamento(s)';
+
+      if (!lista.length) {
+        tbody.innerHTML = '<tr class="empty-row"><td colspan="6">Nenhum lançamento neste mês</td></tr>';
+        return;
+      }
+      tbody.innerHTML = lista.map(l => `
+        <tr>
+          <td>${fmtData(l.data)}</td>
+          <td>${esc(l.descricao)}${l.recorrente_id ? '<br><span class="td-rec">↻ recorrente</span>' : ''}</td>
+          <td class="td-cat">${esc(l.categoria)}</td>
+          <td><span class="td-tipo-badge ${l.tipo}">${l.tipo === 'entrada' ? '+ Entrada' : '− Saída'}</span></td>
+          <td style="text-align:right" class="${l.tipo === 'entrada' ? 'td-valor-pos' : 'td-valor-neg'}">${fmt(l.valor)}</td>
+          <td><button class="btn-del" onclick="excluirLancamento('${l.id}')" title="Excluir">✕</button></td>
+        </tr>
+      `).join('');
+    }
+
+    function esc(s) {
+      return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    function popularSelectCategorias() {
+      const cats = dadosCarregados.categorias || [];
+      ['f-categoria', 'rec-cat'].forEach(id => {
+        const sel = document.getElementById(id);
+        const val = sel.value;
+        sel.innerHTML = '<option value="">Categoria...</option>' + cats.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
+        sel.value = val;
+      });
+    }
+
+    async function salvarLancamento() {
+      const descricao = document.getElementById('f-descricao').value.trim();
+      const valor = parseFloat(document.getElementById('f-valor').value);
+      const tipo = document.getElementById('f-tipo').value;
+      const categoria = document.getElementById('f-categoria').value;
+      const data = document.getElementById('f-data').value;
+      if (!descricao || !valor || !categoria || !data) return alert('Preencha todos os campos.');
+      await fetch('/api/pessoal/lancamentos', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ descricao, valor, tipo, categoria, data })
+      });
+      document.getElementById('f-descricao').value = '';
+      document.getElementById('f-valor').value = '';
+      await carregarMes();
+    }
+
+    async function excluirLancamento(id) {
+      if (!confirm('Excluir este lançamento?')) return;
+      const mes = String(mesAtual + 1).padStart(2, '0');
+      await fetch(`/api/pessoal/lancamentos/${id}?ano=${anoAtual}&mes=${mes}`, { method: 'DELETE' });
+      await carregarMes();
+    }
+
+    // ── Modal Config ──────────────────────────────────────────────
+
+    function abrirModalConfig() {
+      document.getElementById('modal-config').classList.remove('hidden');
+      renderizarCategorias();
+      renderizarRecorrentes();
+    }
+
+    function fecharModalConfig() {
+      document.getElementById('modal-config').classList.add('hidden');
+      carregarMes();
+    }
+
+    function renderizarCategorias() {
+      const lista = document.getElementById('cat-lista');
+      lista.innerHTML = (dadosCarregados.categorias || []).map(c => `
+        <span class="tag">${esc(c)}<button class="tag-del" onclick="removerCategoria('${esc(c)}')" title="Remover">✕</button></span>
+      `).join('');
+    }
+
+    async function adicionarCategoria() {
+      const nome = document.getElementById('cat-nova').value.trim();
+      if (!nome) return;
+      const r = await fetch('/api/pessoal/categorias', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nome, acao: 'add' })
+      });
+      const j = await r.json();
+      dadosCarregados.categorias = j.categorias;
+      document.getElementById('cat-nova').value = '';
+      renderizarCategorias();
+      popularSelectCategorias();
+    }
+
+    async function removerCategoria(nome) {
+      if (!confirm(`Remover categoria "${nome}"?`)) return;
+      const r = await fetch('/api/pessoal/categorias', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nome, acao: 'remove' })
+      });
+      const j = await r.json();
+      dadosCarregados.categorias = j.categorias;
+      renderizarCategorias();
+      popularSelectCategorias();
+    }
+
+    function renderizarRecorrentes() {
+      const lista = document.getElementById('rec-lista');
+      const recs = dadosCarregados.recorrentes || [];
+      if (!recs.length) {
+        lista.innerHTML = '<div style="color:#94a3b8;font-size:13px;padding:4px 0">Nenhum recorrente cadastrado</div>';
+        return;
+      }
+      lista.innerHTML = recs.map(r => `
+        <div class="rec-item">
+          <div class="rec-item-info">
+            <div class="rec-item-desc">${esc(r.descricao)}</div>
+            <div class="rec-item-meta">${r.tipo === 'entrada' ? '+ Entrada' : '− Saída'} · ${esc(r.categoria)} · dia ${r.dia} · ${fmt(r.valor)}</div>
+          </div>
+          <button class="btn-del" onclick="excluirRecorrente('${r.id}')" title="Excluir">✕</button>
+        </div>
+      `).join('');
+    }
+
+    async function adicionarRecorrente() {
+      const descricao = document.getElementById('rec-desc').value.trim();
+      const valor = parseFloat(document.getElementById('rec-valor').value);
+      const tipo = document.getElementById('rec-tipo').value;
+      const categoria = document.getElementById('rec-cat').value;
+      const dia = parseInt(document.getElementById('rec-dia').value);
+      if (!descricao || !valor || !categoria || !dia || dia < 1 || dia > 28) return alert('Preencha todos os campos. O dia deve ser entre 1 e 28.');
+      const r = await fetch('/api/pessoal/recorrentes', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ descricao, valor, tipo, categoria, dia })
+      });
+      const j = await r.json();
+      dadosCarregados.recorrentes = [...(dadosCarregados.recorrentes || []), j.item];
+      document.getElementById('rec-desc').value = '';
+      document.getElementById('rec-valor').value = '';
+      document.getElementById('rec-dia').value = '';
+      renderizarRecorrentes();
+    }
+
+    async function excluirRecorrente(id) {
+      if (!confirm('Excluir este recorrente?')) return;
+      await fetch(`/api/pessoal/recorrentes/${id}`, { method: 'DELETE' });
+      dadosCarregados.recorrentes = dadosCarregados.recorrentes.filter(r => r.id !== id);
+      renderizarRecorrentes();
+    }
+
+    // ── DRE Anual ─────────────────────────────────────────────────
+
+    async function carregarDRE() {
+      const ano = document.getElementById('dre-ano').value;
+      if (!ano) return;
+      const r = await fetch(`/api/pessoal/dre?ano=${ano}`);
+      const j = await r.json();
+      renderizarDRE(j);
+    }
+
+    function renderizarDRE(j) {
+      const meses = j.meses;
+      const tbody = document.getElementById('dre-tbody');
+
+      // Coleta todas as categorias de entrada e saída presentes no ano
+      const catsEntrada = new Set();
+      const catsSaida = new Set();
+      meses.forEach(m => {
+        Object.keys(m.porCategoriaEntrada).forEach(c => catsEntrada.add(c));
+        Object.keys(m.porCategoriaSaida).forEach(c => catsSaida.add(c));
+      });
+
+      const rows = [];
+
+      // Receitas
+      rows.push({ type: 'section', label: 'RECEITAS' });
+      [...catsEntrada].forEach(cat => {
+        const vals = meses.map(m => m.porCategoriaEntrada[cat] || 0);
+        const total = vals.reduce((s, v) => s + v, 0);
+        rows.push({ type: 'cat', label: cat, vals, total, cls: 'pos' });
+      });
+      const totaisEntrada = meses.map(m => m.totalEntradas);
+      rows.push({ type: 'total', label: 'Total Receitas', vals: totaisEntrada, total: totaisEntrada.reduce((s, v) => s + v, 0), cls: 'pos' });
+
+      // Despesas
+      rows.push({ type: 'section', label: 'DESPESAS' });
+      [...catsSaida].forEach(cat => {
+        const vals = meses.map(m => m.porCategoriaSaida[cat] || 0);
+        const total = vals.reduce((s, v) => s + v, 0);
+        rows.push({ type: 'cat', label: cat, vals, total, cls: 'neg' });
+      });
+      const totaisSaida = meses.map(m => m.totalSaidas);
+      rows.push({ type: 'total', label: 'Total Despesas', vals: totaisSaida, total: totaisSaida.reduce((s, v) => s + v, 0), cls: 'neg' });
+
+      // Resultado
+      const resultados = meses.map(m => m.resultado);
+      rows.push({ type: 'resultado', label: 'Resultado', vals: resultados, total: resultados.reduce((s, v) => s + v, 0) });
+
+      tbody.innerHTML = rows.map(row => {
+        if (row.type === 'section') {
+          return `<tr class="dre-section-header"><td colspan="14">${row.label}</td></tr>`;
+        }
+        const cls = row.type === 'resultado'
+          ? (row.total >= 0 ? 'pos' : 'neg')
+          : row.cls;
+        const trCls = row.type === 'total' ? 'dre-total-row' : row.type === 'resultado' ? 'dre-resultado-row' : '';
+        const cells = row.vals.map(v => `<td class="${v === 0 && row.type === 'cat' ? 'neu' : cls}">${v !== 0 ? fmt(v) : '—'}</td>`).join('');
+        return `<tr class="${trCls}"><td>${row.label}</td>${cells}<td class="${cls}">${fmt(row.total)}</td></tr>`;
+      }).join('');
+    }
+
+    // ── Init ──────────────────────────────────────────────────────
+
+    function init() {
+      const hoje = new Date();
+      anoAtual = hoje.getFullYear();
+      mesAtual = hoje.getMonth();
+      document.getElementById('dre-ano').value = anoAtual;
+      // Data default do form = hoje
+      document.getElementById('f-data').valueAsDate = hoje;
+      carregarMes();
+    }
+
+    init();
+  </script>
+</body>
+</html>

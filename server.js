@@ -156,6 +156,10 @@ function loadData() {
   for (const [senha, u] of Object.entries(raw.usuarios)) {
     if (!u.painel) u.painel = 'painel2';
   }
+  raw.pessoal = raw.pessoal || {};
+  raw.pessoal.categorias  = raw.pessoal.categorias  || ['Moradia','Alimentação','Saúde','Transporte','Lazer','Educação','Salário','Freelance','Investimento','Outros'];
+  raw.pessoal.recorrentes = raw.pessoal.recorrentes || [];
+  raw.pessoal.lancamentos = raw.pessoal.lancamentos || {};
   return raw;
 }
 
@@ -6192,4 +6196,143 @@ app.post('/api/fornecedor/config-mlbs', (req, res) => {
   data.handdry_dashboard_cache = null;
   saveData(data);
   res.json({ ok: true, mlbs: mlbs.filter(Boolean) });
+});
+
+// ── DRE Pessoal ───────────────────────────────────────────────
+
+function injetarRecorrentesPessoal(pessoal, chave) {
+  const [ano, mesNum] = chave.split('-');
+  const lista = pessoal.lancamentos[chave] || [];
+  const jaInjetados = new Set(lista.filter(l => l.recorrente_id).map(l => l.recorrente_id));
+  let houve = false;
+  for (const r of pessoal.recorrentes) {
+    if (jaInjetados.has(r.id)) continue;
+    const dia = String(Math.min(r.dia, 28)).padStart(2, '0');
+    lista.push({
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      descricao: r.descricao,
+      valor: r.valor,
+      tipo: r.tipo,
+      categoria: r.categoria,
+      data: `${ano}-${mesNum}-${dia}`,
+      recorrente_id: r.id,
+      criado_em: new Date().toISOString()
+    });
+    houve = true;
+  }
+  pessoal.lancamentos[chave] = lista;
+  return houve;
+}
+
+app.get('/api/pessoal/dados', (req, res) => {
+  const { ano, mes } = req.query;
+  if (!ano || !mes) return res.status(400).json({ error: 'ano e mes obrigatórios' });
+  const data = loadData();
+  const pessoal = data.pessoal;
+  const chave = `${ano}-${mes}`;
+  const houve = injetarRecorrentesPessoal(pessoal, chave);
+  if (houve) saveData(data);
+  const lancamentos = (pessoal.lancamentos[chave] || []).sort((a, b) => a.data.localeCompare(b.data));
+  res.json({ categorias: pessoal.categorias, recorrentes: pessoal.recorrentes, lancamentos });
+});
+
+app.post('/api/pessoal/categorias', (req, res) => {
+  const { nome, acao } = req.body || {};
+  if (!nome || !acao) return res.status(400).json({ error: 'nome e acao obrigatórios' });
+  const data = loadData();
+  const pessoal = data.pessoal;
+  if (acao === 'add') {
+    if (!pessoal.categorias.includes(nome)) pessoal.categorias.push(nome);
+  } else if (acao === 'remove') {
+    pessoal.categorias = pessoal.categorias.filter(c => c !== nome);
+  }
+  saveData(data);
+  res.json({ categorias: pessoal.categorias });
+});
+
+app.post('/api/pessoal/recorrentes', (req, res) => {
+  const { descricao, valor, tipo, categoria, dia } = req.body || {};
+  if (!descricao || !valor || !tipo || !categoria || !dia) return res.status(400).json({ error: 'descricao, valor, tipo, categoria e dia são obrigatórios' });
+  const data = loadData();
+  const pessoal = data.pessoal;
+  const item = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), descricao, valor: Number(valor), tipo, categoria, dia: Number(dia) };
+  pessoal.recorrentes.push(item);
+  saveData(data);
+  res.json({ ok: true, item });
+});
+
+app.delete('/api/pessoal/recorrentes/:id', (req, res) => {
+  const data = loadData();
+  const pessoal = data.pessoal;
+  pessoal.recorrentes = pessoal.recorrentes.filter(r => r.id !== req.params.id);
+  saveData(data);
+  res.json({ ok: true });
+});
+
+app.post('/api/pessoal/lancamentos', (req, res) => {
+  const { descricao, valor, tipo, categoria, data: dataLanc } = req.body || {};
+  if (!descricao || !valor || !tipo || !categoria || !dataLanc) return res.status(400).json({ error: 'descricao, valor, tipo, categoria e data são obrigatórios' });
+  const data = loadData();
+  const pessoal = data.pessoal;
+  const chave = dataLanc.slice(0, 7);
+  pessoal.lancamentos[chave] = pessoal.lancamentos[chave] || [];
+  const item = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), descricao, valor: Number(valor), tipo, categoria, data: dataLanc, recorrente_id: null, criado_em: new Date().toISOString() };
+  pessoal.lancamentos[chave].push(item);
+  saveData(data);
+  res.json({ ok: true, item });
+});
+
+app.put('/api/pessoal/lancamentos/:id', (req, res) => {
+  const { ano, mes } = req.query;
+  if (!ano || !mes) return res.status(400).json({ error: 'ano e mes obrigatórios' });
+  const chave = `${ano}-${mes}`;
+  const { descricao, valor, tipo, categoria, data: dataLanc } = req.body || {};
+  const data = loadData();
+  const pessoal = data.pessoal;
+  const lista = pessoal.lancamentos[chave] || [];
+  const idx = lista.findIndex(l => l.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Lançamento não encontrado' });
+  if (descricao !== undefined) lista[idx].descricao = descricao;
+  if (valor !== undefined) lista[idx].valor = Number(valor);
+  if (tipo !== undefined) lista[idx].tipo = tipo;
+  if (categoria !== undefined) lista[idx].categoria = categoria;
+  if (dataLanc !== undefined) lista[idx].data = dataLanc;
+  saveData(data);
+  res.json({ ok: true, item: lista[idx] });
+});
+
+app.delete('/api/pessoal/lancamentos/:id', (req, res) => {
+  const { ano, mes } = req.query;
+  if (!ano || !mes) return res.status(400).json({ error: 'ano e mes obrigatórios' });
+  const chave = `${ano}-${mes}`;
+  const data = loadData();
+  const pessoal = data.pessoal;
+  const antes = (pessoal.lancamentos[chave] || []).length;
+  pessoal.lancamentos[chave] = (pessoal.lancamentos[chave] || []).filter(l => l.id !== req.params.id);
+  if (pessoal.lancamentos[chave].length === antes) return res.status(404).json({ error: 'Lançamento não encontrado' });
+  saveData(data);
+  res.json({ ok: true });
+});
+
+app.get('/api/pessoal/dre', (req, res) => {
+  const { ano } = req.query;
+  if (!ano) return res.status(400).json({ error: 'ano obrigatório' });
+  const data = loadData();
+  const pessoal = data.pessoal;
+  const meses = [];
+  for (let m = 1; m <= 12; m++) {
+    const mesStr = String(m).padStart(2, '0');
+    const chave = `${ano}-${mesStr}`;
+    const lista = pessoal.lancamentos[chave] || [];
+    const entradas = lista.filter(l => l.tipo === 'entrada');
+    const saidas = lista.filter(l => l.tipo === 'saida');
+    const totalEntradas = entradas.reduce((s, l) => s + l.valor, 0);
+    const totalSaidas = saidas.reduce((s, l) => s + l.valor, 0);
+    const porCategoriaEntrada = {};
+    for (const l of entradas) porCategoriaEntrada[l.categoria] = (porCategoriaEntrada[l.categoria] || 0) + l.valor;
+    const porCategoriaSaida = {};
+    for (const l of saidas) porCategoriaSaida[l.categoria] = (porCategoriaSaida[l.categoria] || 0) + l.valor;
+    meses.push({ mes: m, mesStr, totalEntradas, totalSaidas, resultado: totalEntradas - totalSaidas, porCategoriaEntrada, porCategoriaSaida });
+  }
+  res.json({ ano, meses });
 });
