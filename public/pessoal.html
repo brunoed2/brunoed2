@@ -356,16 +356,20 @@
 
     async function salvarLancamento() {
       const descricao = document.getElementById('f-descricao').value.trim();
-      const valor = parseFloat(document.getElementById('f-valor').value);
+      const valorRaw = document.getElementById('f-valor').value;
+      const valor = valorRaw ? parseFloat(valorRaw) : null;
       const tipo = document.getElementById('f-tipo').value;
       const categoria = document.getElementById('f-categoria').value;
       const data = document.getElementById('f-data').value;
       const recorrente = document.getElementById('f-recorrente').checked;
-      if (!descricao || !valor || !categoria || !data) return alert('Preencha todos os campos.');
-      await fetch('/api/pessoal/lancamentos', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ descricao, valor, tipo, categoria, data })
-      });
+      if (!descricao || !categoria || !data) return alert('Preencha descrição, categoria e data.');
+      if (!valor && !recorrente) return alert('Preencha o valor.');
+      if (valor) {
+        await fetch('/api/pessoal/lancamentos', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ descricao, valor, tipo, categoria, data })
+        });
+      }
       if (recorrente) {
         const dia = parseInt(data.split('-')[2]);
         await fetch('/api/pessoal/recorrentes', {
