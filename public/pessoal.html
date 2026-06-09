@@ -68,6 +68,18 @@
     .td-rec { font-size: 11px; color: #94a3b8; }
     .btn-del { background: none; border: none; color: #94a3b8; cursor: pointer; padding: 4px 6px; border-radius: 4px; font-size: 15px; }
     .btn-del:hover { color: #dc2626; background: #fee2e2; }
+    .btn-edit { background: none; border: none; color: #94a3b8; cursor: pointer; padding: 4px 6px; border-radius: 4px; font-size: 14px; }
+    .btn-edit:hover { color: #2563eb; background: #eff6ff; }
+    .btn-pago { background: none; border: 2px solid #e2e8f0; color: #94a3b8; cursor: pointer; padding: 2px 8px; border-radius: 20px; font-size: 12px; font-weight: 600; transition: all .15s; white-space: nowrap; }
+    .btn-pago:hover { border-color: #16a34a; color: #16a34a; }
+    .btn-pago.pago { background: #dcfce7; border-color: #16a34a; color: #16a34a; }
+    tr.pago td { opacity: .55; }
+    tr.pago .td-descricao { text-decoration: line-through; }
+    /* Modal editar */
+    .edit-field { display: flex; flex-direction: column; gap: 4px; }
+    .edit-field label { font-size: 12px; color: #64748b; font-weight: 500; }
+    .edit-field input, .edit-field select { padding: 9px 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px; font-family: inherit; }
+    .edit-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
     .empty-row td { text-align: center; color: #94a3b8; padding: 32px; font-size: 14px; }
 
     /* Botões */
@@ -190,6 +202,7 @@
               <th>Categoria</th>
               <th>Tipo</th>
               <th style="text-align:right">Valor</th>
+              <th style="text-align:center">Pago</th>
               <th></th>
             </tr>
           </thead>
@@ -262,6 +275,55 @@
     </div>
   </div>
 
+  <!-- Modal Editar Lançamento -->
+  <div class="modal-overlay hidden" id="modal-editar">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>✎ Editar Lançamento</h2>
+        <button class="modal-close" onclick="fecharModalEditar()">✕</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="edit-id">
+        <input type="hidden" id="edit-recorrente-id">
+        <div style="display:flex;flex-direction:column;gap:14px">
+          <div class="edit-field">
+            <label>Descrição</label>
+            <input id="edit-descricao" maxlength="100" style="width:100%">
+          </div>
+          <div class="edit-grid">
+            <div class="edit-field">
+              <label>Valor (R$)</label>
+              <input id="edit-valor" type="number" step="0.01" min="0">
+            </div>
+            <div class="edit-field">
+              <label>Data</label>
+              <input id="edit-data" type="date">
+            </div>
+            <div class="edit-field">
+              <label>Tipo</label>
+              <select id="edit-tipo">
+                <option value="entrada">+ Entrada</option>
+                <option value="saida">− Saída</option>
+              </select>
+            </div>
+            <div class="edit-field">
+              <label>Categoria</label>
+              <select id="edit-categoria"><option value="">Categoria...</option></select>
+            </div>
+          </div>
+          <div id="edit-rec-aviso" style="display:none;font-size:13px;color:#64748b;background:#f8fafc;border-radius:8px;padding:10px 12px">
+            ↻ Este lançamento é recorrente. Atualizar a data também ajusta o dia nos próximos meses.
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" onclick="fecharModalEditar()">Cancelar</button>
+        <button class="btn-primary" onclick="salvarEdicao()">Salvar</button>
+      </div>
+    </div>
+  </div>
+
+
   <script>
     const MESES_NOMES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
     let anoAtual, mesAtual, dadosCarregados = { categorias: [], recorrentes: [], lancamentos: [] };
@@ -328,14 +390,23 @@
         const valorCell = semValor
           ? `<button onclick="editarValor('${l.id}')" style="background:none;border:1px dashed #f59e0b;color:#f59e0b;border-radius:6px;padding:3px 10px;font-size:12px;cursor:pointer">Preencher →</button>`
           : `<span class="${l.tipo === 'entrada' ? 'td-valor-pos' : 'td-valor-neg'}">${fmt(l.valor)}</span>`;
+        const pago = !!l.pago;
         return `
-        <tr>
+        <tr class="${pago ? 'pago' : ''}">
           <td>${fmtData(l.data)}</td>
-          <td>${esc(l.descricao)}${l.recorrente_id ? '<br><span class="td-rec">↻ recorrente</span>' : ''}</td>
+          <td class="td-descricao">${esc(l.descricao)}${l.recorrente_id ? '<br><span class="td-rec">↻ recorrente</span>' : ''}</td>
           <td class="td-cat">${esc(l.categoria)}</td>
           <td><span class="td-tipo-badge ${l.tipo}">${l.tipo === 'entrada' ? '+ Entrada' : '− Saída'}</span></td>
           <td style="text-align:right">${valorCell}</td>
-          <td><button class="btn-del" onclick="excluirLancamento('${l.id}')" title="Excluir">✕</button></td>
+          <td style="text-align:center">
+            <button class="btn-pago ${pago ? 'pago' : ''}" onclick="togglePago('${l.id}', ${pago})" title="${pago ? 'Marcar como pendente' : 'Marcar como pago'}">
+              ${pago ? '✓ Pago' : '○ Pend.'}
+            </button>
+          </td>
+          <td style="white-space:nowrap">
+            <button class="btn-edit" onclick="abrirModalEditar('${l.id}')" title="Editar">✎</button>
+            <button class="btn-del" onclick="excluirLancamento('${l.id}')" title="Excluir">✕</button>
+          </td>
         </tr>`;
       }).join('');
     }
@@ -387,6 +458,61 @@
       if (!confirm('Excluir este lançamento?')) return;
       const mes = String(mesAtual + 1).padStart(2, '0');
       await fetch(`/api/pessoal/lancamentos/${id}?ano=${anoAtual}&mes=${mes}`, { method: 'DELETE' });
+      await carregarMes();
+    }
+
+    async function togglePago(id, pagoAtual) {
+      const mes = String(mesAtual + 1).padStart(2, '0');
+      await fetch(`/api/pessoal/lancamentos/${id}?ano=${anoAtual}&mes=${mes}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pago: !pagoAtual })
+      });
+      await carregarMes();
+    }
+
+    function abrirModalEditar(id) {
+      const l = (dadosCarregados.lancamentos || []).find(x => x.id === id);
+      if (!l) return;
+      document.getElementById('edit-id').value = id;
+      document.getElementById('edit-recorrente-id').value = l.recorrente_id || '';
+      document.getElementById('edit-descricao').value = l.descricao || '';
+      document.getElementById('edit-valor').value = l.valor || '';
+      document.getElementById('edit-data').value = l.data || '';
+      document.getElementById('edit-tipo').value = l.tipo || 'saida';
+      const cats = dadosCarregados.categorias || [];
+      const catSel = document.getElementById('edit-categoria');
+      catSel.innerHTML = '<option value="">Categoria...</option>' + cats.map(c => `<option value="${esc(c)}"${c === l.categoria ? ' selected' : ''}>${esc(c)}</option>`).join('');
+      document.getElementById('edit-rec-aviso').style.display = l.recorrente_id ? '' : 'none';
+      document.getElementById('modal-editar').classList.remove('hidden');
+    }
+
+    function fecharModalEditar() {
+      document.getElementById('modal-editar').classList.add('hidden');
+    }
+
+    async function salvarEdicao() {
+      const id = document.getElementById('edit-id').value;
+      const recorrenteId = document.getElementById('edit-recorrente-id').value;
+      const descricao = document.getElementById('edit-descricao').value.trim();
+      const valorRaw = document.getElementById('edit-valor').value;
+      const valor = valorRaw ? parseFloat(valorRaw) : null;
+      const data = document.getElementById('edit-data').value;
+      const tipo = document.getElementById('edit-tipo').value;
+      const categoria = document.getElementById('edit-categoria').value;
+      if (!descricao || !data || !categoria) return alert('Preencha descrição, data e categoria.');
+      const mes = String(mesAtual + 1).padStart(2, '0');
+      await fetch(`/api/pessoal/lancamentos/${id}?ano=${anoAtual}&mes=${mes}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ descricao, valor, data, tipo, categoria })
+      });
+      if (recorrenteId && data) {
+        const dia = parseInt(data.split('-')[2]);
+        await fetch(`/api/pessoal/recorrentes/${recorrenteId}`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ dia })
+        });
+      }
+      fecharModalEditar();
       await carregarMes();
     }
 
