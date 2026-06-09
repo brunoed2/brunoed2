@@ -6252,7 +6252,7 @@ app.post('/api/pessoal/categorias', (req, res) => {
 
 app.post('/api/pessoal/recorrentes', (req, res) => {
   const { descricao, valor, tipo, categoria, dia } = req.body || {};
-  if (!descricao || !tipo || !categoria || !dia) return res.status(400).json({ error: 'descricao, tipo, categoria e dia são obrigatórios' });
+  if (!descricao || !tipo || !dia) return res.status(400).json({ error: 'descricao, tipo e dia são obrigatórios' });
   const data = loadData();
   const pessoal = data.pessoal;
   const item = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), descricao, valor: valor ? Number(valor) : null, tipo, categoria, dia: Number(dia) };
@@ -6283,7 +6283,7 @@ app.delete('/api/pessoal/recorrentes/:id', (req, res) => {
 
 app.post('/api/pessoal/lancamentos', (req, res) => {
   const { descricao, valor, tipo, categoria, data: dataLanc } = req.body || {};
-  if (!descricao || !valor || !tipo || !categoria || !dataLanc) return res.status(400).json({ error: 'descricao, valor, tipo, categoria e data são obrigatórios' });
+  if (!descricao || !tipo || !dataLanc) return res.status(400).json({ error: 'descricao, tipo e data são obrigatórios' });
   const data = loadData();
   const pessoal = data.pessoal;
   const chave = dataLanc.slice(0, 7);
