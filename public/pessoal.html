@@ -170,6 +170,9 @@
           </select>
           <select id="f-categoria"><option value="">Categoria...</option></select>
           <input name="data" id="f-data" type="date">
+          <label style="display:flex;align-items:center;gap:6px;white-space:nowrap;font-size:13px;color:#64748b;cursor:pointer;flex-shrink:0">
+            <input type="checkbox" id="f-recorrente" style="width:15px;height:15px;accent-color:#2563eb;cursor:pointer"> 🔁 Recorrente
+          </label>
           <button class="btn-primary" onclick="salvarLancamento()">Adicionar</button>
         </div>
       </div>
@@ -357,13 +360,22 @@
       const tipo = document.getElementById('f-tipo').value;
       const categoria = document.getElementById('f-categoria').value;
       const data = document.getElementById('f-data').value;
+      const recorrente = document.getElementById('f-recorrente').checked;
       if (!descricao || !valor || !categoria || !data) return alert('Preencha todos os campos.');
       await fetch('/api/pessoal/lancamentos', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ descricao, valor, tipo, categoria, data })
       });
+      if (recorrente) {
+        const dia = parseInt(data.split('-')[2]);
+        await fetch('/api/pessoal/recorrentes', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ descricao, valor, tipo, categoria, dia })
+        });
+      }
       document.getElementById('f-descricao').value = '';
       document.getElementById('f-valor').value = '';
+      document.getElementById('f-recorrente').checked = false;
       await carregarMes();
     }
 
