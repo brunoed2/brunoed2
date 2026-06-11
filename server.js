@@ -1406,12 +1406,17 @@ async function fetchBlingPedidosPendentes(conta) {
   if (mlTokens.length > 0) {
     const mlOrders = await Promise.all(
       itensDetalhados.map(async p => {
-        if (!p.numeroLoja || p.isShopee) return null;
+        if (p.isShopee) return null;
+        if (!p.numeroLoja) {
+          addLog(`[bling-etq] pedido ${p.id} sem numeroLoja — pulado`, 'warn');
+          return null;
+        }
         for (const tok of mlTokens) {
           const res = await axios.get(`https://api.mercadolibre.com/orders/${p.numeroLoja}`, {
             headers: { Authorization: `Bearer ${tok}` }, timeout: 6000,
-          }).catch(() => null);
+          }).catch(e => { addLog(`[bling-etq] pedido ${p.id} erro ML orders: ${e.response?.status} ${e.message}`, 'warn'); return null; });
           if (res?.data?.shipping?.id) return { blingId: p.id, shippingId: res.data.shipping.id, tok };
+          if (res) addLog(`[bling-etq] pedido ${p.id} sem shipping.id na resposta ML`, 'warn');
         }
         return null;
       })
@@ -1421,14 +1426,15 @@ async function fetchBlingPedidosPendentes(conta) {
       shippingEntries.map(o =>
         axios.get(`https://api.mercadolibre.com/shipments/${o.shippingId}`, {
           headers: { Authorization: `Bearer ${o.tok}` }, timeout: 6000,
-        }).then(r => ({ blingId: o.blingId, status: r.data?.status, substatus: r.data?.substatus })).catch(() => null)
+        }).then(r => ({ blingId: o.blingId, status: r.data?.status, substatus: r.data?.substatus }))
+          .catch(e => { addLog(`[bling-etq] pedido ${o.blingId} erro shipment: ${e.response?.status} ${e.message}`, 'warn'); return null; })
       )
     );
     shipments.filter(Boolean).forEach(s => {
-      addLog(`[bling] conta ${conta} shipment ${s.blingId}: ${s.status}/${s.substatus}`, 'info');
+      addLog(`[bling-etq] pedido ${s.blingId}: status=${s.status} substatus=${s.substatus}`, 'info');
       if (s?.status === 'ready_to_ship' && s?.substatus === 'invoice_pending') idsComEtiqueta.add(s.blingId);
     });
-    addLog(`[bling] conta ${conta}: ${idsComEtiqueta.size}/${itens.length} com etiqueta`, 'info');
+    addLog(`[bling-etq] conta ${conta}: ${idsComEtiqueta.size}/${itens.length} com etiqueta`, 'info');
   }
 
   blingPedidosCache[conta] = { count: idsComEtiqueta.size, ts: Date.now() };
