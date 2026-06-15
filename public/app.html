@@ -507,6 +507,38 @@
             <tbody id="tabela-vendas-body"></tbody>
           </table>
         </div>
+
+        <!-- ── Pedidos Futuros ── -->
+        <div class="tabela-container" style="margin-top:24px">
+          <div class="tabela-topo" style="cursor:pointer;user-select:none" onclick="togglePedidosFuturos()">
+            <span id="futuros-titulo" style="font-weight:600;color:var(--text-primary)">Pedidos Futuros</span>
+            <div style="display:flex;gap:8px;align-items:center">
+              <span id="futuros-total" style="color:var(--text-secondary);font-size:0.85rem"></span>
+              <button class="btn-secondary" id="btn-atualizar-futuros" onclick="event.stopPropagation();carregarFuturos()" style="display:none">↻ Atualizar</button>
+              <span id="futuros-chevron" style="font-size:1.1rem;transition:transform 0.2s">▶</span>
+            </div>
+          </div>
+
+          <div id="futuros-conteudo" style="display:none">
+            <div id="futuros-erro" class="estoque-erro" style="display:none"></div>
+            <div id="futuros-loading" class="loading" style="display:none">Carregando pedidos futuros...</div>
+
+            <table class="tabela" id="tabela-futuros" style="display:none">
+              <thead>
+                <tr>
+                  <th></th>
+                  <th>Pedido</th>
+                  <th>Comprador</th>
+                  <th class="col-num">Qtd</th>
+                  <th>SKU</th>
+                  <th>Itens</th>
+                  <th>Libera em</th>
+                </tr>
+              </thead>
+              <tbody id="tabela-futuros-body"></tbody>
+            </table>
+          </div>
+        </div>
       </section>
 
       <!-- ── Aba: Histórico ── -->
@@ -1313,6 +1345,6 @@
     </div>
   </div>
 
-  <div id="version-badge">v557</div>
+  <div id="version-badge">v558</div>
 </body>
 </html>
