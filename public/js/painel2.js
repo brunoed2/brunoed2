@@ -912,8 +912,9 @@ async function carregarFuturos() {
       const item0  = itens[0] || {};
       const multi  = itens.length > 1;
       const dataLib = p.dataLiberacao ? new Date(p.dataLiberacao) : null;
-      const dataStr = dataLib
-        ? dataLib.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+      // Usa a data UTC para evitar que meia-noite UTC vire dia anterior em BRT
+      const dataStr = p.dataLiberacao
+        ? p.dataLiberacao.slice(0, 10).split('-').reverse().join('/')
         : '—';
       const liberaHoje = dataLib && dataLib <= hoje;
 
