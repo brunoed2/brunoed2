@@ -2632,12 +2632,12 @@ app.get('/api/ml/pedidos-futuros', async (req, res) => {
 
     const pedidos = [];
     for (const { order, shipment } of filtradas) {
+      const bufferingDate = shipment.shipping_option?.buffering?.date;
       const scheduleLimit = shipment.shipping_option?.estimated_schedule_limit?.date;
-      const handlingHoras = shipment.shipping_option?.estimated_delivery_time?.handling ?? 24;
-      const criado        = new Date(shipment.date_created);
-      const dataLiberacao = scheduleLimit
-        ? new Date(scheduleLimit).toISOString()
-        : new Date(criado.getTime() + handlingHoras * 3_600_000).toISOString();
+      const payBefore     = shipment.shipping_option?.estimated_delivery_time?.pay_before;
+      const dataLiberacao = (bufferingDate || scheduleLimit || payBefore)
+        ? new Date(bufferingDate || scheduleLimit || payBefore).toISOString()
+        : new Date(shipment.date_created).toISOString();
 
       const itensLista = [];
       for (const i of (order.order_items || [])) {
