@@ -2530,7 +2530,8 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
 });
 
 app.get('/api/ml/pedidos-futuros', async (req, res) => {
-  const data = loadData();
+  const data    = loadData();
+  const rawMode = req.query.raw === '1';
   const num  = req.query.conta || data.conta_ativa;
   const c    = contaAtiva(data, num);
   if (!c.access_token) return res.json({ error: 'Não conectado' });
@@ -2593,6 +2594,11 @@ app.get('/api/ml/pedidos-futuros', async (req, res) => {
     }
 
     const filtradas = resultado.filter(({ shipment }) => shipment && !isFull(shipment));
+
+    // Modo debug: retorna o shipment bruto do primeiro pedido
+    if (rawMode && filtradas.length > 0) {
+      return res.json({ debug_order: filtradas[0].order, debug_shipment: filtradas[0].shipment });
+    }
 
     // Coleta MLBs únicos para buscar thumbnail e SKU
     const todosMLBs = [...new Set(
