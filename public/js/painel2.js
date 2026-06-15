@@ -858,6 +858,117 @@ async function carregarVendas() {
   }
 }
 
+// ── Pedidos Futuros ──────────────────────────────────────────
+let pedidosFuturosAberto    = false;
+let pedidosFuturosCarregado = false;
+
+function togglePedidosFuturos() {
+  pedidosFuturosAberto = !pedidosFuturosAberto;
+  const conteudo  = document.getElementById('futuros-conteudo');
+  const chevron   = document.getElementById('futuros-chevron');
+  const btnAtu    = document.getElementById('btn-atualizar-futuros');
+  conteudo.style.display  = pedidosFuturosAberto ? 'block' : 'none';
+  chevron.style.transform = pedidosFuturosAberto ? 'rotate(90deg)' : '';
+  btnAtu.style.display    = pedidosFuturosAberto ? '' : 'none';
+  if (pedidosFuturosAberto && !pedidosFuturosCarregado) carregarFuturos();
+}
+
+async function carregarFuturos() {
+  const gen     = contaGen;
+  const loading = document.getElementById('futuros-loading');
+  const erroEl  = document.getElementById('futuros-erro');
+  const totalEl = document.getElementById('futuros-total');
+  const tabela  = document.getElementById('tabela-futuros');
+  const tbody   = document.getElementById('tabela-futuros-body');
+
+  loading.style.display = 'block';
+  erroEl.style.display  = 'none';
+  tabela.style.display  = 'none';
+  totalEl.textContent   = '';
+  tbody.innerHTML       = '';
+
+  try {
+    const data = await apiFetch(`/api/ml/pedidos-futuros?conta=${window.CONTA_ATIVA}`);
+    if (contaGen !== gen) return;
+    loading.style.display = 'none';
+
+    if (data.error) {
+      erroEl.textContent   = data.error;
+      erroEl.style.display = 'block';
+      return;
+    }
+
+    const pedidos = data.pedidos || [];
+    pedidosFuturosCarregado = true;
+    totalEl.textContent = `${pedidos.length} pedido${pedidos.length !== 1 ? 's' : ''}`;
+
+    if (!pedidos.length) return;
+
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+
+    pedidos.forEach(p => {
+      const itens  = p.itensLista || [];
+      const item0  = itens[0] || {};
+      const multi  = itens.length > 1;
+      const dataLib = p.dataLiberacao ? new Date(p.dataLiberacao) : null;
+      const dataStr = dataLib
+        ? dataLib.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+        : '—';
+      const liberaHoje = dataLib && dataLib <= hoje;
+
+      const tr = document.createElement('tr');
+      if (multi) tr.classList.add('venda-multi-header');
+      if (liberaHoje) tr.style.background = 'rgba(234,179,8,0.08)';
+
+      const imgHtml0 = item0.thumbnail
+        ? `<a href="${item0.permalink || '#'}" target="_blank" class="venda-thumb-link"><img src="${item0.thumbnail}" class="venda-thumb" loading="lazy"></a>`
+        : `<div class="venda-thumb-vazio"></div>`;
+
+      const badgeData = liberaHoje
+        ? `<span class="badge-deposito badge-outro" style="background:#d97706;color:#fff">${dataStr}</span>`
+        : `<span style="color:var(--text-secondary);font-size:0.85rem">${dataStr}</span>`;
+
+      tr.innerHTML = `
+        <td class="td-thumb">${imgHtml0}</td>
+        <td class="td-order-id">#${p.orderId}</td>
+        <td>${p.comprador}</td>
+        <td class="col-num venda-qtd">${item0.quantidade ?? ''}</td>
+        <td class="td-sku">${item0.sku || '—'}</td>
+        <td class="td-titulo" title="${item0.titulo || ''}${item0.variacao ? ` (${item0.variacao})` : ''}">${item0.titulo || '—'}${item0.variacao ? `<br><span class="venda-variacao">${item0.variacao}</span>` : ''}</td>
+        <td>${badgeData}</td>
+      `;
+      tbody.appendChild(tr);
+
+      for (let i = 1; i < itens.length; i++) {
+        const item   = itens[i];
+        const isLast = i === itens.length - 1;
+        const trSub  = document.createElement('tr');
+        trSub.classList.add('venda-sub-item');
+        if (isLast) trSub.classList.add('venda-sub-last');
+        const imgHtml = item.thumbnail
+          ? `<a href="${item.permalink || '#'}" target="_blank" class="venda-thumb-link"><img src="${item.thumbnail}" class="venda-thumb" loading="lazy"></a>`
+          : `<div class="venda-thumb-vazio"></div>`;
+        trSub.innerHTML = `
+          <td class="td-thumb">${imgHtml}</td>
+          <td colspan="2" class="venda-sub-mais">↳ mesmo pedido</td>
+          <td class="col-num venda-qtd">${item.quantidade ?? ''}</td>
+          <td class="td-sku">${item.sku || '—'}</td>
+          <td class="td-titulo" title="${item.titulo || ''}${item.variacao ? ` (${item.variacao})` : ''}">${item.titulo || '—'}${item.variacao ? `<span class="venda-variacao"> — ${item.variacao}</span>` : ''}</td>
+          <td></td>
+        `;
+        tbody.appendChild(trSub);
+      }
+    });
+
+    tabela.style.display = 'table';
+  } catch {
+    loading.style.display = 'none';
+    erroEl.textContent   = 'Erro ao carregar pedidos futuros.';
+    erroEl.style.display = 'block';
+  }
+}
+
 // ── Flag ──────────────────────────────────────────────────────
 
 async function toggleFlag(shipmentId, btn) {

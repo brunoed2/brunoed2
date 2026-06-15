@@ -2529,6 +2529,148 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
   }
 });
 
+app.get('/api/ml/pedidos-futuros', async (req, res) => {
+  const data = loadData();
+  const num  = req.query.conta || data.conta_ativa;
+  const c    = contaAtiva(data, num);
+  if (!c.access_token) return res.json({ error: 'Não conectado' });
+  if (!c.user_id)      return res.json({ error: 'user_id não encontrado' });
+
+  const isFull = (s) => s && (
+    s.logistic_type === 'fulfillment' ||
+    s.logistic_type === 'fulfillment_reverse' ||
+    (s.logistic_type || '').includes('fulfillment')
+  );
+
+  try {
+    // Pedidos pagos com envio ainda pendente (vendedor não iniciou handling)
+    const todasOrdens = [];
+    let offset = 0;
+    while (todasOrdens.length < 500) {
+      const resp = await axios.get('https://api.mercadolibre.com/orders/search', {
+        params: {
+          seller:            c.user_id,
+          'order.status':    'paid',
+          'shipping.status': 'pending',
+          sort:              'date_asc',
+          offset,
+          limit: 50,
+        },
+        headers: { Authorization: `Bearer ${c.access_token}` },
+        timeout: 15000,
+      });
+      const orders = resp.data.results || [];
+      todasOrdens.push(...orders);
+      if (orders.length < 50) break;
+      offset += 50;
+    }
+
+    // Filtra apenas pedidos com shipment direto (não Full)
+    const comShipment = todasOrdens.filter(o =>
+      o.shipping?.id &&
+      o.shipping.logistic_type !== 'fulfillment' &&
+      o.shipping.mode !== 'fulfillment'
+    );
+
+    // Busca detalhes de shipment em lotes de 10
+    const resultado = [];
+    for (let i = 0; i < comShipment.length; i += 10) {
+      const lote = comShipment.slice(i, i + 10);
+      const detalhes = await Promise.all(
+        lote.map(async (order) => {
+          try {
+            const r = await axios.get(`https://api.mercadolibre.com/shipments/${order.shipping.id}`, {
+              headers: { Authorization: `Bearer ${c.access_token}` },
+              timeout: 8000,
+            });
+            return { order, shipment: r.data };
+          } catch {
+            return { order, shipment: null };
+          }
+        })
+      );
+      resultado.push(...detalhes);
+    }
+
+    const filtradas = resultado.filter(({ shipment }) => shipment && !isFull(shipment));
+
+    // Coleta MLBs únicos para buscar thumbnail e SKU
+    const todosMLBs = [...new Set(
+      filtradas.flatMap(({ order }) => (order.order_items || []).map(i => i.item.id))
+    )];
+
+    const itemMap = {};
+    for (let i = 0; i < todosMLBs.length; i += 20) {
+      const chunk = todosMLBs.slice(i, i + 20);
+      try {
+        const r = await axios.get('https://api.mercadolibre.com/items', {
+          params:  { ids: chunk.join(','), attributes: 'id,thumbnail,permalink,seller_custom_field,pictures,variations,attributes' },
+          headers: { Authorization: `Bearer ${c.access_token}` },
+          timeout: 10000,
+        });
+        for (const entry of r.data) {
+          if (entry.code === 200) {
+            const b   = entry.body;
+            const sku = extrairSku(b);
+            let thumb = b.thumbnail || null;
+            if (thumb) thumb = thumb.replace(/-[A-Z]\.jpg/, '-O.jpg');
+            const varMap = {};
+            for (const v of (b.variations || [])) {
+              varMap[v.id] = (v.attribute_combinations || []).map(a => a.value_name).join(' / ') || `Var. ${v.id}`;
+            }
+            itemMap[b.id] = { thumbnail: thumb, sku: sku !== '—' ? sku : null, permalink: b.permalink || null, variations: varMap };
+          }
+        }
+      } catch {}
+    }
+
+    const pedidos = [];
+    for (const { order, shipment } of filtradas) {
+      const scheduleLimit = shipment.shipping_option?.estimated_schedule_limit?.date;
+      const handlingHoras = shipment.shipping_option?.estimated_delivery_time?.handling ?? 24;
+      const criado        = new Date(shipment.date_created);
+      const dataLiberacao = scheduleLimit
+        ? new Date(scheduleLimit).toISOString()
+        : new Date(criado.getTime() + handlingHoras * 3_600_000).toISOString();
+
+      const itensLista = [];
+      for (const i of (order.order_items || [])) {
+        const extra = itemMap[i.item.id] || {};
+        let variacaoNome = null;
+        if (i.item.variation_attributes?.length > 0) {
+          variacaoNome = i.item.variation_attributes.map(a => a.value_name).join(' / ');
+        } else if (extra.variations && i.item.variation_id) {
+          variacaoNome = extra.variations[i.item.variation_id] || null;
+        }
+        itensLista.push({
+          titulo:     i.item.title,
+          variacao:   variacaoNome,
+          sku:        extra.sku || '—',
+          thumbnail:  extra.thumbnail || null,
+          permalink:  extra.permalink || null,
+          quantidade: i.quantity || 1,
+        });
+      }
+
+      pedidos.push({
+        orderId:       order.id,
+        data:          order.date_created,
+        comprador:     order.buyer?.nickname || order.buyer?.first_name || 'Desconhecido',
+        shipmentId:    shipment.id,
+        conta:         num,
+        dataLiberacao,
+        itensLista,
+      });
+    }
+
+    pedidos.sort((a, b) => a.dataLiberacao.localeCompare(b.dataLiberacao));
+    res.json({ pedidos });
+  } catch (err) {
+    console.error('Erro ao buscar pedidos futuros:', err.response?.data || err.message);
+    res.json({ error: 'Erro ao buscar pedidos futuros.' });
+  }
+});
+
 app.get('/api/vendas/historico', (req, res) => {
   const data = loadData();
   const num  = req.query.conta || data.conta_ativa;
