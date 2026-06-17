@@ -823,15 +823,14 @@ tr.venda-atendida td { opacity: .45; }
 .chip-sku-ativo:hover { background: #1d4ed8; border-color: #1d4ed8; }
 
 .futuros-data-sep td {
-  padding: 20px 8px 6px;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
+  padding: 36px 12px 8px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: #94a3b8;
-  border-top: 1px solid var(--border);
+  color: #2563eb;
 }
-.futuros-data-sep:first-child td { border-top: none; padding-top: 8px; }
+.futuros-data-sep:first-child td { padding-top: 12px; }
 
 /* ── Lucro ───────────────────────────────────────────────────── */
 
