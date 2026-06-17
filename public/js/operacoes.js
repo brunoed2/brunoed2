@@ -373,7 +373,11 @@ async function carregarFuturos() {
       if (!a.dataLiberacao && !b.dataLiberacao) return 0;
       if (!a.dataLiberacao) return 1;
       if (!b.dataLiberacao) return -1;
-      return a.dataLiberacao.localeCompare(b.dataLiberacao);
+      const dataCmp = a.dataLiberacao.localeCompare(b.dataLiberacao);
+      if (dataCmp !== 0) return dataCmp;
+      const skuA = String(a.itensLista?.[0]?.sku || '');
+      const skuB = String(b.itensLista?.[0]?.sku || '');
+      return skuA.localeCompare(skuB, undefined, { numeric: true });
     });
 
     const hoje = new Date();
