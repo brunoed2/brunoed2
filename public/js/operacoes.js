@@ -175,6 +175,7 @@ function aplicarFiltroFuturos() {
   let visiveis = 0;
   for (const tr of tbody.querySelectorAll('tr')) {
     if (tr.classList.contains('venda-sub-item')) continue;
+    if (tr.classList.contains('futuros-data-sep')) continue;
     const skuMatch = !skuFiltroFuturos || (tr.dataset.skus || '').split(' ').includes(skuFiltroFuturos);
     tr.style.display = skuMatch ? '' : 'none';
     let next = tr.nextElementSibling;
@@ -368,8 +369,16 @@ async function carregarFuturos() {
 
     if (!pedidos.length) return;
 
+    pedidos.sort((a, b) => {
+      if (!a.dataLiberacao && !b.dataLiberacao) return 0;
+      if (!a.dataLiberacao) return 1;
+      if (!b.dataLiberacao) return -1;
+      return a.dataLiberacao.localeCompare(b.dataLiberacao);
+    });
+
     const hoje = new Date();
     hoje.setHours(0, 0, 0, 0);
+    let dataGrupoAtual = null;
 
     pedidos.forEach(p => {
       const itens   = p.itensLista || [];
@@ -382,6 +391,18 @@ async function carregarFuturos() {
         : '—';
       const liberaHoje = dataLib && dataLib <= hoje;
 
+      const dataGrupo = p.dataLiberacao ? p.dataLiberacao.slice(0, 10) : '__sem_data__';
+      if (dataGrupo !== dataGrupoAtual) {
+        dataGrupoAtual = dataGrupo;
+        const trSep = document.createElement('tr');
+        trSep.className = 'futuros-data-sep';
+        const labelData = liberaHoje
+          ? `<span style="color:#d97706">${dataStr} — hoje</span>`
+          : dataStr;
+        trSep.innerHTML = `<td colspan="7">${labelData}</td>`;
+        tbody.appendChild(trSep);
+      }
+
       const tr = document.createElement('tr');
       tr.dataset.skus = [...new Set(itens.map(i => i.sku).filter(Boolean))].join(' ');
       if (multi) tr.classList.add('venda-multi-header');
@@ -391,10 +412,6 @@ async function carregarFuturos() {
         ? `<a href="${item0.permalink || '#'}" target="_blank" class="venda-thumb-link"><img src="${item0.thumbnail}" class="venda-thumb" loading="lazy"></a>`
         : `<div class="venda-thumb-vazio"></div>`;
 
-      const badgeData = liberaHoje
-        ? `<span class="badge-deposito badge-outro" style="background:#d97706;color:#fff">${dataStr}</span>`
-        : `<span style="color:var(--text-secondary);font-size:0.85rem">${dataStr}</span>`;
-
       tr.innerHTML = `
         <td class="td-thumb">${imgHtml0}</td>
         <td class="td-order-id">#${p.orderId}</td>
@@ -402,7 +419,7 @@ async function carregarFuturos() {
         <td class="col-num venda-qtd">${item0.quantidade ?? ''}</td>
         <td class="td-sku">${item0.sku || '—'}</td>
         <td class="td-titulo" title="${item0.titulo || ''}${item0.variacao ? ` (${item0.variacao})` : ''}">${item0.titulo || '—'}${item0.variacao ? `<br><span class="venda-variacao">${item0.variacao}</span>` : ''}</td>
-        <td>${badgeData}</td>
+        <td></td>
       `;
       tbody.appendChild(tr);
 
