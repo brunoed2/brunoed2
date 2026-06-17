@@ -129,7 +129,9 @@ function baixarSelecionadas() {
   }
 }
 
-let filtroAtendidos = false;
+let filtroAtendidos  = false;
+let skuFiltroVendas  = null;
+let skuFiltroFuturos = null;
 
 function toggleFiltroAtendidos() {
   filtroAtendidos = !filtroAtendidos;
@@ -145,7 +147,8 @@ function aplicarFiltroAtendidos() {
   for (const tr of tbody.querySelectorAll('tr')) {
     if (tr.classList.contains('venda-sub-item')) continue;
     const atendida = tr.classList.contains('venda-atendida');
-    const visivel  = !filtroAtendidos || atendida;
+    const skuMatch = !skuFiltroVendas || (tr.dataset.skus || '').split(' ').includes(skuFiltroVendas);
+    const visivel  = (!filtroAtendidos || atendida) && skuMatch;
     tr.style.display = visivel ? '' : 'none';
     let next = tr.nextElementSibling;
     while (next && next.classList.contains('venda-sub-item')) {
@@ -155,12 +158,69 @@ function aplicarFiltroAtendidos() {
     if (visivel) visiveis++;
   }
   const totalEl = document.getElementById('vendas-total');
+  const total   = tbody.querySelectorAll('tr:not(.venda-sub-item)').length;
   if (filtroAtendidos) {
     totalEl.textContent = `${visiveis} pedido${visiveis !== 1 ? 's' : ''} flagado${visiveis !== 1 ? 's' : ''}`;
+  } else if (skuFiltroVendas) {
+    totalEl.textContent = `${visiveis} de ${total} pedido${total !== 1 ? 's' : ''}`;
   } else {
-    const total     = tbody.querySelectorAll('tr:not(.venda-sub-item)').length;
     const atendidos = tbody.querySelectorAll('tr.venda-atendida:not(.venda-sub-item)').length;
     totalEl.textContent = `${total} pedido${total !== 1 ? 's' : ''}${atendidos ? ` · ${atendidos} flagado${atendidos !== 1 ? 's' : ''}` : ''}`;
+  }
+}
+
+function aplicarFiltroFuturos() {
+  const tbody = document.getElementById('tabela-futuros-body');
+  if (!tbody) return;
+  let visiveis = 0;
+  for (const tr of tbody.querySelectorAll('tr')) {
+    if (tr.classList.contains('venda-sub-item')) continue;
+    const skuMatch = !skuFiltroFuturos || (tr.dataset.skus || '').split(' ').includes(skuFiltroFuturos);
+    tr.style.display = skuMatch ? '' : 'none';
+    let next = tr.nextElementSibling;
+    while (next && next.classList.contains('venda-sub-item')) {
+      next.style.display = skuMatch ? '' : 'none';
+      next = next.nextElementSibling;
+    }
+    if (skuMatch) visiveis++;
+  }
+  const totalEl  = document.getElementById('futuros-total');
+  const total    = tbody.querySelectorAll('tr:not(.venda-sub-item)').length;
+  totalEl.textContent = skuFiltroFuturos
+    ? `${visiveis} de ${total} pedido${total !== 1 ? 's' : ''}`
+    : `${total} pedido${total !== 1 ? 's' : ''}`;
+}
+
+function renderizarChipsSKU(tipo, lista) {
+  const container = document.getElementById(tipo === 'vendas' ? 'vendas-sku-chips' : 'futuros-sku-chips');
+  if (!container) return;
+  const skuMap = new Map();
+  for (const venda of lista) {
+    for (const item of (venda.itensLista || [])) {
+      if (!item.sku) continue;
+      skuMap.set(item.sku, (skuMap.get(item.sku) || 0) + (item.quantidade || 0));
+    }
+  }
+  if (!skuMap.size) { container.innerHTML = ''; return; }
+  const skus = [...skuMap.keys()].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  container.innerHTML = skus.map(sku =>
+    `<button class="chip-sku" data-sku="${sku}" onclick="filtrarPorSku('${tipo}', this.dataset.sku)">${sku} · ${skuMap.get(sku)}un</button>`
+  ).join('');
+}
+
+function filtrarPorSku(tipo, sku) {
+  if (tipo === 'vendas') {
+    skuFiltroVendas = skuFiltroVendas === sku ? null : sku;
+    document.querySelectorAll('#vendas-sku-chips .chip-sku').forEach(btn =>
+      btn.classList.toggle('chip-sku-ativo', btn.dataset.sku === skuFiltroVendas)
+    );
+    aplicarFiltroAtendidos();
+  } else {
+    skuFiltroFuturos = skuFiltroFuturos === sku ? null : sku;
+    document.querySelectorAll('#futuros-sku-chips .chip-sku').forEach(btn =>
+      btn.classList.toggle('chip-sku-ativo', btn.dataset.sku === skuFiltroFuturos)
+    );
+    aplicarFiltroFuturos();
   }
 }
 
@@ -178,6 +238,7 @@ async function carregarVendas() {
   tabela.style.display  = 'none';
   totalEl.textContent   = '';
   tbody.innerHTML       = '';
+  skuFiltroVendas       = null;
 
   try {
     const data = await apiFetch(`/api/ml/vendas-etiquetas?conta=${window.CONTA_ATIVA}`);
@@ -201,6 +262,7 @@ async function carregarVendas() {
       const multi   = itens.length > 1;
 
       const tr = document.createElement('tr');
+      tr.dataset.skus = [...new Set(itens.map(i => i.sku).filter(Boolean))].join(' ');
       if (multi)      tr.classList.add('venda-multi-header');
       if (v.atendida) tr.classList.add('venda-atendida');
 
@@ -250,6 +312,7 @@ async function carregarVendas() {
 
     atualizarBotaoSelecionadas();
     tabela.style.display = 'table';
+    renderizarChipsSKU('vendas', todasVendas);
     aplicarFiltroAtendidos();
   } catch {
     loading.style.display = 'none';
@@ -286,6 +349,7 @@ async function carregarFuturos() {
   tabela.style.display  = 'none';
   totalEl.textContent   = '';
   tbody.innerHTML       = '';
+  skuFiltroFuturos      = null;
 
   try {
     const data = await apiFetch(`/api/ml/pedidos-futuros?conta=${window.CONTA_ATIVA}`);
@@ -319,6 +383,7 @@ async function carregarFuturos() {
       const liberaHoje = dataLib && dataLib <= hoje;
 
       const tr = document.createElement('tr');
+      tr.dataset.skus = [...new Set(itens.map(i => i.sku).filter(Boolean))].join(' ');
       if (multi) tr.classList.add('venda-multi-header');
       if (liberaHoje) tr.style.background = 'rgba(234,179,8,0.08)';
 
@@ -363,6 +428,7 @@ async function carregarFuturos() {
     });
 
     tabela.style.display = 'table';
+    renderizarChipsSKU('futuros', pedidos);
   } catch {
     loading.style.display = 'none';
     erroEl.textContent   = 'Erro ao carregar pedidos futuros.';

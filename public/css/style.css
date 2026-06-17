@@ -807,6 +807,21 @@ tr.venda-atendida td { opacity: .45; }
 .btn-flag-ativo:hover { background: #15803d; border-color: #15803d; }
 .btn-flag:disabled { opacity: .5; cursor: default; }
 
+.chip-sku {
+  background: none;
+  border: 1.5px solid #cbd5e1;
+  color: #475569;
+  border-radius: 20px;
+  padding: 3px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background .15s, color .15s, border-color .15s;
+  white-space: nowrap;
+}
+.chip-sku:hover { background: #f1f5f9; border-color: #94a3b8; }
+.chip-sku-ativo { background: #2563eb; border-color: #2563eb; color: #fff; }
+.chip-sku-ativo:hover { background: #1d4ed8; border-color: #1d4ed8; }
+
 /* ── Lucro ───────────────────────────────────────────────────── */
 
 .lucro-cards {
