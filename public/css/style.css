@@ -918,6 +918,61 @@ tr.venda-atendida td { opacity: .45; }
 .lucro-ok-btn--ok { background: #dcfce7 !important; border-color: #86efac !important; color: #166534 !important; }
 .lucro-ok-btn--err { background: #fee2e2 !important; border-color: #fca5a5 !important; color: #991b1b !important; }
 
+.lucro-custo-data {
+  width: 130px;
+  padding: 4px 6px;
+  margin-right: 4px;
+  border: 1px solid #e2e8f0;
+  border-radius: 5px;
+  font-size: 12px;
+}
+
+.lucro-historico-btn {
+  padding: 3px 7px;
+  margin-left: 4px;
+  font-size: 11px;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  background: #fff;
+  color: #6366f1;
+  cursor: pointer;
+}
+.lucro-historico-btn:hover { background: #eef2ff; }
+
+.lucro-historico-painel {
+  padding: 8px 12px !important;
+  background: #f8fafc;
+  text-align: left !important;
+}
+
+.lucro-historico-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 2px 8px 2px 0;
+  padding: 3px 8px;
+  border-radius: 5px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  font-size: 12px;
+  color: #475569;
+}
+
+.lucro-historico-del {
+  border: none;
+  background: none;
+  color: #ef4444;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0 2px;
+  font-size: 13px;
+}
+
+.lucro-historico-vazio {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
 .lucro-date-input {
   padding: 5px 8px;
   border: 1px solid #e2e8f0;

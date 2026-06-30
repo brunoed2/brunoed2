@@ -3275,8 +3275,24 @@ app.get('/api/lucro/config', (req, res) => {
     taxa_imposto_por_mes: lc.taxa_imposto_por_mes || {},
     frete_medio:         lc.frete_medio          ?? 0,
     custos:              lc.custos               || {},
+    custos_historico:    lc.custos_historico     || {},
   });
 });
+
+// Retorna o valor vigente em uma data 'YYYY-MM-DD' dado um histórico ordenado ascendente
+function custoVigenteNaData(historico, dataISO) {
+  const data = (dataISO || '').slice(0, 10);
+  let valor = 0;
+  for (const h of (historico || [])) {
+    if (h.desde <= data) valor = h.valor; else break;
+  }
+  return valor;
+}
+
+function lucroHojeISO() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
 
 app.post('/api/lucro/taxa-imposto-mes', async (req, res) => {
   const { conta, mes, taxa } = req.body;
@@ -3307,17 +3323,57 @@ app.post('/api/lucro/config', async (req, res) => {
 });
 
 app.post('/api/lucro/custo', async (req, res) => {
-  const { conta, sku, custo } = req.body;
+  const { conta, sku, custo, desde } = req.body;
   const num = String(conta || '1');
   if (!sku) return res.status(400).json({ error: 'sku obrigatório' });
+  const dataVigencia = /^\d{4}-\d{2}-\d{2}$/.test(desde || '') ? desde : lucroHojeISO();
   const data = loadData();
   data.lucro_contas = data.lucro_contas || {};
   const lc = data.lucro_contas[num] = data.lucro_contas[num] || {};
   lc.custos = lc.custos || {};
-  lc.custos[sku] = parseFloat(custo) || 0;
+  lc.custos_historico = lc.custos_historico || {};
+
+  // Migração lazy: preserva o valor flat antigo como vigente desde sempre,
+  // antes de aplicar a nova entrada — não retroage vendas já calculadas.
+  if (!lc.custos_historico[sku] && lc.custos[sku]) {
+    lc.custos_historico[sku] = [{ desde: '1970-01-01', valor: lc.custos[sku] }];
+  }
+  lc.custos_historico[sku] = lc.custos_historico[sku] || [];
+
+  const valor = parseFloat(custo) || 0;
+  const hist  = lc.custos_historico[sku];
+  const idx   = hist.findIndex(h => h.desde === dataVigencia);
+  if (idx >= 0) hist[idx].valor = valor;
+  else hist.push({ desde: dataVigencia, valor });
+  hist.sort((a, b) => a.desde.localeCompare(b.desde));
+
+  lc.custos[sku] = custoVigenteNaData(hist, lucroHojeISO());
+
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
   syncRailwayEnvVars(data).catch(e => console.error('[lucro/custo] sync erro:', e.message));
-  res.json({ ok: true });
+  res.json({ ok: true, custos_historico: hist, custo_atual: lc.custos[sku] });
+});
+
+app.post('/api/lucro/custo-remover', async (req, res) => {
+  const { conta, sku, desde } = req.body;
+  const num = String(conta || '1');
+  if (!sku || !desde) return res.status(400).json({ error: 'sku e desde obrigatórios' });
+  const data = loadData();
+  const lc = (data.lucro_contas || {})[num];
+  if (!lc || !lc.custos_historico || !lc.custos_historico[sku]) return res.json({ ok: true });
+
+  lc.custos_historico[sku] = lc.custos_historico[sku].filter(h => h.desde !== desde);
+  if (lc.custos_historico[sku].length === 0) {
+    delete lc.custos_historico[sku];
+    lc.custos = lc.custos || {};
+    lc.custos[sku] = 0;
+  } else {
+    lc.custos[sku] = custoVigenteNaData(lc.custos_historico[sku], lucroHojeISO());
+  }
+
+  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+  syncRailwayEnvVars(data).catch(e => console.error('[lucro/custo-remover] sync erro:', e.message));
+  res.json({ ok: true, custos_historico: lc.custos_historico[sku] || [], custo_atual: lc.custos[sku] });
 });
 
 // ── Gastos mensais ───────────────────────────────────────────

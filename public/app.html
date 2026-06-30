@@ -159,7 +159,7 @@
               <h2 style="margin:0">Custos por SKU</h2>
               <button class="btn-secondary" onclick="lucroCustosCarregar()" style="font-size:12px;padding:5px 10px">↻ Recarregar</button>
             </div>
-            <p class="card-desc" style="margin-bottom:12px">Informe o custo unitário de cada SKU. O valor é aplicado automaticamente em todas as vendas do produto.</p>
+            <p class="card-desc" style="margin-bottom:12px">Informe o custo unitário de cada SKU e a partir de qual data ele vale. Vendas anteriores à data continuam usando o custo antigo — nada é recalculado retroativamente.</p>
             <div id="lucro-custos-loading" class="loading" style="display:none">Carregando produtos...</div>
             <table class="tabela" id="tabela-custos" style="display:none">
               <thead>
@@ -1347,6 +1347,6 @@
     </div>
   </div>
 
-  <div id="version-badge">v568</div>
+  <div id="version-badge">v569</div>
 </body>
 </html>

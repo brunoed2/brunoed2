@@ -85,17 +85,23 @@ async function lucroSalvarCusto(input, btn) {
   const sku   = input.dataset.sku;
   const custo = parseFloat(input.value.replace(',', '.')) || 0;
   if (!sku) return;
+  const dataInput = input.parentElement?.querySelector(`.lucro-custo-data[data-sku="${sku}"]`);
+  const desde = dataInput?.value || lucroHoje();
   if (btn) { btn.disabled = true; btn.textContent = '…'; }
   try {
-    await fetch('/api/lucro/custo', {
+    const r = await fetch('/api/lucro/custo', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ conta, sku, custo }),
-    });
-    lucroConfig.custos[sku] = custo;
+      body:    JSON.stringify({ conta, sku, custo, desde }),
+    }).then(r => r.json());
+    lucroConfig.custos_historico = lucroConfig.custos_historico || {};
+    if (r.custos_historico) lucroConfig.custos_historico[sku] = r.custos_historico;
+    lucroConfig.custos[sku] = r.custo_atual ?? custo;
+    lucroCustosRenderHistorico(sku);
     lucroRecalcularERenderizar();
+    const custoAtual = r.custo_atual ?? custo;
     document.querySelectorAll(`.lucro-custo-input[data-sku="${sku}"]`).forEach(el => {
-      el.value = custo || '';
+      el.value = custoAtual || '';
     });
     // btn pode ter sido destruído pelo rebuild da tabela de vendas; busca os novos botões pelo SKU
     const targets = btn && btn.isConnected
@@ -119,12 +125,25 @@ async function lucroSalvarCusto(input, btn) {
 
 // ── Cálculo ──────────────────────────────────────────────────
 
+// Custo vigente de um SKU numa data 'YYYY-MM-DD' (ou ISO completo) — usa o histórico
+// por data de vigência; sem histórico, cai no custo atual flat (compatibilidade).
+function lucroCustoNaData(sku, dataVenda) {
+  const hist = (lucroConfig.custos_historico || {})[sku];
+  if (!hist || !hist.length) return (lucroConfig.custos || {})[sku] || 0;
+  const data = (dataVenda || '').slice(0, 10);
+  let valor = 0;
+  for (const h of hist) {
+    if (h.desde <= data) valor = h.valor; else break;
+  }
+  return valor;
+}
+
 function lucroCalcular(raw) {
-  const { taxa_imposto = 0, taxa_imposto_por_mes = {}, custos } = lucroConfig;
+  const { taxa_imposto = 0, taxa_imposto_por_mes = {} } = lucroConfig;
   return raw.map(v => {
     const mes     = (v.data || '').slice(0, 7);
     const taxa    = mes in taxa_imposto_por_mes ? taxa_imposto_por_mes[mes] : taxa_imposto;
-    const custo   = v.itens.reduce((s, i) => s + (custos[i.sku || i.mlb] || 0) * i.quantidade, 0);
+    const custo   = v.itens.reduce((s, i) => s + lucroCustoNaData(i.sku || i.mlb, v.data) * i.quantidade, 0);
     const frete   = v.freteReal ?? 0;
     const imposto = v.receita * (taxa / 100);
     const lucro   = v.receita - v.taxaML - frete - custo - imposto;
@@ -290,20 +309,73 @@ async function lucroCustosCarregar() {
         <td class="lucro-td-mlb">${item.sku}</td>
         <td class="td-titulo">${item.titulo || '—'}</td>
         <td class="col-num">
+          <input type="date" class="lucro-custo-data" data-sku="${item.sku}" value="${lucroHoje()}">
           <input type="number" class="lucro-custo-input" data-sku="${item.sku}"
             value="${custoSalvo || ''}" placeholder="—"
             step="0.01" min="0">
           <button class="lucro-ok-btn" data-sku="${item.sku}"
-            onclick="lucroSalvarCusto(this.previousElementSibling, this)">OK</button>
+            onclick="lucroSalvarCusto(this.parentElement.querySelector('.lucro-custo-input'), this)">OK</button>
+          <button type="button" class="lucro-historico-btn" data-sku="${item.sku}"
+            onclick="lucroCustosToggleHistorico('${item.sku}')">histórico</button>
         </td>
       `;
       tbody.appendChild(tr);
+
+      const trHist = document.createElement('tr');
+      trHist.className = 'lucro-historico-row';
+      trHist.id = `lucro-historico-row-${item.sku}`;
+      trHist.style.display = 'none';
+      trHist.innerHTML = `<td colspan="3" class="lucro-historico-painel" id="lucro-historico-painel-${item.sku}"></td>`;
+      tbody.appendChild(trHist);
     });
 
     if (tabela) tabela.style.display = 'table';
   } catch {
     if (loading) loading.style.display = 'none';
   }
+}
+
+function lucroCustosToggleHistorico(sku) {
+  const row = document.getElementById(`lucro-historico-row-${sku}`);
+  if (!row) return;
+  const abrindo = row.style.display === 'none';
+  row.style.display = abrindo ? 'table-row' : 'none';
+  if (abrindo) lucroCustosRenderHistorico(sku);
+}
+
+function lucroCustosRenderHistorico(sku) {
+  const painel = document.getElementById(`lucro-historico-painel-${sku}`);
+  if (!painel) return;
+  const hist = (lucroConfig.custos_historico || {})[sku] || [];
+  if (!hist.length) {
+    painel.innerHTML = '<span class="lucro-historico-vazio">Sem histórico — usando valor único.</span>';
+    return;
+  }
+  painel.innerHTML = [...hist].reverse().map(h => `
+    <span class="lucro-historico-item">
+      ${h.desde} — ${lucroFmt(h.valor)}
+      <button type="button" class="lucro-historico-del" onclick="lucroCustoRemoverEntrada('${sku}', '${h.desde}')">×</button>
+    </span>
+  `).join('');
+}
+
+async function lucroCustoRemoverEntrada(sku, desde) {
+  const conta = lucroContaAtual();
+  try {
+    const r = await fetch('/api/lucro/custo-remover', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ conta, sku, desde }),
+    }).then(r => r.json());
+    lucroConfig.custos_historico = lucroConfig.custos_historico || {};
+    lucroConfig.custos_historico[sku] = r.custos_historico || [];
+    lucroConfig.custos[sku] = r.custo_atual ?? 0;
+    document.querySelectorAll(`.lucro-custo-input[data-sku="${sku}"]`).forEach(el => {
+      el.value = lucroConfig.custos[sku] || '';
+    });
+    lucroCustosRenderHistorico(sku);
+    lucroRecalcularERenderizar();
+  } catch {}
 }
 
 // ── Período ───────────────────────────────────────────────────
