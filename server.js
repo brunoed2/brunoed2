@@ -4278,49 +4278,67 @@ app.get('/api/ml/pedido-por-shipment/:id', async (req, res) => {
   const data = loadData();
   const sid  = String(req.params.id).trim();
 
-  // 1. Busca no histórico e atendidas de todas as contas (rápido, sem API)
-  for (const [num, c] of Object.entries(data.contas || {})) {
-    const hist = (c.historico_vendas || []).find(h => String(h.shipmentId) === sid);
-    if (hist) return res.json({ encontrado: true, fonte: 'historico', conta: num, ...hist });
-    const atend = (c.atendidas_dados || []).find(h => String(h.shipmentId) === sid);
-    if (atend) return res.json({ encontrado: true, fonte: 'atendidas', conta: num, ...atend });
+  // Busca detalhes de itens (thumbnail + SKU) via API do ML em paralelo
+  async function enriquecerItens(orderIds, token) {
+    const itensLista = [];
+    let comprador = '—';
+    for (const orderId of orderIds) {
+      try {
+        const rOrder = await axios.get(`https://api.mercadolibre.com/orders/${orderId}`, {
+          headers: { Authorization: `Bearer ${token}` }, timeout: 6000,
+        });
+        comprador = rOrder.data.buyer?.nickname || comprador;
+        const items = rOrder.data.order_items || [];
+        const detalhes = await Promise.all(items.map(async i => {
+          try {
+            const r = await axios.get(`https://api.mercadolibre.com/items/${i.item.id}`, {
+              headers: { Authorization: `Bearer ${token}` },
+              params: { attributes: 'thumbnail,seller_custom_field,permalink' },
+              timeout: 5000,
+            });
+            return { thumbnail: r.data.thumbnail || null, sku: r.data.seller_custom_field || null, permalink: r.data.permalink || null };
+          } catch { return { thumbnail: null, sku: null, permalink: null }; }
+        }));
+        items.forEach((i, idx) => {
+          const d = detalhes[idx];
+          const variacaoNome = i.item.variation_attributes?.length
+            ? i.item.variation_attributes.map(a => a.value_name).join(' / ') : null;
+          itensLista.push({ titulo: i.item.title, variacao: variacaoNome, sku: d.sku || '—', thumbnail: d.thumbnail, permalink: d.permalink, quantidade: i.quantity || 1 });
+        });
+      } catch {}
+    }
+    return { itensLista, comprador };
   }
 
-  // 2. Fallback: consulta diretamente a API do ML
+  // 1. Busca no histórico de todas as contas
+  for (const [num, c] of Object.entries(data.contas || {})) {
+    const base = (c.historico_vendas || []).find(h => String(h.shipmentId) === sid)
+              || (c.atendidas_dados  || []).find(h => String(h.shipmentId) === sid);
+    if (!base) continue;
+
+    // Enriquece thumbnail/SKU se algum item estiver sem
+    const semThumb = (base.itensLista || []).some(i => !i.thumbnail || !i.sku || i.sku === '—');
+    if (semThumb && c.access_token && base.orderId) {
+      try {
+        const { itensLista, comprador } = await enriquecerItens([base.orderId], c.access_token);
+        if (itensLista.length) base.itensLista = itensLista;
+        if (comprador !== '—') base.comprador = comprador;
+      } catch {}
+    }
+    return res.json({ encontrado: true, fonte: 'historico', conta: num, ...base });
+  }
+
+  // 2. Fallback: consulta shipment diretamente na API do ML
   for (const [num, c] of Object.entries(data.contas || {})) {
     if (!c.access_token) continue;
     try {
       const rShip = await axios.get(`https://api.mercadolibre.com/shipments/${sid}`, {
-        headers: { Authorization: `Bearer ${c.access_token}` },
-        timeout: 6000,
+        headers: { Authorization: `Bearer ${c.access_token}` }, timeout: 6000,
       });
       const shipment = rShip.data;
       const orderIds = shipment.order_ids?.length ? shipment.order_ids : (shipment.order_id ? [shipment.order_id] : []);
       if (!orderIds.length) continue;
-
-      const itensLista = [];
-      let comprador = '—';
-      for (const orderId of orderIds) {
-        try {
-          const rOrder = await axios.get(`https://api.mercadolibre.com/orders/${orderId}`, {
-            headers: { Authorization: `Bearer ${c.access_token}` },
-            timeout: 6000,
-          });
-          comprador = rOrder.data.buyer?.nickname || comprador;
-          for (const i of (rOrder.data.order_items || [])) {
-            const variacaoNome = i.item.variation_attributes?.length
-              ? i.item.variation_attributes.map(a => a.value_name).join(' / ')
-              : null;
-            itensLista.push({
-              titulo:     i.item.title,
-              variacao:   variacaoNome,
-              sku:        '—',
-              quantidade: i.quantity || 1,
-              thumbnail:  null,
-            });
-          }
-        } catch {}
-      }
+      const { itensLista, comprador } = await enriquecerItens(orderIds, c.access_token);
       return res.json({ encontrado: true, fonte: 'ml-api', conta: num, shipmentId: sid, comprador, status: shipment.status, itensLista });
     } catch {}
   }
