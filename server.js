@@ -146,7 +146,7 @@ function loadData() {
     raw.usuarios['0505'] = { nome: 'HANDDRY', abas: [], painel: 'fornecedor' };
   }
   // 199412 é sempre admin no painel app — forçado mesmo se já existir com dados errados
-  const adminAbas = ['estoque','ads','lucro','promocoes','contas-pagar','bling','fiscal','compras','calculadora','etiquetas','log-anuncio','configuracoes'];
+  const adminAbas = ['estoque','ads','lucro','promocoes','contas-pagar','bling','fiscal','compras','calculadora','etiquetas','log-anuncio','configuracoes','scanner'];
   raw.usuarios['199412'] = {
     nome:  (raw.usuarios['199412'] || {}).nome  || 'Admin',
     abas:  (raw.usuarios['199412'] || {}).abas  || adminAbas,
@@ -4271,6 +4271,61 @@ app.get('/api/ml/etiqueta/:shipment_id', async (req, res) => {
     }
   }
   res.status(404).json({ error: 'Não foi possível baixar a etiqueta.', debug });
+});
+
+// Busca pedido pelo shipment ID (usado pelo scanner de QR code)
+app.get('/api/ml/pedido-por-shipment/:id', async (req, res) => {
+  const data = loadData();
+  const sid  = String(req.params.id).trim();
+
+  // 1. Busca no histórico e atendidas de todas as contas (rápido, sem API)
+  for (const [num, c] of Object.entries(data.contas || {})) {
+    const hist = (c.historico_vendas || []).find(h => String(h.shipmentId) === sid);
+    if (hist) return res.json({ encontrado: true, fonte: 'historico', conta: num, ...hist });
+    const atend = (c.atendidas_dados || []).find(h => String(h.shipmentId) === sid);
+    if (atend) return res.json({ encontrado: true, fonte: 'atendidas', conta: num, ...atend });
+  }
+
+  // 2. Fallback: consulta diretamente a API do ML
+  for (const [num, c] of Object.entries(data.contas || {})) {
+    if (!c.access_token) continue;
+    try {
+      const rShip = await axios.get(`https://api.mercadolibre.com/shipments/${sid}`, {
+        headers: { Authorization: `Bearer ${c.access_token}` },
+        timeout: 6000,
+      });
+      const shipment = rShip.data;
+      const orderIds = shipment.order_ids?.length ? shipment.order_ids : (shipment.order_id ? [shipment.order_id] : []);
+      if (!orderIds.length) continue;
+
+      const itensLista = [];
+      let comprador = '—';
+      for (const orderId of orderIds) {
+        try {
+          const rOrder = await axios.get(`https://api.mercadolibre.com/orders/${orderId}`, {
+            headers: { Authorization: `Bearer ${c.access_token}` },
+            timeout: 6000,
+          });
+          comprador = rOrder.data.buyer?.nickname || comprador;
+          for (const i of (rOrder.data.order_items || [])) {
+            const variacaoNome = i.item.variation_attributes?.length
+              ? i.item.variation_attributes.map(a => a.value_name).join(' / ')
+              : null;
+            itensLista.push({
+              titulo:     i.item.title,
+              variacao:   variacaoNome,
+              sku:        '—',
+              quantidade: i.quantity || 1,
+              thumbnail:  null,
+            });
+          }
+        } catch {}
+      }
+      return res.json({ encontrado: true, fonte: 'ml-api', conta: num, shipmentId: sid, comprador, status: shipment.status, itensLista });
+    } catch {}
+  }
+
+  res.status(404).json({ encontrado: false, erro: 'Shipment não encontrado em nenhuma conta' });
 });
 
 app.put('/api/ml/estoque/:mlb', async (req, res) => {

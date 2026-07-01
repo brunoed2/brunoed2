@@ -39,6 +39,7 @@
         <a class="nav-btn" href="?tab=calculadora" data-tab="calculadora">🧮 Calculadora</a>
         <a class="nav-btn" href="?tab=etiquetas" data-tab="etiquetas">🖨️ Etiquetas</a>
         <a class="nav-btn" href="?tab=log-anuncio" data-tab="log-anuncio">🔍 Log Anúncio</a>
+        <a class="nav-btn" href="?tab=scanner" data-tab="scanner">📷 Scanner</a>
         <a class="nav-btn" href="?tab=configuracoes" data-tab="configuracoes">⚙️ Configurações</a>
       </nav>
       <!-- Mobile: barra inferior com label da aba ativa + hamburger -->
@@ -1086,6 +1087,31 @@
         </div>
       </section>
 
+      <!-- ── Aba: Scanner ── -->
+      <section id="tab-scanner" class="tab">
+        <h1>Scanner de Pedidos</h1>
+        <p class="subtitle">Escaneie o QR code da etiqueta para ver os produtos do pedido.</p>
+
+        <div style="max-width:480px;margin:0 auto;text-align:center">
+          <button class="btn-primary" id="btn-scanner-iniciar" onclick="scannerIniciar()" style="width:100%;padding:16px;font-size:18px">
+            📷 Escanear Etiqueta
+          </button>
+          <button class="btn-secondary" id="btn-scanner-parar" onclick="scannerParar()" style="display:none;width:100%;padding:12px">
+            ✕ Fechar câmera
+          </button>
+
+          <div id="scanner-area" style="display:none;margin-top:16px;position:relative;border-radius:12px;overflow:hidden;background:#000">
+            <video id="scanner-video" style="width:100%;display:block" playsinline autoplay muted></video>
+            <canvas id="scanner-canvas" style="display:none"></canvas>
+            <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:200px;height:200px;border:3px solid rgba(255,255,255,0.7);border-radius:12px;pointer-events:none"></div>
+          </div>
+
+          <p id="scanner-status" style="margin-top:12px;color:#94a3b8;font-size:14px;min-height:20px"></p>
+
+          <div id="scanner-resultado" style="display:none;margin-top:8px;text-align:left"></div>
+        </div>
+      </section>
+
       <!-- ── Aba: Log Anúncio ── -->
       <section id="tab-log-anuncio" class="tab">
         <h1>Log Anúncio</h1>
@@ -1125,6 +1151,7 @@
       <button class="mobile-drawer-btn" data-tab="calculadora">🧮 Calculadora</button>
       <button class="mobile-drawer-btn" data-tab="etiquetas">🖨️ Etiquetas</button>
       <button class="mobile-drawer-btn" data-tab="log-anuncio">🔍 Log Anúncio</button>
+      <button class="mobile-drawer-btn" data-tab="scanner">📷 Scanner</button>
       <button class="mobile-drawer-btn" data-tab="configuracoes">⚙️ Configurações</button>
     </nav>
   </div>
@@ -1166,6 +1193,8 @@
   <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
   <script src="/js/etiquetas.js"></script>
   <script src="/js/log-anuncio.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+  <script src="/js/scanner.js"></script>
   <script>
   // ── Gerenciamento de Usuários ─────────────────────────────────
 
@@ -1184,6 +1213,7 @@
     { id: 'calculadora',   label: '🧮 Calculadora' },
     { id: 'etiquetas',     label: '🖨️ Etiquetas' },
     { id: 'log-anuncio',   label: '🔍 Log Anúncio' },
+    { id: 'scanner',       label: '📷 Scanner' },
     { id: 'configuracoes', label: '⚙️ Configurações' },
   ];
 
@@ -1347,6 +1377,6 @@
     </div>
   </div>
 
-  <div id="version-badge">v572</div>
+  <div id="version-badge">v573</div>
 </body>
 </html>

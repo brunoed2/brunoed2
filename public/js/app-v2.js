@@ -75,6 +75,7 @@ function abrirAba(nome) {
   if (nome === 'compras')       comprasAbrirSub('previsao');
   if (nome === 'etiquetas')     etiquetasInit();
   if (nome === 'log-anuncio')  logAnuncioInit();
+  if (nome === 'scanner')      scannerInit();
   if (nome === 'configuracoes') { carregarConfig(contaConfigurando); }
   // compatibilidade: ?tab=config ou ?tab=conexao redireciona para configuracoes
   if (nome === 'config' || nome === 'conexao') {
