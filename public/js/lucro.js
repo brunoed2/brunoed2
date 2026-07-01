@@ -86,7 +86,7 @@ async function lucroSalvarCusto(input, btn) {
   const custo = parseFloat(input.value.replace(',', '.')) || 0;
   if (!sku) return;
   const dataInput = input.parentElement?.querySelector(`.lucro-custo-data[data-sku="${sku}"]`);
-  const desde = dataInput?.value || lucroHoje();
+  const desde = dataInput?.value || input.dataset.vdata || lucroHoje();
   if (btn) { btn.disabled = true; btn.textContent = '…'; }
   try {
     const r = await fetch('/api/lucro/custo', {
@@ -231,7 +231,7 @@ function lucroRenderizarTabela(vendas) {
       <td class="col-num">
         ${chave0
           ? `${custoSalvo > 0 ? `<span class="lucro-custo-total">${fmtCusto(custoSalvo * qtdTotal)}</span>` : ''}
-             <input type="number" class="lucro-custo-input" data-sku="${chave0}"
+             <input type="number" class="lucro-custo-input" data-sku="${chave0}" data-vdata="${(v.data || '').slice(0,10)}"
               value="${custoSalvo || ''}" placeholder="unit."
               step="0.01" min="0">
              <button class="lucro-ok-btn" data-sku="${chave0}"
@@ -262,7 +262,7 @@ function lucroRenderizarTabela(vendas) {
         <td class="col-num">
           ${chaveI
             ? `${cSalvo2 > 0 ? `<span class="lucro-custo-total">${lucroFmt(cSalvo2 * item.quantidade)}</span>` : ''}
-               <input type="number" class="lucro-custo-input" data-sku="${chaveI}"
+               <input type="number" class="lucro-custo-input" data-sku="${chaveI}" data-vdata="${(v.data || '').slice(0,10)}"
                 value="${cSalvo2 || ''}" placeholder="unit."
                 step="0.01" min="0">
                <button class="lucro-ok-btn" data-sku="${chaveI}"
