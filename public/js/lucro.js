@@ -542,7 +542,14 @@ function gastosFixosRenderizar() {
   if (!tbody) return;
   tbody.innerHTML = '';
 
-  if (!gastosFixosTipos.length) {
+  // Itens com valor salvo neste mês mas que foram removidos da lista ativa
+  const historicos = Object.entries(gastosFixosValores)
+    .filter(([nome, val]) => !gastosFixosTipos.includes(nome) && parseFloat(val) > 0);
+
+  const temAtivos    = gastosFixosTipos.length > 0;
+  const temHistorico = historicos.length > 0;
+
+  if (!temAtivos && !temHistorico) {
     if (tabela)     tabela.style.display     = 'none';
     if (vazio)      vazio.style.display      = 'block';
     if (salvarWrap) salvarWrap.style.display = 'none';
@@ -551,7 +558,7 @@ function gastosFixosRenderizar() {
   }
   if (vazio)      vazio.style.display      = 'none';
   if (tabela)     tabela.style.display     = 'table';
-  if (salvarWrap) salvarWrap.style.display = 'flex';
+  if (salvarWrap) salvarWrap.style.display = temAtivos ? 'flex' : 'none';
 
   // Limpa status ao renderizar (ex: ao trocar mês)
   const statusEl = document.getElementById('gastos-fixos-salvar-status');
@@ -583,6 +590,23 @@ function gastosFixosRenderizar() {
     `;
     tbody.appendChild(tr);
   });
+
+  // Itens arquivados: exibidos como somente-leitura para meses onde tinham valor
+  historicos.forEach(([nome, valor]) => {
+    const tr = document.createElement('tr');
+    tr.style.opacity = '0.55';
+    tr.innerHTML = `
+      <td>${nome} <span style="font-size:0.78em;color:#888;font-style:italic">(arquivado)</span></td>
+      <td class="col-num">
+        <input type="hidden" data-nome="${nome}" value="${parseFloat(valor) || 0}">
+        <span style="padding-right:8px;color:#888">R$ ${parseFloat(valor).toFixed(2).replace('.', ',')}</span>
+      </td>
+      <td></td>
+      <td></td>
+    `;
+    tbody.appendChild(tr);
+  });
+
   gastosAtualizarCards();
 }
 
