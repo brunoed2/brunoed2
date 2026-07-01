@@ -76,10 +76,11 @@ function scannerProcessarFrame() {
 
     const code = jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' });
     if (code && code.data) {
-      // Fecha câmera imediatamente ao detectar o QR
       scannerAtivo = false;
       cancelAnimationFrame(scannerAnimFrame);
       scannerParar();
+      // Mantém o botão "Escanear Etiqueta" escondido — o resultado terá seu próprio botão
+      document.getElementById('btn-scanner-iniciar').style.display = 'none';
       scannerBuscarPedido(code.data);
       return;
     }
@@ -119,8 +120,9 @@ function scannerMostrarResultado(pedido, sid) {
   const itens     = pedido.itensLista || [];
 
   const itensHtml = itens.map(i => {
-    const thumbHtml = i.thumbnail
-      ? `<img src="${i.thumbnail}" style="width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid #334155;flex-shrink:0">`
+    const thumb = i.thumbnail ? i.thumbnail.replace(/^http:\/\//, 'https://') : null;
+    const thumbHtml = thumb
+      ? `<img src="${thumb}" style="width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid #334155;flex-shrink:0">`
       : `<div style="width:72px;height:72px;border-radius:8px;background:#0f172a;flex-shrink:0"></div>`;
     return `
       <div style="padding:12px 0;border-bottom:1px solid #1e293b;display:flex;gap:12px;align-items:center">
