@@ -3408,8 +3408,9 @@ app.get('/api/lucro/gastos-fixos', (req, res) => {
     }
   }
   res.json({
-    tipos:    lc.gastos_fixos_tipos || [],
+    tipos:      lc.gastos_fixos_tipos || [],
     valores,
+    valoresMes, // somente valores explicitamente salvos neste mês (sem auto-fill)
     travados,
   });
 });
@@ -3438,7 +3439,9 @@ app.delete('/api/lucro/gastos-fixo-tipo', async (req, res) => {
   const data = loadData();
   data.lucro_contas = data.lucro_contas || {};
   const lc = data.lucro_contas[num] = data.lucro_contas[num] || {};
-  lc.gastos_fixos_tipos = (lc.gastos_fixos_tipos || []).filter(t => t !== nome);
+  lc.gastos_fixos_tipos    = (lc.gastos_fixos_tipos    || []).filter(t => t !== nome);
+  lc.gastos_fixos_travados = (lc.gastos_fixos_travados || []).filter(t => t !== nome);
+  if (lc.gastos_fixos_padrao) delete lc.gastos_fixos_padrao[nome];
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
   syncRailwayEnvVars(data).catch(e => console.error('[gastos-fixo-tipo] sync erro:', e.message));
   res.json({ ok: true });

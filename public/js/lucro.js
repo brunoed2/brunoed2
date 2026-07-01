@@ -515,21 +515,24 @@ async function gastosAtualizarTudo() {
 
 // ── Gastos fixos ──────────────────────────────────────────────
 
-let gastosFixosTipos   = [];
-let gastosFixosValores = {};
+let gastosFixosTipos      = [];
+let gastosFixosValores    = {};
+let gastosFixosValoresMes = {}; // valores explicitamente salvos neste mês (sem auto-fill)
 
 async function gastosFixosCarregar() {
   const conta = lucroContaAtual();
   const mes   = gastosMesAtual();
   try {
     const d = await fetch(`/api/lucro/gastos-fixos?conta=${conta}&mes=${mes}`).then(r => r.json());
-    gastosFixosTipos    = d.tipos    || [];
-    gastosFixosValores  = d.valores  || {};
-    gastosFixosTravados = new Set(d.travados || []);
+    gastosFixosTipos      = d.tipos      || [];
+    gastosFixosValores    = d.valores    || {};
+    gastosFixosValoresMes = d.valoresMes || {};
+    gastosFixosTravados   = new Set(d.travados || []);
   } catch {
-    gastosFixosTipos    = [];
-    gastosFixosValores  = {};
-    gastosFixosTravados = new Set();
+    gastosFixosTipos      = [];
+    gastosFixosValores    = {};
+    gastosFixosValoresMes = {};
+    gastosFixosTravados   = new Set();
   }
   gastosFixosRenderizar();
 }
@@ -542,8 +545,8 @@ function gastosFixosRenderizar() {
   if (!tbody) return;
   tbody.innerHTML = '';
 
-  // Itens com valor salvo neste mês mas que foram removidos da lista ativa
-  const historicos = Object.entries(gastosFixosValores)
+  // Itens com valor salvo explicitamente neste mês mas removidos da lista ativa
+  const historicos = Object.entries(gastosFixosValoresMes)
     .filter(([nome, val]) => !gastosFixosTipos.includes(nome) && parseFloat(val) > 0);
 
   const temAtivos    = gastosFixosTipos.length > 0;
