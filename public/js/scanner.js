@@ -5,7 +5,6 @@ let scannerAnimFrame = null;
 let scannerAtivo     = false;
 
 function scannerInit() {
-  // Garante estado limpo ao abrir a aba
   scannerParar();
   document.getElementById('scanner-resultado').style.display = 'none';
   document.getElementById('scanner-status').textContent      = '';
@@ -20,8 +19,8 @@ function scannerIniciar() {
   }
 
   status.textContent = 'Abrindo câmera...';
-  document.getElementById('scanner-resultado').style.display = 'none';
-  document.getElementById('scanner-area').style.display      = '';
+  document.getElementById('scanner-resultado').style.display   = 'none';
+  document.getElementById('scanner-area').style.display        = '';
   document.getElementById('btn-scanner-iniciar').style.display = 'none';
   document.getElementById('btn-scanner-parar').style.display   = '';
 
@@ -77,8 +76,10 @@ function scannerProcessarFrame() {
 
     const code = jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' });
     if (code && code.data) {
+      // Fecha câmera imediatamente ao detectar o QR
       scannerAtivo = false;
       cancelAnimationFrame(scannerAnimFrame);
+      scannerParar();
       scannerBuscarPedido(code.data);
       return;
     }
@@ -90,14 +91,13 @@ function scannerProcessarFrame() {
 async function scannerBuscarPedido(qrData) {
   const status = document.getElementById('scanner-status');
 
-  // Extrai sequência numérica longa do QR (o shipment ID)
   const match = qrData.match(/\d{8,}/);
   const sid   = match ? match[0] : qrData.trim();
 
   status.textContent = `Buscando pedido ${sid}...`;
 
   try {
-    const resp = await fetch(`/api/ml/pedido-por-shipment/${encodeURIComponent(sid)}`);
+    const resp  = await fetch(`/api/ml/pedido-por-shipment/${encodeURIComponent(sid)}`);
     const pedido = await resp.json();
 
     if (!resp.ok || !pedido.encontrado) {
@@ -118,28 +118,34 @@ function scannerMostrarResultado(pedido, sid) {
   const resultado = document.getElementById('scanner-resultado');
   const itens     = pedido.itensLista || [];
 
-  const itensHtml = itens.map(i => `
-    <div style="padding:12px 0;border-bottom:1px solid #334155;display:flex;gap:12px;align-items:flex-start">
-      <div style="flex:1;min-width:0">
-        <div style="font-size:15px;font-weight:500;color:#f1f5f9;line-height:1.4">${i.titulo}</div>
-        ${i.variacao ? `<div style="font-size:13px;color:#94a3b8;margin-top:2px">${i.variacao}</div>` : ''}
-        <div style="font-size:13px;color:#64748b;margin-top:4px">SKU: ${i.sku || '—'}</div>
+  const itensHtml = itens.map(i => {
+    const thumbHtml = i.thumbnail
+      ? `<img src="${i.thumbnail}" style="width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid #334155;flex-shrink:0">`
+      : `<div style="width:72px;height:72px;border-radius:8px;background:#0f172a;flex-shrink:0"></div>`;
+    return `
+      <div style="padding:12px 0;border-bottom:1px solid #1e293b;display:flex;gap:12px;align-items:center">
+        ${thumbHtml}
+        <div style="flex:1;min-width:0">
+          <div style="font-size:14px;font-weight:500;color:#f1f5f9;line-height:1.4">${i.titulo}</div>
+          ${i.variacao ? `<div style="font-size:12px;color:#94a3b8;margin-top:3px">${i.variacao}</div>` : ''}
+          <div style="font-size:12px;color:#64748b;margin-top:4px">SKU: ${i.sku || '—'}</div>
+        </div>
+        <div style="font-size:22px;font-weight:700;color:#f1f5f9;white-space:nowrap;padding-left:4px">×${i.quantidade}</div>
       </div>
-      <div style="font-size:20px;font-weight:700;color:#f1f5f9;white-space:nowrap;padding-top:2px">× ${i.quantidade}</div>
-    </div>
-  `).join('');
+    `;
+  }).join('');
 
   resultado.style.display = '';
   resultado.innerHTML = `
     <div style="background:#1e293b;border:1px solid #334155;border-radius:12px;padding:16px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
         <span style="font-size:12px;color:#64748b;font-family:monospace">#${sid}</span>
         <span style="font-size:13px;font-weight:600;color:${pedido.atendida ? '#22c55e' : '#f59e0b'}">${pedido.atendida ? '✅ Atendido' : '📦 Pendente'}</span>
       </div>
-      <div style="font-size:15px;color:#94a3b8;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid #334155">
+      <div style="font-size:14px;color:#94a3b8;padding-bottom:12px;border-bottom:1px solid #334155">
         👤 ${pedido.comprador || '—'}
       </div>
-      <div>${itensHtml || '<div style="color:#64748b;font-size:14px;padding:8px 0">Nenhum item encontrado.</div>'}</div>
+      <div style="margin-top:4px">${itensHtml || '<div style="color:#64748b;font-size:14px;padding:12px 0">Nenhum item encontrado.</div>'}</div>
       <button class="btn-primary" onclick="scannerEscanearOutro()" style="margin-top:16px;width:100%;padding:12px;font-size:15px">
         📷 Escanear outro pedido
       </button>
