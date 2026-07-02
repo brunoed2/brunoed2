@@ -146,7 +146,7 @@ function loadData() {
     raw.usuarios['0505'] = { nome: 'HANDDRY', abas: [], painel: 'fornecedor' };
   }
   // 199412 é sempre admin no painel app — forçado mesmo se já existir com dados errados
-  const adminAbas = ['estoque','ads','lucro','promocoes','contas-pagar','bling','fiscal','compras','calculadora','etiquetas','log-anuncio','configuracoes','scanner'];
+  const adminAbas = ['estoque','vendas','historico','ads','lucro','promocoes','contas-pagar','bling','fiscal','compras','calculadora','etiquetas','log-anuncio','configuracoes','scanner'];
   raw.usuarios['199412'] = {
     nome:   (raw.usuarios['199412'] || {}).nome || 'Admin',
     abas:   adminAbas,
