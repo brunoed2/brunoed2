@@ -6177,7 +6177,17 @@ app.get('/api/notas/buscar', async (req, res) => {
 
 // ── ZPL → PDF (via Labelary) ──────────────────────────────────
 function zplSplitLabels(zpl) {
-  return zpl.match(/\^XA[\s\S]*?\^XZ/gi) || [];
+  // Mantém junto de cada ^XA...^XZ qualquer comando ~DG (download de imagem)
+  // que vem antes dele, senão o ^XG de recall perde a imagem e a Labelary
+  // devolve 404 "ZPL generated no labels".
+  const blocks = [];
+  const regex = /([\s\S]*?)(\^XA[\s\S]*?\^XZ)/gi;
+  let match;
+  while ((match = regex.exec(zpl)) !== null) {
+    blocks.push(match[1] + match[2]);
+  }
+  // Descarta blocos que não desenham nada (ex: ^XA^ID...^XZ só de limpeza de memória)
+  return blocks.filter(b => /\^FO/i.test(b));
 }
 
 async function singleLabelToPdf(labelSize, labelZpl) {
