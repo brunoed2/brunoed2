@@ -46,17 +46,27 @@ function zplSplitLabels(zpl) {
 
 async function labelaryConvert(labelZpl, labelSize) {
   const url = `https://api.labelary.com/v1/printers/8dpmm/labels/${labelSize}/0/`;
-  const MAX_RETRIES = 3;
+  const MAX_RETRIES = 4;
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     const form = new FormData();
     form.append('file', new Blob([labelZpl], { type: 'text/plain' }), 'label.zpl');
-    const resp = await fetch(url, { method: 'POST', headers: { Accept: 'application/pdf' }, body: form });
+    let resp;
+    try {
+      resp = await fetch(url, { method: 'POST', headers: { Accept: 'application/pdf' }, body: form });
+    } catch (networkErr) {
+      if (attempt < MAX_RETRIES - 1) {
+        await new Promise(r => setTimeout(r, 1500 * (attempt + 1)));
+        continue;
+      }
+      throw new Error(`Labelary: falha de conexão (${networkErr.message}) — tente novamente em alguns minutos`);
+    }
     if (resp.ok) return resp.arrayBuffer();
-    if ((resp.status === 429 || resp.status >= 500) && attempt < MAX_RETRIES - 1) {
+    if ((resp.status === 429 || resp.status === 404 || resp.status >= 500) && attempt < MAX_RETRIES - 1) {
       await new Promise(r => setTimeout(r, 1500 * (attempt + 1)));
       continue;
     }
-    throw new Error(`Labelary: Erro ${resp.status} — tente novamente em alguns minutos`);
+    const detalhe = await resp.text().catch(() => '');
+    throw new Error(`Labelary: Erro ${resp.status}${detalhe ? ' — ' + detalhe.slice(0, 200) : ''} — tente novamente em alguns minutos`);
   }
 }
 
