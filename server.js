@@ -1375,15 +1375,28 @@ async function fetchBlingPedidosPendentes(conta) {
   addLog(`[bling] conta ${conta}: ${itens.length} pedidos encontrados`, 'info');
 
   // Busca detalhe de cada pedido para obter o numeroLoja correto e os itens
-  const itensDetalhados = [];
-  for (const p of itens) {
-    let detalhe = null;
-    for (let tentativa = 0; tentativa < 3 && !detalhe; tentativa++) {
-      if (tentativa > 0) await new Promise(r => setTimeout(r, 600 * tentativa));
-      detalhe = await axios.get(`https://api.bling.com.br/Api/v3/pedidos/vendas/${p.id}`, {
-        headers: { Authorization: `Bearer ${token}` }, timeout: 10000,
-      }).then(r => r.data?.data || null).catch(() => null);
+  // (em paralelo, com limite de concorrência para não estourar rate limit do Bling)
+  const CONCORRENCIA_DETALHE = 6;
+  const detalhesPorPedido = new Array(itens.length);
+  let proximoIndice = 0;
+  async function worker() {
+    while (proximoIndice < itens.length) {
+      const idx = proximoIndice++;
+      const p = itens[idx];
+      let detalhe = null;
+      for (let tentativa = 0; tentativa < 3 && !detalhe; tentativa++) {
+        if (tentativa > 0) await new Promise(r => setTimeout(r, 600 * tentativa));
+        detalhe = await axios.get(`https://api.bling.com.br/Api/v3/pedidos/vendas/${p.id}`, {
+          headers: { Authorization: `Bearer ${token}` }, timeout: 10000,
+        }).then(r => r.data?.data || null).catch(() => null);
+      }
+      detalhesPorPedido[idx] = detalhe;
     }
+  }
+  await Promise.all(Array.from({ length: Math.min(CONCORRENCIA_DETALHE, itens.length) }, worker));
+
+  const itensDetalhados = itens.map((p, idx) => {
+    const detalhe = detalhesPorPedido[idx];
     const produtos = (detalhe?.itens || []).map(i => `${i.descricao}${i.quantidade > 1 ? ` (x${i.quantidade})` : ''}`);
     const pendencias = [];
     if (!detalhe?.contato?.numeroDocumento?.trim()) pendencias.push('CPF/CNPJ não informado');
@@ -1393,8 +1406,8 @@ async function fetchBlingPedidosPendentes(conta) {
     const isML     = /^\d{10,}$/.test(numeroLojaVal);
     const isShopee = !!numeroLojaVal && !isML;
     const canalNome = isShopee ? 'Shopee' : (isML ? 'Mercado Livre' : '');
-    itensDetalhados.push({ ...p, numeroLoja: detalhe?.numeroLoja || p.numeroLoja, produtos, pendencias, canal: canalNome, isShopee, lojaId: detalhe?.loja?.id || null });
-  }
+    return { ...p, numeroLoja: detalhe?.numeroLoja || p.numeroLoja, produtos, pendencias, canal: canalNome, isShopee, lojaId: detalhe?.loja?.id || null };
+  });
 
   // Verifica no ML quais têm shipment ready_to_ship (etiqueta disponível ao emitir NF)
   const mlData = loadData();
