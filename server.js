@@ -1375,27 +1375,20 @@ async function fetchBlingPedidosPendentes(conta) {
   addLog(`[bling] conta ${conta}: ${itens.length} pedidos encontrados`, 'info');
 
   // Busca detalhe de cada pedido para obter o numeroLoja correto e os itens
-  // (em paralelo, com limite de concorrência para não estourar rate limit do Bling)
-  const CONCORRENCIA_DETALHE = 6;
-  const detalhesPorPedido = new Array(itens.length);
-  let proximoIndice = 0;
-  async function worker() {
-    while (proximoIndice < itens.length) {
-      const idx = proximoIndice++;
-      const p = itens[idx];
-      let detalhe = null;
-      let ultimoErro = null;
-      for (let tentativa = 0; tentativa < 3 && !detalhe; tentativa++) {
-        if (tentativa > 0) await new Promise(r => setTimeout(r, 600 * tentativa));
-        detalhe = await axios.get(`https://api.bling.com.br/Api/v3/pedidos/vendas/${p.id}`, {
-          headers: { Authorization: `Bearer ${token}` }, timeout: 10000,
-        }).then(r => r.data?.data || null).catch(e => { ultimoErro = e; return null; });
-      }
-      if (!detalhe) addLog(`[bling] falha ao buscar detalhe do pedido #${p.numero} (id ${p.id}) após 3 tentativas: ${ultimoErro?.response?.status || ultimoErro?.message || '?'}`, 'warn');
-      detalhesPorPedido[idx] = detalhe;
+  // (sequencial — o Bling rate-limita chamadas em paralelo)
+  const detalhesPorPedido = [];
+  for (const p of itens) {
+    let detalhe = null;
+    let ultimoErro = null;
+    for (let tentativa = 0; tentativa < 3 && !detalhe; tentativa++) {
+      if (tentativa > 0) await new Promise(r => setTimeout(r, 600 * tentativa));
+      detalhe = await axios.get(`https://api.bling.com.br/Api/v3/pedidos/vendas/${p.id}`, {
+        headers: { Authorization: `Bearer ${token}` }, timeout: 10000,
+      }).then(r => r.data?.data || null).catch(e => { ultimoErro = e; return null; });
     }
+    if (!detalhe) addLog(`[bling] falha ao buscar detalhe do pedido #${p.numero} (id ${p.id}) após 3 tentativas: ${ultimoErro?.response?.status || ultimoErro?.message || '?'}`, 'warn');
+    detalhesPorPedido.push(detalhe);
   }
-  await Promise.all(Array.from({ length: Math.min(CONCORRENCIA_DETALHE, itens.length) }, worker));
 
   const itensDetalhados = itens.map((p, idx) => {
     const detalhe = detalhesPorPedido[idx];
