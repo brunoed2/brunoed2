@@ -1384,12 +1384,14 @@ async function fetchBlingPedidosPendentes(conta) {
       const idx = proximoIndice++;
       const p = itens[idx];
       let detalhe = null;
+      let ultimoErro = null;
       for (let tentativa = 0; tentativa < 3 && !detalhe; tentativa++) {
         if (tentativa > 0) await new Promise(r => setTimeout(r, 600 * tentativa));
         detalhe = await axios.get(`https://api.bling.com.br/Api/v3/pedidos/vendas/${p.id}`, {
           headers: { Authorization: `Bearer ${token}` }, timeout: 10000,
-        }).then(r => r.data?.data || null).catch(() => null);
+        }).then(r => r.data?.data || null).catch(e => { ultimoErro = e; return null; });
       }
+      if (!detalhe) addLog(`[bling] falha ao buscar detalhe do pedido #${p.numero} (id ${p.id}) após 3 tentativas: ${ultimoErro?.response?.status || ultimoErro?.message || '?'}`, 'warn');
       detalhesPorPedido[idx] = detalhe;
     }
   }
@@ -1399,9 +1401,13 @@ async function fetchBlingPedidosPendentes(conta) {
     const detalhe = detalhesPorPedido[idx];
     const produtos = (detalhe?.itens || []).map(i => `${i.descricao}${i.quantidade > 1 ? ` (x${i.quantidade})` : ''}`);
     const pendencias = [];
-    if (!detalhe?.contato?.numeroDocumento?.trim()) pendencias.push('CPF/CNPJ não informado');
-    const itensSemProduto = (detalhe?.itens || []).filter(i => !i?.produto?.id);
-    if (itensSemProduto.length > 0) pendencias.push(`Produto não cadastrado: ${itensSemProduto.map(i => i.descricao || '?').join(', ')}`);
+    if (!detalhe) {
+      pendencias.push('Falha ao consultar pedido no Bling — tentar atualizar');
+    } else {
+      if (!detalhe.contato?.numeroDocumento?.trim()) pendencias.push('CPF/CNPJ não informado');
+      const itensSemProduto = (detalhe.itens || []).filter(i => !i?.produto?.id);
+      if (itensSemProduto.length > 0) pendencias.push(`Produto não cadastrado: ${itensSemProduto.map(i => i.descricao || '?').join(', ')}`);
+    }
     const numeroLojaVal = detalhe?.numeroLoja || p.numeroLoja || '';
     const isML     = /^\d{10,}$/.test(numeroLojaVal);
     const isShopee = !!numeroLojaVal && !isML;
