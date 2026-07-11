@@ -3234,173 +3234,6 @@ app.get('/api/ml/ads-roas', async (req, res) => {
   }
 });
 
-// Edita uma campanha existente (ex: renomear) — teste pra ver se a API bloqueia toda escrita
-// em Product Ads ou só a criação de campanha nova
-app.post('/api/ml/ads-editar-campanha', async (req, res) => {
-  const data = loadData();
-  const { conta, campId, name } = req.body || {};
-  const num  = conta || data.conta_ativa;
-  const c    = data.contas[num];
-  if (!c || !c.access_token) return res.json({ error: 'Não conectado' });
-  if (!campId || !name)      return res.json({ error: 'campId e name obrigatórios' });
-
-  const headers = { Authorization: `Bearer ${c.access_token}` };
-
-  try {
-    const adv = await buscarAdvertiser(headers);
-    if (!adv) return res.json({ error: 'Nenhum advertiser de Product Ads encontrado nessa conta.' });
-
-    const r = await axios.put(
-      `https://api.mercadolibre.com/marketplace/advertising/${adv.siteId}/product_ads/campaigns/${campId}`,
-      { name },
-      { headers: { ...headers, 'Api-Version': '2' }, timeout: 15000 }
-    );
-    addLog(`[ads-editar-campanha] campanha ${campId} renomeada pra "${name}"`, 'info');
-    res.json({ ok: true, campanha: r.data });
-  } catch (err) {
-    const d = err.response?.data;
-    addLog(`[ads-editar-campanha] falha ao editar campanha ${campId}: ${d?.message || err.message}`, 'erro');
-    res.json({ error: d?.message || d?.error || 'Erro ao editar campanha.', detalhe: d || err.message });
-  }
-});
-
-// Lista produtos ativos e indica quais já têm um anúncio (ad) de Product Ads em campanha
-app.get('/api/ml/ads-produtos', async (req, res) => {
-  const data = loadData();
-  const num  = req.query.conta || data.conta_ativa;
-  const c    = data.contas[num];
-  if (!c || !c.access_token) return res.json({ error: 'Não conectado' });
-  if (!c.user_id)            return res.json({ error: 'user_id não encontrado. Reconecte a conta.' });
-
-  const headers = { Authorization: `Bearer ${c.access_token}` };
-
-  try {
-    // 1. IDs de produtos ativos (paginado)
-    const ids = [];
-    let offset = 0;
-    while (true) {
-      const r = await axios.get(`https://api.mercadolibre.com/users/${c.user_id}/items/search`, {
-        params: { status: 'active', offset, limit: 50 }, headers, timeout: 15000,
-      });
-      const results = r.data.results || [];
-      ids.push(...results);
-      if (results.length < 50 || offset >= 1000) break;
-      offset += 50;
-    }
-    if (!ids.length) return res.json({ produtos: [] });
-
-    // 2. Detalhes (título, preço, thumbnail) em lotes de 20
-    const detalhes = [];
-    for (let i = 0; i < ids.length; i += 20) {
-      const chunk = ids.slice(i, i + 20);
-      const r = await axios.get('https://api.mercadolibre.com/items', {
-        params: { ids: chunk.join(','), attributes: 'id,title,thumbnail,price,status' },
-        headers, timeout: 15000,
-      });
-      detalhes.push(...r.data);
-    }
-
-    // 3. Ads existentes, pra saber quais produtos já estão em campanha
-    const todosAds = [];
-    let offsetAds = 0;
-    while (true) {
-      const r = await axios.get('https://api.mercadolibre.com/advertising/product_ads/ads/search', {
-        params: { seller_id: c.user_id, limit: 50, offset: offsetAds }, headers, timeout: 12000,
-      });
-      const results = r.data.results || [];
-      todosAds.push(...results);
-      if (results.length < 50 || todosAds.length >= 500) break;
-      offsetAds += 50;
-    }
-    const adPorItem = new Map(todosAds.map(a => [a.id, a]));
-
-    const produtos = detalhes
-      .filter(r => r.code === 200)
-      .map(r => {
-        const ad = adPorItem.get(r.body.id);
-        return {
-          id:        r.body.id,
-          title:     r.body.title,
-          thumbnail: r.body.thumbnail,
-          price:     r.body.price,
-          emCampanha:   !!(ad && ad.campaign_id > 0),
-          campaignId:   ad?.campaign_id || null,
-          adStatus:     ad?.status || null,
-        };
-      });
-
-    res.json({ produtos });
-  } catch (err) {
-    console.error('Erro ads-produtos:', err.response?.data || err.message);
-    const d = err.response?.data;
-    res.json({ error: d?.message || d?.error || 'Erro ao buscar produtos.', detalhe: JSON.stringify(d) });
-  }
-});
-
-// Cria uma campanha de Product Ads e coloca o produto informado dentro dela
-app.post('/api/ml/ads-criar-campanha', async (req, res) => {
-  const data = loadData();
-  const { conta, mlb, budget, acos_target, nome } = req.body || {};
-  const num  = conta || data.conta_ativa;
-  const c    = data.contas[num];
-  if (!c || !c.access_token) return res.json({ error: 'Não conectado' });
-  if (!mlb) return res.json({ error: 'mlb obrigatório' });
-
-  const headers = { Authorization: `Bearer ${c.access_token}` };
-
-  try {
-    const adv = await buscarAdvertiser(headers);
-    if (!adv) return res.json({ error: 'Nenhum advertiser de Product Ads encontrado nessa conta.' });
-    const { advertiserId, siteId } = adv;
-
-    // 1. Cria a campanha
-    let campanha;
-    try {
-      const r = await axios.post(
-        `https://api.mercadolibre.com/marketplace/advertising/${siteId}/advertisers/${advertiserId}/product_ads/campaigns`,
-        {
-          name:        nome || 'Campanha',
-          status:      'active',
-          budget:      Number(budget) || 15,
-          strategy:    'profitability',
-          channel:     'marketplace',
-          acos_target: Number(acos_target) || 20,
-        },
-        { headers: { ...headers, 'Api-Version': '2' }, timeout: 15000 }
-      );
-      campanha = r.data;
-      addLog(`[ads-criar-campanha] campanha ${campanha.id} criada pra conta ${num}`, 'info');
-    } catch (e) {
-      const d = e.response?.data;
-      addLog(`[ads-criar-campanha] falha ao criar campanha: ${d?.message || e.message}`, 'erro');
-      return res.json({ error: 'Falha ao criar campanha', detalhe: d || e.message });
-    }
-
-    // 2. Coloca o produto dentro da campanha recém-criada
-    try {
-      const r = await axios.put(
-        `https://api.mercadolibre.com/marketplace/advertising/${siteId}/product_ads/ads/${mlb}`,
-        { status: 'active', campaign_id: campanha.id },
-        { headers: { ...headers, 'Api-Version': '2' }, timeout: 15000 }
-      );
-      addLog(`[ads-criar-campanha] ${mlb} adicionado à campanha ${campanha.id}`, 'info');
-      res.json({ ok: true, campanha, ad: r.data });
-    } catch (e) {
-      const d = e.response?.data;
-      addLog(`[ads-criar-campanha] campanha ${campanha.id} criada mas falhou ao adicionar ${mlb}: ${d?.message || e.message}`, 'erro');
-      res.json({
-        error: `Campanha "${campanha.name}" (id ${campanha.id}) foi criada, mas falhou ao adicionar o produto`,
-        detalhe: d || e.message,
-        campanha,
-      });
-    }
-  } catch (err) {
-    console.error('Erro ads-criar-campanha:', err.response?.data || err.message);
-    const d = err.response?.data;
-    res.json({ error: d?.message || d?.error || 'Erro ao criar campanha.', detalhe: JSON.stringify(d) });
-  }
-});
-
 function extrairSkuDoItem(body) {
   if (body.seller_custom_field) return body.seller_custom_field;
   const attrItem = (body.attributes || []).find(a => a.id === 'SELLER_SKU');
@@ -3429,16 +3262,20 @@ app.get('/api/ml/ads-custo-lucro', async (req, res) => {
   const hoje = lucroHojeISO();
 
   try {
-    // 1. SKU de cada produto (multiget em lotes de 20)
-    const skuPorMlb = {};
+    // 1. SKU e preço atual de cada produto (multiget em lotes de 20)
+    const skuPorMlb   = {};
+    const precoPorMlb = {};
     for (let i = 0; i < mlbs.length; i += 20) {
       const chunk = mlbs.slice(i, i + 20);
       const r = await axios.get('https://api.mercadolibre.com/items', {
-        params: { ids: chunk.join(','), attributes: 'id,seller_custom_field,attributes,variations' },
+        params: { ids: chunk.join(','), attributes: 'id,price,seller_custom_field,attributes,variations' },
         headers, timeout: 15000,
       });
       r.data.forEach(item => {
-        if (item.code === 200) skuPorMlb[item.body.id] = extrairSkuDoItem(item.body);
+        if (item.code === 200) {
+          skuPorMlb[item.body.id]   = extrairSkuDoItem(item.body);
+          precoPorMlb[item.body.id] = item.body.price ?? item.body.variations?.[0]?.price ?? null;
+        }
       });
     }
 
@@ -3503,10 +3340,10 @@ app.get('/api/ml/ads-custo-lucro', async (req, res) => {
         const taxaImposto = lc.taxa_imposto_por_mes?.[mesVenda] ?? lc.taxa_imposto ?? 0;
         const imposto   = receita * (taxaImposto / 100);
         const lucro     = receita - taxaML - frete - custoLinha - imposto;
-        ultimaVenda = { orderId: venda.orderId, data: venda.data, quantidade: qty, receita, taxaML, frete, custo: custoLinha, imposto, lucro };
+        ultimaVenda = { orderId: venda.orderId, data: venda.data, quantidade: qty, receita, taxaML, frete, custo: custoLinha, imposto, lucro, lucroUnitario: lucro / qty };
       }
 
-      resultado[mlb] = { sku, custo, ultimaVenda };
+      resultado[mlb] = { sku, custo, preco: precoPorMlb[mlb] ?? null, ultimaVenda };
     });
 
     res.json({ resultado });

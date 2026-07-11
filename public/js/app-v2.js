@@ -35,8 +35,8 @@ let contaGen          = 0;
 let todosAdsItens    = [];
 let sortAds          = { campo: null, direcao: 'asc' };
 let expandedCamps    = new Set();
-let todosAdsProdutos = [];
 let custoLucroPorMlb = {};
+let gastoMaxPorMlb   = {}; // input do usuário — simulação de ROAS ideal / lucro após ads
 
 // ── Navegação entre abas ──────────────────────────────────────
 
@@ -76,7 +76,7 @@ function abrirAba(nome) {
   if (nome === 'estoque')       carregarEstoque(true);
   if (nome === 'vendas')        carregarVendas();
   if (nome === 'historico')     { histIniciarDatas(); carregarHistorico(); }
-  if (nome === 'ads')           { carregarAds(); carregarAdsProdutos(); }
+  if (nome === 'ads')           carregarAds();
   if (nome === 'lucro')         lucroInit();
   if (nome === 'promocoes')     carregarPromocoes();
   if (nome === 'contas-pagar')  contasPagarInit();
@@ -868,6 +868,51 @@ document.querySelectorAll('.th-sort-ads').forEach(th => {
   });
 });
 
+// Simulação: dado o preço do anúncio e o lucro (sem ads) da última venda,
+// calcula o ROAS necessário e o lucro resultante pro "gasto máx. por venda" informado
+function calcSimulacaoAds(mlb) {
+  const fmtBRL = v => v != null ? `R$ ${v.toFixed(2).replace('.', ',')}` : '—';
+  const info      = custoLucroPorMlb[mlb];
+  const preco     = info?.preco;
+  const lucroUnit = info?.ultimaVenda?.lucroUnitario;
+  const gastoMax  = gastoMaxPorMlb[mlb];
+
+  if (!preco || !gastoMax || gastoMax <= 0) return { roas: '—', lucro: '—' };
+
+  const roasIdeal = preco / gastoMax;
+  if (lucroUnit == null) return { roas: `${roasIdeal.toFixed(2)}x`, lucro: '—' };
+
+  const lucroApos = lucroUnit - gastoMax;
+  const lucroPct  = preco > 0 ? (lucroApos / preco * 100) : null;
+  return {
+    roas:  `${roasIdeal.toFixed(2)}x`,
+    lucro: `${fmtBRL(lucroApos)}${lucroPct != null ? ` (${lucroPct.toFixed(1)}%)` : ''}`,
+  };
+}
+
+function atualizarSimulacaoAds(mlb, valor) {
+  const num = parseFloat(String(valor).replace(',', '.'));
+  gastoMaxPorMlb[mlb] = isNaN(num) || num <= 0 ? null : num;
+  const { roas, lucro } = calcSimulacaoAds(mlb);
+  const roasEl  = document.getElementById(`roas-ideal-${mlb}`);
+  const lucroEl = document.getElementById(`lucro-apos-${mlb}`);
+  if (roasEl)  roasEl.textContent  = roas;
+  if (lucroEl) lucroEl.textContent = lucro;
+}
+
+function tdsSimulacaoAds(mlb) {
+  const fmtBRL   = v => v != null ? `R$ ${v.toFixed(2).replace('.', ',')}` : '—';
+  const info     = custoLucroPorMlb[mlb];
+  const gastoMax = gastoMaxPorMlb[mlb];
+  const { roas, lucro } = calcSimulacaoAds(mlb);
+  return `
+    <td class="col-num">${fmtBRL(info?.preco)}</td>
+    <td class="col-num"><input type="number" step="0.01" min="0" style="width:80px" placeholder="R$" value="${gastoMax ?? ''}" oninput="atualizarSimulacaoAds('${mlb}', this.value)"></td>
+    <td class="col-num" id="roas-ideal-${mlb}">${roas}</td>
+    <td class="col-num" id="lucro-apos-${mlb}">${lucro}</td>
+  `;
+}
+
 function renderizarAds() {
   let itens = [...todosAdsItens];
   if (sortAds.campo) {
@@ -930,10 +975,13 @@ function renderizarAds() {
     const lucroCell = infoUm?.ultimaVenda
       ? `<td class="col-num" title="Venda de ${infoUm.ultimaVenda.data?.slice(0,10) || '?'}">${fmtBRL(infoUm.ultimaVenda.lucro)}</td>`
       : '<td class="col-num">—</td>';
+    const simCells = soUmAd
+      ? tdsSimulacaoAds(soUmAd.id)
+      : '<td class="col-num">—</td><td class="col-num">—</td><td class="col-num">—</td><td class="col-num">—</td>';
 
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td class="td-campanha" title="${item.campanha}">${item.campanha} <button class="btn-expandir-var" onclick="renomearCampanha('${campId}')" title="Renomear">✏️</button></td>
+      <td class="td-campanha" title="${item.campanha}">${item.campanha}</td>
       ${anunciosCell}
       <td class="col-num">${fmtRoas(item.targetRoas)}</td>
       <td class="col-num ${roasClass}">${fmtRoas(item.roasEntregando)}</td>
@@ -942,6 +990,7 @@ function renderizarAds() {
       <td class="col-num">${item.units || '—'}</td>
       ${custoCell}
       ${lucroCell}
+      ${simCells}
     `;
     tbody.appendChild(tr);
 
@@ -958,6 +1007,7 @@ function renderizarAds() {
         trAd.innerHTML = `
           <td class="variacao-indent"></td>
           <td colspan="8" class="variacao-nome">↳ ${ad.title}${detalhe}</td>
+          ${tdsSimulacaoAds(ad.id)}
         `;
         tbody.appendChild(trAd);
       });
@@ -1017,110 +1067,6 @@ async function carregarCustoLucroAds() {
     custoLucroPorMlb = data.resultado || {};
     renderizarAds();
   } catch {}
-}
-
-// ── Ads — criar campanha por produto ────────────────────────────
-
-async function carregarAdsProdutos() {
-  const loading = document.getElementById('ads-prod-loading');
-  const erroEl  = document.getElementById('ads-prod-erro');
-  const tabela  = document.getElementById('tabela-ads-prod');
-
-  loading.style.display = 'block';
-  erroEl.style.display  = 'none';
-  tabela.style.display  = 'none';
-  document.getElementById('ads-prod-total').textContent = '';
-  document.getElementById('tabela-ads-prod-body').innerHTML = '';
-
-  try {
-    const data = await apiFetch(`/api/ml/ads-produtos?conta=${window.CONTA_ATIVA}`, { _timeout: 60000 });
-    loading.style.display = 'none';
-
-    if (data.error) {
-      erroEl.textContent   = data.error + (data.detalhe ? ` — ${JSON.stringify(data.detalhe)}` : '');
-      erroEl.style.display = 'block';
-      return;
-    }
-
-    todosAdsProdutos = data.produtos || [];
-    renderizarAdsProdutos();
-  } catch (e) {
-    loading.style.display = 'none';
-    erroEl.textContent   = `Erro ao carregar produtos: ${e?.message || 'motivo desconhecido'}`;
-    erroEl.style.display = 'block';
-  }
-}
-
-function renderizarAdsProdutos() {
-  const fmtBRL = v => v != null ? `R$ ${Number(v).toFixed(2).replace('.', ',')}` : '—';
-  const tbody  = document.getElementById('tabela-ads-prod-body');
-  tbody.innerHTML = '';
-
-  todosAdsProdutos.forEach(p => {
-    const tr = document.createElement('tr');
-    const statusTxt = p.emCampanha ? `Em campanha (${p.campaignId})` : '—';
-    const acaoCell  = p.emCampanha
-      ? '<td class="col-num">—</td>'
-      : `<td class="col-num"><button class="btn-secondary" onclick="criarCampanhaProduto('${p.id}')" id="btn-criar-camp-${p.id}">Criar campanha</button></td>`;
-    tr.innerHTML = `
-      <td class="td-titulo" title="${p.title}">${p.title}</td>
-      <td class="col-num">${fmtBRL(p.price)}</td>
-      <td>${statusTxt}</td>
-      ${acaoCell}
-    `;
-    tbody.appendChild(tr);
-  });
-
-  document.getElementById('ads-prod-total').textContent = `${todosAdsProdutos.length} produto${todosAdsProdutos.length !== 1 ? 's' : ''} ativo${todosAdsProdutos.length !== 1 ? 's' : ''}`;
-  document.getElementById('tabela-ads-prod').style.display = todosAdsProdutos.length ? 'table' : 'none';
-}
-
-async function criarCampanhaProduto(mlb) {
-  const btn = document.getElementById(`btn-criar-camp-${mlb}`);
-  if (btn) { btn.disabled = true; btn.textContent = 'Criando...'; }
-
-  try {
-    const produto = todosAdsProdutos.find(p => p.id === mlb);
-    const resp = await apiFetch('/api/ml/ads-criar-campanha', {
-      method: 'POST',
-      body: JSON.stringify({ conta: window.CONTA_ATIVA, mlb, nome: (produto?.title || 'Campanha').slice(0, 60) }),
-      _timeout: 30000,
-    });
-
-    if (resp.error) {
-      alert(`Erro ao criar campanha: ${resp.error}${resp.detalhe ? '\n\n' + JSON.stringify(resp.detalhe) : ''}`);
-      if (btn) { btn.disabled = false; btn.textContent = 'Criar campanha'; }
-      return;
-    }
-
-    carregarAdsProdutos();
-    carregarAds();
-  } catch (e) {
-    alert(`Erro ao criar campanha: ${e?.message || 'motivo desconhecido'}`);
-    if (btn) { btn.disabled = false; btn.textContent = 'Criar campanha'; }
-  }
-}
-
-async function renomearCampanha(campId) {
-  const item = todosAdsItens.find(i => i.campId === campId);
-  const nomeAtual = item?.campanha || '';
-  const nomeNovo = prompt('Novo nome da campanha:', nomeAtual);
-  if (!nomeNovo || nomeNovo === nomeAtual) return;
-
-  try {
-    const resp = await apiFetch('/api/ml/ads-editar-campanha', {
-      method: 'POST',
-      body: JSON.stringify({ conta: window.CONTA_ATIVA, campId, name: nomeNovo }),
-      _timeout: 20000,
-    });
-    if (resp.error) {
-      alert(`Erro ao renomear campanha: ${resp.error}${resp.detalhe ? '\n\n' + JSON.stringify(resp.detalhe) : ''}`);
-      return;
-    }
-    carregarAds();
-  } catch (e) {
-    alert(`Erro ao renomear campanha: ${e?.message || 'motivo desconhecido'}`);
-  }
 }
 
 // ── Sair ──────────────────────────────────────────────────────
