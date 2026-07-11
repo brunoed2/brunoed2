@@ -3157,6 +3157,7 @@ app.get('/api/ml/ads-roas', async (req, res) => {
     const t0 = Date.now();
     const CONCORRENCIA = 3;
     const campResults = new Array(campIds.length);
+    const errosCamp = [];
     let proximoIndice = 0;
     async function worker() {
       while (proximoIndice < campIds.length) {
@@ -3178,12 +3179,16 @@ app.get('/api/ml/ads-roas', async (req, res) => {
             resultado = { campId, det: detResp.data, met: metResp.data, ads: adsDestaCamp };
           } catch (e) { ultimoErro = e; }
         }
-        if (!resultado) addLog(`[ads-roas] falha ao buscar campanha ${campId} após 2 tentativas: ${ultimoErro?.response?.status || ultimoErro?.message || '?'}`, 'warn');
+        if (!resultado) {
+          const statusMsg = `${ultimoErro?.response?.status || '?'} ${ultimoErro?.response?.data?.message || ultimoErro?.message || ''}`.trim();
+          addLog(`[ads-roas] falha ao buscar campanha ${campId} após 2 tentativas: ${statusMsg}`, 'warn');
+          errosCamp.push({ campId, statusMsg });
+        }
         campResults[idx] = resultado;
       }
     }
     await Promise.all(Array.from({ length: Math.min(CONCORRENCIA, campIds.length) }, worker));
-    addLog(`[ads-roas] ${campIds.length} campanhas em ${Date.now() - t0}ms (${campResults.filter(r => !r).length} falhas)`, 'info');
+    addLog(`[ads-roas] ${campIds.length} campanhas em ${Date.now() - t0}ms (${errosCamp.length} falhas)`, 'info');
 
     // 4. Monta tabela — uma linha por campanha
     const itens = campResults
@@ -3224,14 +3229,14 @@ app.get('/api/ml/ads-roas', async (req, res) => {
         };
       });
 
-    const falhas = campResults.filter(r => !r).length;
+    const falhas = errosCamp.length;
     let aviso;
     if (!itens.length && falhas === campIds.length) {
-      aviso = 'Não foi possível carregar as campanhas (falha ao consultar a API do Mercado Livre). Tente novamente em instantes.';
+      aviso = `Não foi possível carregar as campanhas — erro: ${errosCamp[0]?.statusMsg || '?'}`;
     } else if (!itens.length) {
       aviso = 'Nenhuma campanha com custo nos últimos 30 dias.';
     } else if (falhas) {
-      aviso = `${falhas} campanha${falhas !== 1 ? 's' : ''} não pôde${falhas !== 1 ? 'ram' : ''} ser carregada${falhas !== 1 ? 's' : ''} (veja o log).`;
+      aviso = `${falhas} campanha${falhas !== 1 ? 's' : ''} não pôde${falhas !== 1 ? 'ram' : ''} ser carregada${falhas !== 1 ? 's' : ''} — erro: ${errosCamp[0]?.statusMsg || '?'}`;
     }
 
     res.json({ itens, aviso });
