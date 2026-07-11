@@ -3130,79 +3130,67 @@ app.get('/api/ml/ads-roas', async (req, res) => {
   const today     = new Date().toISOString().split('T')[0];
   const dateBegin = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
+  const v2 = { ...headers, 'Api-Version': '2' };
+  const METRICS = 'clicks,prints,cost,cpc,acos,total_amount,direct_amount,indirect_amount,units_quantity,direct_units_quantity,indirect_units_quantity';
+
   try {
-    // 1. Busca todos os ads do seller (paginado)
+    // 1. Busca o advertiser_id da conta (a API de campanhas não aceita mais seller/user_id)
+    const advResp = await axios.get('https://api.mercadolibre.com/advertising/advertisers', {
+      params: { product_id: 'PADS' }, headers: v2, timeout: 10000,
+    });
+    const advertiserId = advResp.data?.advertisers?.[0]?.advertiser_id;
+    const siteId        = advResp.data?.advertisers?.[0]?.site_id || 'MLB';
+    if (!advertiserId) return res.json({ itens: [], aviso: 'Nenhum advertiser de Product Ads encontrado nessa conta.' });
+
+    // 2. Busca todos os ads do seller (paginado) — só pra pegar os títulos por campanha
     const todosAds = [];
-    let offset = 0;
+    let offsetAds = 0;
     while (true) {
       const r = await axios.get('https://api.mercadolibre.com/advertising/product_ads/ads/search', {
-        params: { seller_id: c.user_id, limit: 50, offset }, headers, timeout: 12000,
+        params: { seller_id: c.user_id, limit: 50, offset: offsetAds }, headers, timeout: 12000,
       });
       const results = r.data.results || [];
       todosAds.push(...results);
       if (results.length < 50 || todosAds.length >= 500) break;
-      offset += 50;
+      offsetAds += 50;
     }
 
-    // 2. Coleta campaign_ids únicos (com campaign_id > 0)
-    const campIds = [...new Set(
-      todosAds.filter(a => a.campaign_id > 0).map(a => a.campaign_id)
-    )];
-
-    if (!campIds.length) return res.json({ itens: [], aviso: 'Nenhuma campanha ativa encontrada.' });
-
-    // 3. Busca detalhes, métricas e ads de cada campanha
-    // (concorrência limitada — tudo em paralelo de uma vez rate-limita e some silenciosamente
-    //  da tabela; totalmente sequencial demora demais e estoura o timeout do front)
+    // 3. Busca campanhas + métricas numa chamada só (endpoint novo, paginado)
     const t0 = Date.now();
-    const CONCORRENCIA = 3;
-    const campResults = new Array(campIds.length);
-    const errosCamp = [];
-    let proximoIndice = 0;
-    async function worker() {
-      while (proximoIndice < campIds.length) {
-        const idx = proximoIndice++;
-        const campId = campIds[idx];
-        let resultado = null;
-        let ultimoErro = null;
-        for (let tentativa = 0; tentativa < 2 && !resultado; tentativa++) {
-          if (tentativa > 0) await new Promise(r => setTimeout(r, 500));
-          try {
-            const [detResp, metResp] = await Promise.all([
-              axios.get(`https://api.mercadolibre.com/advertising/product_ads/campaigns/${campId}`, { headers, timeout: 10000 }),
-              axios.get(`https://api.mercadolibre.com/advertising/product_ads/campaigns/${campId}/metrics`, {
-                params: { date_from: dateBegin, date_to: today }, headers, timeout: 10000,
-              }),
-            ]);
-            // Filtra os ads desta campanha a partir da lista completa (o filtro campaign_id da API não funciona)
-            const adsDestaCamp = todosAds.filter(a => a.campaign_id === campId);
-            resultado = { campId, det: detResp.data, met: metResp.data, ads: adsDestaCamp };
-          } catch (e) { ultimoErro = e; }
+    const campanhas = [];
+    let offsetCamp = 0;
+    const LIMIT = 50;
+    while (true) {
+      const r = await axios.get(
+        `https://api.mercadolibre.com/marketplace/advertising/${siteId}/advertisers/${advertiserId}/product_ads/campaigns/search`,
+        {
+          params: { limit: LIMIT, offset: offsetCamp, metrics_summary: true, metrics: METRICS, date_from: dateBegin, date_to: today },
+          headers: v2, timeout: 15000,
         }
-        if (!resultado) {
-          const statusMsg = `${ultimoErro?.response?.status || '?'} ${ultimoErro?.response?.data?.message || ultimoErro?.message || ''}`.trim();
-          addLog(`[ads-roas] falha ao buscar campanha ${campId} após 2 tentativas: ${statusMsg}`, 'warn');
-          errosCamp.push({ campId, statusMsg });
-        }
-        campResults[idx] = resultado;
-      }
+      );
+      const results = r.data.results || [];
+      campanhas.push(...results);
+      const total = r.data.paging?.total || 0;
+      offsetCamp += LIMIT;
+      if (offsetCamp >= total || !results.length) break;
     }
-    await Promise.all(Array.from({ length: Math.min(CONCORRENCIA, campIds.length) }, worker));
-    addLog(`[ads-roas] ${campIds.length} campanhas em ${Date.now() - t0}ms (${errosCamp.length} falhas)`, 'info');
+    addLog(`[ads-roas] ${campanhas.length} campanhas em ${Date.now() - t0}ms`, 'info');
 
-    // 4. Monta tabela — uma linha por campanha
-    const itens = campResults
-      .filter(r => r && r.met?.cost > 0)
-      .map(({ campId, det, met, ads }) => {
-        const adsDestaCamp = ads;
+    // 4. Monta tabela — uma linha por campanha com custo no período
+    const itens = campanhas
+      .filter(camp => (camp.metrics?.cost || 0) > 0)
+      .map(camp => {
+        const campId = camp.id;
+        const met = camp.metrics || {};
+        const adsDestaCamp = todosAds.filter(a => a.campaign_id === campId);
         const vistos = new Set();
         const titulos = adsDestaCamp
           .filter(a => { if (vistos.has(a.id)) return false; vistos.add(a.id); return true; })
           .map(a => a.title)
           .join(' | ');
         const cost            = Number(met.cost)         || 0;
-        const revenue         = Number(met.amount_total) || 0;
-        const units           = Number(met.sold_quantity_total) || Number(met.sold_items_quantity_total) || 0;
+        const revenue         = Number(met.total_amount) || 0;
+        const units           = Number(met.units_quantity) || 0;
         const roasEntregando  = cost > 0 ? revenue / cost : null;
         const custoPorUnidade = units > 0 ? cost / units  : null;
         const adsListaDedup = [];
@@ -3212,32 +3200,24 @@ app.get('/api/ml/ads-roas', async (req, res) => {
         });
         return {
           campId:         String(campId),
-          campanha:       det.name || String(campId),
-          targetRoas:     det.roas_target  ?? null,
-          acosTarget:     det.acos_target  ?? null,
+          campanha:       camp.name || String(campId),
+          targetRoas:     camp.roas_target  ?? null,
+          acosTarget:     camp.acos_target  ?? null,
           roasEntregando,
           custoPorUnidade,
           cost,
           revenue,
           units,
-          clicks:         Number(met.clicks)     || 0,
-          impressions:    Number(met.impressions) || 0,
-          tacos:          Number(met.tacos)       || 0,
+          clicks:         Number(met.clicks) || 0,
+          impressions:    Number(met.prints) || 0,
+          tacos:          0,
           titulos,
           qtdAnuncios:    adsListaDedup.length,
           adsLista:       adsListaDedup,
         };
       });
 
-    const falhas = errosCamp.length;
-    let aviso;
-    if (!itens.length && falhas === campIds.length) {
-      aviso = `Não foi possível carregar as campanhas — erro: ${errosCamp[0]?.statusMsg || '?'}`;
-    } else if (!itens.length) {
-      aviso = 'Nenhuma campanha com custo nos últimos 30 dias.';
-    } else if (falhas) {
-      aviso = `${falhas} campanha${falhas !== 1 ? 's' : ''} não pôde${falhas !== 1 ? 'ram' : ''} ser carregada${falhas !== 1 ? 's' : ''} — erro: ${errosCamp[0]?.statusMsg || '?'}`;
-    }
+    const aviso = itens.length ? undefined : 'Nenhuma campanha com custo nos últimos 30 dias.';
 
     res.json({ itens, aviso });
   } catch (err) {
