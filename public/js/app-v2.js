@@ -28,6 +28,14 @@ let contaConfigurando = '1'; // conta sendo editada na aba config
 let trocandoConta     = false;
 let contaGen          = 0;
 
+// Estado da aba Ads — declarado aqui (não lá embaixo) porque abrirAba() já pode
+// chamar carregarAds() antes do resto do script terminar de rodar; se algo no
+// meio do script lançar um erro, o restante do arquivo nunca executa e essas
+// variáveis ficariam presas em TDZ pra sempre.
+let todosAdsItens  = [];
+let sortAds        = { campo: null, direcao: 'asc' };
+let expandedCamps  = new Set();
+
 // ── Navegação entre abas ──────────────────────────────────────
 
 const navBtns    = document.querySelectorAll('.nav-btn');
@@ -111,6 +119,7 @@ navBtns.forEach(btn => {
 });
 
 (function () {
+ try {
   const permitidas = JSON.parse(localStorage.getItem('abasPermitidas') || 'null');
   if (permitidas && Array.isArray(permitidas)) {
     navBtns.forEach(btn => {
@@ -141,6 +150,9 @@ navBtns.forEach(btn => {
   }
 
   history.replaceState({}, '', '/app.html?conta=' + window.CONTA_ATIVA);
+ } catch (e) {
+  clog(`Erro na inicialização da aba: ${e.message}`, 'erro');
+ }
 })();
 
 // ── Helpers ───────────────────────────────────────────────────
@@ -211,7 +223,8 @@ async function atualizarStatus() {
 
 // ── Configurações ─────────────────────────────────────────────
 
-document.getElementById('callback-url').textContent = `${location.origin}/api/ml/callback`;
+const elCallbackUrl = document.getElementById('callback-url');
+if (elCallbackUrl) elCallbackUrl.textContent = `${location.origin}/api/ml/callback`;
 
 function abrirConfigConta(num) {
   contaConfigurando = num;
@@ -825,10 +838,7 @@ async function carregarEstoque(reiniciar = false) {
 }
 
 // ── Ads ───────────────────────────────────────────────────────
-
-let todosAdsItens  = [];
-let sortAds        = { campo: null, direcao: 'asc' };
-let expandedCamps  = new Set();
+// (estado todosAdsItens/sortAds/expandedCamps declarado no topo do arquivo)
 
 function toggleCampanha(campId) {
   if (expandedCamps.has(campId)) {
