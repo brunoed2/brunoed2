@@ -3234,6 +3234,36 @@ app.get('/api/ml/ads-roas', async (req, res) => {
   }
 });
 
+// Edita uma campanha existente (ex: renomear) — teste pra ver se a API bloqueia toda escrita
+// em Product Ads ou só a criação de campanha nova
+app.post('/api/ml/ads-editar-campanha', async (req, res) => {
+  const data = loadData();
+  const { conta, campId, name } = req.body || {};
+  const num  = conta || data.conta_ativa;
+  const c    = data.contas[num];
+  if (!c || !c.access_token) return res.json({ error: 'Não conectado' });
+  if (!campId || !name)      return res.json({ error: 'campId e name obrigatórios' });
+
+  const headers = { Authorization: `Bearer ${c.access_token}` };
+
+  try {
+    const adv = await buscarAdvertiser(headers);
+    if (!adv) return res.json({ error: 'Nenhum advertiser de Product Ads encontrado nessa conta.' });
+
+    const r = await axios.put(
+      `https://api.mercadolibre.com/marketplace/advertising/${adv.siteId}/product_ads/campaigns/${campId}`,
+      { name },
+      { headers: { ...headers, 'Api-Version': '2' }, timeout: 15000 }
+    );
+    addLog(`[ads-editar-campanha] campanha ${campId} renomeada pra "${name}"`, 'info');
+    res.json({ ok: true, campanha: r.data });
+  } catch (err) {
+    const d = err.response?.data;
+    addLog(`[ads-editar-campanha] falha ao editar campanha ${campId}: ${d?.message || err.message}`, 'erro');
+    res.json({ error: d?.message || d?.error || 'Erro ao editar campanha.', detalhe: d || err.message });
+  }
+});
+
 // Lista produtos ativos e indica quais já têm um anúncio (ad) de Product Ads em campanha
 app.get('/api/ml/ads-produtos', async (req, res) => {
   const data = loadData();

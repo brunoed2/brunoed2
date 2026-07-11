@@ -924,7 +924,7 @@ function renderizarAds() {
 
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td class="td-campanha" title="${item.campanha}">${item.campanha}</td>
+      <td class="td-campanha" title="${item.campanha}">${item.campanha} <button class="btn-expandir-var" onclick="renomearCampanha('${campId}')" title="Renomear">✏️</button></td>
       ${anunciosCell}
       <td class="col-num">${fmtRoas(item.targetRoas)}</td>
       <td class="col-num ${roasClass}">${fmtRoas(item.roasEntregando)}</td>
@@ -1070,6 +1070,28 @@ async function criarCampanhaProduto(mlb) {
   } catch (e) {
     alert(`Erro ao criar campanha: ${e?.message || 'motivo desconhecido'}`);
     if (btn) { btn.disabled = false; btn.textContent = 'Criar campanha'; }
+  }
+}
+
+async function renomearCampanha(campId) {
+  const item = todosAdsItens.find(i => i.campId === campId);
+  const nomeAtual = item?.campanha || '';
+  const nomeNovo = prompt('Novo nome da campanha:', nomeAtual);
+  if (!nomeNovo || nomeNovo === nomeAtual) return;
+
+  try {
+    const resp = await apiFetch('/api/ml/ads-editar-campanha', {
+      method: 'POST',
+      body: JSON.stringify({ conta: window.CONTA_ATIVA, campId, name: nomeNovo }),
+      _timeout: 20000,
+    });
+    if (resp.error) {
+      alert(`Erro ao renomear campanha: ${resp.error}${resp.detalhe ? '\n\n' + JSON.stringify(resp.detalhe) : ''}`);
+      return;
+    }
+    carregarAds();
+  } catch (e) {
+    alert(`Erro ao renomear campanha: ${e?.message || 'motivo desconhecido'}`);
   }
 }
 
