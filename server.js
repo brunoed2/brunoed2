@@ -4133,19 +4133,21 @@ app.get('/api/ml/debug-ads', async (req, res) => {
   const today     = new Date().toISOString().split('T')[0];
   const dateBegin = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
-  // Busca ads do seller
+  // Busca ads do seller — pega também o campaign_id real (não hardcoded)
   let adIds = [];
+  let campIdReal = null;
   try {
     const adsResp = await axios.get('https://api.mercadolibre.com/advertising/product_ads/ads/search', {
       params: { seller_id: c.user_id, limit: 5 }, headers, timeout: 10000,
     });
-    adIds = (adsResp.data.results || []).filter(a => a.campaign_id > 0).map(a => a.id).slice(0, 3);
+    const comCampanha = (adsResp.data.results || []).filter(a => a.campaign_id > 0);
+    adIds = comCampanha.map(a => a.id).slice(0, 3);
+    campIdReal = comCampanha[0]?.campaign_id || null;
     result['_ad_ids_encontrados'] = adIds;
+    result['_campaign_id_real']   = campIdReal || 'nenhum encontrado';
   } catch (e) {
     result['_ad_ids_encontrados'] = 'erro: ' + e.message;
   }
-
-  const campIdStale = 356092603; // campaign_id de uma sessão de debug antiga — provavelmente inválido agora
 
   // ── Busca o advertiser_id real da conta (API de Ads mudou pra exigir isso, não o seller/user_id) ──
   let advertiserId = null;
@@ -4160,28 +4162,20 @@ app.get('/api/ml/debug-ads', async (req, res) => {
     result['_advertisers'] = { status: e.response?.status, error: e.response?.data || e.message };
   }
 
-  // Métricas por campanha (endpoint antigo, ID stale — deve falhar)
-  await tryGet('camp_metrics_stale',     `https://api.mercadolibre.com/advertising/product_ads/campaigns/${campIdStale}/metrics`, { date_from: dateBegin, date_to: today });
-
   if (advertiserId) {
     const v2 = { 'Api-Version': '2' };
-    // Lista campanhas reais dessa conta usando o advertiser_id correto + header de versão
-    await tryGet('camp_search_v2',       'https://api.mercadolibre.com/advertising/product_ads/campaigns', { advertiser_id: advertiserId, limit: 5 }, v2);
-
-    let campIdReal = null;
-    try {
-      const r = await axios.get('https://api.mercadolibre.com/advertising/product_ads/campaigns', {
-        params: { advertiser_id: advertiserId, limit: 5 }, headers: { ...headers, ...v2 }, timeout: 10000,
-      });
-      campIdReal = r.data?.results?.[0]?.id || r.data?.[0]?.id || null;
-      result['_campaign_id_real'] = campIdReal || 'nenhum encontrado';
-    } catch (e) {
-      result['_campaign_id_real'] = 'erro: ' + (e.response?.data?.message || e.message);
-    }
+    // Lista de campanhas com sufixo /search (o endpoint sem /search não existe — "No static resource")
+    await tryGet('camp_search',          'https://api.mercadolibre.com/advertising/product_ads/campaigns/search', { advertiser_id: advertiserId, limit: 5 }, v2);
+    await tryGet('camp_search_str',      'https://api.mercadolibre.com/advertising/product_ads/campaigns/search', { advertiser_id: String(advertiserId), limit: 5 }, v2);
 
     if (campIdReal) {
-      await tryGet('camp_detail_v2',     `https://api.mercadolibre.com/advertising/product_ads/campaigns/${campIdReal}`, { advertiser_id: advertiserId }, v2);
-      await tryGet('camp_metrics_v2',    `https://api.mercadolibre.com/advertising/product_ads/campaigns/${campIdReal}/metrics`, { advertiser_id: advertiserId, date_from: dateBegin, date_to: today }, v2);
+      // Endpoint atual de produção (sem advertiser_id, sem Api-Version) — pra confirmar que é isso que falha
+      await tryGet('camp_detail_atual',    `https://api.mercadolibre.com/advertising/product_ads/campaigns/${campIdReal}`, {});
+      // Variações: com advertiser_id, com header de versão, com os dois
+      await tryGet('camp_detail_adv',      `https://api.mercadolibre.com/advertising/product_ads/campaigns/${campIdReal}`, { advertiser_id: advertiserId });
+      await tryGet('camp_detail_v2header', `https://api.mercadolibre.com/advertising/product_ads/campaigns/${campIdReal}`, {}, v2);
+      await tryGet('camp_detail_adv_v2',   `https://api.mercadolibre.com/advertising/product_ads/campaigns/${campIdReal}`, { advertiser_id: advertiserId }, v2);
+      await tryGet('camp_metrics_adv_v2',  `https://api.mercadolibre.com/advertising/product_ads/campaigns/${campIdReal}/metrics`, { advertiser_id: advertiserId, date_from: dateBegin, date_to: today }, v2);
     }
 
     await tryGet('seller_metrics_v2',    'https://api.mercadolibre.com/advertising/product_ads/metrics', { advertiser_id: advertiserId, date_from: dateBegin, date_to: today }, v2);
