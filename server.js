@@ -3183,9 +3183,9 @@ app.get('/api/ml/ads-roas', async (req, res) => {
     }
     addLog(`[ads-roas] ${campanhas.length} campanhas em ${Date.now() - t0}ms`, 'info');
 
-    // 4. Monta tabela — uma linha por campanha com custo no período
+    // 4. Monta tabela — uma linha por campanha ativa (mesmo sem gasto ainda, ex: recém-criada)
     const itens = campanhas
-      .filter(camp => (camp.metrics?.cost || 0) > 0)
+      .filter(camp => camp.status !== 'deleted')
       .map(camp => {
         const campId = camp.id;
         const met = camp.metrics || {};
@@ -3224,7 +3224,7 @@ app.get('/api/ml/ads-roas', async (req, res) => {
         };
       });
 
-    const aviso = itens.length ? undefined : 'Nenhuma campanha com custo nos últimos 30 dias.';
+    const aviso = itens.length ? undefined : 'Nenhuma campanha encontrada.';
 
     res.json({ itens, aviso });
   } catch (err) {
