@@ -4164,21 +4164,15 @@ app.get('/api/ml/debug-ads', async (req, res) => {
 
   if (advertiserId) {
     const v2 = { 'Api-Version': '2' };
-    // Lista de campanhas com sufixo /search (o endpoint sem /search não existe — "No static resource")
-    await tryGet('camp_search',          'https://api.mercadolibre.com/advertising/product_ads/campaigns/search', { advertiser_id: advertiserId, limit: 5 }, v2);
-    await tryGet('camp_search_str',      'https://api.mercadolibre.com/advertising/product_ads/campaigns/search', { advertiser_id: String(advertiserId), limit: 5 }, v2);
+    const siteId = 'MLB';
+    // Novo endpoint documentado: /marketplace/advertising/{site_id}/advertisers/{advertiser_id}/product_ads/campaigns/search
+    // com metrics_summary=true traz campanha + métricas numa chamada só
+    await tryGet('camp_search_novo',        `https://api.mercadolibre.com/marketplace/advertising/${siteId}/advertisers/${advertiserId}/product_ads/campaigns/search`, { limit: 5 }, v2);
+    await tryGet('camp_search_novo_metrics', `https://api.mercadolibre.com/marketplace/advertising/${siteId}/advertisers/${advertiserId}/product_ads/campaigns/search`, { limit: 5, metrics_summary: true, date_from: dateBegin, date_to: today }, v2);
 
     if (campIdReal) {
-      // Endpoint atual de produção (sem advertiser_id, sem Api-Version) — pra confirmar que é isso que falha
-      await tryGet('camp_detail_atual',    `https://api.mercadolibre.com/advertising/product_ads/campaigns/${campIdReal}`, {});
-      // Variações: com advertiser_id, com header de versão, com os dois
-      await tryGet('camp_detail_adv',      `https://api.mercadolibre.com/advertising/product_ads/campaigns/${campIdReal}`, { advertiser_id: advertiserId });
-      await tryGet('camp_detail_v2header', `https://api.mercadolibre.com/advertising/product_ads/campaigns/${campIdReal}`, {}, v2);
-      await tryGet('camp_detail_adv_v2',   `https://api.mercadolibre.com/advertising/product_ads/campaigns/${campIdReal}`, { advertiser_id: advertiserId }, v2);
-      await tryGet('camp_metrics_adv_v2',  `https://api.mercadolibre.com/advertising/product_ads/campaigns/${campIdReal}/metrics`, { advertiser_id: advertiserId, date_from: dateBegin, date_to: today }, v2);
+      await tryGet('camp_search_novo_filtro', `https://api.mercadolibre.com/marketplace/advertising/${siteId}/advertisers/${advertiserId}/product_ads/campaigns/search`, { 'filters[campaign_id]': campIdReal, metrics_summary: true, date_from: dateBegin, date_to: today }, v2);
     }
-
-    await tryGet('seller_metrics_v2',    'https://api.mercadolibre.com/advertising/product_ads/metrics', { advertiser_id: advertiserId, date_from: dateBegin, date_to: today }, v2);
   }
 
   res.json(result);
