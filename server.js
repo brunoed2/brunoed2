@@ -3152,28 +3152,38 @@ app.get('/api/ml/ads-roas', async (req, res) => {
     if (!campIds.length) return res.json({ itens: [], aviso: 'Nenhuma campanha ativa encontrada.' });
 
     // 3. Busca detalhes, métricas e ads de cada campanha
-    // (sequencial — em paralelo o ML rate-limita e as campanhas somem silenciosamente da tabela)
-    const campResults = [];
-    for (const campId of campIds) {
-      let resultado = null;
-      let ultimoErro = null;
-      for (let tentativa = 0; tentativa < 3 && !resultado; tentativa++) {
-        if (tentativa > 0) await new Promise(r => setTimeout(r, 600 * tentativa));
-        try {
-          const [detResp, metResp] = await Promise.all([
-            axios.get(`https://api.mercadolibre.com/advertising/product_ads/campaigns/${campId}`, { headers, timeout: 10000 }),
-            axios.get(`https://api.mercadolibre.com/advertising/product_ads/campaigns/${campId}/metrics`, {
-              params: { date_from: dateBegin, date_to: today }, headers, timeout: 10000,
-            }),
-          ]);
-          // Filtra os ads desta campanha a partir da lista completa (o filtro campaign_id da API não funciona)
-          const adsDestaCamp = todosAds.filter(a => a.campaign_id === campId);
-          resultado = { campId, det: detResp.data, met: metResp.data, ads: adsDestaCamp };
-        } catch (e) { ultimoErro = e; }
+    // (concorrência limitada — tudo em paralelo de uma vez rate-limita e some silenciosamente
+    //  da tabela; totalmente sequencial demora demais e estoura o timeout do front)
+    const t0 = Date.now();
+    const CONCORRENCIA = 3;
+    const campResults = new Array(campIds.length);
+    let proximoIndice = 0;
+    async function worker() {
+      while (proximoIndice < campIds.length) {
+        const idx = proximoIndice++;
+        const campId = campIds[idx];
+        let resultado = null;
+        let ultimoErro = null;
+        for (let tentativa = 0; tentativa < 2 && !resultado; tentativa++) {
+          if (tentativa > 0) await new Promise(r => setTimeout(r, 500));
+          try {
+            const [detResp, metResp] = await Promise.all([
+              axios.get(`https://api.mercadolibre.com/advertising/product_ads/campaigns/${campId}`, { headers, timeout: 10000 }),
+              axios.get(`https://api.mercadolibre.com/advertising/product_ads/campaigns/${campId}/metrics`, {
+                params: { date_from: dateBegin, date_to: today }, headers, timeout: 10000,
+              }),
+            ]);
+            // Filtra os ads desta campanha a partir da lista completa (o filtro campaign_id da API não funciona)
+            const adsDestaCamp = todosAds.filter(a => a.campaign_id === campId);
+            resultado = { campId, det: detResp.data, met: metResp.data, ads: adsDestaCamp };
+          } catch (e) { ultimoErro = e; }
+        }
+        if (!resultado) addLog(`[ads-roas] falha ao buscar campanha ${campId} após 2 tentativas: ${ultimoErro?.response?.status || ultimoErro?.message || '?'}`, 'warn');
+        campResults[idx] = resultado;
       }
-      if (!resultado) addLog(`[ads-roas] falha ao buscar campanha ${campId} após 3 tentativas: ${ultimoErro?.response?.status || ultimoErro?.message || '?'}`, 'warn');
-      campResults.push(resultado);
     }
+    await Promise.all(Array.from({ length: Math.min(CONCORRENCIA, campIds.length) }, worker));
+    addLog(`[ads-roas] ${campIds.length} campanhas em ${Date.now() - t0}ms (${campResults.filter(r => !r).length} falhas)`, 'info');
 
     // 4. Monta tabela — uma linha por campanha
     const itens = campResults

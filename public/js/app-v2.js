@@ -954,7 +954,7 @@ async function carregarAds() {
   document.getElementById('tabela-ads-body').innerHTML = '';
 
   try {
-    const data = await apiFetch(`/api/ml/ads-roas?conta=${window.CONTA_ATIVA}`);
+    const data = await apiFetch(`/api/ml/ads-roas?conta=${window.CONTA_ATIVA}`, { _timeout: 90000 });
     loading.style.display = 'none';
 
     if (data.error) {
@@ -970,9 +970,12 @@ async function carregarAds() {
 
     todosAdsItens = data.itens || [];
     renderizarAds();
-  } catch {
+  } catch (e) {
     loading.style.display = 'none';
-    erroEl.textContent   = 'Erro ao carregar dados de ads.';
+    const motivo = e?.name === 'TimeoutError' || e?.name === 'AbortError'
+      ? 'demorou demais e foi cancelado (a conta pode ter muitas campanhas)'
+      : (e?.message || 'motivo desconhecido');
+    erroEl.textContent   = `Erro ao carregar dados de ads: ${motivo}`;
     erroEl.style.display = 'block';
   }
 }
