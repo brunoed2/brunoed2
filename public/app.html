@@ -342,6 +342,33 @@
             <tbody id="tabela-ads-body"></tbody>
           </table>
         </div>
+
+        <!-- Criar campanha por produto -->
+        <h2 style="margin-top:32px">Produtos ativos</h2>
+        <p class="subtitle">Crie uma campanha de Product Ads para um produto que ainda não está anunciado.</p>
+
+        <div id="ads-prod-erro" class="estoque-erro" style="display:none"></div>
+
+        <div class="tabela-container">
+          <div class="tabela-topo">
+            <span id="ads-prod-total"></span>
+            <button class="btn-secondary" onclick="carregarAdsProdutos()" id="btn-atualizar-ads-prod">↻ Atualizar</button>
+          </div>
+
+          <div id="ads-prod-loading" class="loading" style="display:none">Carregando produtos ativos...</div>
+
+          <table class="tabela" id="tabela-ads-prod" style="display:none">
+            <thead>
+              <tr>
+                <th>Produto</th>
+                <th class="col-num">Preço</th>
+                <th>Status</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="tabela-ads-prod-body"></tbody>
+          </table>
+        </div>
       </section>
 
       <!-- ── Aba: Contas a Pagar ── -->
@@ -1377,6 +1404,6 @@
     </div>
   </div>
 
-  <div id="version-badge">v591</div>
+  <div id="version-badge">v592</div>
 </body>
 </html>

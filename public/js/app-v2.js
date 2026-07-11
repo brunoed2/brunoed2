@@ -32,9 +32,10 @@ let contaGen          = 0;
 // chamar carregarAds() antes do resto do script terminar de rodar; se algo no
 // meio do script lançar um erro, o restante do arquivo nunca executa e essas
 // variáveis ficariam presas em TDZ pra sempre.
-let todosAdsItens  = [];
-let sortAds        = { campo: null, direcao: 'asc' };
-let expandedCamps  = new Set();
+let todosAdsItens    = [];
+let sortAds          = { campo: null, direcao: 'asc' };
+let expandedCamps    = new Set();
+let todosAdsProdutos = [];
 
 // ── Navegação entre abas ──────────────────────────────────────
 
@@ -74,7 +75,7 @@ function abrirAba(nome) {
   if (nome === 'estoque')       carregarEstoque(true);
   if (nome === 'vendas')        carregarVendas();
   if (nome === 'historico')     { histIniciarDatas(); carregarHistorico(); }
-  if (nome === 'ads')           carregarAds();
+  if (nome === 'ads')           { carregarAds(); carregarAdsProdutos(); }
   if (nome === 'lucro')         lucroInit();
   if (nome === 'promocoes')     carregarPromocoes();
   if (nome === 'contas-pagar')  contasPagarInit();
@@ -987,6 +988,88 @@ async function carregarAds() {
       : (e?.message || 'motivo desconhecido');
     erroEl.textContent   = `Erro ao carregar dados de ads: ${motivo}`;
     erroEl.style.display = 'block';
+  }
+}
+
+// ── Ads — criar campanha por produto ────────────────────────────
+
+async function carregarAdsProdutos() {
+  const loading = document.getElementById('ads-prod-loading');
+  const erroEl  = document.getElementById('ads-prod-erro');
+  const tabela  = document.getElementById('tabela-ads-prod');
+
+  loading.style.display = 'block';
+  erroEl.style.display  = 'none';
+  tabela.style.display  = 'none';
+  document.getElementById('ads-prod-total').textContent = '';
+  document.getElementById('tabela-ads-prod-body').innerHTML = '';
+
+  try {
+    const data = await apiFetch(`/api/ml/ads-produtos?conta=${window.CONTA_ATIVA}`, { _timeout: 60000 });
+    loading.style.display = 'none';
+
+    if (data.error) {
+      erroEl.textContent   = data.error + (data.detalhe ? ` — ${JSON.stringify(data.detalhe)}` : '');
+      erroEl.style.display = 'block';
+      return;
+    }
+
+    todosAdsProdutos = data.produtos || [];
+    renderizarAdsProdutos();
+  } catch (e) {
+    loading.style.display = 'none';
+    erroEl.textContent   = `Erro ao carregar produtos: ${e?.message || 'motivo desconhecido'}`;
+    erroEl.style.display = 'block';
+  }
+}
+
+function renderizarAdsProdutos() {
+  const fmtBRL = v => v != null ? `R$ ${Number(v).toFixed(2).replace('.', ',')}` : '—';
+  const tbody  = document.getElementById('tabela-ads-prod-body');
+  tbody.innerHTML = '';
+
+  todosAdsProdutos.forEach(p => {
+    const tr = document.createElement('tr');
+    const statusTxt = p.emCampanha ? `Em campanha (${p.campaignId})` : '—';
+    const acaoCell  = p.emCampanha
+      ? '<td class="col-num">—</td>'
+      : `<td class="col-num"><button class="btn-secondary" onclick="criarCampanhaProduto('${p.id}')" id="btn-criar-camp-${p.id}">Criar campanha</button></td>`;
+    tr.innerHTML = `
+      <td class="td-titulo" title="${p.title}">${p.title}</td>
+      <td class="col-num">${fmtBRL(p.price)}</td>
+      <td>${statusTxt}</td>
+      ${acaoCell}
+    `;
+    tbody.appendChild(tr);
+  });
+
+  document.getElementById('ads-prod-total').textContent = `${todosAdsProdutos.length} produto${todosAdsProdutos.length !== 1 ? 's' : ''} ativo${todosAdsProdutos.length !== 1 ? 's' : ''}`;
+  document.getElementById('tabela-ads-prod').style.display = todosAdsProdutos.length ? 'table' : 'none';
+}
+
+async function criarCampanhaProduto(mlb) {
+  const btn = document.getElementById(`btn-criar-camp-${mlb}`);
+  if (btn) { btn.disabled = true; btn.textContent = 'Criando...'; }
+
+  try {
+    const produto = todosAdsProdutos.find(p => p.id === mlb);
+    const resp = await apiFetch('/api/ml/ads-criar-campanha', {
+      method: 'POST',
+      body: JSON.stringify({ conta: window.CONTA_ATIVA, mlb, nome: (produto?.title || 'Campanha').slice(0, 60) }),
+      _timeout: 30000,
+    });
+
+    if (resp.error) {
+      alert(`Erro ao criar campanha: ${resp.error}${resp.detalhe ? '\n\n' + JSON.stringify(resp.detalhe) : ''}`);
+      if (btn) { btn.disabled = false; btn.textContent = 'Criar campanha'; }
+      return;
+    }
+
+    carregarAdsProdutos();
+    carregarAds();
+  } catch (e) {
+    alert(`Erro ao criar campanha: ${e?.message || 'motivo desconhecido'}`);
+    if (btn) { btn.disabled = false; btn.textContent = 'Criar campanha'; }
   }
 }
 
