@@ -36,6 +36,7 @@ let todosAdsItens    = [];
 let sortAds          = { campo: null, direcao: 'asc' };
 let expandedCamps    = new Set();
 let todosAdsProdutos = [];
+let custoLucroPorMlb = {};
 
 // ── Navegação entre abas ──────────────────────────────────────
 
@@ -922,6 +923,14 @@ function renderizarAds() {
       anunciosCell = `<td class="td-titulo" title="${titulo}">${titulo}</td>`;
     }
 
+    // Custo cadastrado / lucro da última venda — só dá pra mostrar direto quando é 1 produto só
+    const soUmAd = item.adsLista && item.adsLista.length === 1 ? item.adsLista[0] : null;
+    const infoUm = soUmAd ? custoLucroPorMlb[soUmAd.id] : null;
+    const custoCell = infoUm ? `<td class="col-num">${fmtBRL(infoUm.custo)}</td>` : '<td class="col-num">—</td>';
+    const lucroCell = infoUm?.ultimaVenda
+      ? `<td class="col-num" title="Venda de ${infoUm.ultimaVenda.data?.slice(0,10) || '?'}">${fmtBRL(infoUm.ultimaVenda.lucro)}</td>`
+      : '<td class="col-num">—</td>';
+
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td class="td-campanha" title="${item.campanha}">${item.campanha} <button class="btn-expandir-var" onclick="renomearCampanha('${campId}')" title="Renomear">✏️</button></td>
@@ -931,18 +940,24 @@ function renderizarAds() {
       <td class="col-num">${fmtBRL(item.custoPorUnidade)}</td>
       <td class="col-num">${fmtBRL(item.cost)}</td>
       <td class="col-num">${item.units || '—'}</td>
+      ${custoCell}
+      ${lucroCell}
     `;
     tbody.appendChild(tr);
 
     // Sub-linhas para cada anúncio (só quando tem múltiplos)
     if (temMultiplos) {
       item.adsLista.forEach(ad => {
+        const info = custoLucroPorMlb[ad.id];
+        const detalhe = info
+          ? ` — Custo: ${fmtBRL(info.custo)} | Lucro últ. venda: ${info.ultimaVenda ? fmtBRL(info.ultimaVenda.lucro) : '—'}`
+          : '';
         const trAd = document.createElement('tr');
         trAd.className = `camp-row camp-row-${campId}`;
         trAd.style.display = aberto ? '' : 'none';
         trAd.innerHTML = `
           <td class="variacao-indent"></td>
-          <td colspan="6" class="variacao-nome">↳ ${ad.title}</td>
+          <td colspan="8" class="variacao-nome">↳ ${ad.title}${detalhe}</td>
         `;
         tbody.appendChild(trAd);
       });
@@ -981,6 +996,7 @@ async function carregarAds() {
 
     todosAdsItens = data.itens || [];
     renderizarAds();
+    carregarCustoLucroAds();
   } catch (e) {
     loading.style.display = 'none';
     const motivo = e?.name === 'TimeoutError' || e?.name === 'AbortError'
@@ -989,6 +1005,18 @@ async function carregarAds() {
     erroEl.textContent   = `Erro ao carregar dados de ads: ${motivo}`;
     erroEl.style.display = 'block';
   }
+}
+
+async function carregarCustoLucroAds() {
+  const mlbs = [...new Set(todosAdsItens.flatMap(item => (item.adsLista || []).map(ad => ad.id)))];
+  if (!mlbs.length) return;
+
+  try {
+    const data = await apiFetch(`/api/ml/ads-custo-lucro?conta=${window.CONTA_ATIVA}&mlbs=${mlbs.join(',')}`, { _timeout: 60000 });
+    if (data.error) return;
+    custoLucroPorMlb = data.resultado || {};
+    renderizarAds();
+  } catch {}
 }
 
 // ── Ads — criar campanha por produto ────────────────────────────

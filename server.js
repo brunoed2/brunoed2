@@ -3401,6 +3401,121 @@ app.post('/api/ml/ads-criar-campanha', async (req, res) => {
   }
 });
 
+function extrairSkuDoItem(body) {
+  if (body.seller_custom_field) return body.seller_custom_field;
+  const attrItem = (body.attributes || []).find(a => a.id === 'SELLER_SKU');
+  if (attrItem && attrItem.value_name) return attrItem.value_name;
+  if (body.variations && body.variations.length > 0) {
+    for (const v of body.variations) {
+      if (v.seller_custom_field) return v.seller_custom_field;
+      const attrVar = (v.attributes || []).find(a => a.id === 'SELLER_SKU');
+      if (attrVar && attrVar.value_name) return attrVar.value_name;
+    }
+  }
+  return null;
+}
+
+// Pra cada MLB informado: custo cadastrado (aba Lucro) + lucro da última venda desse produto
+app.get('/api/ml/ads-custo-lucro', async (req, res) => {
+  const data = loadData();
+  const num  = req.query.conta || data.conta_ativa;
+  const c    = data.contas[num];
+  if (!c || !c.access_token) return res.json({ error: 'Não conectado' });
+  const mlbs = String(req.query.mlbs || '').split(',').map(s => s.trim()).filter(Boolean);
+  if (!mlbs.length) return res.json({ resultado: {} });
+
+  const headers = { Authorization: `Bearer ${c.access_token}` };
+  const lc = (data.lucro_contas || {})[num] || {};
+  const hoje = lucroHojeISO();
+
+  try {
+    // 1. SKU de cada produto (multiget em lotes de 20)
+    const skuPorMlb = {};
+    for (let i = 0; i < mlbs.length; i += 20) {
+      const chunk = mlbs.slice(i, i + 20);
+      const r = await axios.get('https://api.mercadolibre.com/items', {
+        params: { ids: chunk.join(','), attributes: 'id,seller_custom_field,attributes,variations' },
+        headers, timeout: 15000,
+      });
+      r.data.forEach(item => {
+        if (item.code === 200) skuPorMlb[item.body.id] = extrairSkuDoItem(item.body);
+      });
+    }
+
+    // 2. Varre pedidos pagos recentes (mais novo primeiro) até achar a última venda de cada MLB
+    const pendentes = new Set(mlbs);
+    const ultimaVendaPorMlb = {};
+    let offset = 0;
+    const LIMIT_PAGINAS = 10; // até 500 pedidos (~ janela de tempo variável conforme volume de vendas)
+    for (let pagina = 0; pagina < LIMIT_PAGINAS && pendentes.size; pagina++) {
+      const r = await axios.get('https://api.mercadolibre.com/orders/search', {
+        params: { seller: c.user_id, 'order.status': 'paid', sort: 'date_desc', limit: 50, offset },
+        headers, timeout: 15000,
+      });
+      const orders = r.data.results || [];
+      for (const order of orders) {
+        for (const oi of (order.order_items || [])) {
+          const mlb = oi.item?.id;
+          if (mlb && pendentes.has(mlb)) {
+            pendentes.delete(mlb);
+            ultimaVendaPorMlb[mlb] = {
+              orderId:    order.id,
+              data:       order.date_closed || order.date_created,
+              quantidade: oi.quantity || 1,
+              precoUnit:  oi.unit_price || 0,
+              saleFee:    oi.sale_fee || 0,
+              shippingId: order.shipping?.id || null,
+            };
+          }
+        }
+      }
+      if (orders.length < 50) break;
+      offset += 50;
+    }
+
+    // 3. Custo do frete das últimas vendas encontradas
+    const shippingIds = [...new Set(Object.values(ultimaVendaPorMlb).map(v => v.shippingId).filter(Boolean))];
+    const fretePorShipment = {};
+    await Promise.all(shippingIds.map(async sid => {
+      try {
+        const r = await axios.get(`https://api.mercadolibre.com/shipments/${sid}/costs`, { headers, timeout: 8000 });
+        const senders = r.data?.senders || [];
+        fretePorShipment[sid] = (senders.find(s => s.user_id == c.user_id) || senders[0])?.cost ?? 0;
+      } catch { fretePorShipment[sid] = 0; }
+    }));
+
+    // 4. Monta resultado por MLB
+    const resultado = {};
+    mlbs.forEach(mlb => {
+      const sku = skuPorMlb[mlb] || null;
+      const hist = lc.custos_historico?.[sku];
+      const custo = sku ? (hist?.length ? custoVigenteNaData(hist, hoje) : (lc.custos?.[sku] ?? 0)) : null;
+
+      const venda = ultimaVendaPorMlb[mlb];
+      let ultimaVenda = null;
+      if (venda) {
+        const qty      = venda.quantidade;
+        const receita   = venda.precoUnit * qty;
+        const taxaML    = venda.saleFee * qty;
+        const frete     = venda.shippingId ? (fretePorShipment[venda.shippingId] || 0) : 0;
+        const custoLinha = (custo || 0) * qty;
+        const mesVenda  = (venda.data || '').slice(0, 7);
+        const taxaImposto = lc.taxa_imposto_por_mes?.[mesVenda] ?? lc.taxa_imposto ?? 0;
+        const imposto   = receita * (taxaImposto / 100);
+        const lucro     = receita - taxaML - frete - custoLinha - imposto;
+        ultimaVenda = { orderId: venda.orderId, data: venda.data, quantidade: qty, receita, taxaML, frete, custo: custoLinha, imposto, lucro };
+      }
+
+      resultado[mlb] = { sku, custo, ultimaVenda };
+    });
+
+    res.json({ resultado });
+  } catch (err) {
+    console.error('Erro ads-custo-lucro:', err.response?.data || err.message);
+    res.json({ error: err.response?.data?.message || err.message });
+  }
+});
+
 // DEBUG — testa order ID ou pack ID
 app.get('/api/ml/debug-order/:order_id', async (req, res) => {
   const data = loadData();
