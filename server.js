@@ -3162,19 +3162,20 @@ app.get('/api/ml/ads-roas', async (req, res) => {
       offsetAds += 50;
     }
 
-    // 2b. catalog_product_id de cada ad — listings sincronizados com o mesmo produto de
-    // catálogo aparecem como "ads" separados na API, mas o vendedor vê como 1 anúncio só
+    // 2b. family_id / catalog_product_id de cada ad — o Mercado Livre agrupa como
+    // "variações" de um único anúncio os listings sincronizados entre si (mesmo produto
+    // de catálogo, ativo/desativado, etc), mas a API de ads devolve cada um separado
     const catalogPorAdId = {};
     const adIdsUnicos = [...new Set(todosAds.map(a => a.id))];
     for (let i = 0; i < adIdsUnicos.length; i += 20) {
       const chunk = adIdsUnicos.slice(i, i + 20);
       try {
         const r = await axios.get('https://api.mercadolibre.com/items', {
-          params: { ids: chunk.join(','), attributes: 'id,catalog_product_id' },
+          params: { ids: chunk.join(','), attributes: 'id,family_id,catalog_product_id' },
           headers, timeout: 15000,
         });
         r.data.forEach(item => {
-          if (item.code === 200) catalogPorAdId[item.body.id] = item.body.catalog_product_id || null;
+          if (item.code === 200) catalogPorAdId[item.body.id] = item.body.family_id || item.body.catalog_product_id || null;
         });
       } catch { /* segue sem agrupar por catálogo pra esse lote */ }
     }
