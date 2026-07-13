@@ -36,7 +36,9 @@ let todosAdsItens    = [];
 let sortAds          = { campo: null, direcao: 'asc' };
 let expandedCamps    = new Set();
 let custoLucroPorMlb = {};
-let gastoMaxPorMlb   = {}; // input do usuário — simulação de ROAS ideal / lucro após ads
+let gastoMaxPorMlb   = {}; // valor (sugerido ou editado à mão) usado na simulação de ROAS ideal / lucro após ads
+let gastoMaxManual   = {}; // true = usuário já editou esse campo; não sobrescrever com a sugestão
+let margemMinimaAds  = 15; // % mínima de lucro sobre o preço, após descontar o ads sugerido
 
 // ── Navegação entre abas ──────────────────────────────────────
 
@@ -868,16 +870,30 @@ document.querySelectorAll('.th-sort-ads').forEach(th => {
   });
 });
 
-// Simulação: dado o preço do anúncio e o lucro (sem ads) da última venda,
-// calcula o ROAS necessário e o lucro resultante pro "gasto máx. por venda" informado
+// Preço (última venda, refletindo promoção) e lucro unitário (sem ads) de um produto
+function precoELucroDoMlb(mlb) {
+  const info = custoLucroPorMlb[mlb];
+  return {
+    preco:     info?.ultimaVenda?.precoUnit ?? info?.preco ?? null,
+    lucroUnit: info?.ultimaVenda?.lucroUnitario ?? null,
+  };
+}
+
+// Maior gasto de ads por venda que ainda mantém a margem mínima definida pelo usuário.
+// margem% = (lucroUnit - gasto) / preco  →  gasto = lucroUnit - margem% * preco
+function gastoSugeridoAds(mlb) {
+  const { preco, lucroUnit } = precoELucroDoMlb(mlb);
+  if (!preco || lucroUnit == null) return null;
+  const sugerido = lucroUnit - (margemMinimaAds / 100) * preco;
+  return Math.max(0, sugerido);
+}
+
+// Simulação: dado o preço e o lucro (sem ads) da última venda, calcula o ROAS
+// necessário e o lucro resultante pro "gasto máx. por venda" em uso
 function calcSimulacaoAds(mlb) {
   const fmtBRL = v => v != null ? `R$ ${v.toFixed(2).replace('.', ',')}` : '—';
-  const info      = custoLucroPorMlb[mlb];
-  // Preço da última venda reflete o valor real cobrado (com promoção, se houve);
-  // o preço "de tabela" do anúncio não considera desconto.
-  const preco     = info?.ultimaVenda?.precoUnit ?? info?.preco;
-  const lucroUnit = info?.ultimaVenda?.lucroUnitario;
-  const gastoMax  = gastoMaxPorMlb[mlb];
+  const { preco, lucroUnit } = precoELucroDoMlb(mlb);
+  const gastoMax = gastoMaxPorMlb[mlb];
 
   if (!preco || !gastoMax || gastoMax <= 0) return { roas: '—', lucro: '—' };
 
@@ -893,6 +909,7 @@ function calcSimulacaoAds(mlb) {
 }
 
 function atualizarSimulacaoAds(mlb, valor) {
+  gastoMaxManual[mlb] = true;
   const num = parseFloat(String(valor).replace(',', '.'));
   gastoMaxPorMlb[mlb] = isNaN(num) || num <= 0 ? null : num;
   const { roas, lucro } = calcSimulacaoAds(mlb);
@@ -902,15 +919,40 @@ function atualizarSimulacaoAds(mlb, valor) {
   if (lucroEl) lucroEl.textContent = lucro;
 }
 
+function resetGastoSugeridoAds(mlb) {
+  gastoMaxManual[mlb] = false;
+  gastoMaxPorMlb[mlb] = gastoSugeridoAds(mlb);
+  const inputEl = document.getElementById(`gasto-max-${mlb}`);
+  if (inputEl) inputEl.value = gastoMaxPorMlb[mlb] != null ? gastoMaxPorMlb[mlb].toFixed(2) : '';
+  const { roas, lucro } = calcSimulacaoAds(mlb);
+  const roasEl  = document.getElementById(`roas-ideal-${mlb}`);
+  const lucroEl = document.getElementById(`lucro-apos-${mlb}`);
+  if (roasEl)  roasEl.textContent  = roas;
+  if (lucroEl) lucroEl.textContent = lucro;
+}
+
+function mudarMargemMinimaAds(valor) {
+  const num = parseFloat(String(valor).replace(',', '.'));
+  margemMinimaAds = isNaN(num) ? 0 : num;
+  renderizarAds();
+}
+
 function tdsSimulacaoAds(mlb) {
-  const fmtBRL   = v => v != null ? `R$ ${v.toFixed(2).replace('.', ',')}` : '—';
-  const info     = custoLucroPorMlb[mlb];
-  const preco    = info?.ultimaVenda?.precoUnit ?? info?.preco;
+  const fmtBRL = v => v != null ? `R$ ${v.toFixed(2).replace('.', ',')}` : '—';
+  const { preco } = precoELucroDoMlb(mlb);
+
+  if (!gastoMaxManual[mlb]) gastoMaxPorMlb[mlb] = gastoSugeridoAds(mlb);
   const gastoMax = gastoMaxPorMlb[mlb];
   const { roas, lucro } = calcSimulacaoAds(mlb);
+
   return `
     <td class="col-num">${fmtBRL(preco)}</td>
-    <td class="col-num"><input type="number" step="0.01" min="0" style="width:70px" placeholder="R$" value="${gastoMax ?? ''}" oninput="atualizarSimulacaoAds('${mlb}', this.value)"></td>
+    <td class="col-num">
+      <div style="display:flex;align-items:center;gap:4px;justify-content:flex-end">
+        <input type="number" id="gasto-max-${mlb}" step="0.01" min="0" style="width:64px" placeholder="R$" value="${gastoMax != null ? gastoMax.toFixed(2) : ''}" oninput="atualizarSimulacaoAds('${mlb}', this.value)">
+        <button class="btn-expandir-var" title="Voltar pra sugestão automática" onclick="resetGastoSugeridoAds('${mlb}')">↺</button>
+      </div>
+    </td>
     <td class="col-num" id="roas-ideal-${mlb}">${roas}</td>
     <td class="col-num" id="lucro-apos-${mlb}">${lucro}</td>
   `;

@@ -322,7 +322,13 @@
         <div class="tabela-container">
           <div class="tabela-topo">
             <span id="ads-total"></span>
-            <button class="btn-secondary" onclick="carregarAds()" id="btn-atualizar-ads">↻ Atualizar</button>
+            <div style="display:flex;align-items:center;gap:16px">
+              <label style="font-size:13px;color:#555;display:flex;align-items:center;gap:6px">
+                Margem mín. após Ads (%)
+                <input type="number" id="ads-margem-minima" value="15" min="0" max="100" step="1" style="width:56px" oninput="mudarMargemMinimaAds(this.value)">
+              </label>
+              <button class="btn-secondary" onclick="carregarAds()" id="btn-atualizar-ads">↻ Atualizar</button>
+            </div>
           </div>
 
           <div id="ads-loading" class="loading" style="display:none">Carregando dados de ads (pode levar alguns segundos)...</div>
@@ -340,7 +346,7 @@
                 <th class="col-num">Custo Cadastrado</th>
                 <th class="col-num">Lucro Últ. Venda</th>
                 <th class="col-num">Preço Últ. Venda</th>
-                <th class="col-num">Gasto Máx./Venda</th>
+                <th class="col-num">Gasto Sugerido/Venda</th>
                 <th class="col-num">ROAS Ideal</th>
                 <th class="col-num">Lucro Após Ads</th>
               </tr>
@@ -1383,6 +1389,6 @@
     </div>
   </div>
 
-  <div id="version-badge">v599</div>
+  <div id="version-badge">v600</div>
 </body>
 </html>
