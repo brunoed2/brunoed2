@@ -1027,7 +1027,7 @@ function renderizarAds() {
     const infoUm = soUmAd ? custoLucroPorMlb[soUmAd.id] : null;
     const custoCell = infoUm ? `<td class="col-num">${fmtBRL(infoUm.custo)}</td>` : '<td class="col-num">—</td>';
     const lucroCell = infoUm?.ultimaVenda
-      ? `<td class="col-num" title="Venda de ${infoUm.ultimaVenda.data?.slice(0,10) || '?'}">${fmtBRL(infoUm.ultimaVenda.lucro)}</td>`
+      ? `<td class="col-num" title="Pedido #${infoUm.ultimaVenda.orderId}, ${infoUm.ultimaVenda.data?.slice(0,10) || '?'}, ${soUmAd.id}">${fmtBRL(infoUm.ultimaVenda.lucro)}</td>`
       : '<td class="col-num">—</td>';
     const roasIdealCell = soUmAd ? tdRoasIdealAds(soUmAd.id) : '<td class="col-num">—</td>';
     const restoSimCells = soUmAd
@@ -1054,8 +1054,9 @@ function renderizarAds() {
     if (temMultiplos) {
       item.adsLista.forEach(ad => {
         const info = custoLucroPorMlb[ad.id];
+        const v = info?.ultimaVenda;
         const detalhe = info
-          ? `Custo: ${fmtBRL(info.custo)} | Lucro últ. venda: ${info.ultimaVenda ? fmtBRL(info.ultimaVenda.lucro) : '—'}`
+          ? `Custo: ${fmtBRL(info.custo)} | Lucro últ. venda: ${v ? `${fmtBRL(v.lucro)} (pedido #${v.orderId}, ${v.data?.slice(0,10) || '?'}, ${ad.id})` : '—'}`
           : '';
         const trAd = document.createElement('tr');
         trAd.className = `camp-row camp-row-${campId}`;
