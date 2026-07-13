@@ -3340,7 +3340,7 @@ app.get('/api/ml/ads-custo-lucro', async (req, res) => {
         const taxaImposto = lc.taxa_imposto_por_mes?.[mesVenda] ?? lc.taxa_imposto ?? 0;
         const imposto   = receita * (taxaImposto / 100);
         const lucro     = receita - taxaML - frete - custoLinha - imposto;
-        ultimaVenda = { orderId: venda.orderId, data: venda.data, quantidade: qty, receita, taxaML, frete, custo: custoLinha, imposto, lucro, lucroUnitario: lucro / qty };
+        ultimaVenda = { orderId: venda.orderId, data: venda.data, quantidade: qty, precoUnit: venda.precoUnit, receita, taxaML, frete, custo: custoLinha, imposto, lucro, lucroUnitario: lucro / qty };
       }
 
       resultado[mlb] = { sku, custo, preco: precoPorMlb[mlb] ?? null, ultimaVenda };
