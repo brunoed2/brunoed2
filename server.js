@@ -3164,8 +3164,21 @@ app.get('/api/ml/ads-roas', async (req, res) => {
 
     // 2b. family_id / catalog_product_id de cada ad — o Mercado Livre agrupa como
     // "variações" de um único anúncio os listings sincronizados entre si (mesmo produto
-    // de catálogo, ativo/desativado, etc), mas a API de ads devolve cada um separado
-    const catalogPorAdId = {};
+    // de catálogo, ativo/desativado, etc), mas a API de ads devolve cada um separado.
+    // Nenhum dos dois campos sozinho cobre todos os casos — une pelos dois (union-find),
+    // então se A bate com B por family_id e B bate com C por catalog_product_id, os três
+    // caem no mesmo grupo.
+    const parentUF = {};
+    const acharGrupo = (x) => {
+      if (!(x in parentUF)) parentUF[x] = x;
+      while (parentUF[x] !== x) { parentUF[x] = parentUF[parentUF[x]]; x = parentUF[x]; }
+      return x;
+    };
+    const unirGrupo = (a, b) => {
+      const ra = acharGrupo(a), rb = acharGrupo(b);
+      if (ra !== rb) parentUF[ra] = rb;
+    };
+
     const adIdsUnicos = [...new Set(todosAds.map(a => a.id))];
     for (let i = 0; i < adIdsUnicos.length; i += 20) {
       const chunk = adIdsUnicos.slice(i, i + 20);
@@ -3175,10 +3188,16 @@ app.get('/api/ml/ads-roas', async (req, res) => {
           headers, timeout: 15000,
         });
         r.data.forEach(item => {
-          if (item.code === 200) catalogPorAdId[item.body.id] = item.body.family_id || item.body.catalog_product_id || null;
+          if (item.code !== 200) return;
+          const { id, family_id, catalog_product_id } = item.body;
+          acharGrupo(id);
+          if (family_id)          unirGrupo(id, `fam:${family_id}`);
+          if (catalog_product_id) unirGrupo(id, `cat:${catalog_product_id}`);
         });
       } catch { /* segue sem agrupar por catálogo pra esse lote */ }
     }
+    const catalogPorAdId = {};
+    adIdsUnicos.forEach(id => { catalogPorAdId[id] = acharGrupo(id); });
 
     // 3. Busca campanhas + métricas numa chamada só (endpoint novo, paginado)
     const t0 = Date.now();
