@@ -3180,16 +3180,18 @@ app.get('/api/ml/ads-roas', async (req, res) => {
     };
 
     const adIdsUnicos = [...new Set(todosAds.map(a => a.id))];
+    const statusPorAdId = {};
     for (let i = 0; i < adIdsUnicos.length; i += 20) {
       const chunk = adIdsUnicos.slice(i, i + 20);
       try {
         const r = await axios.get('https://api.mercadolibre.com/items', {
-          params: { ids: chunk.join(','), attributes: 'id,family_id,catalog_product_id' },
+          params: { ids: chunk.join(','), attributes: 'id,status,family_id,catalog_product_id' },
           headers, timeout: 15000,
         });
         r.data.forEach(item => {
           if (item.code !== 200) return;
-          const { id, family_id, catalog_product_id } = item.body;
+          const { id, status, family_id, catalog_product_id } = item.body;
+          statusPorAdId[id] = status;
           acharGrupo(id);
           if (family_id)          unirGrupo(id, `fam:${family_id}`);
           if (catalog_product_id) unirGrupo(id, `cat:${catalog_product_id}`);
@@ -3198,6 +3200,10 @@ app.get('/api/ml/ads-roas', async (req, res) => {
     }
     const catalogPorAdId = {};
     adIdsUnicos.forEach(id => { catalogPorAdId[id] = acharGrupo(id); });
+    // Listings desativados/pausados não têm atividade nenhuma e o ML costuma perder o
+    // vínculo de family_id/catalog_product_id deles com o anúncio ativo correspondente —
+    // em vez de tentar recriar esse vínculo, só tira da lista quem não está ativo.
+    const todosAdsAtivos = todosAds.filter(a => (statusPorAdId[a.id] ?? 'active') === 'active');
 
     // 3. Busca campanhas + métricas numa chamada só (endpoint novo, paginado)
     const t0 = Date.now();
@@ -3226,14 +3232,14 @@ app.get('/api/ml/ads-roas', async (req, res) => {
       .map(camp => {
         const campId = camp.id;
         const met = camp.metrics || {};
-        const adsDestaCamp = todosAds.filter(a => a.campaign_id === campId);
+        const adsDestaCamp = todosAdsAtivos.filter(a => a.campaign_id === campId);
         const cost            = Number(met.cost)         || 0;
         const revenue         = Number(met.total_amount) || 0;
         const units            = Number(met.units_quantity) || 0;
         const roasEntregando  = cost > 0 ? revenue / cost : null;
         const custoPorUnidade = units > 0 ? cost / units  : null;
-        // Dedup por catalog_product_id (não só por id) — listings sincronizados com o
-        // mesmo produto de catálogo contam como um único anúncio pro vendedor
+        // Dedup por family_id/catalog_product_id (não só por id) — listings sincronizados
+        // com o mesmo produto de catálogo contam como um único anúncio pro vendedor
         const adsListaDedup = [];
         const vistosLista = new Set();
         adsDestaCamp.forEach(a => {
