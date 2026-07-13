@@ -3180,18 +3180,20 @@ app.get('/api/ml/ads-roas', async (req, res) => {
     };
 
     const adIdsUnicos = [...new Set(todosAds.map(a => a.id))];
-    const statusPorAdId = {};
+    const statusPorAdId  = {};
+    const vendidoPorAdId = {}; // sold_quantity — usado pra escolher o "representante" do grupo
     for (let i = 0; i < adIdsUnicos.length; i += 20) {
       const chunk = adIdsUnicos.slice(i, i + 20);
       try {
         const r = await axios.get('https://api.mercadolibre.com/items', {
-          params: { ids: chunk.join(','), attributes: 'id,status,family_id,catalog_product_id' },
+          params: { ids: chunk.join(','), attributes: 'id,status,family_id,catalog_product_id,sold_quantity' },
           headers, timeout: 15000,
         });
         r.data.forEach(item => {
           if (item.code !== 200) return;
-          const { id, status, family_id, catalog_product_id } = item.body;
-          statusPorAdId[id] = status;
+          const { id, status, family_id, catalog_product_id, sold_quantity } = item.body;
+          statusPorAdId[id]  = status;
+          vendidoPorAdId[id] = sold_quantity || 0;
           acharGrupo(id);
           if (family_id)          unirGrupo(id, `fam:${family_id}`);
           if (catalog_product_id) unirGrupo(id, `cat:${catalog_product_id}`);
@@ -3239,13 +3241,17 @@ app.get('/api/ml/ads-roas', async (req, res) => {
         const roasEntregando  = cost > 0 ? revenue / cost : null;
         const custoPorUnidade = units > 0 ? cost / units  : null;
         // Dedup por family_id/catalog_product_id (não só por id) — listings sincronizados
-        // com o mesmo produto de catálogo contam como um único anúncio pro vendedor
-        const adsListaDedup = [];
-        const vistosLista = new Set();
+        // com o mesmo produto de catálogo contam como um único anúncio pro vendedor.
+        // Representante do grupo = o que mais vendeu (é o que tem histórico de venda real).
+        const gruposPorChave = new Map();
         adsDestaCamp.forEach(a => {
           const chave = catalogPorAdId[a.id] || a.id;
-          if (!vistosLista.has(chave)) { vistosLista.add(chave); adsListaDedup.push({ id: a.id, title: a.title || '—' }); }
+          const atual = gruposPorChave.get(chave);
+          if (!atual || (vendidoPorAdId[a.id] || 0) > (vendidoPorAdId[atual.id] || 0)) {
+            gruposPorChave.set(chave, a);
+          }
         });
+        const adsListaDedup = [...gruposPorChave.values()].map(a => ({ id: a.id, title: a.title || '—' }));
         const titulos = adsListaDedup.map(a => a.title).join(' | ');
         return {
           campId:         String(campId),
