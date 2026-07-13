@@ -895,7 +895,17 @@ function calcSimulacaoAds(mlb) {
   const { preco, lucroUnit } = precoELucroDoMlb(mlb);
   const gastoMax = gastoMaxPorMlb[mlb];
 
-  if (!preco || !gastoMax || gastoMax <= 0) return { roas: '—', lucro: '—' };
+  if (!preco) return { roas: '—', lucro: '—' };
+
+  if (!gastoMax || gastoMax <= 0) {
+    // Gasto sugerido = 0 não é "sem dado" — é o produto já estar abaixo da margem
+    // mínima mesmo sem gastar nada em ads (não dá pra calcular ROAS: seria dividir por 0)
+    if (lucroUnit != null && preco > 0) {
+      const margemAtual = (lucroUnit / preco) * 100;
+      return { roas: '—', lucro: `Já ${margemAtual.toFixed(1)}% sem ads (abaixo de ${margemMinimaAds}%)` };
+    }
+    return { roas: '—', lucro: '—' };
+  }
 
   const roasIdeal = preco / gastoMax;
   if (lucroUnit == null) return { roas: `${roasIdeal.toFixed(2)}x`, lucro: '—' };
