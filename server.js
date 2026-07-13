@@ -3370,11 +3370,13 @@ app.get('/api/ml/ads-custo-lucro', async (req, res) => {
     }));
 
     // 4. Monta resultado por MLB
+    // Sem SKU cadastrado no anúncio, a aba Lucro usa o próprio MLB como chave de custo
+    // (i.sku || i.mlb em lucro.js) — precisa do mesmo fallback aqui pra bater o valor.
     const resultado = {};
     mlbs.forEach(mlb => {
-      const sku = skuPorMlb[mlb] || null;
+      const sku = skuPorMlb[mlb] || mlb;
       const hist = lc.custos_historico?.[sku];
-      const custo = sku ? (hist?.length ? custoVigenteNaData(hist, hoje) : (lc.custos?.[sku] ?? 0)) : null;
+      const custo = hist?.length ? custoVigenteNaData(hist, hoje) : (lc.custos?.[sku] ?? 0);
 
       const venda = ultimaVendaPorMlb[mlb];
       let ultimaVenda = null;
