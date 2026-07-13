@@ -3162,6 +3162,23 @@ app.get('/api/ml/ads-roas', async (req, res) => {
       offsetAds += 50;
     }
 
+    // 2b. catalog_product_id de cada ad — listings sincronizados com o mesmo produto de
+    // catálogo aparecem como "ads" separados na API, mas o vendedor vê como 1 anúncio só
+    const catalogPorAdId = {};
+    const adIdsUnicos = [...new Set(todosAds.map(a => a.id))];
+    for (let i = 0; i < adIdsUnicos.length; i += 20) {
+      const chunk = adIdsUnicos.slice(i, i + 20);
+      try {
+        const r = await axios.get('https://api.mercadolibre.com/items', {
+          params: { ids: chunk.join(','), attributes: 'id,catalog_product_id' },
+          headers, timeout: 15000,
+        });
+        r.data.forEach(item => {
+          if (item.code === 200) catalogPorAdId[item.body.id] = item.body.catalog_product_id || null;
+        });
+      } catch { /* segue sem agrupar por catálogo pra esse lote */ }
+    }
+
     // 3. Busca campanhas + métricas numa chamada só (endpoint novo, paginado)
     const t0 = Date.now();
     const campanhas = [];
@@ -3190,21 +3207,20 @@ app.get('/api/ml/ads-roas', async (req, res) => {
         const campId = camp.id;
         const met = camp.metrics || {};
         const adsDestaCamp = todosAds.filter(a => a.campaign_id === campId);
-        const vistos = new Set();
-        const titulos = adsDestaCamp
-          .filter(a => { if (vistos.has(a.id)) return false; vistos.add(a.id); return true; })
-          .map(a => a.title)
-          .join(' | ');
         const cost            = Number(met.cost)         || 0;
         const revenue         = Number(met.total_amount) || 0;
-        const units           = Number(met.units_quantity) || 0;
+        const units            = Number(met.units_quantity) || 0;
         const roasEntregando  = cost > 0 ? revenue / cost : null;
         const custoPorUnidade = units > 0 ? cost / units  : null;
+        // Dedup por catalog_product_id (não só por id) — listings sincronizados com o
+        // mesmo produto de catálogo contam como um único anúncio pro vendedor
         const adsListaDedup = [];
         const vistosLista = new Set();
         adsDestaCamp.forEach(a => {
-          if (!vistosLista.has(a.id)) { vistosLista.add(a.id); adsListaDedup.push({ id: a.id, title: a.title || '—' }); }
+          const chave = catalogPorAdId[a.id] || a.id;
+          if (!vistosLista.has(chave)) { vistosLista.add(chave); adsListaDedup.push({ id: a.id, title: a.title || '—' }); }
         });
+        const titulos = adsListaDedup.map(a => a.title).join(' | ');
         return {
           campId:         String(campId),
           campanha:       camp.name || String(campId),
