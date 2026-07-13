@@ -873,7 +873,9 @@ document.querySelectorAll('.th-sort-ads').forEach(th => {
 function calcSimulacaoAds(mlb) {
   const fmtBRL = v => v != null ? `R$ ${v.toFixed(2).replace('.', ',')}` : '—';
   const info      = custoLucroPorMlb[mlb];
-  const preco     = info?.preco;
+  // Preço da última venda reflete o valor real cobrado (com promoção, se houve);
+  // o preço "de tabela" do anúncio não considera desconto.
+  const preco     = info?.ultimaVenda?.precoUnit ?? info?.preco;
   const lucroUnit = info?.ultimaVenda?.lucroUnitario;
   const gastoMax  = gastoMaxPorMlb[mlb];
 
@@ -903,11 +905,12 @@ function atualizarSimulacaoAds(mlb, valor) {
 function tdsSimulacaoAds(mlb) {
   const fmtBRL   = v => v != null ? `R$ ${v.toFixed(2).replace('.', ',')}` : '—';
   const info     = custoLucroPorMlb[mlb];
+  const preco    = info?.ultimaVenda?.precoUnit ?? info?.preco;
   const gastoMax = gastoMaxPorMlb[mlb];
   const { roas, lucro } = calcSimulacaoAds(mlb);
   return `
-    <td class="col-num">${fmtBRL(info?.preco)}</td>
-    <td class="col-num"><input type="number" step="0.01" min="0" style="width:80px" placeholder="R$" value="${gastoMax ?? ''}" oninput="atualizarSimulacaoAds('${mlb}', this.value)"></td>
+    <td class="col-num">${fmtBRL(preco)}</td>
+    <td class="col-num"><input type="number" step="0.01" min="0" style="width:70px" placeholder="R$" value="${gastoMax ?? ''}" oninput="atualizarSimulacaoAds('${mlb}', this.value)"></td>
     <td class="col-num" id="roas-ideal-${mlb}">${roas}</td>
     <td class="col-num" id="lucro-apos-${mlb}">${lucro}</td>
   `;
