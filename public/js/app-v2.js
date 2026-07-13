@@ -937,13 +937,23 @@ function mudarMargemMinimaAds(valor) {
   renderizarAds();
 }
 
-function tdsSimulacaoAds(mlb) {
-  const fmtBRL = v => v != null ? `R$ ${v.toFixed(2).replace('.', ',')}` : '—';
-  const { preco } = precoELucroDoMlb(mlb);
-
+// Garante que o gasto sugerido está calculado antes de renderizar qualquer célula da simulação
+function prepararSimulacaoAds(mlb) {
   if (!gastoMaxManual[mlb]) gastoMaxPorMlb[mlb] = gastoSugeridoAds(mlb);
+}
+
+function tdRoasIdealAds(mlb) {
+  prepararSimulacaoAds(mlb);
+  const { roas } = calcSimulacaoAds(mlb);
+  return `<td class="col-num" id="roas-ideal-${mlb}">${roas}</td>`;
+}
+
+function tdsRestoSimulacaoAds(mlb) {
+  const fmtBRL = v => v != null ? `R$ ${v.toFixed(2).replace('.', ',')}` : '—';
+  prepararSimulacaoAds(mlb);
+  const { preco } = precoELucroDoMlb(mlb);
   const gastoMax = gastoMaxPorMlb[mlb];
-  const { roas, lucro } = calcSimulacaoAds(mlb);
+  const { lucro } = calcSimulacaoAds(mlb);
 
   return `
     <td class="col-num">${fmtBRL(preco)}</td>
@@ -953,7 +963,6 @@ function tdsSimulacaoAds(mlb) {
         <button class="btn-expandir-var" title="Voltar pra sugestão automática" onclick="resetGastoSugeridoAds('${mlb}')">↺</button>
       </div>
     </td>
-    <td class="col-num" id="roas-ideal-${mlb}">${roas}</td>
     <td class="col-num" id="lucro-apos-${mlb}">${lucro}</td>
   `;
 }
@@ -1020,9 +1029,10 @@ function renderizarAds() {
     const lucroCell = infoUm?.ultimaVenda
       ? `<td class="col-num" title="Venda de ${infoUm.ultimaVenda.data?.slice(0,10) || '?'}">${fmtBRL(infoUm.ultimaVenda.lucro)}</td>`
       : '<td class="col-num">—</td>';
-    const simCells = soUmAd
-      ? tdsSimulacaoAds(soUmAd.id)
-      : '<td class="col-num">—</td><td class="col-num">—</td><td class="col-num">—</td><td class="col-num">—</td>';
+    const roasIdealCell = soUmAd ? tdRoasIdealAds(soUmAd.id) : '<td class="col-num">—</td>';
+    const restoSimCells = soUmAd
+      ? tdsRestoSimulacaoAds(soUmAd.id)
+      : '<td class="col-num">—</td><td class="col-num">—</td><td class="col-num">—</td>';
 
     const tr = document.createElement('tr');
     tr.innerHTML = `
@@ -1030,12 +1040,13 @@ function renderizarAds() {
       ${anunciosCell}
       <td class="col-num">${fmtRoas(item.targetRoas)}</td>
       <td class="col-num ${roasClass}">${fmtRoas(item.roasEntregando)}</td>
+      ${roasIdealCell}
       <td class="col-num">${fmtBRL(item.custoPorUnidade)}</td>
       <td class="col-num">${fmtBRL(item.cost)}</td>
       <td class="col-num">${item.units || '—'}</td>
       ${custoCell}
       ${lucroCell}
-      ${simCells}
+      ${restoSimCells}
     `;
     tbody.appendChild(tr);
 
@@ -1044,15 +1055,17 @@ function renderizarAds() {
       item.adsLista.forEach(ad => {
         const info = custoLucroPorMlb[ad.id];
         const detalhe = info
-          ? ` — Custo: ${fmtBRL(info.custo)} | Lucro últ. venda: ${info.ultimaVenda ? fmtBRL(info.ultimaVenda.lucro) : '—'}`
+          ? `Custo: ${fmtBRL(info.custo)} | Lucro últ. venda: ${info.ultimaVenda ? fmtBRL(info.ultimaVenda.lucro) : '—'}`
           : '';
         const trAd = document.createElement('tr');
         trAd.className = `camp-row camp-row-${campId}`;
         trAd.style.display = aberto ? '' : 'none';
         trAd.innerHTML = `
           <td class="variacao-indent"></td>
-          <td colspan="8" class="variacao-nome">↳ ${ad.title}${detalhe}</td>
-          ${tdsSimulacaoAds(ad.id)}
+          <td colspan="3" class="variacao-nome">↳ ${ad.title}</td>
+          ${tdRoasIdealAds(ad.id)}
+          <td colspan="5" class="variacao-nome">${detalhe}</td>
+          ${tdsRestoSimulacaoAds(ad.id)}
         `;
         tbody.appendChild(trAd);
       });
