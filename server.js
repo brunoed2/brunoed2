@@ -1651,7 +1651,31 @@ async function fetchBlingNotasTravadasML(conta) {
     params: { pagina: 1, limite: 100 },
     timeout: 15000,
   });
-  const nfs = (resp.data?.data || []).filter(n => n.situacao === 5);
+  const nfsAutorizadas = (resp.data?.data || []).filter(n => n.situacao === 5);
+
+  // Filtra por idade antes de buscar detalhe (dataEmissao vem em horário de Brasília,
+  // sem offset — precisamos fixar -03:00 pra não depender do timezone do container)
+  const candidatasIdade = nfsAutorizadas
+    .map(nf => {
+      const dataEmissao = nf.dataEmissao ? new Date(nf.dataEmissao.replace(' ', 'T') + '-03:00') : null;
+      if (!dataEmissao || (Date.now() - dataEmissao.getTime()) < NOTA_TRAVADA_MIN_MINUTOS * 60_000) return null;
+      return { nf, dataEmissao };
+    })
+    .filter(Boolean);
+  if (!candidatasIdade.length) return [];
+
+  // numeroPedidoLoja não vem confiável na listagem — só no detalhe da NF.
+  // Busca sequencial (só das candidatas já filtradas por idade) pra não estourar rate limit do Bling.
+  const candidatas = [];
+  for (const { nf, dataEmissao } of candidatasIdade) {
+    const det = await axios.get(`https://api.bling.com.br/Api/v3/nfe/${nf.id}`, {
+      headers: { Authorization: `Bearer ${token}` }, timeout: 10000,
+    }).then(r => r.data?.data || null).catch(() => null);
+    const numeroPedidoLoja = det?.numeroPedidoLoja || nf.numeroPedidoLoja || '';
+    if (/^\d{10,}$/.test(numeroPedidoLoja)) candidatas.push({ nf, numeroPedidoLoja, dataEmissao });
+    await new Promise(r => setTimeout(r, 350));
+  }
+  if (!candidatas.length) return [];
 
   const mlData   = loadData();
   const mlTokens = (await Promise.all(
@@ -1659,17 +1683,6 @@ async function fetchBlingNotasTravadasML(conta) {
   )).filter(t => t.tok);
   if (!mlTokens.length) return [];
   const tokensOrdenados = [...mlTokens].sort((a, b) => (a.conta === conta ? -1 : 0) - (b.conta === conta ? -1 : 0));
-
-  const candidatas = nfs
-    .map(nf => {
-      const numeroPedidoLoja = nf.numeroPedidoLoja || '';
-      const isML = /^\d{10,}$/.test(numeroPedidoLoja);
-      if (!isML) return null;
-      const dataEmissao = nf.dataEmissao ? new Date(nf.dataEmissao.replace(' ', 'T')) : null;
-      if (!dataEmissao || (Date.now() - dataEmissao.getTime()) < NOTA_TRAVADA_MIN_MINUTOS * 60_000) return null;
-      return { nf, numeroPedidoLoja, dataEmissao };
-    })
-    .filter(Boolean);
 
   const resultados = await Promise.all(candidatas.map(async ({ nf, numeroPedidoLoja, dataEmissao }) => {
     for (const { tok } of tokensOrdenados) {
