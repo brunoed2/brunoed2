@@ -1635,6 +1635,109 @@ app.get('/api/bling/nfs-shopee-marketplace', async (req, res) => {
   }
 });
 
+// ── Bling: NFs autorizadas mas travadas na sincronização com o ML ──
+// A API do Bling não expõe o motivo de recusa do Mercado Livre (isso só aparece na
+// UI do Bling, via sessão logada). Detectamos indiretamente: quando o Bling consegue
+// repassar a NF com sucesso, o envio (shipment) do pedido no ML sai do substatus
+// "invoice_pending". Se a NF já está autorizada há um tempo e o shipment continua
+// parado em ready_to_ship/invoice_pending, é sinal de que o ML recusou os dados
+// (normalmente por valor ou produto divergente do pedido).
+const NOTA_TRAVADA_MIN_MINUTOS = 20;
+
+async function fetchBlingNotasTravadasML(conta) {
+  const token = await getBlingToken(conta);
+  const resp  = await axios.get('https://api.bling.com.br/Api/v3/nfe', {
+    headers: { Authorization: `Bearer ${token}` },
+    params: { pagina: 1, limite: 100 },
+    timeout: 15000,
+  });
+  const nfs = (resp.data?.data || []).filter(n => n.situacao === 5);
+
+  const mlData   = loadData();
+  const mlTokens = (await Promise.all(
+    ['1', '2'].map(async c => ({ conta: c, tok: await getToken(mlData, c).catch(() => null) }))
+  )).filter(t => t.tok);
+  if (!mlTokens.length) return [];
+  const tokensOrdenados = [...mlTokens].sort((a, b) => (a.conta === conta ? -1 : 0) - (b.conta === conta ? -1 : 0));
+
+  const candidatas = nfs
+    .map(nf => {
+      const numeroPedidoLoja = nf.numeroPedidoLoja || '';
+      const isML = /^\d{10,}$/.test(numeroPedidoLoja);
+      if (!isML) return null;
+      const dataEmissao = nf.dataEmissao ? new Date(nf.dataEmissao.replace(' ', 'T')) : null;
+      if (!dataEmissao || (Date.now() - dataEmissao.getTime()) < NOTA_TRAVADA_MIN_MINUTOS * 60_000) return null;
+      return { nf, numeroPedidoLoja, dataEmissao };
+    })
+    .filter(Boolean);
+
+  const resultados = await Promise.all(candidatas.map(async ({ nf, numeroPedidoLoja, dataEmissao }) => {
+    for (const { tok } of tokensOrdenados) {
+      try {
+        const order = await axios.get(`https://api.mercadolibre.com/orders/${numeroPedidoLoja}`, {
+          headers: { Authorization: `Bearer ${tok}` }, timeout: 8000,
+        }).then(r => r.data).catch(e => { throw e; });
+        const sid = order?.shipping?.id;
+        if (!sid) continue;
+        const ship = await axios.get(`https://api.mercadolibre.com/shipments/${sid}`, {
+          headers: { Authorization: `Bearer ${tok}` }, timeout: 8000,
+        }).then(r => r.data).catch(() => null);
+        if (!ship) return null;
+        if (ship.status === 'ready_to_ship' && ship.substatus === 'invoice_pending') {
+          return {
+            nfId:             nf.id,
+            numero:           nf.numero,
+            destinatario:     nf.contato?.nome || '—',
+            valor_total:      nf.totalProdutos || 0,
+            numeroPedidoLoja,
+            dataEmissao:      nf.dataEmissao,
+            horasParada:      Math.round((Date.now() - dataEmissao.getTime()) / 3_600_000 * 10) / 10,
+            conta,
+          };
+        }
+        return null;
+      } catch (e) {
+        if (e.response && e.response.status !== 404 && e.response.status !== 403) continue;
+      }
+    }
+    return null;
+  }));
+
+  return resultados.filter(Boolean);
+}
+
+app.get('/api/bling/notas-travadas-ml', async (req, res) => {
+  try {
+    const conta = blingContaReq(req);
+    const notas = await fetchBlingNotasTravadasML(conta);
+    return res.json({ notas });
+  } catch (err) {
+    const detail = err.response ? `HTTP ${err.response.status}: ${JSON.stringify(err.response.data).slice(0, 200)}` : err.message;
+    addLog(`[bling] notas-travadas-ml: ${detail}`, 'warn');
+    return res.json({ erro: detail });
+  }
+});
+
+app.get('/api/bling/notas-travadas-ml-todas', async (req, res) => {
+  try {
+    const data = loadData();
+    const contasAtivas = ['1', '2'].filter(c => !!(getBlingDataConta(data, c)?.access_token));
+    if (contasAtivas.length === 0) return res.json({ erro: 'Nenhuma conta Bling conectada.' });
+    const resultados = await Promise.allSettled(contasAtivas.map(c => fetchBlingNotasTravadasML(c)));
+    const notas = [];
+    const erros = [];
+    resultados.forEach((r, i) => {
+      if (r.status === 'fulfilled') notas.push(...r.value);
+      else erros.push(`Conta ${contasAtivas[i]}: ${r.reason?.message}`);
+    });
+    if (notas.length === 0 && erros.length > 0 && erros.length === contasAtivas.length) return res.json({ erro: erros.join(' | ') });
+    notas.sort((a, b) => b.horasParada - a.horasParada);
+    return res.json({ notas });
+  } catch (err) {
+    return res.json({ erro: err.message });
+  }
+});
+
 // Debug: retorna dados brutos do Bling para uma NF específica
 app.get('/api/bling/nf-raw/:nfId', async (req, res) => {
   try {
@@ -5045,6 +5148,34 @@ async function verificarAnunciosPausadosTelegram() {
   }
 }
 
+// ── Polling em background: NFs autorizadas travadas na sincronização com o ML ──
+async function verificarNotasTravadasML() {
+  const temCanal = (TELEGRAM_TOKEN && TELEGRAM_CHAT_ID) || (CALLMEBOT_PHONE && CALLMEBOT_APIKEY);
+  if (!temCanal) return;
+  const data = loadData();
+  if (!data.notas_travadas_notificadas) data.notas_travadas_notificadas = {};
+  let changed = false;
+
+  const contasAtivas = ['1', '2'].filter(c => !!(getBlingDataConta(data, c)?.access_token));
+  for (const conta of contasAtivas) {
+    let notas = [];
+    try { notas = await fetchBlingNotasTravadasML(conta); } catch (err) {
+      addLog(`[notas-travadas-ml] erro conta ${conta}: ${err.message}`, 'warn'); continue;
+    }
+    for (const n of notas) {
+      const chave = `${n.nfId}_${conta}`;
+      if (data.notas_travadas_notificadas[chave]) continue;
+      data.notas_travadas_notificadas[chave] = Date.now();
+      changed = true;
+      const valor = (n.valor_total || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+      const texto = `⚠️ <b>NF travada — Mercado Livre recusou os dados</b>\n\nNota #${n.numero} — ${n.destinatario} — ${valor}\nConta ${conta} · autorizada há ${n.horasParada}h\nPedido ML: ${n.numeroPedidoLoja}\n\nA nota foi autorizada mas o ML não recebeu os dados corretos (provável divergência de valor ou produto). Cancele a nota errada no Bling e emita uma nova.`;
+      notificar(texto).catch(() => {});
+      addLog(`[notas-travadas-ml] notificado NF #${n.numero} conta ${conta}`, 'warn');
+    }
+  }
+  if (changed) saveData(data);
+}
+
 // ── Polling em background: detecção de anúncios que viraram catálogo ─
 async function verificarCatalogosML() {
   if (!CALLMEBOT_PHONE || !CALLMEBOT_APIKEY) return;
@@ -6534,6 +6665,13 @@ app.listen(PORT, () => {
       verificarCatalogosML().catch(() => {});
       setInterval(() => verificarCatalogosML().catch(() => {}), 15 * 60_000);
     }, 120_000);
+  }
+  // Notas travadas no ML: NF autorizada mas o Mercado Livre recusou os dados
+  if ((CALLMEBOT_PHONE && CALLMEBOT_APIKEY) || (TELEGRAM_TOKEN && TELEGRAM_CHAT_ID)) {
+    setTimeout(() => {
+      verificarNotasTravadasML().catch(() => {});
+      setInterval(() => verificarNotasTravadasML().catch(() => {}), 15 * 60_000);
+    }, 60_000);
   }
 });
 

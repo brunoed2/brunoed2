@@ -604,6 +604,7 @@
         <div style="display:flex;gap:8px;margin-bottom:20px">
           <button class="filtro-btn active" id="bling-sub-pedidos"      onclick="blingAbrirSub('pedidos')">📋 Pedidos pendentes</button>
           <button class="filtro-btn"        id="bling-sub-notas"      onclick="blingAbrirSub('notas')">🧾 Notas pendentes de envio</button>
+          <button class="filtro-btn"        id="bling-sub-travadas"   onclick="blingAbrirSub('travadas')">⚠️ Notas travadas no ML</button>
         </div>
 
         <!-- Sub-aba: Pedidos pendentes -->
@@ -666,6 +667,32 @@
           </div>
         </div>
 
+        <!-- Sub-aba: Notas travadas no ML -->
+        <div id="bling-painel-travadas" style="display:none">
+          <p class="subtitle" style="margin-top:-8px;margin-bottom:16px">NF já autorizada, mas o Mercado Livre não recebeu os dados corretos (provável divergência de valor ou produto). Cancele a nota errada no Bling e emita uma nova.</p>
+          <div class="tabela-container">
+            <div class="tabela-topo">
+              <span id="bling-travadas-total"></span>
+              <button class="btn-secondary" onclick="blingCarregarTravadas()" id="btn-atualizar-bling-travadas">↻ Atualizar</button>
+            </div>
+            <div id="bling-travadas-loading" class="loading" style="display:none">Verificando notas...</div>
+            <div id="bling-travadas-erro" class="estoque-erro" style="display:none"></div>
+            <table class="tabela" id="tabela-bling-travadas" style="display:none">
+              <thead>
+                <tr>
+                  <th>Conta</th>
+                  <th>Número</th>
+                  <th>Destinatário</th>
+                  <th class="col-num">Valor</th>
+                  <th>Pedido ML</th>
+                  <th>Autorizada há</th>
+                  <th>Ação</th>
+                </tr>
+              </thead>
+              <tbody id="tabela-bling-travadas-body"></tbody>
+            </table>
+          </div>
+        </div>
 
       </section>
 
@@ -1389,6 +1416,6 @@
     </div>
   </div>
 
-  <div id="version-badge">v609</div>
+  <div id="version-badge">v610</div>
 </body>
 </html>

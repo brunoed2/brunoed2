@@ -13,11 +13,14 @@ function blingAbrirSub(sub) {
   blingSubAtual = sub;
   document.getElementById('bling-sub-pedidos').classList.toggle('active', sub === 'pedidos');
   document.getElementById('bling-sub-notas').classList.toggle('active', sub === 'notas');
-  document.getElementById('bling-painel-pedidos').style.display = sub === 'pedidos' ? '' : 'none';
-  document.getElementById('bling-painel-notas').style.display   = sub === 'notas'   ? '' : 'none';
+  document.getElementById('bling-sub-travadas').classList.toggle('active', sub === 'travadas');
+  document.getElementById('bling-painel-pedidos').style.display  = sub === 'pedidos'  ? '' : 'none';
+  document.getElementById('bling-painel-notas').style.display    = sub === 'notas'    ? '' : 'none';
+  document.getElementById('bling-painel-travadas').style.display = sub === 'travadas' ? '' : 'none';
 
-  if (sub === 'pedidos') blingCarregarPedidos();
-  if (sub === 'notas')   blingCarregarNotas();
+  if (sub === 'pedidos')  blingCarregarPedidos();
+  if (sub === 'notas')    blingCarregarNotas();
+  if (sub === 'travadas') blingCarregarTravadas();
 }
 
 // ── Pedidos pendentes de NF ───────────────────────────────────
@@ -393,6 +396,65 @@ async function blingEnviarNF(notaId, btn) {
     btn.disabled    = false;
     btn.textContent = 'Enviar';
     alert('Erro: ' + err.message);
+  }
+}
+
+// ── Notas travadas no ML (autorizadas mas recusadas pela loja virtual) ──
+
+async function blingCarregarTravadas() {
+  const loading = document.getElementById('bling-travadas-loading');
+  const erro    = document.getElementById('bling-travadas-erro');
+  const tabela  = document.getElementById('tabela-bling-travadas');
+  const tbody   = document.getElementById('tabela-bling-travadas-body');
+  const total   = document.getElementById('bling-travadas-total');
+
+  loading.style.display = '';
+  erro.style.display    = 'none';
+  tabela.style.display  = 'none';
+  tbody.innerHTML       = '';
+  total.textContent     = '';
+
+  try {
+    const data = await fetch('/api/bling/notas-travadas-ml-todas').then(r => r.json());
+    loading.style.display = 'none';
+
+    if (data.erro) {
+      erro.textContent   = data.erro;
+      erro.style.display = '';
+      return;
+    }
+
+    const notas = data.notas || [];
+    total.textContent = `${notas.length} nota${notas.length !== 1 ? 's' : ''} travada${notas.length !== 1 ? 's' : ''} no ML`;
+
+    if (notas.length === 0) {
+      erro.textContent   = 'Nenhuma nota travada — tudo sincronizado com o Mercado Livre.';
+      erro.style.display = '';
+      return;
+    }
+
+    for (const n of notas) {
+      const tr = document.createElement('tr');
+      const valor    = (n.valor_total || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+      const contaCor = n.conta === '1' ? '#2563eb' : '#7c3aed';
+      const contaBadge = `<span style="background:${contaCor};color:#fff;padding:1px 7px;border-radius:4px;font-size:11px">C${n.conta}</span>`;
+      const blingUrl = `https://www.bling.com.br/nfe.php#edit/${n.nfId}`;
+      tr.innerHTML = `
+        <td>${contaBadge}</td>
+        <td>${escapeHtml(n.numero || '—')}</td>
+        <td>${escapeHtml(n.destinatario || '—')}</td>
+        <td class="col-num">${valor}</td>
+        <td style="font-size:11px">${escapeHtml(n.numeroPedidoLoja || '—')}</td>
+        <td>${n.horasParada}h</td>
+        <td><a href="${blingUrl}" target="_blank" rel="noopener" class="btn-sm" style="background:#f59e0b;color:#fff;text-decoration:none;display:inline-block" title="Cancele esta nota no Bling e emita uma nova com os dados corretos">⚠ Corrigir no Bling</a></td>
+      `;
+      tbody.appendChild(tr);
+    }
+    tabela.style.display = '';
+  } catch (err) {
+    loading.style.display = 'none';
+    erro.textContent      = 'Erro ao verificar notas travadas: ' + err.message;
+    erro.style.display    = '';
   }
 }
 
