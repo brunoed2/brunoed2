@@ -1668,9 +1668,13 @@ async function fetchBlingNotasTravadasML(conta) {
   // Busca sequencial (só das candidatas já filtradas por idade) pra não estourar rate limit do Bling.
   const candidatas = [];
   for (const { nf, dataEmissao } of candidatasIdade) {
-    const det = await axios.get(`https://api.bling.com.br/Api/v3/nfe/${nf.id}`, {
-      headers: { Authorization: `Bearer ${token}` }, timeout: 10000,
-    }).then(r => r.data?.data || null).catch(() => null);
+    let det = null;
+    for (let tentativa = 0; tentativa < 2 && !det; tentativa++) {
+      if (tentativa > 0) await new Promise(r => setTimeout(r, 1000));
+      det = await axios.get(`https://api.bling.com.br/Api/v3/nfe/${nf.id}`, {
+        headers: { Authorization: `Bearer ${token}` }, timeout: 10000,
+      }).then(r => r.data?.data || null).catch(() => null);
+    }
     const numeroPedidoLoja = det?.numeroPedidoLoja || nf.numeroPedidoLoja || '';
     const valorNota        = det?.valorNota ?? nf.totalProdutos ?? 0;
     if (/^\d{10,}$/.test(numeroPedidoLoja)) candidatas.push({ nf, numeroPedidoLoja, dataEmissao, valorNota });

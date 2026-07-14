@@ -4,9 +4,24 @@
 // ============================================================
 
 let blingSubAtual = 'pedidos';
+let blingBadgeInterval = null;
 
 function blingInit() {
   blingAbrirSub(blingSubAtual);
+  blingAtualizarBadgeTravadas();
+  if (!blingBadgeInterval) blingBadgeInterval = setInterval(blingAtualizarBadgeTravadas, 60_000);
+}
+
+async function blingAtualizarBadgeTravadas() {
+  const btn = document.getElementById('bling-sub-travadas');
+  if (!btn) return;
+  try {
+    const data = await fetch('/api/bling/notas-travadas-ml-todas').then(r => r.json());
+    const n = (data.notas || []).length;
+    btn.textContent  = n > 0 ? `⚠️ Notas travadas no ML (${n})` : '⚠️ Notas travadas no ML';
+    btn.style.color  = n > 0 ? '#dc2626' : '';
+    btn.style.fontWeight = n > 0 ? '700' : '';
+  } catch {}
 }
 
 function blingAbrirSub(sub) {
