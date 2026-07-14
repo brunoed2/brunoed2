@@ -105,6 +105,7 @@ async function marcarAtendidoSelecionadas() {
       });
       atualizarBotaoSelecionadas();
       aplicarFiltroAtendidos();
+      atualizarResumoSeparar();
     } else {
       alert('Erro ao salvar. Tente novamente.');
     }
@@ -209,6 +210,53 @@ function renderizarChipsSKU(tipo, lista) {
   ).join('');
 }
 
+function atualizarResumoSeparar() {
+  const card      = document.getElementById('vendas-resumo-card');
+  const container = document.getElementById('vendas-resumo-lista');
+  if (!card || !container) return;
+
+  const skuMap = new Map();
+  document.querySelectorAll('#tabela-vendas-body > tr:not(.venda-sub-item)').forEach(tr => {
+    if (tr.classList.contains('venda-atendida')) return;
+    const cb    = tr.querySelector('.check-venda');
+    const venda = cb && vendaCache[cb.dataset.shipmentId];
+    if (!venda) return;
+    for (const item of (venda.itensLista || [])) {
+      if (!item.sku) continue;
+      const atual = skuMap.get(item.sku);
+      if (atual) {
+        atual.quantidade += (item.quantidade || 0);
+      } else {
+        skuMap.set(item.sku, {
+          titulo:     item.titulo || item.sku,
+          variacao:   item.variacao || '',
+          thumbnail:  item.thumbnail || '',
+          quantidade: item.quantidade || 0,
+        });
+      }
+    }
+  });
+
+  const lista = [...skuMap.values()].sort((a, b) => b.quantidade - a.quantidade || a.titulo.localeCompare(b.titulo));
+
+  if (!lista.length) {
+    card.style.display  = 'none';
+    container.innerHTML = '';
+    return;
+  }
+
+  card.style.display  = '';
+  container.innerHTML = lista.map(it => `
+    <div class="resumo-item">
+      ${it.thumbnail
+        ? `<img src="${it.thumbnail}" class="resumo-item-thumb" loading="lazy">`
+        : `<div class="resumo-item-thumb-vazio"></div>`}
+      <span class="resumo-item-qtd">${it.quantidade}×</span>
+      <span class="resumo-item-titulo" title="${it.titulo}${it.variacao ? ` (${it.variacao})` : ''}">${it.titulo}</span>
+    </div>
+  `).join('');
+}
+
 function filtrarPorSku(tipo, sku) {
   if (tipo === 'vendas') {
     skuFiltroVendas = skuFiltroVendas === sku ? null : sku;
@@ -253,7 +301,7 @@ async function carregarVendas() {
     }
 
     const todasVendas = data.vendas || [];
-    if (!todasVendas.length) { atualizarBotaoSelecionadas(); return; }
+    if (!todasVendas.length) { atualizarBotaoSelecionadas(); atualizarResumoSeparar(); return; }
 
     todasVendas.forEach(v => {
       vendaCache[String(v.shipmentId)] = v;
@@ -315,6 +363,7 @@ async function carregarVendas() {
     tabela.style.display = 'table';
     renderizarChipsSKU('vendas', todasVendas);
     aplicarFiltroAtendidos();
+    atualizarResumoSeparar();
   } catch {
     loading.style.display = 'none';
     erroEl.textContent   = 'Erro ao carregar vendas.';
@@ -478,6 +527,7 @@ async function toggleFlag(shipmentId, btn) {
       next = next.nextElementSibling;
     }
     aplicarFiltroAtendidos();
+    atualizarResumoSeparar();
   } catch {}
   btn.disabled = false;
 }

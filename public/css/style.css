@@ -826,6 +826,54 @@ tr.venda-atendida td { opacity: .45; }
 .chip-sku-ativo { background: #2563eb; border-color: #2563eb; color: #fff; }
 .chip-sku-ativo:hover { background: #1d4ed8; border-color: #1d4ed8; }
 
+/* ── Resumo para separar no estoque ──────────────────────────── */
+
+.resumo-separar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.resumo-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  border-radius: 10px;
+  padding: 5px 12px 5px 5px;
+}
+
+.resumo-item-thumb, .resumo-item-thumb-vazio {
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+.resumo-item-thumb {
+  object-fit: cover;
+  border: 1px solid #eee;
+}
+
+.resumo-item-thumb-vazio { background: #fed7aa; }
+
+.resumo-item-qtd {
+  font-weight: 700;
+  color: #c2410c;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.resumo-item-titulo {
+  font-size: 12.5px;
+  color: #334155;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .futuros-data-sep td {
   padding: 36px 12px 8px;
   font-size: 12px;
