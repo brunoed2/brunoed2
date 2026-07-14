@@ -6044,6 +6044,35 @@ app.get('/api/contas-receber/extrato', (req, res) => {
   res.json({ extrato: snap });
 });
 
+// Debug — compara /collections/{id} (usado hoje pra saber se liberou) contra o
+// endpoint oficial de pagamentos do MP, lado a lado, pra achar o campo certo de status de liberação.
+app.get('/api/contas-receber/debug-pagamento/:order_id', async (req, res) => {
+  const data = loadData();
+  const num  = req.query.conta || data.conta_ativa;
+  const c    = data.contas[num];
+  if (!c?.access_token) return res.json({ error: 'Não conectado' });
+  const headers = { Authorization: `Bearer ${c.access_token}` };
+  try {
+    const order = await axios.get(`https://api.mercadolibre.com/orders/${req.params.order_id}`, { headers, timeout: 10000 }).then(r => r.data);
+    const paymentId = order.payments?.[0]?.id;
+    if (!paymentId) return res.json({ error: 'Pedido sem payment id', order_status: order.status, payments: order.payments });
+
+    const [colecao, pagamentoMP] = await Promise.allSettled([
+      axios.get(`https://api.mercadolibre.com/collections/${paymentId}`, { headers, timeout: 10000 }),
+      axios.get(`https://api.mercadopago.com/v1/payments/${paymentId}`, { headers, timeout: 10000 }),
+    ]);
+    res.json({
+      orderId:        order.id,
+      orderStatus:    order.status,
+      paymentId,
+      collections_ml: colecao.status     === 'fulfilled' ? colecao.value.data     : { error: colecao.reason?.response?.data     || colecao.reason?.message },
+      payments_mp:    pagamentoMP.status === 'fulfilled' ? pagamentoMP.value.data : { error: pagamentoMP.reason?.response?.data || pagamentoMP.reason?.message },
+    });
+  } catch (err) {
+    res.json({ error: err.response?.data || err.message });
+  }
+});
+
 // Debug — inspeciona o formato real do extrato/saldo da conta (etapa futura: reconciliação agregada)
 // As APIs de saldo/extrato do Mercado Pago vivem em api.mercadopago.com (não
 // api.mercadolibre.com — por isso a 1ª tentativa deu 404). São relatórios
