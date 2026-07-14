@@ -1551,9 +1551,10 @@ app.get('/api/bling/pedidos-pendentes-todas', async (req, res) => {
       if (r.status === 'fulfilled') pedidos.push(...r.value);
       else erros.push(`Conta ${contasAtivas[i]}: ${r.reason?.response ? `HTTP ${r.reason.response.status}: ${JSON.stringify(r.reason.response.data).slice(0,150)}` : r.reason?.message}`);
     });
+    if (erros.length > 0) addLog(`[bling] pedidos-pendentes-todas: ${erros.join(' | ')}`, 'warn');
     if (pedidos.length === 0 && erros.length > 0) return res.json({ erro: erros.join(' | ') });
     pedidos.sort((a, b) => (b.temEtiqueta ? 1 : 0) - (a.temEtiqueta ? 1 : 0));
-    return res.json({ pedidos });
+    return res.json({ pedidos, avisos: erros.length > 0 ? erros : undefined });
   } catch (err) {
     return res.json({ erro: err.message });
   }

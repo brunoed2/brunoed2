@@ -4,24 +4,9 @@
 // ============================================================
 
 let blingSubAtual = 'pedidos';
-let blingBadgeInterval = null;
 
 function blingInit() {
   blingAbrirSub(blingSubAtual);
-  blingAtualizarBadgeTravadas();
-  if (!blingBadgeInterval) blingBadgeInterval = setInterval(blingAtualizarBadgeTravadas, 60_000);
-}
-
-async function blingAtualizarBadgeTravadas() {
-  const btn = document.getElementById('bling-sub-travadas');
-  if (!btn) return;
-  try {
-    const data = await fetch('/api/bling/notas-travadas-ml-todas').then(r => r.json());
-    const n = (data.notas || []).length;
-    btn.textContent  = n > 0 ? `⚠️ Notas travadas no ML (${n})` : '⚠️ Notas travadas no ML';
-    btn.style.color  = n > 0 ? '#dc2626' : '';
-    btn.style.fontWeight = n > 0 ? '700' : '';
-  } catch {}
 }
 
 function blingAbrirSub(sub) {
@@ -49,6 +34,7 @@ async function blingCarregarPedidos() {
 
   loading.style.display = '';
   erro.style.display    = 'none';
+  erro.style.color      = '';
   tabela.style.display  = 'none';
   tbody.innerHTML       = '';
   total.textContent     = '';
@@ -70,6 +56,12 @@ async function blingCarregarPedidos() {
       erro.textContent   = 'Nenhum pedido pendente de nota fiscal.';
       erro.style.display = '';
       return;
+    }
+
+    if (data.avisos && data.avisos.length > 0) {
+      erro.textContent   = '⚠️ Falha ao buscar parte dos pedidos: ' + data.avisos.join(' | ');
+      erro.style.display = '';
+      erro.style.color   = '#f59e0b';
     }
 
     for (const p of pedidos) {
