@@ -1672,7 +1672,8 @@ async function fetchBlingNotasTravadasML(conta) {
       headers: { Authorization: `Bearer ${token}` }, timeout: 10000,
     }).then(r => r.data?.data || null).catch(() => null);
     const numeroPedidoLoja = det?.numeroPedidoLoja || nf.numeroPedidoLoja || '';
-    if (/^\d{10,}$/.test(numeroPedidoLoja)) candidatas.push({ nf, numeroPedidoLoja, dataEmissao });
+    const valorNota        = det?.valorNota ?? nf.totalProdutos ?? 0;
+    if (/^\d{10,}$/.test(numeroPedidoLoja)) candidatas.push({ nf, numeroPedidoLoja, dataEmissao, valorNota });
     await new Promise(r => setTimeout(r, 350));
   }
   if (!candidatas.length) return [];
@@ -1684,7 +1685,7 @@ async function fetchBlingNotasTravadasML(conta) {
   if (!mlTokens.length) return [];
   const tokensOrdenados = [...mlTokens].sort((a, b) => (a.conta === conta ? -1 : 0) - (b.conta === conta ? -1 : 0));
 
-  const resultados = await Promise.all(candidatas.map(async ({ nf, numeroPedidoLoja, dataEmissao }) => {
+  const resultados = await Promise.all(candidatas.map(async ({ nf, numeroPedidoLoja, dataEmissao, valorNota }) => {
     for (const { tok } of tokensOrdenados) {
       try {
         const order = await axios.get(`https://api.mercadolibre.com/orders/${numeroPedidoLoja}`, {
@@ -1701,7 +1702,7 @@ async function fetchBlingNotasTravadasML(conta) {
             nfId:             nf.id,
             numero:           nf.numero,
             destinatario:     nf.contato?.nome || '—',
-            valor_total:      nf.totalProdutos || 0,
+            valor_total:      valorNota,
             numeroPedidoLoja,
             dataEmissao:      nf.dataEmissao,
             horasParada:      Math.round((Date.now() - dataEmissao.getTime()) / 3_600_000 * 10) / 10,
