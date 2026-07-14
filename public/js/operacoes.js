@@ -257,6 +257,33 @@ function atualizarResumoSeparar() {
   `).join('');
 }
 
+function renderizarResumoFuturosPorDia(resumoPorDia) {
+  const card = document.getElementById('futuros-resumo-card');
+  if (!card) return;
+
+  if (!resumoPorDia.size) { card.style.display = 'none'; card.innerHTML = ''; return; }
+
+  card.style.display = '';
+  card.innerHTML = [...resumoPorDia.values()].map(dia => {
+    const lista = [...dia.skuMap.values()].sort((a, b) => b.quantidade - a.quantidade || a.titulo.localeCompare(b.titulo));
+    const itensHtml = lista.map(it => `
+      <div class="resumo-item">
+        ${it.thumbnail
+          ? `<img src="${it.thumbnail}" class="resumo-item-thumb" loading="lazy">`
+          : `<div class="resumo-item-thumb-vazio"></div>`}
+        <span class="resumo-item-qtd">${it.quantidade}×</span>
+        <span class="resumo-item-titulo" title="${it.titulo}${it.variacao ? ` (${it.variacao})` : ''}">${it.titulo}</span>
+      </div>
+    `).join('');
+    return `
+      <div class="resumo-dia-bloco">
+        <div class="resumo-dia-titulo">📅 ${dia.label}</div>
+        <div class="resumo-separar">${itensHtml}</div>
+      </div>
+    `;
+  }).join('');
+}
+
 function filtrarPorSku(tipo, sku) {
   if (tipo === 'vendas') {
     skuFiltroVendas = skuFiltroVendas === sku ? null : sku;
@@ -416,7 +443,11 @@ async function carregarFuturos() {
     pedidosFuturosCarregado = true;
     totalEl.textContent = `${pedidos.length} pedido${pedidos.length !== 1 ? 's' : ''}`;
 
-    if (!pedidos.length) return;
+    if (!pedidos.length) {
+      const resumoCard = document.getElementById('futuros-resumo-card');
+      if (resumoCard) { resumoCard.style.display = 'none'; resumoCard.innerHTML = ''; }
+      return;
+    }
 
     pedidos.sort((a, b) => {
       if (!a.dataLiberacao && !b.dataLiberacao) return 0;
@@ -432,6 +463,7 @@ async function carregarFuturos() {
     const hoje = new Date();
     hoje.setHours(0, 0, 0, 0);
     let dataGrupoAtual = null;
+    const resumoPorDia = new Map();
 
     pedidos.forEach(p => {
       const itens   = p.itensLista || [];
@@ -454,6 +486,25 @@ async function carregarFuturos() {
           : dataStr;
         trSep.innerHTML = `<td colspan="7">${labelData}</td>`;
         tbody.appendChild(trSep);
+      }
+
+      if (!resumoPorDia.has(dataGrupo)) {
+        resumoPorDia.set(dataGrupo, { label: liberaHoje ? `${dataStr} — hoje` : dataStr, skuMap: new Map() });
+      }
+      const skuMap = resumoPorDia.get(dataGrupo).skuMap;
+      for (const item of itens) {
+        if (!item.sku) continue;
+        const atual = skuMap.get(item.sku);
+        if (atual) {
+          atual.quantidade += (item.quantidade || 0);
+        } else {
+          skuMap.set(item.sku, {
+            titulo:     item.titulo || item.sku,
+            variacao:   item.variacao || '',
+            thumbnail:  item.thumbnail || '',
+            quantidade: item.quantidade || 0,
+          });
+        }
       }
 
       const tr = document.createElement('tr');
@@ -499,6 +550,7 @@ async function carregarFuturos() {
 
     tabela.style.display = 'table';
     renderizarChipsSKU('futuros', pedidos);
+    renderizarResumoFuturosPorDia(resumoPorDia);
   } catch {
     loading.style.display = 'none';
     erroEl.textContent   = 'Erro ao carregar pedidos futuros.';

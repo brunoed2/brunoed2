@@ -870,6 +870,16 @@ tr.venda-atendida td { opacity: .45; }
   color: #334155;
 }
 
+.resumo-dia-bloco { margin-bottom: 10px; }
+.resumo-dia-bloco:last-child { margin-bottom: 0; }
+
+.resumo-dia-titulo {
+  font-weight: 600;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
 .futuros-data-sep td {
   padding: 36px 12px 8px;
   font-size: 12px;
