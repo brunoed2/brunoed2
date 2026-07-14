@@ -5898,6 +5898,11 @@ app.post('/api/contas-receber/verificar', async (req, res) => {
 });
 
 // Debug — inspeciona o formato real do extrato/saldo da conta (etapa futura: reconciliação agregada)
+// As APIs de saldo/extrato do Mercado Pago vivem em api.mercadopago.com (não
+// api.mercadolibre.com — por isso a 1ª tentativa deu 404). São relatórios
+// assíncronos (settlement_report = extrato de movimentações, release_report =
+// liberações), não uma consulta instantânea. Aqui só testamos se o access_token
+// do ML autentica nesse domínio e o que já existe gerado, antes de montar o fluxo real.
 app.get('/api/contas-receber/debug-movimentos', async (req, res) => {
   const data = loadData();
   const num  = req.query.conta || data.conta_ativa;
@@ -5905,18 +5910,39 @@ app.get('/api/contas-receber/debug-movimentos', async (req, res) => {
   if (!c?.access_token) return res.json({ error: 'Não conectado' });
   const headers = { Authorization: `Bearer ${c.access_token}` };
   const result = {};
-  const tentativas = [
-    { label: 'account/movements', url: `https://api.mercadolibre.com/users/${c.user_id}/mercadopago_account/movements`, params: { limit: 5 } },
-    { label: 'account/balance',   url: `https://api.mercadolibre.com/account/balance`, params: { user_id: c.user_id } },
+
+  const getTentativas = [
+    { label: 'settlement_report/config', url: 'https://api.mercadopago.com/v1/account/settlement_report/config' },
+    { label: 'settlement_report/list',   url: 'https://api.mercadopago.com/v1/account/settlement_report/list' },
+    { label: 'release_report/config',    url: 'https://api.mercadopago.com/v1/account/release_report/config' },
+    { label: 'release_report/list',      url: 'https://api.mercadopago.com/v1/account/release_report/list' },
   ];
-  for (const { label, url, params } of tentativas) {
+  for (const { label, url } of getTentativas) {
     try {
-      const r = await axios.get(url, { params, headers, timeout: 8000 });
+      const r = await axios.get(url, { headers, timeout: 8000 });
       result[label] = { status: r.status, data: r.data };
     } catch (e) {
       result[label] = { status: e.response?.status, error: e.response?.data || e.message };
     }
   }
+
+  // Tenta gerar um relatório dos últimos 7 dias — só pra confirmar se o token tem permissão (resposta 202 esperada)
+  const hoje = new Date();
+  const seteDiasAtras = new Date(hoje.getTime() - 7 * 86400000);
+  const body = { begin_date: seteDiasAtras.toISOString(), end_date: hoje.toISOString() };
+  const postTentativas = [
+    { label: 'settlement_report/gerar', url: 'https://api.mercadopago.com/v1/account/settlement_report' },
+    { label: 'release_report/gerar',    url: 'https://api.mercadopago.com/v1/account/release_report' },
+  ];
+  for (const { label, url } of postTentativas) {
+    try {
+      const r = await axios.post(url, body, { headers, timeout: 8000 });
+      result[label] = { status: r.status, data: r.data };
+    } catch (e) {
+      result[label] = { status: e.response?.status, error: e.response?.data || e.message };
+    }
+  }
+
   res.json(result);
 });
 
