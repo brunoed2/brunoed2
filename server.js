@@ -1642,7 +1642,7 @@ app.get('/api/bling/nfs-shopee-marketplace', async (req, res) => {
 // "invoice_pending". Se a NF já está autorizada há um tempo e o shipment continua
 // parado em ready_to_ship/invoice_pending, é sinal de que o ML recusou os dados
 // (normalmente por valor ou produto divergente do pedido).
-const NOTA_TRAVADA_MIN_MINUTOS = 20;
+const NOTA_TRAVADA_MIN_MINUTOS = 5;
 
 async function fetchBlingNotasTravadasML(conta) {
   const token = await getBlingToken(conta);
@@ -1749,6 +1749,16 @@ app.get('/api/bling/notas-travadas-ml-todas', async (req, res) => {
     return res.json({ notas });
   } catch (err) {
     return res.json({ erro: err.message });
+  }
+});
+
+// Força uma checagem imediata (sem esperar o job de 2min) — útil pra testar o canal de notificação
+app.post('/api/bling/notas-travadas-ml/verificar-agora', async (req, res) => {
+  try {
+    await verificarNotasTravadasML();
+    return res.json({ ok: true });
+  } catch (err) {
+    return res.json({ ok: false, erro: err.message });
   }
 });
 
@@ -6684,8 +6694,8 @@ app.listen(PORT, () => {
   if ((CALLMEBOT_PHONE && CALLMEBOT_APIKEY) || (TELEGRAM_TOKEN && TELEGRAM_CHAT_ID)) {
     setTimeout(() => {
       verificarNotasTravadasML().catch(() => {});
-      setInterval(() => verificarNotasTravadasML().catch(() => {}), 15 * 60_000);
-    }, 60_000);
+      setInterval(() => verificarNotasTravadasML().catch(() => {}), 2 * 60_000);
+    }, 30_000);
   }
 });
 
