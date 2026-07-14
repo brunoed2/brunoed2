@@ -5946,6 +5946,26 @@ app.get('/api/contas-receber/debug-movimentos', async (req, res) => {
   res.json(result);
 });
 
+// Debug — baixa um relatório já processado (settlement ou release) e devolve as primeiras linhas do CSV,
+// só pra inspecionar o formato real das colunas antes de programar o parser definitivo.
+app.get('/api/contas-receber/debug-relatorio-csv', async (req, res) => {
+  const data = loadData();
+  const num  = req.query.conta || data.conta_ativa;
+  const c    = data.contas[num];
+  if (!c?.access_token) return res.json({ error: 'Não conectado' });
+  const fileName = req.query.file_name;
+  const tipo      = req.query.tipo === 'release' ? 'release' : 'settlement'; // settlement | release
+  if (!fileName) return res.json({ error: 'Passe ?file_name=... (veja em settlement_report/list ou release_report/list)' });
+  const headers = { Authorization: `Bearer ${c.access_token}` };
+  try {
+    const r = await axios.get(`https://api.mercadopago.com/v1/account/${tipo}_report/${fileName}`, { headers, timeout: 15000 });
+    const linhas = String(r.data).split('\n').slice(0, 15);
+    res.json({ status: r.status, total_linhas_no_arquivo: String(r.data).split('\n').length, primeiras_linhas: linhas });
+  } catch (e) {
+    res.json({ status: e.response?.status, error: e.response?.data || e.message });
+  }
+});
+
 // ── Sync Railway: status e forçar ────────────────────────────────────────────
 
 app.get('/api/sync/status', (req, res) => {
