@@ -8,7 +8,7 @@ let crCarregado   = false;
 function contasReceberInit() {
   if (!crCarregado) contasReceberAtualizar();
   contasReceberCarregarExtrato();
-  contasReceberCarregarMarcoZero();
+  contasReceberCarregarSaldoBase();
 }
 
 // Dispara sync (busca pedidos novos) + verificação (reconsulta pendentes) e recarrega a lista
@@ -189,72 +189,51 @@ function contasReceberRenderizarExtrato(snap) {
   });
 }
 
-// ── Marco zero do saldo ──────────────────────────────────────────────────────
+// ── Saldo informado — sem gerar relatório, só com o que já rastreamos por pedido ─────
 
-async function contasReceberCarregarMarcoZero() {
+async function contasReceberCarregarSaldoBase() {
   try {
-    const d = await fetch(`/api/contas-receber/marco-zero?conta=${window.CONTA_ATIVA}`).then(r => r.json());
-    contasReceberRenderizarMarcoZero(d.marcoZero, d.resultado);
+    const d = await fetch(`/api/contas-receber/saldo-base?conta=${window.CONTA_ATIVA}`).then(r => r.json());
+    contasReceberRenderizarSaldoBase(d);
   } catch {
-    contasReceberRenderizarMarcoZero(null, null);
+    contasReceberRenderizarSaldoBase(null);
   }
 }
 
-async function contasReceberDefinirMarcoZero() {
-  if (!confirm('Definir agora como marco zero? A comparação de saldo vai considerar tudo a partir deste momento.')) return;
+async function contasReceberSalvarSaldoBase() {
+  const input = document.getElementById('cr-saldo-input');
+  const erro  = document.getElementById('cr-saldo-base-erro');
+  const valor = parseFloat(input?.value);
+  if (isNaN(valor)) {
+    if (erro) { erro.textContent = 'Digite um valor válido.'; erro.style.display = 'block'; }
+    return;
+  }
+  if (erro) erro.style.display = 'none';
   try {
-    const d = await fetch(`/api/contas-receber/marco-zero?conta=${window.CONTA_ATIVA}`, { method: 'POST' }).then(r => r.json());
-    contasReceberRenderizarMarcoZero(d.marcoZero, null);
+    const d = await fetch(`/api/contas-receber/saldo-base?conta=${window.CONTA_ATIVA}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ valor }),
+    }).then(r => r.json());
+    if (d.error) throw new Error(d.error);
+    if (input) input.value = '';
+    await contasReceberCarregarSaldoBase();
   } catch (err) {
-    alert('Erro ao definir marco zero: ' + err.message);
+    if (erro) { erro.textContent = 'Erro ao salvar saldo: ' + err.message; erro.style.display = 'block'; }
   }
 }
 
-async function contasReceberVerificarMarcoZero() {
-  const loading = document.getElementById('cr-marco-zero-loading');
-  const erro    = document.getElementById('cr-marco-zero-erro');
-  const btn     = document.getElementById('btn-verificar-marco-zero');
-  if (loading) loading.style.display = 'block';
-  if (erro)    erro.style.display    = 'none';
-  if (btn)     btn.disabled          = true;
-
-  try {
-    const r = await fetch(`/api/contas-receber/verificar-marco-zero?conta=${window.CONTA_ATIVA}`, { method: 'POST' }).then(r => r.json());
-    if (r.error) throw new Error(typeof r.error === 'string' ? r.error : JSON.stringify(r.error));
-    await contasReceberCarregarMarcoZero();
-  } catch (err) {
-    if (erro) {
-      erro.textContent   = 'Erro ao recalcular marco zero: ' + err.message;
-      erro.style.display = 'block';
-    }
-  }
-
-  if (loading) loading.style.display = 'none';
-  if (btn)     btn.disabled          = false;
-}
-
-function contasReceberRenderizarMarcoZero(marcoZero, resultado) {
-  const statusEl   = document.getElementById('cr-marco-zero-status');
-  const btnDefinir = document.getElementById('btn-marco-zero');
-  const btnVerif   = document.getElementById('btn-verificar-marco-zero');
+function contasReceberRenderizarSaldoBase(d) {
+  const statusEl = document.getElementById('cr-saldo-base-status');
   if (!statusEl) return;
 
-  if (!marcoZero) {
-    statusEl.textContent = 'Nenhum marco zero definido ainda.';
-    if (btnVerif) btnVerif.style.display = 'none';
+  if (!d || !d.saldoBase) {
+    statusEl.textContent = 'Nenhum saldo informado ainda.';
     return;
   }
 
-  if (btnVerif) btnVerif.style.display = '';
-  if (btnDefinir) btnDefinir.textContent = '🎯 Redefinir marco zero agora';
-
-  const dataMarco = new Date(marcoZero.ts).toLocaleString('pt-BR');
-  if (!resultado) {
-    statusEl.innerHTML = `Marco zero definido em <strong>${dataMarco}</strong>. Clique em "Recalcular" pra ver quanto deveria ter entrado desde então.`;
-    return;
-  }
-
-  const dataCalc = new Date(resultado.ts).toLocaleString('pt-BR');
-  const cor = resultado.deltaEsperado >= 0 ? '#16a34a' : '#dc2626';
-  statusEl.innerHTML = `Marco zero: <strong>${dataMarco}</strong>. Desde então, o extrato mostra <strong style="color:${cor}">${fmtBRL(resultado.deltaEsperado)}</strong> de variação líquida esperada no saldo (${resultado.totalMovimentos} movimentos, calculado em ${dataCalc}).<br>Compare esse valor com o saldo disponível real no app do Mercado Pago.`;
+  const dataBase = new Date(d.saldoBase.ts).toLocaleString('pt-BR');
+  statusEl.innerHTML = `Saldo informado: <strong>${fmtBRL(d.saldoBase.valor)}</strong> em ${dataBase}.<br>`
+    + `Saldo esperado agora: <strong style="color:#16a34a">${fmtBRL(d.saldoEsperado)}</strong> `
+    + `(${d.qtdLiberacoes} liberaç${d.qtdLiberacoes !== 1 ? 'ões' : 'ão'} desde então) — confira com o app do Mercado Pago.`;
 }

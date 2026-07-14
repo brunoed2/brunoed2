@@ -132,8 +132,7 @@ function loadData() {
   raw.contas_receber['1']            = raw.contas_receber['1']            || [];
   raw.contas_receber['2']            = raw.contas_receber['2']            || [];
   raw.contas_receber_extrato         = raw.contas_receber_extrato         || {};
-  raw.contas_receber_marco_zero            = raw.contas_receber_marco_zero            || {};
-  raw.contas_receber_marco_zero_resultado  = raw.contas_receber_marco_zero_resultado  || {};
+  raw.contas_receber_saldo_base      = raw.contas_receber_saldo_base      || {};
   // Auto-configura fornecedor HANDDRY na conta 1
   raw.fornecedores_por_conta = raw.fornecedores_por_conta || {};
   raw.fornecedores_por_conta['1'] = raw.fornecedores_por_conta['1'] || [];
@@ -5810,7 +5809,7 @@ function crParseCsv(csvText) {
 
 // Gera o settlement_report (últimos `dias` OU a partir de `beginDate` explícito), espera
 // processar e devolve o CSV cru. Pode levar dezenas de segundos — é síncrono de propósito
-// (chamado só sob demanda, pelos botões "Verificar extrato" / "Recalcular marco zero").
+// (chamado só sob demanda, pelo botão "Verificar extrato completo" — dispara e-mail do MP).
 async function crGerarEBaixarExtrato(headers, { dias, beginDate } = {}) {
   const hoje   = new Date();
   const inicio = beginDate ? new Date(beginDate) : new Date(hoje.getTime() - (dias || 30) * 86400000);
@@ -5821,9 +5820,11 @@ async function crGerarEBaixarExtrato(headers, { dias, beginDate } = {}) {
   );
   const reportId = gerar.data.id;
 
+  // Na prática o MP pode levar bem mais que 30s pra processar (visto com relatório real
+  // demorando ~40s) — espera até 2min antes de desistir.
   let fileName = null;
-  for (let tentativa = 0; tentativa < 15 && !fileName; tentativa++) {
-    await new Promise(r => setTimeout(r, 2000));
+  for (let tentativa = 0; tentativa < 30 && !fileName; tentativa++) {
+    await new Promise(r => setTimeout(r, 4000));
     const lista = await axios.get('https://api.mercadopago.com/v1/account/settlement_report/list', { headers, timeout: 10000 });
     const item = (lista.data || []).find(x => x.id === reportId);
     if (item?.status === 'processed') fileName = item.file_name;
@@ -5831,7 +5832,7 @@ async function crGerarEBaixarExtrato(headers, { dias, beginDate } = {}) {
       throw new Error(`Relatório do MP falhou (status=${item.status})`);
     }
   }
-  if (!fileName) throw new Error('Relatório não processou a tempo (timeout de 30s)');
+  if (!fileName) throw new Error('Relatório não processou a tempo (timeout de 2min) — tente de novo em alguns minutos');
 
   const csv = await axios.get(`https://api.mercadopago.com/v1/account/settlement_report/${fileName}`, { headers, timeout: 20000 });
   return String(csv.data);
@@ -6058,52 +6059,39 @@ app.get('/api/contas-receber/extrato', (req, res) => {
   res.json({ extrato: snap });
 });
 
-// ── Marco zero: usa o saldo de agora como referência e soma o extrato desde então ──
-// O MP não expõe um endpoint público pra ler o saldo disponível em tempo real (o antigo
-// relatório de saldo foi desativado por eles em 2022) — então o "quanto deveria ter subido"
-// vem do próprio settlement_report somando TODAS as linhas (não só as ligadas a pedido),
-// e quem compara contra o saldo real (visível no app do MP) é o usuário mesmo.
-app.post('/api/contas-receber/marco-zero', (req, res) => {
+// ── Saldo informado: usuário digita o saldo real (visto no app do MP) num momento,
+// e a gente soma, por cima disso, o que os pedidos JÁ RASTREADOS liberaram desde então
+// (via /v1/payments, sem gerar relatório nenhum — não dispara e-mail do MP).
+app.post('/api/contas-receber/saldo-base', (req, res) => {
+  const valor = parseFloat(req.body?.valor);
+  if (isNaN(valor)) return res.status(400).json({ error: 'Valor inválido' });
   const data = loadData();
   const num  = String(req.query.conta || data.conta_ativa || '1');
-  data.contas_receber_marco_zero = data.contas_receber_marco_zero || {};
-  data.contas_receber_marco_zero[num] = { ts: Date.now(), dataInicio: new Date().toISOString() };
-  data.contas_receber_marco_zero_resultado = data.contas_receber_marco_zero_resultado || {};
-  delete data.contas_receber_marco_zero_resultado[num];
+  data.contas_receber_saldo_base = data.contas_receber_saldo_base || {};
+  data.contas_receber_saldo_base[num] = { valor, ts: Date.now() };
   saveData(data);
-  res.json({ ok: true, marcoZero: data.contas_receber_marco_zero[num] });
+  res.json({ ok: true, saldoBase: data.contas_receber_saldo_base[num] });
 });
 
-app.get('/api/contas-receber/marco-zero', (req, res) => {
+app.get('/api/contas-receber/saldo-base', (req, res) => {
   const data = loadData();
   const num  = String(req.query.conta || data.conta_ativa || '1');
-  res.json({
-    marcoZero:  (data.contas_receber_marco_zero || {})[num] || null,
-    resultado:  (data.contas_receber_marco_zero_resultado || {})[num] || null,
+  const base = (data.contas_receber_saldo_base || {})[num] || null;
+  if (!base) return res.json({ saldoBase: null });
+
+  const lista = (data.contas_receber || {})[num] || [];
+  const liberadosDepois = lista.filter(item => {
+    if (item.situacao !== 'liberado') return false;
+    const dataLiberacao = item.dataLiberacaoReal || item.dataLiberacaoEsperada || item.atualizadoEm;
+    return dataLiberacao && new Date(dataLiberacao).getTime() > base.ts;
   });
-});
+  const soma = liberadosDepois.reduce((s, item) => s + (item.valorReal ?? item.valorEsperado ?? 0), 0);
 
-app.post('/api/contas-receber/verificar-marco-zero', async (req, res) => {
-  const data  = loadData();
-  const num   = String(req.query.conta || data.conta_ativa || '1');
-  const c     = data.contas[num];
-  if (!c?.access_token) return res.json({ error: 'Não conectado' });
-  const marco = (data.contas_receber_marco_zero || {})[num];
-  if (!marco) return res.json({ error: 'Marco zero ainda não definido para esta conta' });
-  const headers = { Authorization: `Bearer ${c.access_token}` };
-
-  try {
-    const csvText = await crGerarEBaixarExtrato(headers, { beginDate: marco.dataInicio });
-    const linhas  = crParseCsv(csvText);
-    const total   = linhas.reduce((s, l) => s + (parseFloat(l.SETTLEMENT_NET_AMOUNT) || 0), 0);
-
-    data.contas_receber_marco_zero_resultado = data.contas_receber_marco_zero_resultado || {};
-    data.contas_receber_marco_zero_resultado[num] = { ts: Date.now(), totalMovimentos: linhas.length, deltaEsperado: total };
-    saveData(data);
-    res.json({ ok: true, totalMovimentos: linhas.length, deltaEsperado: total });
-  } catch (err) {
-    res.json({ error: err.response?.data || err.message });
-  }
+  res.json({
+    saldoBase:      base,
+    saldoEsperado:  base.valor + soma,
+    qtdLiberacoes:  liberadosDepois.length,
+  });
 });
 
 // Debug — compara /collections/{id} (usado hoje pra saber se liberou) contra o
