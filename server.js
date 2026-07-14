@@ -128,6 +128,9 @@ function loadData() {
   raw.estoque_local_historico        = raw.estoque_local_historico        || [];
   raw.handdry_dashboard_cache        = raw.handdry_dashboard_cache        || null;
   raw.fiscal_baixados                = raw.fiscal_baixados                || [];
+  raw.contas_receber                 = raw.contas_receber                 || {};
+  raw.contas_receber['1']            = raw.contas_receber['1']            || [];
+  raw.contas_receber['2']            = raw.contas_receber['2']            || [];
   // Auto-configura fornecedor HANDDRY na conta 1
   raw.fornecedores_por_conta = raw.fornecedores_por_conta || {};
   raw.fornecedores_por_conta['1'] = raw.fornecedores_por_conta['1'] || [];
@@ -146,7 +149,7 @@ function loadData() {
     raw.usuarios['0505'] = { nome: 'HANDDRY', abas: [], painel: 'fornecedor' };
   }
   // 199412 é sempre admin no painel app — forçado mesmo se já existir com dados errados
-  const adminAbas = ['estoque','vendas','historico','ads','lucro','promocoes','contas-pagar','bling','fiscal','compras','calculadora','etiquetas','log-anuncio','configuracoes','scanner'];
+  const adminAbas = ['estoque','vendas','historico','ads','lucro','promocoes','contas-pagar','contas-receber','bling','fiscal','compras','calculadora','etiquetas','log-anuncio','configuracoes','scanner'];
   raw.usuarios['199412'] = {
     nome:   (raw.usuarios['199412'] || {}).nome || 'Admin',
     abas:   adminAbas,
@@ -488,7 +491,7 @@ app.post('/api/login', (req, res) => {
   if (usuario.painel === 'fornecedor') {
     return res.json({ ok: true, nome: usuario.nome, abas: [], painel: 'fornecedor' });
   }
-  const APP_TABS = new Set(['ads','lucro','promocoes','contas-pagar','bling','fiscal','compras','calculadora','configuracoes']);
+  const APP_TABS = new Set(['ads','lucro','promocoes','contas-pagar','contas-receber','bling','fiscal','compras','calculadora','configuracoes']);
   const painel = (usuario.painel === 'app' || (usuario.abas || []).some(t => APP_TABS.has(t))) ? 'app' : 'painel2';
   res.json({ ok: true, nome: usuario.nome, abas: usuario.abas || [], painel });
 });
@@ -5730,6 +5733,191 @@ app.delete('/api/contas-pagar/:id', async (req, res) => {
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
   agendarSyncContasPagar();
   res.json({ ok: true });
+});
+
+// ── Contas a Receber — reconciliação da liberação de saldo no Mercado Pago ────
+// Cada pedido pago vira um registro com o valor e a data de liberação previstos
+// pelo próprio MP (money_release_date/money_release_status via /collections/{id}).
+// A verificação periódica compara o previsto com o que realmente aconteceu.
+
+const CR_TOLERANCIA_VALOR = 0.05; // R$ — diferença acima disso é reportada como divergência
+const CR_TOLERANCIA_ATRASO_DIAS = 3; // dias após a previsão sem liberar = divergência
+
+function crEstaLiberado(col) {
+  const s = (col?.money_release_status || '').toLowerCase();
+  return s === 'released' || s === 'liberado';
+}
+
+async function crBuscarColecao(paymentId, headers) {
+  try {
+    const r = await axios.get(`https://api.mercadolibre.com/collections/${paymentId}`, { headers, timeout: 10000 });
+    return r.data?.collection || r.data;
+  } catch (e) {
+    return { error: e.response?.data || e.message };
+  }
+}
+
+app.get('/api/contas-receber', (req, res) => {
+  const data = loadData();
+  const num  = String(req.query.conta || data.conta_ativa || '1');
+  const lista = (data.contas_receber || {})[num] || [];
+  const resumo = {
+    pendentes:   lista.filter(c => c.situacao === 'pendente').length,
+    liberados:   lista.filter(c => c.situacao === 'liberado').length,
+    divergentes: lista.filter(c => c.situacao === 'divergente').length,
+  };
+  res.json({ contas: lista, resumo });
+});
+
+// Busca pedidos pagos recentes e cria os registros que ainda não existem
+app.post('/api/contas-receber/sync', async (req, res) => {
+  const data = loadData();
+  const num  = String(req.query.conta || data.conta_ativa || '1');
+  const c    = data.contas[num];
+  if (!c?.access_token) return res.json({ error: 'Não conectado' });
+  if (!c.user_id)       return res.json({ error: 'user_id não encontrado' });
+  const headers = { Authorization: `Bearer ${c.access_token}` };
+  const dias = Math.min(parseInt(req.query.dias) || 60, 365);
+
+  try {
+    data.contas_receber = data.contas_receber || {};
+    data.contas_receber[num] = data.contas_receber[num] || [];
+    const existentes = new Set(data.contas_receber[num].map(item => String(item.orderId)));
+
+    const dateFrom = new Date(Date.now() - dias * 86400000).toISOString().slice(0, 10);
+    let todasOrdens = [];
+    let offset = 0;
+    while (offset < 5000) {
+      const params = {
+        seller: c.user_id, 'order.status': 'paid', sort: 'date_desc', limit: 50, offset,
+        'order.date_created.from': dateFrom + 'T00:00:00.000-03:00',
+      };
+      const resp = await axios.get('https://api.mercadolibre.com/orders/search', { params, headers, timeout: 15000 });
+      const results = resp.data.results || [];
+      todasOrdens = todasOrdens.concat(results);
+      if (results.length < 50) break;
+      offset += 50;
+    }
+
+    const novasOrdens = todasOrdens.filter(o => !existentes.has(String(o.id)) && o.payments?.[0]?.id);
+
+    let criados = 0;
+    const BATCH = 25;
+    for (let i = 0; i < novasOrdens.length; i += BATCH) {
+      const lote = novasOrdens.slice(i, i + BATCH);
+      const colecoes = await Promise.all(lote.map(o => crBuscarColecao(o.payments[0].id, headers)));
+      const agora = new Date().toISOString();
+      lote.forEach((o, idx) => {
+        const col = colecoes[idx];
+        if (col?.error) return; // não cria registro sem dado confiável — tenta de novo no próximo sync
+        const liberado = crEstaLiberado(col);
+        data.contas_receber[num].push({
+          orderId:               o.id,
+          paymentId:             o.payments[0].id,
+          dataPedido:            o.date_closed || o.date_created,
+          valorEsperado:         col.net_received_amount ?? null,
+          dataLiberacaoEsperada: col.money_release_date ?? null,
+          situacao:              liberado ? 'liberado' : 'pendente',
+          valorReal:             liberado ? (col.net_received_amount ?? null) : null,
+          dataLiberacaoReal:     liberado ? (col.money_release_date ?? null) : null,
+          divergencia:           null,
+          criadoEm:              agora,
+          atualizadoEm:          agora,
+        });
+        criados++;
+      });
+    }
+
+    saveData(data);
+    res.json({ ok: true, criados, total: data.contas_receber[num].length });
+  } catch (err) {
+    res.json({ error: err.response?.data || err.message });
+  }
+});
+
+// Reconsulta os pedidos pendentes e atualiza a situação de cada um
+app.post('/api/contas-receber/verificar', async (req, res) => {
+  const data = loadData();
+  const num  = String(req.query.conta || data.conta_ativa || '1');
+  const c    = data.contas[num];
+  if (!c?.access_token) return res.json({ error: 'Não conectado' });
+  const headers = { Authorization: `Bearer ${c.access_token}` };
+
+  try {
+    data.contas_receber = data.contas_receber || {};
+    const lista = data.contas_receber[num] || [];
+    const pendentes = lista.filter(item => item.situacao === 'pendente');
+
+    let atualizados = 0;
+    const BATCH = 25;
+    for (let i = 0; i < pendentes.length; i += BATCH) {
+      const lote = pendentes.slice(i, i + BATCH);
+      const colecoes = await Promise.all(lote.map(item => crBuscarColecao(item.paymentId, headers)));
+      const agora = new Date().toISOString();
+      lote.forEach((item, idx) => {
+        const col = colecoes[idx];
+        if (col?.error) return; // API falhou agora — tenta de novo na próxima verificação
+
+        if (crEstaLiberado(col)) {
+          const valorReal = col.net_received_amount ?? null;
+          const diff = Math.abs((valorReal ?? 0) - (item.valorEsperado ?? 0));
+          item.valorReal         = valorReal;
+          item.dataLiberacaoReal = col.money_release_date ?? null;
+          if (item.valorEsperado != null && valorReal != null && diff > CR_TOLERANCIA_VALOR) {
+            item.situacao    = 'divergente';
+            item.divergencia = { tipo: 'valor', detalhe: `Esperado R$${item.valorEsperado.toFixed(2)}, liberado R$${valorReal.toFixed(2)}` };
+          } else {
+            item.situacao    = 'liberado';
+            item.divergencia = null;
+          }
+        } else if (item.dataLiberacaoEsperada) {
+          const previsao = new Date(item.dataLiberacaoEsperada);
+          const diasAtraso = (Date.now() - previsao.getTime()) / 86400000;
+          if (diasAtraso > CR_TOLERANCIA_ATRASO_DIAS) {
+            item.situacao    = 'divergente';
+            item.divergencia = { tipo: 'atraso', detalhe: `Previsto para ${item.dataLiberacaoEsperada.slice(0,10)}, ainda não liberado (${Math.floor(diasAtraso)} dias de atraso)` };
+          } else if (col.money_release_date && col.money_release_date !== item.dataLiberacaoEsperada) {
+            item.dataLiberacaoEsperada = col.money_release_date; // MP revisou a previsão
+          }
+        }
+        item.atualizadoEm = agora;
+        atualizados++;
+      });
+    }
+
+    saveData(data);
+    const resumo = {
+      pendentes:   lista.filter(x => x.situacao === 'pendente').length,
+      liberados:   lista.filter(x => x.situacao === 'liberado').length,
+      divergentes: lista.filter(x => x.situacao === 'divergente').length,
+    };
+    res.json({ ok: true, atualizados, resumo });
+  } catch (err) {
+    res.json({ error: err.response?.data || err.message });
+  }
+});
+
+// Debug — inspeciona o formato real do extrato/saldo da conta (etapa futura: reconciliação agregada)
+app.get('/api/contas-receber/debug-movimentos', async (req, res) => {
+  const data = loadData();
+  const num  = req.query.conta || data.conta_ativa;
+  const c    = data.contas[num];
+  if (!c?.access_token) return res.json({ error: 'Não conectado' });
+  const headers = { Authorization: `Bearer ${c.access_token}` };
+  const result = {};
+  const tentativas = [
+    { label: 'account/movements', url: `https://api.mercadolibre.com/users/${c.user_id}/mercadopago_account/movements`, params: { limit: 5 } },
+    { label: 'account/balance',   url: `https://api.mercadolibre.com/account/balance`, params: { user_id: c.user_id } },
+  ];
+  for (const { label, url, params } of tentativas) {
+    try {
+      const r = await axios.get(url, { params, headers, timeout: 8000 });
+      result[label] = { status: r.status, data: r.data };
+    } catch (e) {
+      result[label] = { status: e.response?.status, error: e.response?.data || e.message };
+    }
+  }
+  res.json(result);
 });
 
 // ── Sync Railway: status e forçar ────────────────────────────────────────────

@@ -33,6 +33,7 @@
         <a class="nav-btn" href="?tab=lucro" data-tab="lucro">💰 Lucro</a>
         <a class="nav-btn" href="?tab=promocoes" data-tab="promocoes">🏷️ Promoções</a>
         <a class="nav-btn" href="?tab=contas-pagar" data-tab="contas-pagar">💳 Contas a Pagar</a>
+        <a class="nav-btn" href="?tab=contas-receber" data-tab="contas-receber">📥 Contas a Receber</a>
         <a class="nav-btn" href="?tab=bling" data-tab="bling">🧾 Bling</a>
         <a class="nav-btn" href="?tab=fiscal" data-tab="fiscal">🗂️ NF Compras</a>
         <a class="nav-btn" href="?tab=compras" data-tab="compras">🛒 Compras</a>
@@ -423,6 +424,58 @@
               </tr>
             </thead>
             <tbody id="tabela-contas-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ── Aba: Contas a Receber ── -->
+      <section id="tab-contas-receber" class="tab">
+        <h1>Contas a Receber</h1>
+        <p class="subtitle">Previsão de liberação de saldo do Mercado Pago por pedido, com verificação automática do que realmente foi liberado.</p>
+
+        <!-- Cards resumo -->
+        <div class="lucro-cards" style="margin-bottom:20px">
+          <div class="lucro-card">
+            <div class="lucro-card-label">Pendentes</div>
+            <div class="lucro-card-valor" id="cr-card-pendentes">—</div>
+          </div>
+          <div class="lucro-card">
+            <div class="lucro-card-label">Liberados</div>
+            <div class="lucro-card-valor" id="cr-card-liberados">—</div>
+          </div>
+          <div class="lucro-card" id="cr-card-divergentes-wrap" style="border-color:#fca5a5">
+            <div class="lucro-card-label">Divergências</div>
+            <div class="lucro-card-valor lucro-val-neg" id="cr-card-divergentes">—</div>
+          </div>
+        </div>
+
+        <!-- Tabela -->
+        <div class="tabela-container">
+          <div class="tabela-topo">
+            <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+              <button class="filtro-btn active" data-crf="todos"       onclick="crFiltrar('todos',this)">Todos</button>
+              <button class="filtro-btn"        data-crf="pendente"    onclick="crFiltrar('pendente',this)">Pendentes</button>
+              <button class="filtro-btn"        data-crf="liberado"    onclick="crFiltrar('liberado',this)">Liberados</button>
+              <button class="filtro-btn"        data-crf="divergente"  onclick="crFiltrar('divergente',this)">Divergências</button>
+            </div>
+            <div style="display:flex;align-items:center;gap:12px"><span id="cr-total-label" style="font-size:13px;color:#64748b"></span><button class="btn-secondary" onclick="contasReceberAtualizar()" id="btn-atualizar-cr">↻ Atualizar</button></div>
+          </div>
+          <div id="cr-loading" class="loading" style="display:none">Verificando pedidos...</div>
+          <div id="cr-erro" class="estoque-erro" style="display:none"></div>
+          <div id="cr-vazio" style="display:none;color:#94a3b8;padding:30px 0;text-align:center;font-size:14px">Nenhum pedido encontrado. Clique em "Atualizar" para buscar os pedidos pagos recentes.</div>
+          <table class="tabela" id="tabela-cr" style="display:none">
+            <thead>
+              <tr>
+                <th>Pedido</th>
+                <th>Data</th>
+                <th class="col-num">Valor esperado</th>
+                <th>Previsão de liberação</th>
+                <th>Situação</th>
+                <th class="col-num">Valor liberado</th>
+                <th>Detalhe</th>
+              </tr>
+            </thead>
+            <tbody id="tabela-cr-body"></tbody>
           </table>
         </div>
       </section>
@@ -1190,6 +1243,7 @@
       <button class="mobile-drawer-btn" data-tab="lucro">💰 Lucro</button>
       <button class="mobile-drawer-btn" data-tab="promocoes">🏷️ Promoções</button>
       <button class="mobile-drawer-btn" data-tab="contas-pagar">💳 Contas a Pagar</button>
+      <button class="mobile-drawer-btn" data-tab="contas-receber">📥 Contas a Receber</button>
       <button class="mobile-drawer-btn" data-tab="bling">🧾 Bling</button>
       <button class="mobile-drawer-btn" data-tab="fiscal">🗂️ NF Compras</button>
       <button class="mobile-drawer-btn" data-tab="compras">🛒 Compras</button>
@@ -1229,6 +1283,7 @@
   <script src="/js/operacoes.js?v=1"></script>
   <script src="/js/conexao.js"></script>
   <script src="/js/contas-pagar.js?v=1"></script>
+  <script src="/js/contas-receber.js?v=1"></script>
   <script src="/js/backup.js?v=1"></script>
   <script src="/js/promocoes.js?v=9"></script>
   <script src="/js/bling.js?v=1"></script>
@@ -1252,6 +1307,7 @@
     { id: 'lucro',         label: '💰 Lucro' },
     { id: 'promocoes',     label: '🏷️ Promoções' },
     { id: 'contas-pagar',  label: '💳 Contas a Pagar' },
+    { id: 'contas-receber', label: '📥 Contas a Receber' },
     { id: 'bling',         label: '🧾 Bling' },
     { id: 'fiscal',        label: '🗂️ NF Compras' },
     { id: 'compras',       label: '🛒 Compras' },
@@ -1422,6 +1478,6 @@
     </div>
   </div>
 
-  <div id="version-badge">v619</div>
+  <div id="version-badge">v620</div>
 </body>
 </html>
