@@ -132,6 +132,8 @@ function loadData() {
   raw.contas_receber['1']            = raw.contas_receber['1']            || [];
   raw.contas_receber['2']            = raw.contas_receber['2']            || [];
   raw.contas_receber_extrato         = raw.contas_receber_extrato         || {};
+  raw.contas_receber_marco_zero            = raw.contas_receber_marco_zero            || {};
+  raw.contas_receber_marco_zero_resultado  = raw.contas_receber_marco_zero_resultado  || {};
   // Auto-configura fornecedor HANDDRY na conta 1
   raw.fornecedores_por_conta = raw.fornecedores_por_conta || {};
   raw.fornecedores_por_conta['1'] = raw.fornecedores_por_conta['1'] || [];
@@ -5749,10 +5751,19 @@ function crEstaLiberado(col) {
   return s === 'released' || s === 'liberado';
 }
 
-async function crBuscarColecao(paymentId, headers) {
+// /collections/{id} (ML) não é confiável pro status de liberação — devolve um campo
+// "released" desatualizado. O endpoint oficial /v1/payments/{id} do MP (mesmo domínio
+// do settlement_report) tem "money_release_status" correto, confirmado com dado real.
+async function crBuscarPagamento(paymentId, headers) {
   try {
-    const r = await axios.get(`https://api.mercadolibre.com/collections/${paymentId}`, { headers, timeout: 10000 });
-    return r.data?.collection || r.data;
+    const r = await axios.get(`https://api.mercadopago.com/v1/payments/${paymentId}`, { headers, timeout: 10000 });
+    const p = r.data;
+    return {
+      net_received_amount:   p.transaction_details?.net_received_amount ?? p.net_received_amount ?? null,
+      money_release_date:    p.money_release_date ?? null,
+      money_release_status:  p.money_release_status ?? null,
+      status:                p.status,
+    };
   } catch (e) {
     return { error: e.response?.data || e.message };
   }
@@ -5797,11 +5808,12 @@ function crParseCsv(csvText) {
   });
 }
 
-// Gera o settlement_report para os últimos `dias`, espera processar e devolve o CSV cru.
-// Pode levar dezenas de segundos — é síncrono de propósito (chamado só sob demanda pelo botão "Verificar extrato").
-async function crGerarEBaixarExtrato(headers, dias) {
+// Gera o settlement_report (últimos `dias` OU a partir de `beginDate` explícito), espera
+// processar e devolve o CSV cru. Pode levar dezenas de segundos — é síncrono de propósito
+// (chamado só sob demanda, pelos botões "Verificar extrato" / "Recalcular marco zero").
+async function crGerarEBaixarExtrato(headers, { dias, beginDate } = {}) {
   const hoje   = new Date();
-  const inicio = new Date(hoje.getTime() - dias * 86400000);
+  const inicio = beginDate ? new Date(beginDate) : new Date(hoje.getTime() - (dias || 30) * 86400000);
   const gerar  = await axios.post(
     'https://api.mercadopago.com/v1/account/settlement_report',
     { begin_date: inicio.toISOString(), end_date: hoje.toISOString() },
@@ -5873,7 +5885,7 @@ app.post('/api/contas-receber/sync', async (req, res) => {
     const BATCH = 25;
     for (let i = 0; i < novasOrdens.length; i += BATCH) {
       const lote = novasOrdens.slice(i, i + BATCH);
-      const colecoes = await Promise.all(lote.map(o => crBuscarColecao(o.payments[0].id, headers)));
+      const colecoes = await Promise.all(lote.map(o => crBuscarPagamento(o.payments[0].id, headers)));
       const agora = new Date().toISOString();
       lote.forEach((o, idx) => {
         const col = colecoes[idx];
@@ -5914,13 +5926,15 @@ app.post('/api/contas-receber/verificar', async (req, res) => {
   try {
     data.contas_receber = data.contas_receber || {};
     const lista = data.contas_receber[num] || [];
-    const pendentes = lista.filter(item => item.situacao === 'pendente');
+    // Reconfere também os "divergente" — pode ter sido falso positivo (já aconteceu: bug
+    // no campo de status de liberação marcava como atrasado o que já tinha liberado).
+    const pendentes = lista.filter(item => item.situacao === 'pendente' || item.situacao === 'divergente');
 
     let atualizados = 0;
     const BATCH = 25;
     for (let i = 0; i < pendentes.length; i += BATCH) {
       const lote = pendentes.slice(i, i + BATCH);
-      const colecoes = await Promise.all(lote.map(item => crBuscarColecao(item.paymentId, headers)));
+      const colecoes = await Promise.all(lote.map(item => crBuscarPagamento(item.paymentId, headers)));
       const agora = new Date().toISOString();
       lote.forEach((item, idx) => {
         const col = colecoes[idx];
@@ -5977,7 +5991,7 @@ app.post('/api/contas-receber/sync-extrato', async (req, res) => {
   const dias = Math.min(parseInt(req.query.dias) || 30, 90);
 
   try {
-    const csvText = await crGerarEBaixarExtrato(headers, dias);
+    const csvText = await crGerarEBaixarExtrato(headers, { dias });
     const linhas  = crParseCsv(csvText);
 
     data.contas_receber = data.contas_receber || {};
@@ -6042,6 +6056,54 @@ app.get('/api/contas-receber/extrato', (req, res) => {
   const num  = String(req.query.conta || data.conta_ativa || '1');
   const snap = (data.contas_receber_extrato || {})[num] || null;
   res.json({ extrato: snap });
+});
+
+// ── Marco zero: usa o saldo de agora como referência e soma o extrato desde então ──
+// O MP não expõe um endpoint público pra ler o saldo disponível em tempo real (o antigo
+// relatório de saldo foi desativado por eles em 2022) — então o "quanto deveria ter subido"
+// vem do próprio settlement_report somando TODAS as linhas (não só as ligadas a pedido),
+// e quem compara contra o saldo real (visível no app do MP) é o usuário mesmo.
+app.post('/api/contas-receber/marco-zero', (req, res) => {
+  const data = loadData();
+  const num  = String(req.query.conta || data.conta_ativa || '1');
+  data.contas_receber_marco_zero = data.contas_receber_marco_zero || {};
+  data.contas_receber_marco_zero[num] = { ts: Date.now(), dataInicio: new Date().toISOString() };
+  data.contas_receber_marco_zero_resultado = data.contas_receber_marco_zero_resultado || {};
+  delete data.contas_receber_marco_zero_resultado[num];
+  saveData(data);
+  res.json({ ok: true, marcoZero: data.contas_receber_marco_zero[num] });
+});
+
+app.get('/api/contas-receber/marco-zero', (req, res) => {
+  const data = loadData();
+  const num  = String(req.query.conta || data.conta_ativa || '1');
+  res.json({
+    marcoZero:  (data.contas_receber_marco_zero || {})[num] || null,
+    resultado:  (data.contas_receber_marco_zero_resultado || {})[num] || null,
+  });
+});
+
+app.post('/api/contas-receber/verificar-marco-zero', async (req, res) => {
+  const data  = loadData();
+  const num   = String(req.query.conta || data.conta_ativa || '1');
+  const c     = data.contas[num];
+  if (!c?.access_token) return res.json({ error: 'Não conectado' });
+  const marco = (data.contas_receber_marco_zero || {})[num];
+  if (!marco) return res.json({ error: 'Marco zero ainda não definido para esta conta' });
+  const headers = { Authorization: `Bearer ${c.access_token}` };
+
+  try {
+    const csvText = await crGerarEBaixarExtrato(headers, { beginDate: marco.dataInicio });
+    const linhas  = crParseCsv(csvText);
+    const total   = linhas.reduce((s, l) => s + (parseFloat(l.SETTLEMENT_NET_AMOUNT) || 0), 0);
+
+    data.contas_receber_marco_zero_resultado = data.contas_receber_marco_zero_resultado || {};
+    data.contas_receber_marco_zero_resultado[num] = { ts: Date.now(), totalMovimentos: linhas.length, deltaEsperado: total };
+    saveData(data);
+    res.json({ ok: true, totalMovimentos: linhas.length, deltaEsperado: total });
+  } catch (err) {
+    res.json({ error: err.response?.data || err.message });
+  }
 });
 
 // Debug — compara /collections/{id} (usado hoje pra saber se liberou) contra o

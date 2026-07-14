@@ -502,6 +502,19 @@
             <tbody id="tabela-cr-extrato-body"></tbody>
           </table>
         </div>
+
+        <!-- Marco zero — usa o saldo de agora como referência -->
+        <div class="card" style="margin-top:24px">
+          <h2>Marco zero do saldo</h2>
+          <p class="card-desc">Define agora como ponto de partida e soma tudo que o extrato do Mercado Pago mostrar desde então (não só o ligado a pedidos rastreados). Compare o valor com o saldo disponível real no app do Mercado Pago — o MP não tem uma API pública pra ler o saldo direto, então essa comparação final é manual.</p>
+          <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+            <button class="btn-secondary" onclick="contasReceberDefinirMarcoZero()" id="btn-marco-zero">🎯 Definir marco zero agora</button>
+            <button class="btn-secondary" onclick="contasReceberVerificarMarcoZero()" id="btn-verificar-marco-zero" style="display:none">🔄 Recalcular desde o marco zero</button>
+          </div>
+          <div id="cr-marco-zero-status" style="font-size:13px;color:#64748b;margin-top:10px"></div>
+          <div id="cr-marco-zero-loading" class="loading" style="display:none">Gerando extrato desde o marco zero (pode levar até 1 minuto)...</div>
+          <div id="cr-marco-zero-erro" class="estoque-erro" style="display:none"></div>
+        </div>
       </section>
 
       <!-- ── Aba: Estoque ── -->
@@ -1502,6 +1515,6 @@
     </div>
   </div>
 
-  <div id="version-badge">v624</div>
+  <div id="version-badge">v625</div>
 </body>
 </html>
