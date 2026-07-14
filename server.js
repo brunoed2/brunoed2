@@ -1753,10 +1753,11 @@ app.get('/api/bling/notas-travadas-ml-todas', async (req, res) => {
 });
 
 // Força uma checagem imediata (sem esperar o job de 2min) — útil pra testar o canal de notificação
+// ?forcar=1 zera a deduplicação e reenvia notificação mesmo pra notas já notificadas antes
 app.post('/api/bling/notas-travadas-ml/verificar-agora', async (req, res) => {
   try {
-    await verificarNotasTravadasML();
-    return res.json({ ok: true });
+    const resultado = await verificarNotasTravadasML({ forcar: req.query.forcar === '1' });
+    return res.json({ ok: true, ...resultado });
   } catch (err) {
     return res.json({ ok: false, erro: err.message });
   }
@@ -5173,22 +5174,29 @@ async function verificarAnunciosPausadosTelegram() {
 }
 
 // ── Polling em background: NFs autorizadas travadas na sincronização com o ML ──
-async function verificarNotasTravadasML() {
+async function verificarNotasTravadasML(opts = {}) {
   const temCanal = (TELEGRAM_TOKEN && TELEGRAM_CHAT_ID) || (CALLMEBOT_PHONE && CALLMEBOT_APIKEY);
-  if (!temCanal) return;
+  if (!temCanal) return { temCanal: false, encontradas: 0, notificadas: 0, contasAtivas: [] };
   const data = loadData();
   if (!data.notas_travadas_notificadas) data.notas_travadas_notificadas = {};
+  if (opts.forcar) data.notas_travadas_notificadas = {};
   let changed = false;
+  let encontradas = 0, notificadas = 0;
+  const erros = [];
 
   const contasAtivas = ['1', '2'].filter(c => !!(getBlingDataConta(data, c)?.access_token));
   for (const conta of contasAtivas) {
     let notas = [];
     try { notas = await fetchBlingNotasTravadasML(conta); } catch (err) {
-      addLog(`[notas-travadas-ml] erro conta ${conta}: ${err.message}`, 'warn'); continue;
+      addLog(`[notas-travadas-ml] erro conta ${conta}: ${err.message}`, 'warn');
+      erros.push(`conta ${conta}: ${err.message}`);
+      continue;
     }
+    encontradas += notas.length;
     for (const n of notas) {
       const chave = `${n.nfId}_${conta}`;
       if (data.notas_travadas_notificadas[chave]) continue;
+      notificadas++;
       data.notas_travadas_notificadas[chave] = Date.now();
       changed = true;
       const valor = (n.valor_total || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -5198,6 +5206,7 @@ async function verificarNotasTravadasML() {
     }
   }
   if (changed) saveData(data);
+  return { temCanal: true, contasAtivas, encontradas, notificadas, erros };
 }
 
 // ── Polling em background: detecção de anúncios que viraram catálogo ─
