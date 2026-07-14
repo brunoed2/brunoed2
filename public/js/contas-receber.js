@@ -7,6 +7,7 @@ let crCarregado   = false;
 
 function contasReceberInit() {
   if (!crCarregado) contasReceberAtualizar();
+  contasReceberCarregarExtrato();
 }
 
 // Dispara sync (busca pedidos novos) + verificação (reconsulta pendentes) e recarrega a lista
@@ -110,4 +111,79 @@ function contasReceberRenderizar() {
   if (elP) elP.textContent = pendentes;
   if (elL) elL.textContent = liberados;
   if (elD) elD.textContent = divergentes;
+}
+
+// ── Extrato agregado (settlement_report do Mercado Pago) ────────────────────
+
+// Carrega a última verificação já salva, sem disparar uma nova (rápido, ao abrir a aba)
+async function contasReceberCarregarExtrato() {
+  try {
+    const d = await fetch(`/api/contas-receber/extrato?conta=${window.CONTA_ATIVA}`).then(r => r.json());
+    contasReceberRenderizarExtrato(d.extrato);
+  } catch {
+    contasReceberRenderizarExtrato(null);
+  }
+}
+
+// Dispara a geração + download do extrato completo no Mercado Pago (pode levar até ~1min)
+async function contasReceberVerificarExtrato() {
+  const loading = document.getElementById('cr-extrato-loading');
+  const erro    = document.getElementById('cr-extrato-erro');
+  const btn     = document.getElementById('btn-verificar-extrato');
+  if (loading) loading.style.display = 'block';
+  if (erro)    erro.style.display    = 'none';
+  if (btn)     btn.disabled          = true;
+
+  try {
+    const r = await fetch(`/api/contas-receber/sync-extrato?conta=${window.CONTA_ATIVA}`, { method: 'POST' }).then(r => r.json());
+    if (r.error) throw new Error(typeof r.error === 'string' ? r.error : JSON.stringify(r.error));
+    await contasReceberCarregar();          // pedidos podem ter mudado de situação
+    await contasReceberCarregarExtrato();   // recarrega o resumo salvo
+  } catch (err) {
+    if (erro) {
+      erro.textContent   = 'Erro ao verificar extrato: ' + err.message;
+      erro.style.display = 'block';
+    }
+  }
+
+  if (loading) loading.style.display = 'none';
+  if (btn)     btn.disabled          = false;
+}
+
+function contasReceberRenderizarExtrato(snap) {
+  const statusEl = document.getElementById('cr-extrato-status');
+  const tabela   = document.getElementById('tabela-cr-extrato');
+  const tbody    = document.getElementById('tabela-cr-extrato-body');
+  if (!statusEl || !tbody) return;
+
+  if (!snap) {
+    statusEl.textContent = 'Ainda não verificado.';
+    tabela.style.display = 'none';
+    return;
+  }
+
+  const dataHora = new Date(snap.ts).toLocaleString('pt-BR');
+  const qtd = (snap.naoIdentificados || []).length;
+  statusEl.innerHTML = qtd > 0
+    ? `<span style="color:#dc2626;font-weight:600">⚠️ ${qtd} movimento${qtd !== 1 ? 's' : ''} não identificado${qtd !== 1 ? 's' : ''}</span> de ${snap.totalMovimentos} no extrato — última verificação em ${dataHora} (últimos ${snap.diasVerificados} dias)`
+    : `✅ Nenhum movimento não identificado — última verificação em ${dataHora} (últimos ${snap.diasVerificados} dias, ${snap.totalMovimentos} movimentos no total)`;
+
+  tbody.innerHTML = '';
+  if (!qtd) {
+    tabela.style.display = 'none';
+    return;
+  }
+  tabela.style.display = 'table';
+  snap.naoIdentificados.forEach(m => {
+    const fmtData = (iso) => iso ? String(iso).slice(0, 10).split('-').reverse().join('/') : '—';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td style="font-size:12px">${escHtml(m.sourceId)}</td>
+      <td>${m.orderId ? '#' + escHtml(m.orderId) : '—'}</td>
+      <td style="font-size:12px">${escHtml(m.tipo)}</td>
+      <td class="col-num">${fmtBRL(m.valor)}</td>
+      <td>${fmtData(m.data)}</td>
+    `;
+    tbody.appendChild(tr);
+  });
 }

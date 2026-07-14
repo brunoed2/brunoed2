@@ -478,6 +478,30 @@
             <tbody id="tabela-cr-body"></tbody>
           </table>
         </div>
+
+        <!-- Extrato agregado — pega dinheiro que se move sem estar ligado a nenhum pedido rastreado -->
+        <div class="card" style="margin-top:24px">
+          <h2>Extrato completo (Mercado Pago)</h2>
+          <p class="card-desc">Confere o extrato de liquidações do Mercado Pago inteiro (não só os pedidos já rastreados acima) e aponta movimentos de dinheiro que não batem com nenhum pedido conhecido. Pode levar até 1 minuto.</p>
+          <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+            <button class="btn-secondary" onclick="contasReceberVerificarExtrato()" id="btn-verificar-extrato">🔍 Verificar extrato completo</button>
+            <span id="cr-extrato-status" style="font-size:13px;color:#64748b"></span>
+          </div>
+          <div id="cr-extrato-loading" class="loading" style="display:none">Gerando e baixando extrato do Mercado Pago (pode levar até 1 minuto)...</div>
+          <div id="cr-extrato-erro" class="estoque-erro" style="display:none"></div>
+          <table class="tabela" id="tabela-cr-extrato" style="display:none;margin-top:14px">
+            <thead>
+              <tr>
+                <th>Origem (SOURCE_ID)</th>
+                <th>Pedido</th>
+                <th>Tipo</th>
+                <th class="col-num">Valor</th>
+                <th>Data</th>
+              </tr>
+            </thead>
+            <tbody id="tabela-cr-extrato-body"></tbody>
+          </table>
+        </div>
       </section>
 
       <!-- ── Aba: Estoque ── -->
@@ -1478,6 +1502,6 @@
     </div>
   </div>
 
-  <div id="version-badge">v622</div>
+  <div id="version-badge">v623</div>
 </body>
 </html>

@@ -131,6 +131,7 @@ function loadData() {
   raw.contas_receber                 = raw.contas_receber                 || {};
   raw.contas_receber['1']            = raw.contas_receber['1']            || [];
   raw.contas_receber['2']            = raw.contas_receber['2']            || [];
+  raw.contas_receber_extrato         = raw.contas_receber_extrato         || {};
   // Auto-configura fornecedor HANDDRY na conta 1
   raw.fornecedores_por_conta = raw.fornecedores_por_conta || {};
   raw.fornecedores_por_conta['1'] = raw.fornecedores_por_conta['1'] || [];
@@ -5757,6 +5758,73 @@ async function crBuscarColecao(paymentId, headers) {
   }
 }
 
+// ── Reconciliação agregada — extrato (settlement_report) do Mercado Pago ─────
+// Fica em api.mercadopago.com (não api.mercadolibre.com) e é um relatório
+// assíncrono: gera (POST), espera processar (GET list), baixa o CSV (GET file_name).
+// Cada linha traz ORDER_ID + SETTLEMENT_NET_AMOUNT + SETTLEMENT_DATE — dá pra bater
+// contra os pedidos já rastreados e sobra o que não tem pedido associado.
+
+function crParseCsvLinha(linha, delim = ';') {
+  const out = [];
+  let cur = '';
+  let emAspas = false;
+  for (let i = 0; i < linha.length; i++) {
+    const ch = linha[i];
+    if (emAspas) {
+      if (ch === '"') {
+        if (linha[i + 1] === '"') { cur += '"'; i++; }
+        else emAspas = false;
+      } else cur += ch;
+    } else {
+      if (ch === '"') emAspas = true;
+      else if (ch === delim) { out.push(cur); cur = ''; }
+      else cur += ch;
+    }
+  }
+  out.push(cur);
+  return out;
+}
+
+function crParseCsv(csvText) {
+  const linhas = csvText.split(/\r?\n/).filter(l => l.trim().length);
+  if (!linhas.length) return [];
+  const colunas = crParseCsvLinha(linhas[0]);
+  return linhas.slice(1).map(linha => {
+    const valores = crParseCsvLinha(linha);
+    const obj = {};
+    colunas.forEach((col, i) => { obj[col] = valores[i]; });
+    return obj;
+  });
+}
+
+// Gera o settlement_report para os últimos `dias`, espera processar e devolve o CSV cru.
+// Pode levar dezenas de segundos — é síncrono de propósito (chamado só sob demanda pelo botão "Verificar extrato").
+async function crGerarEBaixarExtrato(headers, dias) {
+  const hoje   = new Date();
+  const inicio = new Date(hoje.getTime() - dias * 86400000);
+  const gerar  = await axios.post(
+    'https://api.mercadopago.com/v1/account/settlement_report',
+    { begin_date: inicio.toISOString(), end_date: hoje.toISOString() },
+    { headers, timeout: 15000 },
+  );
+  const reportId = gerar.data.id;
+
+  let fileName = null;
+  for (let tentativa = 0; tentativa < 15 && !fileName; tentativa++) {
+    await new Promise(r => setTimeout(r, 2000));
+    const lista = await axios.get('https://api.mercadopago.com/v1/account/settlement_report/list', { headers, timeout: 10000 });
+    const item = (lista.data || []).find(x => x.id === reportId);
+    if (item?.status === 'processed') fileName = item.file_name;
+    else if (item?.status === 'cancelled' || item?.status === 'error') {
+      throw new Error(`Relatório do MP falhou (status=${item.status})`);
+    }
+  }
+  if (!fileName) throw new Error('Relatório não processou a tempo (timeout de 30s)');
+
+  const csv = await axios.get(`https://api.mercadopago.com/v1/account/settlement_report/${fileName}`, { headers, timeout: 20000 });
+  return String(csv.data);
+}
+
 app.get('/api/contas-receber', (req, res) => {
   const data = loadData();
   const num  = String(req.query.conta || data.conta_ativa || '1');
@@ -5895,6 +5963,85 @@ app.post('/api/contas-receber/verificar', async (req, res) => {
   } catch (err) {
     res.json({ error: err.response?.data || err.message });
   }
+});
+
+// Verificação agregada: gera o extrato completo (settlement_report) do Mercado Pago,
+// atualiza os pedidos conhecidos com o valor/data REAIS de liquidação, e separa os
+// movimentos que não batem com nenhum pedido rastreado (dinheiro sem "dono" na base).
+app.post('/api/contas-receber/sync-extrato', async (req, res) => {
+  const data = loadData();
+  const num  = String(req.query.conta || data.conta_ativa || '1');
+  const c    = data.contas[num];
+  if (!c?.access_token) return res.json({ error: 'Não conectado' });
+  const headers = { Authorization: `Bearer ${c.access_token}` };
+  const dias = Math.min(parseInt(req.query.dias) || 30, 90);
+
+  try {
+    const csvText = await crGerarEBaixarExtrato(headers, dias);
+    const linhas  = crParseCsv(csvText);
+
+    data.contas_receber = data.contas_receber || {};
+    const lista = data.contas_receber[num] = data.contas_receber[num] || [];
+    const porOrderId = {};
+    lista.forEach(item => { porOrderId[String(item.orderId)] = item; });
+
+    const gruposPorOrder    = {};
+    const naoIdentificados  = [];
+
+    for (const linha of linhas) {
+      const tipo    = linha.TRANSACTION_TYPE;
+      const orderId = (linha.ORDER_ID || '').trim();
+      const valor   = parseFloat(linha.SETTLEMENT_NET_AMOUNT) || 0;
+      const ehSettlementDeVenda = tipo === 'SETTLEMENT' || tipo === 'SETTLEMENT_SHIPPING';
+
+      if (ehSettlementDeVenda && orderId && porOrderId[orderId]) {
+        if (!gruposPorOrder[orderId]) gruposPorOrder[orderId] = { valor: 0, data: linha.SETTLEMENT_DATE };
+        gruposPorOrder[orderId].valor += valor;
+        if (linha.SETTLEMENT_DATE > gruposPorOrder[orderId].data) gruposPorOrder[orderId].data = linha.SETTLEMENT_DATE;
+      } else {
+        naoIdentificados.push({
+          sourceId: linha.SOURCE_ID,
+          orderId:  orderId || null,
+          tipo,
+          valor,
+          data: linha.SETTLEMENT_DATE || linha.TRANSACTION_DATE,
+        });
+      }
+    }
+
+    let atualizados = 0;
+    const agora = new Date().toISOString();
+    for (const [orderId, grupo] of Object.entries(gruposPorOrder)) {
+      const item = porOrderId[orderId];
+      const diff = Math.abs(grupo.valor - (item.valorEsperado ?? 0));
+      item.valorReal         = grupo.valor;
+      item.dataLiberacaoReal = grupo.data;
+      if (item.valorEsperado != null && diff > CR_TOLERANCIA_VALOR) {
+        item.situacao    = 'divergente';
+        item.divergencia = { tipo: 'valor', detalhe: `Extrato mostra R$${grupo.valor.toFixed(2)} liquidado, esperado R$${item.valorEsperado.toFixed(2)}` };
+      } else {
+        item.situacao    = 'liberado';
+        item.divergencia = null;
+      }
+      item.atualizadoEm = agora;
+      atualizados++;
+    }
+
+    data.contas_receber_extrato = data.contas_receber_extrato || {};
+    data.contas_receber_extrato[num] = { ts: Date.now(), diasVerificados: dias, totalMovimentos: linhas.length, naoIdentificados };
+
+    saveData(data);
+    res.json({ ok: true, atualizados, totalMovimentos: linhas.length, naoIdentificados: naoIdentificados.length });
+  } catch (err) {
+    res.json({ error: err.response?.data || err.message });
+  }
+});
+
+app.get('/api/contas-receber/extrato', (req, res) => {
+  const data = loadData();
+  const num  = String(req.query.conta || data.conta_ativa || '1');
+  const snap = (data.contas_receber_extrato || {})[num] || null;
+  res.json({ extrato: snap });
 });
 
 // Debug — inspeciona o formato real do extrato/saldo da conta (etapa futura: reconciliação agregada)
