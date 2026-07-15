@@ -210,6 +210,15 @@ function renderizarChipsSKU(tipo, lista) {
   ).join('');
 }
 
+function chaveResumoItem(item) {
+  // '—' é o placeholder do backend pra "sem SKU cadastrado" — não pode ser
+  // usado como chave de agrupamento, senão produtos diferentes sem SKU
+  // se misturam num único grupo. Nesse caso agrupa por título+variação.
+  return (item.sku && item.sku !== '—')
+    ? `sku:${item.sku}`
+    : `titulo:${item.titulo || ''}|${item.variacao || ''}`;
+}
+
 function atualizarResumoSeparar() {
   const card      = document.getElementById('vendas-resumo-card');
   const container = document.getElementById('vendas-resumo-lista');
@@ -222,12 +231,13 @@ function atualizarResumoSeparar() {
     const venda = cb && vendaCache[cb.dataset.shipmentId];
     if (!venda) return;
     for (const item of (venda.itensLista || [])) {
-      if (!item.sku) continue;
-      const atual = skuMap.get(item.sku);
+      if (!item.titulo && !item.sku) continue;
+      const chave = chaveResumoItem(item);
+      const atual = skuMap.get(chave);
       if (atual) {
         atual.quantidade += (item.quantidade || 0);
       } else {
-        skuMap.set(item.sku, {
+        skuMap.set(chave, {
           titulo:     item.titulo || item.sku,
           variacao:   item.variacao || '',
           thumbnail:  item.thumbnail || '',
@@ -493,12 +503,13 @@ async function carregarFuturos() {
       }
       const skuMap = resumoPorDia.get(dataGrupo).skuMap;
       for (const item of itens) {
-        if (!item.sku) continue;
-        const atual = skuMap.get(item.sku);
+        if (!item.titulo && !item.sku) continue;
+        const chave = chaveResumoItem(item);
+        const atual = skuMap.get(chave);
         if (atual) {
           atual.quantidade += (item.quantidade || 0);
         } else {
-          skuMap.set(item.sku, {
+          skuMap.set(chave, {
             titulo:     item.titulo || item.sku,
             variacao:   item.variacao || '',
             thumbnail:  item.thumbnail || '',
