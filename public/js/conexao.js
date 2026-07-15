@@ -229,6 +229,71 @@ async function cxTestarEstoqueBaixo() {
   if (btn) { btn.disabled = false; btn.textContent = '📦 WA Estoque'; }
 }
 
+// ── Push notification (PWA) ───────────────────────────────────
+
+function urlBase64ToUint8Array(base64String) {
+  const padding  = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64   = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData  = atob(base64);
+  const output   = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; i++) output[i] = rawData.charCodeAt(i);
+  return output;
+}
+
+async function cxAtivarPush() {
+  const btn = document.getElementById('btn-push-ativar');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Ativando...'; }
+  try {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      alert('⚠️ Notificações não suportadas aqui. No iPhone, abra pelo ícone do app instalado na Tela de Início (não funciona direto no Safari).');
+      return;
+    }
+    const permissao = await Notification.requestPermission();
+    if (permissao !== 'granted') {
+      alert('⚠️ Permissão de notificação negada.');
+      return;
+    }
+    const { key } = await fetch('/api/push/vapid-public-key').then(r => r.json());
+    if (!key) {
+      alert('⚠️ Servidor ainda não tem as chaves VAPID configuradas no Railway.');
+      return;
+    }
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly:      true,
+        applicationServerKey: urlBase64ToUint8Array(key),
+      });
+    }
+    await fetch('/api/push/subscribe', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ subscription: sub }),
+    });
+    alert('✅ Notificações ativadas neste dispositivo!');
+  } catch (e) {
+    alert('⚠️ Erro ao ativar notificações: ' + e.message);
+  }
+  if (btn) { btn.disabled = false; btn.textContent = '🔔 Ativar Push'; }
+}
+
+async function cxTestarPush() {
+  const btn = document.getElementById('btn-push-teste');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Enviando...'; }
+  try {
+    const d = await fetch('/api/push/teste', { method: 'POST' }).then(r => r.json());
+    if (d.ok) {
+      alert('✅ Notificação enviada! Verifique o dispositivo.');
+    } else {
+      alert('⚠️ Falha: ' + (d.erro || 'Erro desconhecido.'));
+    }
+  } catch {
+    alert('⚠️ Erro ao conectar com o servidor.');
+  }
+  if (btn) { btn.disabled = false; btn.textContent = '🧪 Push'; }
+}
+
 async function cxReenviarEstoqueBaixo() {
   const btn = document.getElementById('btn-reenviar-estoque');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Enviando...'; }

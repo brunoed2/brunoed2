@@ -13,6 +13,7 @@ const multer   = require('multer');
 const https    = require('https');
 const zlib     = require('zlib');
 const forge    = require('node-forge');
+const webpush  = require('web-push');
 
 const uploadMem = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
@@ -642,6 +643,7 @@ app.get('/api/ml/callback', async (req, res) => {
     c.refresh_token   = resp.data.refresh_token;
     c.token_expires_at = Date.now() + ((resp.data.expires_in || 21600) - 300) * 1000;
     c.user_id         = resp.data.user_id;
+    c.conexao_alerta_enviado = false;
     addLog(`✅ Token obtido com sucesso — conta ${num} (user_id: ${c.user_id})`, 'ok');
     // Busca o nickname para exibir no seletor de conta
     try {
@@ -670,20 +672,27 @@ app.get('/api/ml/callback', async (req, res) => {
 async function refreshToken(data, num) {
   const c = data.contas[num];
   if (!c.client_id || !c.client_secret || !c.refresh_token) throw new Error('Credenciais insuficientes para refresh');
-  const resp = await axios.post(
-    'https://api.mercadolibre.com/oauth/token',
-    new URLSearchParams({
-      grant_type:    'refresh_token',
-      client_id:     c.client_id,
-      client_secret: c.client_secret,
-      refresh_token: c.refresh_token,
-    }),
-    { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 15000 }
-  );
+  let resp;
+  try {
+    resp = await axios.post(
+      'https://api.mercadolibre.com/oauth/token',
+      new URLSearchParams({
+        grant_type:    'refresh_token',
+        client_id:     c.client_id,
+        client_secret: c.client_secret,
+        refresh_token: c.refresh_token,
+      }),
+      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 15000 }
+    );
+  } catch (err) {
+    avisarConexaoCaida(data, num);
+    throw err;
+  }
   c.access_token    = resp.data.access_token;
   c.refresh_token   = resp.data.refresh_token;
   // expires_in vem em segundos (normalmente 21600 = 6h); guarda com 5min de margem
   c.token_expires_at = Date.now() + ((resp.data.expires_in || 21600) - 300) * 1000;
+  c.conexao_alerta_enviado = false;
   saveData(data);
   addLog(`🔄 Token da conta ${num} renovado automaticamente`, 'ok');
   return c;
@@ -696,9 +705,21 @@ async function getToken(data, num) {
   const expira = c.token_expires_at || 0;
   // Se não há data de expiração (0), assume que o token ainda é válido e tenta usá-lo
   if (!expira || Date.now() < expira) return c.access_token;
-  if (!c.refresh_token) throw new Error('Token expirado e sem refresh_token. Reconecte a conta.');
+  if (!c.refresh_token) {
+    avisarConexaoCaida(data, num);
+    throw new Error('Token expirado e sem refresh_token. Reconecte a conta.');
+  }
   const renovado = await refreshToken(data, num);
   return renovado.access_token;
+}
+
+// Notifica uma única vez por queda de conexão (evita spam a cada chamada de API)
+function avisarConexaoCaida(data, num) {
+  const c = data.contas[num];
+  if (!c || c.conexao_alerta_enviado) return;
+  c.conexao_alerta_enviado = true;
+  saveData(data);
+  notificar(`🔌 <b>Conexão perdida — conta ${num}</b>\n\nO token do Mercado Livre expirou e não foi possível renovar. Reconecte a conta no painel.`).catch(() => {});
 }
 
 // Na inicialização, tenta renovar tokens expirados de todas as contas
@@ -1300,6 +1321,7 @@ async function _executarRefreshBling(conta) {
       delete dataClean[`bling_${conta}`];
       if (conta === '1') delete dataClean.bling;
       saveData(dataClean);
+      notificar(`🔌 <b>Conexão Bling perdida — conta ${conta}</b>\n\nO refresh_token expirou. Reconecte a conta no painel.`).catch(() => {});
     }
 
     // 429 = rate limit — aguarda 5s antes de lançar erro
@@ -4928,6 +4950,47 @@ const CALLMEBOT_APIKEY = process.env.CALLMEBOT_APIKEY;
 const CALLMEBOT_PHONE_PEDIDOS  = process.env.CALLMEBOT_PHONE_PEDIDOS;
 const CALLMEBOT_APIKEY_PEDIDOS = process.env.CALLMEBOT_APIKEY_PEDIDOS;
 
+// Push notification (PWA instalado no iPhone/Android)
+const VAPID_PUBLIC_KEY  = process.env.VAPID_PUBLIC_KEY;
+const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY;
+const VAPID_SUBJECT     = process.env.VAPID_SUBJECT || 'mailto:bruluzenti@gmail.com';
+if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
+  webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+}
+
+// Inscrições de push — carregadas do disco, persistem entre restarts
+function carregarPushSubscriptions() {
+  const data = loadData();
+  return Array.isArray(data.push_subscriptions) ? data.push_subscriptions : [];
+}
+function salvarPushSubscriptions(lista) {
+  const data = loadData();
+  data.push_subscriptions = lista;
+  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+}
+
+async function enviarPush(texto) {
+  if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) return;
+  const subs = carregarPushSubscriptions();
+  if (!subs.length) return;
+  const titulo = 'Painel';
+  const corpo  = texto.replace(/<[^>]+>/g, '');
+  const payload = JSON.stringify({ title: titulo, body: corpo });
+
+  const restantes = [];
+  await Promise.allSettled(subs.map(async (sub) => {
+    try {
+      await webpush.sendNotification(sub, payload);
+      restantes.push(sub);
+    } catch (err) {
+      // 404/410 = inscrição inválida/expirada — remove
+      if (err.statusCode !== 404 && err.statusCode !== 410) restantes.push(sub);
+      addLog(`Push: falha ao enviar (${err.statusCode || err.message}) — ${err.statusCode === 404 || err.statusCode === 410 ? 'removendo inscrição' : 'mantendo'}`, 'warn');
+    }
+  }));
+  if (restantes.length !== subs.length) salvarPushSubscriptions(restantes);
+}
+
 async function enviarWhatsApp(phone, apikey, texto) {
   if (!phone || !apikey) return;
   try {
@@ -4948,6 +5011,7 @@ async function notificar(texto) {
   await Promise.allSettled([
     enviarTelegram(texto),
     enviarWhatsApp(CALLMEBOT_PHONE, CALLMEBOT_APIKEY, texto),
+    enviarPush(texto),
   ]);
 }
 
@@ -4956,6 +5020,7 @@ async function notificarPedido(texto) {
   await Promise.allSettled([
     enviarTelegram(texto),
     enviarWhatsApp(CALLMEBOT_PHONE_PEDIDOS, CALLMEBOT_APIKEY_PEDIDOS, texto),
+    enviarPush(texto),
   ]);
 }
 
@@ -5516,6 +5581,49 @@ app.post('/api/whatsapp/teste-estoque-baixo', async (req, res) => {
     const erro = body.toLowerCase().includes('error') || body.toLowerCase().includes('wrong');
     addLog(`WhatsApp teste-estoque → ${CALLMEBOT_PHONE}: ${body}`, erro ? 'warn' : 'ok');
     res.json({ ok: !erro, resposta: body });
+  } catch (e) {
+    res.json({ ok: false, erro: e.message });
+  }
+});
+
+// ── Push notification (PWA) ────────────────────────────────────
+
+app.get('/api/push/vapid-public-key', (req, res) => {
+  res.json({ key: VAPID_PUBLIC_KEY || null });
+});
+
+app.post('/api/push/subscribe', (req, res) => {
+  const sub = req.body?.subscription;
+  if (!sub?.endpoint) return res.json({ ok: false, erro: 'Inscrição inválida' });
+  const lista = carregarPushSubscriptions();
+  const jaExiste = lista.some(s => s.endpoint === sub.endpoint);
+  if (!jaExiste) {
+    lista.push(sub);
+    salvarPushSubscriptions(lista);
+    addLog(`Push: nova inscrição registrada (${lista.length} total)`, 'ok');
+  }
+  res.json({ ok: true });
+});
+
+app.post('/api/push/unsubscribe', (req, res) => {
+  const endpoint = req.body?.endpoint;
+  if (!endpoint) return res.json({ ok: false, erro: 'endpoint ausente' });
+  const lista = carregarPushSubscriptions().filter(s => s.endpoint !== endpoint);
+  salvarPushSubscriptions(lista);
+  res.json({ ok: true });
+});
+
+app.post('/api/push/teste', async (req, res) => {
+  if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
+    return res.json({ ok: false, erro: 'VAPID_PUBLIC_KEY ou VAPID_PRIVATE_KEY não configurados no Railway' });
+  }
+  const subs = carregarPushSubscriptions();
+  if (!subs.length) {
+    return res.json({ ok: false, erro: 'Nenhum dispositivo inscrito. Ative as notificações no app primeiro.' });
+  }
+  try {
+    await notificar('🧪 Teste — notificações push ativas!');
+    res.json({ ok: true });
   } catch (e) {
     res.json({ ok: false, erro: e.message });
   }
