@@ -3421,11 +3421,12 @@ app.get('/api/ml/ads-roas', async (req, res) => {
     res.json({ itens, aviso });
   } catch (err) {
     const status = err.response?.status;
-    console.error('Erro ads-roas:', status, err.response?.data || err.message);
+    const url    = err.config?.url;
+    console.error('Erro ads-roas:', status, url, err.response?.data || err.message);
     const d = err.response?.data;
     res.json({
       error: d?.message || d?.error || 'Erro ao buscar dados de ads.',
-      detalhe: `status ${status || '?'} — ${JSON.stringify(d) || err.message}`,
+      detalhe: `status ${status || '?'} em ${url || '?'} — ${JSON.stringify(d) || err.message}`,
     });
   }
 });
