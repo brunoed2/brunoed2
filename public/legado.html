@@ -10,6 +10,7 @@
     /* Navegacao sempre visivel, sem depender do drawer mobile (que usa
        CSS nao suportado no Safari antigo, ex: "inset") */
     @media (max-width: 1024px) {
+      .layout { flex-direction: column !important; min-height: 0 !important; }
       .sidebar {
         position: static !important;
         width: 100% !important;
@@ -164,7 +165,7 @@
     </main>
   </div>
 
-  <script src="/js/painel2-legado.js?v=2"></script>
+  <script src="/js/painel2-legado.js?v=3"></script>
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
   <script src="/js/scanner.js"></script>
 
