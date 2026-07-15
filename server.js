@@ -3310,12 +3310,13 @@ app.get('/api/ml/ads-roas', async (req, res) => {
       if (offsetAds >= total || !results.length || todosAds.length >= 500) break;
     }
 
-    // 2b. family_id / catalog_product_id de cada ad — o Mercado Livre agrupa como
+    // 2b. family_id / user_product_id de cada ad — o Mercado Livre agrupa como
     // "variações" de um único anúncio os listings sincronizados entre si (mesmo produto
-    // de catálogo, ativo/desativado, etc), mas a API de ads devolve cada um separado.
-    // Nenhum dos dois campos sozinho cobre todos os casos — une pelos dois (union-find),
-    // então se A bate com B por family_id e B bate com C por catalog_product_id, os três
-    // caem no mesmo grupo.
+    // de catálogo, ativo/desativado, etc). O endpoint novo de ads/search já devolve
+    // item_id, status, family_id e user_product_id prontos — não precisa mais de uma
+    // chamada extra a /items. Nenhum dos dois campos sozinho cobre todos os casos —
+    // une pelos dois (union-find), então se A bate com B por family_id e B bate com C
+    // por user_product_id, os três caem no mesmo grupo.
     const parentUF = {};
     const acharGrupo = (x) => {
       if (!(x in parentUF)) parentUF[x] = x;
@@ -3327,33 +3328,32 @@ app.get('/api/ml/ads-roas', async (req, res) => {
       if (ra !== rb) parentUF[ra] = rb;
     };
 
-    const adIdsUnicos = [...new Set(todosAds.map(a => a.id))];
-    const statusPorAdId  = {};
-    const vendidoPorAdId = {}; // sold_quantity — usado pra escolher o "representante" do grupo
+    todosAds.forEach(a => {
+      acharGrupo(a.item_id);
+      if (a.family_id)       unirGrupo(a.item_id, `fam:${a.family_id}`);
+      if (a.user_product_id) unirGrupo(a.item_id, `cat:${a.user_product_id}`);
+    });
+    const catalogPorAdId = {};
+    todosAds.forEach(a => { catalogPorAdId[a.item_id] = acharGrupo(a.item_id); });
+    const todosAdsAtivos = todosAds.filter(a => a.status === 'active');
+
+    // sold_quantity de cada item — só usado pra escolher o "representante" do grupo
+    // (o que mais vendeu é o que tem histórico de venda real)
+    const adIdsUnicos = [...new Set(todosAdsAtivos.map(a => a.item_id))];
+    const vendidoPorAdId = {};
     for (let i = 0; i < adIdsUnicos.length; i += 20) {
       const chunk = adIdsUnicos.slice(i, i + 20);
       try {
         const r = await axios.get('https://api.mercadolibre.com/items', {
-          params: { ids: chunk.join(','), attributes: 'id,status,family_id,catalog_product_id,sold_quantity' },
+          params: { ids: chunk.join(','), attributes: 'id,sold_quantity' },
           headers, timeout: 15000,
         });
         r.data.forEach(item => {
           if (item.code !== 200) return;
-          const { id, status, family_id, catalog_product_id, sold_quantity } = item.body;
-          statusPorAdId[id]  = status;
-          vendidoPorAdId[id] = sold_quantity || 0;
-          acharGrupo(id);
-          if (family_id)          unirGrupo(id, `fam:${family_id}`);
-          if (catalog_product_id) unirGrupo(id, `cat:${catalog_product_id}`);
+          vendidoPorAdId[item.body.id] = item.body.sold_quantity || 0;
         });
-      } catch { /* segue sem agrupar por catálogo pra esse lote */ }
+      } catch { /* segue sem essa info pra esse lote */ }
     }
-    const catalogPorAdId = {};
-    adIdsUnicos.forEach(id => { catalogPorAdId[id] = acharGrupo(id); });
-    // Listings desativados/pausados não têm atividade nenhuma e o ML costuma perder o
-    // vínculo de family_id/catalog_product_id deles com o anúncio ativo correspondente —
-    // em vez de tentar recriar esse vínculo, só tira da lista quem não está ativo.
-    const todosAdsAtivos = todosAds.filter(a => (statusPorAdId[a.id] ?? 'active') === 'active');
 
     // 3. Busca campanhas + métricas numa chamada só (endpoint novo, paginado)
     const t0 = Date.now();
@@ -3388,18 +3388,18 @@ app.get('/api/ml/ads-roas', async (req, res) => {
         const units            = Number(met.units_quantity) || 0;
         const roasEntregando  = cost > 0 ? revenue / cost : null;
         const custoPorUnidade = units > 0 ? cost / units  : null;
-        // Dedup por family_id/catalog_product_id (não só por id) — listings sincronizados
+        // Dedup por family_id/user_product_id (não só por item_id) — listings sincronizados
         // com o mesmo produto de catálogo contam como um único anúncio pro vendedor.
         // Representante do grupo = o que mais vendeu (é o que tem histórico de venda real).
         const gruposPorChave = new Map();
         adsDestaCamp.forEach(a => {
-          const chave = catalogPorAdId[a.id] || a.id;
+          const chave = catalogPorAdId[a.item_id] || a.item_id;
           const atual = gruposPorChave.get(chave);
-          if (!atual || (vendidoPorAdId[a.id] || 0) > (vendidoPorAdId[atual.id] || 0)) {
+          if (!atual || (vendidoPorAdId[a.item_id] || 0) > (vendidoPorAdId[atual.item_id] || 0)) {
             gruposPorChave.set(chave, a);
           }
         });
-        const adsListaDedup = [...gruposPorChave.values()].map(a => ({ id: a.id, title: a.title || '—' }));
+        const adsListaDedup = [...gruposPorChave.values()].map(a => ({ id: a.item_id, title: a.title || '—' }));
         const titulos = adsListaDedup.map(a => a.title).join(' | ');
         return {
           campId:         String(campId),
