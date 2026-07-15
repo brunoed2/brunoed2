@@ -3294,16 +3294,20 @@ app.get('/api/ml/ads-roas', async (req, res) => {
     const { advertiserId, siteId } = adv;
 
     // 2. Busca todos os ads do seller (paginado) — só pra pegar os títulos por campanha
+    // Endpoint antigo (advertising/product_ads/ads/search?seller_id=) foi descontinuado pelo ML;
+    // usa o mesmo padrão novo do endpoint de campanhas (marketplace/.../advertisers/{id}/...).
     const todosAds = [];
     let offsetAds = 0;
     while (true) {
-      const r = await axios.get('https://api.mercadolibre.com/advertising/product_ads/ads/search', {
-        params: { seller_id: c.user_id, limit: 50, offset: offsetAds }, headers, timeout: 12000,
-      });
+      const r = await axios.get(
+        `https://api.mercadolibre.com/marketplace/advertising/${siteId}/advertisers/${advertiserId}/product_ads/ads/search`,
+        { params: { limit: 50, offset: offsetAds }, headers: v2, timeout: 12000 }
+      );
       const results = r.data.results || [];
       todosAds.push(...results);
-      if (results.length < 50 || todosAds.length >= 500) break;
+      const total = r.data.paging?.total || 0;
       offsetAds += 50;
+      if (offsetAds >= total || !results.length || todosAds.length >= 500) break;
     }
 
     // 2b. family_id / catalog_product_id de cada ad — o Mercado Livre agrupa como
