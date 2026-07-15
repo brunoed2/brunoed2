@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Painel Legado</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📦</text></svg>">
+  <link rel="stylesheet" href="/css/style.css?v=10">
+</head>
+<body>
+
+  <script>
+    if (localStorage.getItem('auth') !== '4') {
+      location.href = '/';
+    }
+  </script>
+
+  <div class="layout">
+
+    <aside class="sidebar">
+      <div class="sidebar-logo">
+        <span>Painel Legado</span>
+      </div>
+      <div class="conta-seletor">
+        <button class="conta-btn active" data-conta="1" onclick="trocarConta('1')">·</button>
+        <button class="conta-btn" data-conta="2" onclick="trocarConta('2')">·</button>
+      </div>
+      <nav>
+        <a class="nav-btn active" href="?tab=vendas" data-tab="vendas">🏷️ Vendas</a>
+        <a class="nav-btn" href="?tab=scanner" data-tab="scanner">📷 Scanner</a>
+      </nav>
+      <div class="sidebar-footer">
+        <button class="btn-sair" onclick="sair()">Sair</button>
+      </div>
+    </aside>
+
+    <main class="content">
+      <!-- Topbar visível só no mobile -->
+      <div class="mobile-topbar">
+        <div class="mobile-conta-seletor">
+          <button class="conta-btn active" data-conta="1" onclick="trocarConta('1')">·</button>
+          <button class="conta-btn" data-conta="2" onclick="trocarConta('2')">·</button>
+        </div>
+        <button class="btn-sair" onclick="sair()" style="width:auto;padding:7px 14px;font-size:13px">Sair</button>
+      </div>
+
+      <!-- ── Aba: Vendas ── -->
+      <section id="tab-vendas" class="tab active">
+        <h1>Vendas</h1>
+        <p class="subtitle">Vendas com etiqueta de envio disponível para baixar.</p>
+
+        <div id="vendas-erro" class="estoque-erro" style="display:none"></div>
+
+        <div class="tabela-container">
+          <div class="tabela-topo">
+            <span id="vendas-total"></span>
+            <div style="display:flex;gap:8px;align-items:center">
+              <button class="btn-secondary" id="btn-filtro-atendidos" onclick="toggleFiltroAtendidos()">Atendidos</button>
+              <button class="btn-primary" id="btn-baixar-selecionadas" onclick="baixarSelecionadas()" style="display:none">⬇ Baixar selecionadas</button>
+              <button class="btn-primary" id="btn-marcar-atendido" onclick="marcarAtendidoSelecionadas()" style="display:none;background:#16a34a">✔ Marcar atendido</button>
+              <button class="btn-secondary" onclick="carregarVendas()" id="btn-atualizar-vendas">↻ Atualizar</button>
+            </div>
+          </div>
+
+          <div id="vendas-sku-chips" style="display:flex;flex-wrap:wrap;gap:6px;padding:6px 0 4px"></div>
+          <div id="vendas-loading" class="loading" style="display:none">Carregando vendas...</div>
+
+          <table class="tabela" id="tabela-vendas" style="display:none">
+            <thead>
+              <tr>
+                <th><input type="checkbox" id="check-todas" onclick="toggleTodasVendas(this)"></th>
+                <th></th>
+                <th>Pedido</th>
+                <th>Comprador</th>
+                <th class="col-num">Qtd</th>
+                <th>SKU</th>
+                <th>Itens</th>
+                <th>Status</th>
+                <th>Etiqueta</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="tabela-vendas-body"></tbody>
+          </table>
+        </div>
+
+        <!-- ── Pedidos Futuros ── -->
+        <div class="tabela-container" style="margin-top:24px">
+          <div class="tabela-topo" style="cursor:pointer;user-select:none" onclick="togglePedidosFuturos()">
+            <span id="futuros-titulo" style="font-weight:600;color:var(--text-primary)">Pedidos Futuros</span>
+            <div style="display:flex;gap:8px;align-items:center">
+              <span id="futuros-total" style="color:var(--text-secondary);font-size:0.85rem"></span>
+              <button class="btn-secondary" id="btn-atualizar-futuros" onclick="event.stopPropagation();carregarFuturos()" style="display:none">↻ Atualizar</button>
+              <span id="futuros-chevron" style="font-size:1.1rem;transition:transform 0.2s">▶</span>
+            </div>
+          </div>
+
+          <div id="futuros-conteudo" style="display:none">
+            <div id="futuros-erro" class="estoque-erro" style="display:none"></div>
+            <div id="futuros-sku-chips" style="display:flex;flex-wrap:wrap;gap:6px;padding:6px 0 4px"></div>
+            <div id="futuros-loading" class="loading" style="display:none">Carregando pedidos futuros...</div>
+
+            <table class="tabela" id="tabela-futuros" style="display:none">
+              <thead>
+                <tr>
+                  <th></th>
+                  <th>Pedido</th>
+                  <th>Comprador</th>
+                  <th class="col-num">Qtd</th>
+                  <th>SKU</th>
+                  <th>Itens</th>
+                  <th>Libera em</th>
+                </tr>
+              </thead>
+              <tbody id="tabela-futuros-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── Aba: Scanner ── -->
+      <section id="tab-scanner" class="tab">
+        <h1>Scanner de Pedidos</h1>
+        <p class="subtitle">Escaneie o QR code da etiqueta para ver os produtos do pedido.</p>
+
+        <div style="max-width:480px;margin:0 auto;text-align:center">
+          <button class="btn-primary" id="btn-scanner-iniciar" onclick="scannerIniciar()" style="width:100%;padding:16px;font-size:18px">
+            📷 Escanear Etiqueta
+          </button>
+          <button class="btn-secondary" id="btn-scanner-parar" onclick="scannerParar()" style="display:none;width:100%;padding:12px">
+            ✕ Fechar câmera
+          </button>
+
+          <div id="scanner-area" style="display:none;margin-top:16px;position:relative;border-radius:12px;overflow:hidden;background:#000">
+            <video id="scanner-video" style="width:100%;display:block" playsinline autoplay muted></video>
+            <canvas id="scanner-canvas" style="display:none"></canvas>
+            <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:200px;height:200px;border:3px solid rgba(255,255,255,0.7);border-radius:12px;pointer-events:none"></div>
+          </div>
+
+          <p id="scanner-status" style="margin-top:12px;color:#94a3b8;font-size:14px;min-height:20px"></p>
+
+          <div id="scanner-resultado" style="display:none;margin-top:8px;text-align:left"></div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <script src="/js/painel2-legado.js?v=1"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+  <script src="/js/scanner.js"></script>
+
+</body>
+</html>

@@ -87,6 +87,9 @@
         } else if (data.painel === 'fornecedor') {
           localStorage.setItem('auth', '3');
           location.href = '/fornecedor.html';
+        } else if (data.painel === 'legado') {
+          localStorage.setItem('auth', '4');
+          location.href = '/legado.html';
         } else {
           localStorage.setItem('auth', '2');
           location.href = '/painel2.html';

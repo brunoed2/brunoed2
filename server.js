@@ -150,6 +150,9 @@ function loadData() {
   if (!raw.usuarios['0505']) {
     raw.usuarios['0505'] = { nome: 'HANDDRY', abas: [], painel: 'fornecedor' };
   }
+  if (!raw.usuarios['1111']) {
+    raw.usuarios['1111'] = { nome: 'Legado', abas: ['vendas', 'scanner'], painel: 'legado' };
+  }
   // 199412 é sempre admin no painel app — forçado mesmo se já existir com dados errados
   const adminAbas = ['estoque','vendas','historico','ads','lucro','promocoes','contas-pagar','contas-receber','bling','fiscal','compras','calculadora','etiquetas','log-anuncio','configuracoes','scanner'];
   raw.usuarios['199412'] = {
@@ -492,6 +495,9 @@ app.post('/api/login', (req, res) => {
   if (!usuario) return res.status(401).json({ error: 'Senha incorreta' });
   if (usuario.painel === 'fornecedor') {
     return res.json({ ok: true, nome: usuario.nome, abas: [], painel: 'fornecedor' });
+  }
+  if (usuario.painel === 'legado') {
+    return res.json({ ok: true, nome: usuario.nome, abas: usuario.abas || [], painel: 'legado' });
   }
   const APP_TABS = new Set(['ads','lucro','promocoes','contas-pagar','contas-receber','bling','fiscal','compras','calculadora','configuracoes']);
   const painel = (usuario.painel === 'app' || (usuario.abas || []).some(t => APP_TABS.has(t))) ? 'app' : 'painel2';
