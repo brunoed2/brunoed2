@@ -610,7 +610,7 @@ function formatarPrazo(iso) {
   if (!iso) return '<span style="color:#aaa">—</span>';
   const prazo = new Date(iso);
   const diff  = prazo - Date.now();
-  const h     = diff / 3_600_000;
+  const h     = diff / 3600000;
   const d     = String(prazo.getDate()).padStart(2, '0');
   const mo    = String(prazo.getMonth() + 1).padStart(2, '0');
   const hh    = String(prazo.getHours()).padStart(2, '0');
