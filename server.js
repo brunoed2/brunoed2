@@ -3420,9 +3420,13 @@ app.get('/api/ml/ads-roas', async (req, res) => {
 
     res.json({ itens, aviso });
   } catch (err) {
-    console.error('Erro ads-roas:', err.response?.data || err.message);
+    const status = err.response?.status;
+    console.error('Erro ads-roas:', status, err.response?.data || err.message);
     const d = err.response?.data;
-    res.json({ error: d?.message || d?.error || 'Erro ao buscar dados de ads.', detalhe: JSON.stringify(d) });
+    res.json({
+      error: d?.message || d?.error || 'Erro ao buscar dados de ads.',
+      detalhe: `status ${status || '?'} — ${JSON.stringify(d) || err.message}`,
+    });
   }
 });
 
