@@ -6,6 +6,24 @@
   <title>Painel Legado</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📦</text></svg>">
   <link rel="stylesheet" href="/css/style.css?v=10">
+  <style>
+    /* Navegacao sempre visivel, sem depender do drawer mobile (que usa
+       CSS nao suportado no Safari antigo, ex: "inset") */
+    @media (max-width: 1024px) {
+      .sidebar {
+        position: static !important;
+        width: 100% !important;
+        height: auto !important;
+        flex-direction: column !important;
+        padding: 10px !important;
+        border-top: none !important;
+      }
+      .sidebar-logo { display: block !important; }
+      .sidebar nav { display: flex !important; flex-direction: row !important; }
+      .sidebar-footer { display: block !important; }
+      .content { margin-left: 0 !important; padding: 16px 14px !important; }
+    }
+  </style>
 </head>
 <body>
 
@@ -29,13 +47,6 @@
         <a class="nav-btn active" href="?tab=vendas" data-tab="vendas">🏷️ Vendas</a>
         <a class="nav-btn" href="?tab=scanner" data-tab="scanner">📷 Scanner</a>
       </nav>
-      <!-- Mobile: barra inferior com label da aba ativa + hamburger -->
-      <div class="mobile-hamburger-bar">
-        <span id="mobile-tab-label">🏷️ Vendas</span>
-        <button class="hamburger-btn" onclick="toggleMobileMenu()" aria-label="Abrir menu">
-          <span></span><span></span><span></span>
-        </button>
-      </div>
       <div class="sidebar-footer">
         <button class="btn-sair" onclick="sair()">Sair</button>
       </div>
@@ -153,20 +164,7 @@
     </main>
   </div>
 
-  <!-- Mobile: drawer de navegação -->
-  <div class="mobile-drawer-overlay" id="mobileOverlay" onclick="fecharMobileMenu()"></div>
-  <div class="mobile-drawer" id="mobileDrawer">
-    <div class="mobile-drawer-header">
-      <span>Menu</span>
-      <button class="mobile-drawer-close" onclick="fecharMobileMenu()">✕</button>
-    </div>
-    <nav class="mobile-drawer-nav">
-      <button class="mobile-drawer-btn active" data-tab="vendas">🏷️ Vendas</button>
-      <button class="mobile-drawer-btn" data-tab="scanner">📷 Scanner</button>
-    </nav>
-  </div>
-
-  <script src="/js/painel2-legado.js?v=1"></script>
+  <script src="/js/painel2-legado.js?v=2"></script>
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
   <script src="/js/scanner.js"></script>
 

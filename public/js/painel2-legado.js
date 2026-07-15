@@ -9,32 +9,13 @@ window.CONTA_ATIVA = new URLSearchParams(location.search).get('conta') || '1';
 
 // ── Navegação entre abas ──────────────────────────────────────
 
-const navBtns    = document.querySelectorAll('.nav-btn');
-const tabs       = document.querySelectorAll('.tab');
-const drawerBtns = document.querySelectorAll('.mobile-drawer-btn');
-
-function toggleMobileMenu() {
-  document.getElementById('mobileDrawer').classList.toggle('open');
-  document.getElementById('mobileOverlay').classList.toggle('open');
-}
-
-function fecharMobileMenu() {
-  document.getElementById('mobileDrawer').classList.remove('open');
-  document.getElementById('mobileOverlay').classList.remove('open');
-}
+const navBtns = document.querySelectorAll('.nav-btn');
+const tabs    = document.querySelectorAll('.tab');
 
 function abrirAba(nome) {
   navBtns.forEach(b => b.classList.toggle('active', b.dataset.tab === nome));
-  drawerBtns.forEach(b => b.classList.toggle('active', b.dataset.tab === nome));
   tabs.forEach(t => t.classList.toggle('active', t.id === `tab-${nome}`));
   history.replaceState(null, '', '/legado.html?conta=' + (window.CONTA_ATIVA || '1') + '&tab=' + nome);
-
-  const labelEl = document.getElementById('mobile-tab-label');
-  if (labelEl) {
-    const ref = document.querySelector(`.nav-btn[data-tab="${nome}"]`);
-    if (ref) labelEl.textContent = ref.textContent.trim();
-  }
-
   if (trocandoConta) return;
   if (nome === 'vendas')       carregarVendas();
   if (nome === 'scanner')      scannerInit();
@@ -42,10 +23,6 @@ function abrirAba(nome) {
 
 navBtns.forEach(btn => {
   btn.addEventListener('click', e => { e.preventDefault(); abrirAba(btn.dataset.tab); });
-});
-
-drawerBtns.forEach(btn => {
-  btn.addEventListener('click', () => { abrirAba(btn.dataset.tab); fecharMobileMenu(); });
 });
 
 // ── Troca de conta ────────────────────────────────────────────
