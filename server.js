@@ -4479,6 +4479,7 @@ app.get('/api/ml/debug-ads', async (req, res) => {
     const metricsList = 'clicks,prints,cost,cpc,acos,total_amount,direct_amount,indirect_amount,units_quantity,direct_units_quantity,indirect_units_quantity';
     await tryGet('camp_search_novo',        `https://api.mercadolibre.com/marketplace/advertising/${siteId}/advertisers/${advertiserId}/product_ads/campaigns/search`, { limit: 5 }, v2);
     await tryGet('camp_search_com_metrics', `https://api.mercadolibre.com/marketplace/advertising/${siteId}/advertisers/${advertiserId}/product_ads/campaigns/search`, { limit: 5, metrics_summary: true, metrics: metricsList, date_from: dateBegin, date_to: today }, v2);
+    await tryGet('ads_search_novo',         `https://api.mercadolibre.com/marketplace/advertising/${siteId}/advertisers/${advertiserId}/product_ads/ads/search`, { limit: 3 }, v2);
 
     if (campIdReal) {
       await tryGet('camp_search_filtro_metrics', `https://api.mercadolibre.com/marketplace/advertising/${siteId}/advertisers/${advertiserId}/product_ads/campaigns/search`, { 'filters[campaign_id]': campIdReal, metrics_summary: true, metrics: metricsList, date_from: dateBegin, date_to: today }, v2);
