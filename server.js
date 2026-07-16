@@ -4224,14 +4224,21 @@ function detectarDesvios(vendas, { desvioMinimo = 0.15, minAmostras = 3 } = {}) 
       // SKU vazio ou o placeholder '—' do backend não serve pra agrupar produtos diferentes juntos
       const chave = (item.sku && item.sku !== '—') ? `sku:${item.sku}` : `mlb:${item.mlb}`;
       if (!chave || chave === 'mlb:') return;
+      const qtd = item.quantidade || 1;
+      // Comparar sempre por unidade — frete e comissão de um pedido de 10 unidades são ~10x
+      // o de 1 unidade só pela quantidade, não porque o ML cobrou errado.
+      const freteLinha    = venda.itens.length ? venda.freteReal / venda.itens.length : 0;
       (grupos[chave] ||= []).push({
         orderId:  venda.orderId,
         data:     venda.data,
         titulo:   item.titulo,
         sku:      item.sku || null,
         mlb:      item.mlb || null,
-        frete:    venda.itens.length ? venda.freteReal / venda.itens.length : 0,
-        comissao: item.taxaML,
+        quantidade:          qtd,
+        freteLinha,
+        fretePorUnidade:     freteLinha / qtd,
+        comissaoLinha:       item.taxaML,
+        comissaoPorUnidade:  item.taxaML / qtd,
       });
     });
   });
@@ -4239,19 +4246,20 @@ function detectarDesvios(vendas, { desvioMinimo = 0.15, minAmostras = 3 } = {}) 
   const desvios = [];
   for (const itens of Object.values(grupos)) {
     if (itens.length < minAmostras) continue;
-    const medFrete    = mediana(itens.map(i => i.frete));
-    const medComissao = mediana(itens.map(i => i.comissao));
+    const medFretePorUnidade    = mediana(itens.map(i => i.fretePorUnidade));
+    const medComissaoPorUnidade = mediana(itens.map(i => i.comissaoPorUnidade));
     itens.forEach(item => {
-      if (medFrete > 0) {
-        const desvio = (item.frete - medFrete) / medFrete;
+      const base = { orderId: item.orderId, data: item.data, titulo: item.titulo, sku: item.sku, mlb: item.mlb };
+      if (medFretePorUnidade > 0) {
+        const desvio = (item.fretePorUnidade - medFretePorUnidade) / medFretePorUnidade;
         if (Math.abs(desvio) > desvioMinimo) {
-          desvios.push({ ...item, tipo: 'frete', valorCobrado: item.frete, valorTipico: medFrete, desvioPercent: desvio * 100 });
+          desvios.push({ ...base, tipo: 'frete', valorCobrado: item.freteLinha, valorTipico: medFretePorUnidade * item.quantidade, desvioPercent: desvio * 100 });
         }
       }
-      if (medComissao > 0) {
-        const desvio = (item.comissao - medComissao) / medComissao;
+      if (medComissaoPorUnidade > 0) {
+        const desvio = (item.comissaoPorUnidade - medComissaoPorUnidade) / medComissaoPorUnidade;
         if (Math.abs(desvio) > desvioMinimo) {
-          desvios.push({ ...item, tipo: 'comissão', valorCobrado: item.comissao, valorTipico: medComissao, desvioPercent: desvio * 100 });
+          desvios.push({ ...base, tipo: 'comissão', valorCobrado: item.comissaoLinha, valorTipico: medComissaoPorUnidade * item.quantidade, desvioPercent: desvio * 100 });
         }
       }
     });
