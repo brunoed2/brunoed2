@@ -312,17 +312,18 @@ async function contasReceberVerificarDesvios() {
           <tr>
             <td>#${escHtml(a.orderId)}</td>
             <td class="col-num">${a.quantidade}</td>
+            <td class="col-num">${fmtBRL(a.precoUnit)}</td>
             <td class="col-num">${fmtBRL(a.freteLinha)}</td>
             <td class="col-num">${fmtBRL(a.fretePorUnidade)}</td>
             <td class="col-num">${fmtBRL(a.comissaoLinha)}</td>
-            <td class="col-num">${fmtBRL(a.comissaoPorUnidade)}</td>
+            <td class="col-num">${a.comissaoPercent.toFixed(1)}%</td>
           </tr>
         `).join('');
         trAmostras.innerHTML = `
           <td colspan="7" style="background:#f8fafc;padding:10px">
             <div style="font-size:12px;color:#64748b;margin-bottom:6px">Amostras usadas pra calcular a mediana deste produto:</div>
             <table class="tabela" style="font-size:12px">
-              <thead><tr><th>Pedido</th><th class="col-num">Qtd</th><th class="col-num">Frete (pedido)</th><th class="col-num">Frete/un.</th><th class="col-num">Comissão (pedido)</th><th class="col-num">Comissão/un.</th></tr></thead>
+              <thead><tr><th>Pedido</th><th class="col-num">Qtd</th><th class="col-num">Preço/un.</th><th class="col-num">Frete (pedido)</th><th class="col-num">Frete/un.</th><th class="col-num">Comissão (pedido)</th><th class="col-num">Comissão %</th></tr></thead>
               <tbody>${linhasAmostras}</tbody>
             </table>
           </td>

@@ -4228,18 +4228,23 @@ function detectarDesvios(vendas, { desvioMinimo = 0.15, minAmostras = 3 } = {}) 
       const qtd = item.quantidade || 1;
       // Comparar sempre por unidade — frete e comissão de um pedido de 10 unidades são ~10x
       // o de 1 unidade só pela quantidade, não porque o ML cobrou errado.
-      const freteLinha    = venda.itens.length ? venda.freteReal / venda.itens.length : 0;
+      const freteLinha = venda.itens.length ? venda.freteReal / venda.itens.length : 0;
+      const receitaLinha = item.precoUnit * qtd;
       (grupos[chave] ||= []).push({
         orderId:  venda.orderId,
         data:     venda.data,
         titulo:   item.titulo,
         sku:      item.sku || null,
         mlb:      item.mlb || null,
-        quantidade:          qtd,
+        quantidade:      qtd,
+        precoUnit:       item.precoUnit,
         freteLinha,
-        fretePorUnidade:     freteLinha / qtd,
-        comissaoLinha:       item.taxaML,
-        comissaoPorUnidade:  item.taxaML / qtd,
+        fretePorUnidade: freteLinha / qtd,
+        comissaoLinha:   item.taxaML,
+        // Comissão é comparada como % da receita, não em R$ — se o preço do anúncio mudar, a
+        // comissão em reais muda junto mesmo com a taxa do ML igual; comparar valor absoluto
+        // dava falso positivo toda vez que o vendedor reajustava o preço.
+        comissaoPercent: receitaLinha > 0 ? item.taxaML / receitaLinha : 0,
       });
     });
   });
@@ -4247,13 +4252,13 @@ function detectarDesvios(vendas, { desvioMinimo = 0.15, minAmostras = 3 } = {}) 
   const desvios = [];
   for (const itens of Object.values(grupos)) {
     if (itens.length < minAmostras) continue;
-    const medFretePorUnidade    = mediana(itens.map(i => i.fretePorUnidade));
-    const medComissaoPorUnidade = mediana(itens.map(i => i.comissaoPorUnidade));
+    const medFretePorUnidade  = mediana(itens.map(i => i.fretePorUnidade));
+    const medComissaoPercent  = mediana(itens.map(i => i.comissaoPercent));
     // Amostras cruas do grupo — pra poder inspecionar o que formou a mediana (debug visível pro usuário)
     const amostrasGrupo = itens.map(i => ({
-      orderId: i.orderId, quantidade: i.quantidade,
+      orderId: i.orderId, quantidade: i.quantidade, precoUnit: i.precoUnit,
       freteLinha: i.freteLinha, fretePorUnidade: i.fretePorUnidade,
-      comissaoLinha: i.comissaoLinha, comissaoPorUnidade: i.comissaoPorUnidade,
+      comissaoLinha: i.comissaoLinha, comissaoPercent: i.comissaoPercent * 100,
     }));
     itens.forEach(item => {
       const base = { orderId: item.orderId, data: item.data, titulo: item.titulo, sku: item.sku, mlb: item.mlb };
@@ -4263,10 +4268,16 @@ function detectarDesvios(vendas, { desvioMinimo = 0.15, minAmostras = 3 } = {}) 
           desvios.push({ ...base, tipo: 'frete', valorCobrado: item.freteLinha, valorTipico: medFretePorUnidade * item.quantidade, desvioPercent: desvio * 100, amostrasGrupo });
         }
       }
-      if (medComissaoPorUnidade > 0) {
-        const desvio = (item.comissaoPorUnidade - medComissaoPorUnidade) / medComissaoPorUnidade;
+      if (medComissaoPercent > 0) {
+        const desvio = (item.comissaoPercent - medComissaoPercent) / medComissaoPercent;
         if (Math.abs(desvio) > desvioMinimo) {
-          desvios.push({ ...base, tipo: 'comissão', valorCobrado: item.comissaoLinha, valorTipico: medComissaoPorUnidade * item.quantidade, desvioPercent: desvio * 100, amostrasGrupo });
+          desvios.push({
+            ...base, tipo: 'comissão',
+            valorCobrado: item.comissaoLinha,
+            valorTipico:  medComissaoPercent * item.precoUnit * item.quantidade, // comissão esperada NO PREÇO ATUAL do produto
+            desvioPercent: desvio * 100, // desvio na TAXA (%), não no valor em reais
+            amostrasGrupo,
+          });
         }
       }
     });
