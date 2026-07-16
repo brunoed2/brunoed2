@@ -4162,6 +4162,7 @@ function montarVendas(todasOrdens, fretePorShipment, pedidosPorShipment) {
       receita,
       taxaML,
       freteReal,
+      shipmentId: sid || null,
     };
   });
 }
@@ -4285,10 +4286,34 @@ app.get('/api/lucro/desvios', async (req, res) => {
 
   try {
     const dateFrom = new Date(Date.now() - dias * 86400000).toISOString().slice(0, 10);
-    const { todasOrdens, fretePorShipment, pedidosPorShipment } = await buscarVendasComCustos(c, headers, dateFrom, null);
-    const vendas  = montarVendas(todasOrdens, fretePorShipment, pedidosPorShipment);
-    const desvios = detectarDesvios(vendas);
-    res.json({ ok: true, totalPedidos: vendas.length, desvios });
+    const { todasOrdens, fretePorShipment, pedidosPorShipment, shipmentIds } = await buscarVendasComCustos(c, headers, dateFrom, null);
+    const vendas = montarVendas(todasOrdens, fretePorShipment, pedidosPorShipment);
+
+    // Pedido cujo envio foi dividido em vários pacotes (usuário escolheu "separar em envios",
+    // ou o ML dividiu por peso/tamanho) tem custo de frete não comparável ao envio normal do
+    // mesmo produto — exclui esses da mediana/comparação em vez de gerar falso positivo.
+    const tagsPorShipment = {};
+    const BATCH = 25;
+    for (let i = 0; i < shipmentIds.length; i += BATCH) {
+      await Promise.all(shipmentIds.slice(i, i + BATCH).map(async (sid) => {
+        try {
+          const r = await axios.get(`https://api.mercadolibre.com/shipments/${sid}`, { headers, timeout: 8000 });
+          tagsPorShipment[sid] = r.data?.tags || [];
+        } catch { tagsPorShipment[sid] = []; }
+      }));
+    }
+    const vendasConsideradas = vendas.filter(v =>
+      !(v.shipmentId && (tagsPorShipment[v.shipmentId] || []).includes('source_pack_split'))
+    );
+
+    const desvios = detectarDesvios(vendasConsideradas);
+    res.json({
+      ok: true,
+      totalPedidos: vendas.length,
+      totalConsiderados: vendasConsideradas.length,
+      excluidosPacoteDividido: vendas.length - vendasConsideradas.length,
+      desvios,
+    });
   } catch (err) {
     res.json({ error: `Erro ao verificar desvios: ${err.message}` });
   }

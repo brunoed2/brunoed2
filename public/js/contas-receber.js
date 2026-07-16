@@ -276,10 +276,12 @@ async function contasReceberVerificarDesvios() {
     if (d.error) throw new Error(typeof d.error === 'string' ? d.error : JSON.stringify(d.error));
 
     const qtd = (d.desvios || []).length;
+    const excluidos = d.excluidosPacoteDividido || 0;
+    const notaExcluidos = excluidos > 0 ? ` (${excluidos} pedido${excluidos !== 1 ? 's' : ''} com envio dividido em pacotes foi${excluidos !== 1 ? 'ram' : ''} ignorado${excluidos !== 1 ? 's' : ''})` : '';
     if (status) {
       status.innerHTML = qtd > 0
-        ? `<span style="color:#dc2626;font-weight:600">⚠️ ${qtd} desvio${qtd !== 1 ? 's' : ''} encontrado${qtd !== 1 ? 's' : ''}</span> em ${d.totalPedidos} pedidos analisados.`
-        : `✅ Nenhum desvio encontrado em ${d.totalPedidos} pedidos analisados.`;
+        ? `<span style="color:#dc2626;font-weight:600">⚠️ ${qtd} desvio${qtd !== 1 ? 's' : ''} encontrado${qtd !== 1 ? 's' : ''}</span> em ${d.totalConsiderados ?? d.totalPedidos} pedidos analisados${notaExcluidos}.`
+        : `✅ Nenhum desvio encontrado em ${d.totalConsiderados ?? d.totalPedidos} pedidos analisados${notaExcluidos}.`;
     }
 
     tbody.innerHTML = '';
