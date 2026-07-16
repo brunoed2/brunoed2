@@ -179,3 +179,80 @@ function contasReceberRenderizarSaldoBase(d) {
   statusEl.innerHTML = `Informado em ${dataBase}: liberado ${fmtBRL(d.saldoBase.liberado)} + a liberar ${fmtBRL(d.saldoBase.aLiberar)}. `
     + `Desde então: ${d.qtdNovos} pedido${d.qtdNovos !== 1 ? 's' : ''} novo${d.qtdNovos !== 1 ? 's' : ''}, ${d.qtdLiberacoes} liberaç${d.qtdLiberacoes !== 1 ? 'ões' : 'ão'}.`;
 }
+
+// ── Investigar divergência — sob demanda, dois passos manuais ────────────────
+
+async function contasReceberSolicitarRelatorio() {
+  const status = document.getElementById('cr-solicitar-status');
+  const btn    = document.getElementById('btn-solicitar-relatorio');
+  if (btn) btn.disabled = true;
+  if (status) status.textContent = 'Solicitando...';
+
+  try {
+    const d = await fetch(`/api/contas-receber/solicitar-relatorio?conta=${window.CONTA_ATIVA}`, { method: 'POST' }).then(r => r.json());
+    if (d.error) throw new Error(typeof d.error === 'string' ? d.error : JSON.stringify(d.error));
+    if (status) status.innerHTML = '✅ Relatório solicitado — aguarde o e-mail do Mercado Pago com o link de download, depois baixe o CSV e envie abaixo.';
+  } catch (err) {
+    if (status) status.innerHTML = `<span style="color:#dc2626">Erro: ${err.message}</span>`;
+  }
+
+  if (btn) btn.disabled = false;
+}
+
+async function contasReceberInvestigar() {
+  const input   = document.getElementById('cr-csv-input');
+  const loading = document.getElementById('cr-investigar-loading');
+  const erro    = document.getElementById('cr-investigar-erro');
+  const btn     = document.getElementById('btn-investigar');
+  if (!input?.files?.length) {
+    if (erro) { erro.textContent = 'Selecione o arquivo CSV primeiro.'; erro.style.display = 'block'; }
+    return;
+  }
+  if (erro) erro.style.display = 'none';
+  if (loading) loading.style.display = 'block';
+  if (btn) btn.disabled = true;
+
+  try {
+    const fd = new FormData();
+    fd.append('csv', input.files[0]);
+    const d = await fetch(`/api/contas-receber/investigar?conta=${window.CONTA_ATIVA}`, { method: 'POST', body: fd }).then(r => r.json());
+    if (d.error) throw new Error(typeof d.error === 'string' ? d.error : JSON.stringify(d.error));
+    contasReceberRenderizarInvestigacao(d);
+  } catch (err) {
+    if (erro) { erro.textContent = 'Erro ao investigar: ' + err.message; erro.style.display = 'block'; }
+  }
+
+  if (loading) loading.style.display = 'none';
+  if (btn) btn.disabled = false;
+}
+
+function contasReceberRenderizarInvestigacao(d) {
+  const statusEl = document.getElementById('cr-investigar-status');
+  const tabela   = document.getElementById('tabela-cr-investigar');
+  const tbody    = document.getElementById('tabela-cr-investigar-body');
+  if (!statusEl || !tbody) return;
+
+  const qtd = (d.naoIdentificados || []).length;
+  statusEl.innerHTML = qtd > 0
+    ? `<span style="color:#dc2626;font-weight:600">⚠️ ${qtd} movimento${qtd !== 1 ? 's' : ''} não identificado${qtd !== 1 ? 's' : ''}</span> de ${d.totalMovimentos} no arquivo (${d.identificados} batem com pedido rastreado).`
+    : `✅ Todos os ${d.totalMovimentos} movimentos do arquivo batem com pedido rastreado.`;
+
+  tbody.innerHTML = '';
+  if (!qtd) {
+    tabela.style.display = 'none';
+    return;
+  }
+  tabela.style.display = 'table';
+  d.naoIdentificados.forEach(m => {
+    const fmtData = (iso) => iso ? String(iso).slice(0, 10).split('-').reverse().join('/') : '—';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td style="font-size:12px">${escHtml(m.sourceId)}</td>
+      <td>${m.orderId ? '#' + escHtml(m.orderId) : '—'}</td>
+      <td style="font-size:12px">${escHtml(m.tipo)}</td>
+      <td class="col-num">${fmtBRL(m.valor)}</td>
+      <td>${fmtData(m.data)}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}

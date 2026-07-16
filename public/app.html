@@ -525,6 +525,35 @@
             <tbody id="tabela-cr-body"></tbody>
           </table>
         </div>
+
+        <!-- Investigar divergência — sob demanda, dois passos manuais -->
+        <div class="card" style="margin-top:24px">
+          <h2>Investigar divergência</h2>
+          <p class="card-desc">Só use se os totais acima não baterem com o app do Mercado Pago. Passo 1: pede o relatório completo (gera um e-mail do Mercado Pago com o link de download). Passo 2: baixe o CSV desse e-mail e envie aqui — a gente aponta os movimentos que não são de nenhum pedido rastreado (saque, Ads, Full, etc).</p>
+          <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+            <button class="btn-secondary" onclick="contasReceberSolicitarRelatorio()" id="btn-solicitar-relatorio">📨 1. Solicitar relatório (gera e-mail do MP)</button>
+            <span id="cr-solicitar-status" style="font-size:13px;color:#64748b"></span>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <input type="file" id="cr-csv-input" accept=".csv" style="font-size:13px">
+            <button class="btn-secondary" onclick="contasReceberInvestigar()" id="btn-investigar">🔍 2. Investigar CSV enviado</button>
+          </div>
+          <div id="cr-investigar-loading" class="loading" style="display:none">Processando CSV...</div>
+          <div id="cr-investigar-erro" class="estoque-erro" style="display:none"></div>
+          <div id="cr-investigar-status" style="font-size:13px;color:#64748b;margin-top:10px"></div>
+          <table class="tabela" id="tabela-cr-investigar" style="display:none;margin-top:14px">
+            <thead>
+              <tr>
+                <th>Origem (SOURCE_ID)</th>
+                <th>Pedido</th>
+                <th>Tipo</th>
+                <th class="col-num">Valor</th>
+                <th>Data</th>
+              </tr>
+            </thead>
+            <tbody id="tabela-cr-investigar-body"></tbody>
+          </table>
+        </div>
       </section>
 
       <!-- ── Aba: Estoque ── -->
@@ -1566,6 +1595,6 @@
     </div>
   </div>
 
-  <div id="version-badge">v642</div>
+  <div id="version-badge">v643</div>
 </body>
 </html>

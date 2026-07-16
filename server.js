@@ -6152,6 +6152,108 @@ app.get('/api/contas-receber/saldo-base', (req, res) => {
   });
 });
 
+// ── Investigar divergência: usuário pede o relatório completo direto no Mercado Pago
+// (chega por e-mail com link de download) e sobe o CSV aqui pra gente cruzar com os
+// pedidos já rastreados — assim o servidor não fica esperando/baixando nada sozinho.
+
+function crParseCsvLinha(linha, delim = ';') {
+  const out = [];
+  let cur = '';
+  let emAspas = false;
+  for (let i = 0; i < linha.length; i++) {
+    const ch = linha[i];
+    if (emAspas) {
+      if (ch === '"') {
+        if (linha[i + 1] === '"') { cur += '"'; i++; }
+        else emAspas = false;
+      } else cur += ch;
+    } else {
+      if (ch === '"') emAspas = true;
+      else if (ch === delim) { out.push(cur); cur = ''; }
+      else cur += ch;
+    }
+  }
+  out.push(cur);
+  return out;
+}
+
+function crParseCsv(csvText) {
+  const linhas = csvText.split(/\r?\n/).filter(l => l.trim().length);
+  if (!linhas.length) return [];
+  const colunas = crParseCsvLinha(linhas[0]);
+  return linhas.slice(1).map(linha => {
+    const valores = crParseCsvLinha(linha);
+    const obj = {};
+    colunas.forEach((col, i) => { obj[col] = valores[i]; });
+    return obj;
+  });
+}
+
+// Só dispara a geração no Mercado Pago (POST) — não espera nem baixa. O usuário recebe
+// o e-mail deles com o link e baixa o CSV manualmente.
+app.post('/api/contas-receber/solicitar-relatorio', async (req, res) => {
+  const data = loadData();
+  const num  = req.query.conta || data.conta_ativa;
+  const c    = data.contas[num];
+  if (!c?.access_token) return res.json({ error: 'Não conectado' });
+  const headers = { Authorization: `Bearer ${c.access_token}` };
+  const dias  = Math.min(parseInt(req.query.dias) || 90, 365);
+  const hoje   = new Date();
+  const inicio = new Date(hoje.getTime() - dias * 86400000);
+
+  try {
+    const r = await axios.post(
+      'https://api.mercadopago.com/v1/account/settlement_report',
+      { begin_date: inicio.toISOString(), end_date: hoje.toISOString() },
+      { headers, timeout: 15000 },
+    );
+    res.json({ ok: true, reportId: r.data.id, beginDate: inicio.toISOString(), endDate: hoje.toISOString() });
+  } catch (err) {
+    res.json({ error: err.response?.data || err.message });
+  }
+});
+
+// Recebe o CSV que o usuário baixou do e-mail do MP e aponta o que não bate com pedido rastreado
+app.post('/api/contas-receber/investigar', uploadMem.single('csv'), (req, res) => {
+  const data = loadData();
+  const num  = String(req.query.conta || data.conta_ativa || '1');
+  if (!req.file) return res.status(400).json({ error: 'Arquivo CSV não recebido' });
+
+  try {
+    const csvText = req.file.buffer.toString('utf-8').replace(/^\uFEFF/, ''); // remove BOM
+    const linhas  = crParseCsv(csvText);
+
+    const lista = (data.contas_receber || {})[num] || [];
+    const porOrderId = {};
+    lista.forEach(item => { porOrderId[String(item.orderId)] = item; });
+
+    let identificados = 0;
+    const naoIdentificados = [];
+    for (const linha of linhas) {
+      const tipo    = linha.TRANSACTION_TYPE;
+      const orderId = (linha.ORDER_ID || '').trim();
+      const valor   = parseFloat(linha.SETTLEMENT_NET_AMOUNT) || 0;
+      const ehSettlementDeVenda = tipo === 'SETTLEMENT' || tipo === 'SETTLEMENT_SHIPPING';
+
+      if (ehSettlementDeVenda && orderId && porOrderId[orderId]) {
+        identificados++;
+      } else {
+        naoIdentificados.push({
+          sourceId: linha.SOURCE_ID,
+          orderId:  orderId || null,
+          tipo,
+          valor,
+          data: linha.SETTLEMENT_DATE || linha.TRANSACTION_DATE,
+        });
+      }
+    }
+
+    res.json({ ok: true, totalMovimentos: linhas.length, identificados, naoIdentificados });
+  } catch (err) {
+    res.status(400).json({ error: 'Erro ao processar CSV: ' + err.message });
+  }
+});
+
 // Debug — compara /collections/{id} (usado hoje pra saber se liberou) contra o
 // endpoint oficial de pagamentos do MP, lado a lado, pra achar o campo certo de status de liberação.
 app.get('/api/contas-receber/debug-pagamento/:order_id', async (req, res) => {
