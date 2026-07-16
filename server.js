@@ -6108,6 +6108,9 @@ app.post('/api/contas-receber/verificar', async (req, res) => {
               item.paymentId = aprovado.id;
               col = await crBuscarPagamento(aprovado.id, headers);
               if (col?.error) return;
+              // O registro foi criado com o payment errado (cancelado, valor 0) — corrige
+              // o valor esperado agora que achamos o payment de verdade.
+              if (col.net_received_amount != null) item.valorEsperado = col.net_received_amount;
             }
           } catch { /* não conseguiu confirmar — mantém o resultado original */ }
         }
@@ -6140,6 +6143,9 @@ app.post('/api/contas-receber/verificar', async (req, res) => {
           item.divergencia = null;
           if (col.money_release_date && col.money_release_date !== item.dataLiberacaoEsperada) {
             item.dataLiberacaoEsperada = col.money_release_date; // MP revisou a previsão
+          }
+          if (col.net_received_amount != null && col.net_received_amount !== item.valorEsperado) {
+            item.valorEsperado = col.net_received_amount; // MP recalculou o valor líquido
           }
         }
         item.atualizadoEm = agora;
