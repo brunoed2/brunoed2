@@ -6159,11 +6159,17 @@ app.post('/api/contas-receber/verificar', async (req, res) => {
           if (col.money_release_date && col.money_release_date !== item.dataLiberacaoEsperada) {
             item.dataLiberacaoEsperada = col.money_release_date; // data pode mudar livremente, é só timing
           }
-          // O valor esperado NUNCA é sobrescrito aqui — é a "promessa original". Se o MP revisar
-          // pra baixo/cima antes de liberar, isso é sinal de alerta (vira divergente), não algo
-          // pra aceitar em silêncio — senão, quando liberasse o valor já revisado, pareceria "ok".
-          if (item.valorEsperado != null && col.net_received_amount != null
+          if (!item.valorEsperado && col.net_received_amount) {
+            // R$0,00/nulo nunca foi uma promessa válida (mesmo motivo do bloco liberado acima) —
+            // corrige em vez de tratar como "revisão" do MP.
+            item.valorEsperado = col.net_received_amount;
+            item.situacao      = 'pendente';
+            item.divergencia   = null;
+          } else if (item.valorEsperado != null && col.net_received_amount != null
               && Math.abs(col.net_received_amount - item.valorEsperado) > CR_TOLERANCIA_VALOR) {
+            // O valor esperado NUNCA é sobrescrito aqui — é a "promessa original". Se o MP revisar
+            // pra baixo/cima antes de liberar, isso é sinal de alerta (vira divergente), não algo
+            // pra aceitar em silêncio — senão, quando liberasse o valor já revisado, pareceria "ok".
             item.situacao    = 'divergente';
             item.divergencia = { tipo: 'valor_revisto', detalhe: `MP revisou de R$${item.valorEsperado.toFixed(2)} pra R$${col.net_received_amount.toFixed(2)} antes de liberar` };
           } else {
