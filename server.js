@@ -6098,7 +6098,12 @@ app.post('/api/contas-receber/verificar', async (req, res) => {
         let col = colecoes[idx];
         if (col?.error) return; // API falhou agora — tenta de novo na próxima verificação
 
-        if (crEstaCancelado(col)) {
+        // "money_release_status" manda mais que o "status" geral do pagamento: um pagamento
+        // pode vir com status "charged_back" (o comprador contestou) e AINDA ASSIM o dinheiro
+        // ter ficado com o vendedor, se coberto pelo Programa de Proteção ao Vendedor (envio
+        // pelo Mercado Envios + produto entregue). Nesse caso money_release_status continua
+        // "released" — o que importa de fato é se o dinheiro está confirmado na conta ou não.
+        if (!crEstaLiberado(col) && crEstaCancelado(col)) {
           // Antes de aceitar "cancelado": o pedido pode ter outro payment que deu certo
           // (payments[0] nem sempre é o aprovado, se o comprador tentou pagar mais de uma vez).
           try {
@@ -6106,16 +6111,18 @@ app.post('/api/contas-receber/verificar', async (req, res) => {
             const aprovado = (order.payments || []).find(p => p.status === 'approved');
             if (aprovado && String(aprovado.id) !== String(item.paymentId)) {
               item.paymentId = aprovado.id;
-              col = await crBuscarPagamento(aprovado.id, headers);
-              if (col?.error) return;
-              // O registro foi criado com o payment errado (cancelado, valor 0) — corrige
-              // o valor esperado agora que achamos o payment de verdade.
-              if (col.net_received_amount != null) item.valorEsperado = col.net_received_amount;
+              const colCorrigido = await crBuscarPagamento(aprovado.id, headers);
+              if (!colCorrigido?.error) {
+                col = colCorrigido;
+                // O registro foi criado com o payment errado (cancelado, valor 0) — corrige
+                // o valor esperado agora que achamos o payment de verdade.
+                if (col.net_received_amount != null) item.valorEsperado = col.net_received_amount;
+              }
             }
           } catch { /* não conseguiu confirmar — mantém o resultado original */ }
         }
 
-        if (crEstaCancelado(col)) {
+        if (!crEstaLiberado(col) && crEstaCancelado(col)) {
           item.situacao    = 'cancelado';
           item.divergencia = null;
           item.atualizadoEm = agora;
