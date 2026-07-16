@@ -6409,6 +6409,23 @@ app.get('/api/contas-receber/debug-pagamento/:order_id', async (req, res) => {
   }
 });
 
+// Debug — busca um SOURCE_ID do extrato direto como pagamento no MP (movimentos tipo CASHBACK
+// não têm ORDER_ID no CSV, mas o SOURCE_ID costuma ser um payment id — tenta achar referência
+// ao produto/envio perdido que gerou a compensação).
+app.get('/api/contas-receber/debug-movimento/:source_id', async (req, res) => {
+  const data = loadData();
+  const num  = req.query.conta || data.conta_ativa;
+  const c    = data.contas[num];
+  if (!c?.access_token) return res.json({ error: 'Não conectado' });
+  const headers = { Authorization: `Bearer ${c.access_token}` };
+  try {
+    const r = await axios.get(`https://api.mercadopago.com/v1/payments/${req.params.source_id}`, { headers, timeout: 10000 });
+    res.json(r.data);
+  } catch (err) {
+    res.json({ error: err.response?.data || err.message });
+  }
+});
+
 // Debug — inspeciona o formato real do extrato/saldo da conta (etapa futura: reconciliação agregada)
 // As APIs de saldo/extrato do Mercado Pago vivem em api.mercadopago.com (não
 // api.mercadolibre.com — por isso a 1ª tentativa deu 404). São relatórios
