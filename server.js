@@ -5954,6 +5954,15 @@ function crEstaCancelado(col) {
   return s === 'refunded' || s === 'cancelled' || s === 'charged_back';
 }
 
+// Um pedido pode ter MAIS DE UM payment (comprador tenta pagar, cancela, tenta de novo) —
+// order.payments[0] é o primeiro POR ORDEM DE CRIAÇÃO, não necessariamente o que deu certo.
+// Sempre preferir o que está "approved"; sem isso, um pedido pago de verdade pode acabar
+// rastreado pelo payment errado (cancelado), aparecendo como "Cancelado" incorretamente.
+function crSelecionarPagamento(order) {
+  const pagamentos = order.payments || [];
+  return pagamentos.find(p => p.status === 'approved') || pagamentos[0] || null;
+}
+
 // /collections/{id} (ML) não é confiável pro status de liberação — devolve um campo
 // "released" desatualizado. O endpoint oficial /v1/payments/{id} do MP (mesmo domínio
 // do settlement_report) tem "money_release_status" correto, confirmado com dado real.
@@ -6015,13 +6024,14 @@ app.post('/api/contas-receber/sync', async (req, res) => {
       offset += 50;
     }
 
-    const novasOrdens = todasOrdens.filter(o => !existentes.has(String(o.id)) && o.payments?.[0]?.id);
+    const novasOrdens = todasOrdens.filter(o => !existentes.has(String(o.id)) && o.payments?.length);
 
     let criados = 0;
     const BATCH = 25;
     for (let i = 0; i < novasOrdens.length; i += BATCH) {
       const lote = novasOrdens.slice(i, i + BATCH);
-      const colecoes = await Promise.all(lote.map(o => crBuscarPagamento(o.payments[0].id, headers)));
+      const pagamentosSelecionados = lote.map(o => crSelecionarPagamento(o));
+      const colecoes = await Promise.all(pagamentosSelecionados.map(p => crBuscarPagamento(p.id, headers)));
       const agora = new Date().toISOString();
       lote.forEach((o, idx) => {
         const col = colecoes[idx];
@@ -6029,7 +6039,7 @@ app.post('/api/contas-receber/sync', async (req, res) => {
         const liberado = crEstaLiberado(col);
         data.contas_receber[num].push({
           orderId:               o.id,
-          paymentId:             o.payments[0].id,
+          paymentId:             pagamentosSelecionados[idx].id,
           dataPedido:            o.date_closed || o.date_created,
           valorEsperado:         col.net_received_amount ?? null,
           dataLiberacaoEsperada: col.money_release_date ?? null,
@@ -6068,11 +6078,14 @@ app.post('/api/contas-receber/verificar', async (req, res) => {
     // da liberação, e sem reconferir isso nunca detectaríamos o dinheiro sendo tomado de volta.
     const paraChecar = lista.filter(item => {
       if (item.situacao === 'pendente' || item.situacao === 'divergente') return true;
-      if (item.situacao === 'liberado') {
+      if (item.situacao === 'liberado' || item.situacao === 'cancelado') {
+        // "cancelado" recente também reconfere — bug corrigido (payments[0] podia ser uma
+        // tentativa cancelada quando o pedido tinha OUTRO payment aprovado); pedidos antigos
+        // já tratados corretamente não precisam de checagem eterna.
         const dataRef = item.dataLiberacaoReal || item.dataPedido;
         return dataRef && (agoraMs - new Date(dataRef).getTime()) < CR_JANELA_RECHECK_LIBERADO_DIAS * 86400000;
       }
-      return false; // 'cancelado' é definitivo, não reconfere mais
+      return false;
     });
 
     let atualizados = 0;
@@ -6081,9 +6094,23 @@ app.post('/api/contas-receber/verificar', async (req, res) => {
       const lote = paraChecar.slice(i, i + BATCH);
       const colecoes = await Promise.all(lote.map(item => crBuscarPagamento(item.paymentId, headers)));
       const agora = new Date().toISOString();
-      lote.forEach((item, idx) => {
-        const col = colecoes[idx];
+      await Promise.all(lote.map(async (item, idx) => {
+        let col = colecoes[idx];
         if (col?.error) return; // API falhou agora — tenta de novo na próxima verificação
+
+        if (crEstaCancelado(col)) {
+          // Antes de aceitar "cancelado": o pedido pode ter outro payment que deu certo
+          // (payments[0] nem sempre é o aprovado, se o comprador tentou pagar mais de uma vez).
+          try {
+            const order = await axios.get(`https://api.mercadolibre.com/orders/${item.orderId}`, { headers, timeout: 10000 }).then(r => r.data);
+            const aprovado = (order.payments || []).find(p => p.status === 'approved');
+            if (aprovado && String(aprovado.id) !== String(item.paymentId)) {
+              item.paymentId = aprovado.id;
+              col = await crBuscarPagamento(aprovado.id, headers);
+              if (col?.error) return;
+            }
+          } catch { /* não conseguiu confirmar — mantém o resultado original */ }
+        }
 
         if (crEstaCancelado(col)) {
           item.situacao    = 'cancelado';
@@ -6117,7 +6144,7 @@ app.post('/api/contas-receber/verificar', async (req, res) => {
         }
         item.atualizadoEm = agora;
         atualizados++;
-      });
+      }));
     }
 
     saveData(data);
