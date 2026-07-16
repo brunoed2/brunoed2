@@ -83,7 +83,9 @@ function contasReceberRenderizar() {
         ? '<span class="badge-deposito badge-ativo">Liberado</span>'
         : c.situacao === 'divergente'
           ? '<span class="badge-deposito" style="background:#fee2e2;color:#991b1b;border:1px solid #fca5a5">⚠️ Divergente</span>'
-          : '<span class="badge-deposito badge-pausado">Pendente</span>';
+          : c.situacao === 'cancelado'
+            ? '<span class="badge-deposito badge-encerrado">Cancelado</span>'
+            : '<span class="badge-deposito badge-pausado">Pendente</span>';
 
       const fmtData = (iso) => iso ? iso.slice(0, 10).split('-').reverse().join('/') : '—';
 
@@ -102,16 +104,19 @@ function contasReceberRenderizar() {
     });
   }
 
-  const pendentes   = crLista.filter(c => c.situacao === 'pendente').length;
+  const pendentes    = crLista.filter(c => c.situacao === 'pendente').length;
   const liberados    = crLista.filter(c => c.situacao === 'liberado').length;
-  const divergentes = crLista.filter(c => c.situacao === 'divergente').length;
+  const divergentes  = crLista.filter(c => c.situacao === 'divergente').length;
+  const cancelados   = crLista.filter(c => c.situacao === 'cancelado').length;
 
   const elP = document.getElementById('cr-card-pendentes');
   const elL = document.getElementById('cr-card-liberados');
   const elD = document.getElementById('cr-card-divergentes');
+  const elC = document.getElementById('cr-card-cancelados');
   if (elP) elP.textContent = pendentes;
   if (elL) elL.textContent = liberados;
   if (elD) elD.textContent = divergentes;
+  if (elC) elC.textContent = cancelados;
 }
 
 // ── Saldo informado — sem gerar relatório, só com o que já rastreamos por pedido ─────

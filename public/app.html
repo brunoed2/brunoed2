@@ -489,6 +489,10 @@
             <div class="lucro-card-label">Divergências de valor</div>
             <div class="lucro-card-valor lucro-val-neg" id="cr-card-divergentes">—</div>
           </div>
+          <div class="lucro-card">
+            <div class="lucro-card-label">Cancelados/Estornados</div>
+            <div class="lucro-card-valor" id="cr-card-cancelados">—</div>
+          </div>
         </div>
 
         <!-- Tabela -->
@@ -499,6 +503,7 @@
               <button class="filtro-btn"        data-crf="pendente"    onclick="crFiltrar('pendente',this)">Pendentes</button>
               <button class="filtro-btn"        data-crf="liberado"    onclick="crFiltrar('liberado',this)">Liberados</button>
               <button class="filtro-btn"        data-crf="divergente"  onclick="crFiltrar('divergente',this)">Divergências</button>
+              <button class="filtro-btn"        data-crf="cancelado"   onclick="crFiltrar('cancelado',this)">Cancelados</button>
             </div>
             <div style="display:flex;align-items:center;gap:12px"><span id="cr-total-label" style="font-size:13px;color:#64748b"></span><button class="btn-secondary" onclick="contasReceberAtualizar()" id="btn-atualizar-cr">↻ Atualizar</button></div>
           </div>
@@ -1561,6 +1566,6 @@
     </div>
   </div>
 
-  <div id="version-badge">v641</div>
+  <div id="version-badge">v642</div>
 </body>
 </html>

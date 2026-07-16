@@ -5901,10 +5901,19 @@ app.delete('/api/contas-pagar/:id', async (req, res) => {
 // A verificação periódica compara o previsto com o que realmente aconteceu.
 
 const CR_TOLERANCIA_VALOR = 0.05; // R$ — diferença acima disso é reportada como divergência
+const CR_JANELA_RECHECK_LIBERADO_DIAS = 90; // reconfere "liberado" recente pra pegar chargeback/estorno tardio
 
 function crEstaLiberado(col) {
   const s = (col?.money_release_status || '').toLowerCase();
   return s === 'released' || s === 'liberado';
+}
+
+// Pagamento cancelado/estornado/chargeback nunca vai liberar (ou o que já liberou foi
+// tomado de volta) — precisa de status próprio, senão fica preso em "pendente" pra sempre
+// ou (pior) continua contando como "liberado" mesmo depois de estornado.
+function crEstaCancelado(col) {
+  const s = (col?.status || '').toLowerCase();
+  return s === 'refunded' || s === 'cancelled' || s === 'charged_back';
 }
 
 // /collections/{id} (ML) não é confiável pro status de liberação — devolve um campo
@@ -5933,6 +5942,7 @@ app.get('/api/contas-receber', (req, res) => {
     pendentes:   lista.filter(c => c.situacao === 'pendente').length,
     liberados:   lista.filter(c => c.situacao === 'liberado').length,
     divergentes: lista.filter(c => c.situacao === 'divergente').length,
+    cancelados:  lista.filter(c => c.situacao === 'cancelado').length,
   };
   res.json({ contas: lista, resumo });
 });
@@ -6014,19 +6024,36 @@ app.post('/api/contas-receber/verificar', async (req, res) => {
   try {
     data.contas_receber = data.contas_receber || {};
     const lista = data.contas_receber[num] || [];
-    // Reconfere também os "divergente" — pode ter sido falso positivo (já aconteceu: bug
-    // no campo de status de liberação marcava como atrasado o que já tinha liberado).
-    const pendentes = lista.filter(item => item.situacao === 'pendente' || item.situacao === 'divergente');
+    const agoraMs = Date.now();
+    // Reconfere: pendentes, divergentes (pode ter sido falso positivo do bug de atraso já
+    // corrigido) e também os "liberado" recentes — chargeback/estorno pode acontecer DEPOIS
+    // da liberação, e sem reconferir isso nunca detectaríamos o dinheiro sendo tomado de volta.
+    const paraChecar = lista.filter(item => {
+      if (item.situacao === 'pendente' || item.situacao === 'divergente') return true;
+      if (item.situacao === 'liberado') {
+        const dataRef = item.dataLiberacaoReal || item.dataPedido;
+        return dataRef && (agoraMs - new Date(dataRef).getTime()) < CR_JANELA_RECHECK_LIBERADO_DIAS * 86400000;
+      }
+      return false; // 'cancelado' é definitivo, não reconfere mais
+    });
 
     let atualizados = 0;
     const BATCH = 25;
-    for (let i = 0; i < pendentes.length; i += BATCH) {
-      const lote = pendentes.slice(i, i + BATCH);
+    for (let i = 0; i < paraChecar.length; i += BATCH) {
+      const lote = paraChecar.slice(i, i + BATCH);
       const colecoes = await Promise.all(lote.map(item => crBuscarPagamento(item.paymentId, headers)));
       const agora = new Date().toISOString();
       lote.forEach((item, idx) => {
         const col = colecoes[idx];
         if (col?.error) return; // API falhou agora — tenta de novo na próxima verificação
+
+        if (crEstaCancelado(col)) {
+          item.situacao    = 'cancelado';
+          item.divergencia = null;
+          item.atualizadoEm = agora;
+          atualizados++;
+          return;
+        }
 
         if (crEstaLiberado(col)) {
           const valorReal = col.net_received_amount ?? null;
@@ -6060,6 +6087,7 @@ app.post('/api/contas-receber/verificar', async (req, res) => {
       pendentes:   lista.filter(x => x.situacao === 'pendente').length,
       liberados:   lista.filter(x => x.situacao === 'liberado').length,
       divergentes: lista.filter(x => x.situacao === 'divergente').length,
+      cancelados:  lista.filter(x => x.situacao === 'cancelado').length,
     };
     res.json({ ok: true, atualizados, resumo });
   } catch (err) {
@@ -6093,7 +6121,10 @@ app.get('/api/contas-receber/saldo-base', (req, res) => {
 
   // Total geral: soma de TODO pedido aprovado depois do marco (liberado ou não — o dinheiro
   // já existe em algum lugar da conta assim que a venda aprova, só muda de gaveta depois).
-  const novosDesdeBase = lista.filter(item => item.dataPedido && new Date(item.dataPedido).getTime() > base.ts);
+  // Exclui "cancelado" (reembolso/chargeback/cancelamento) — esse dinheiro nunca vai existir de fato.
+  const novosDesdeBase = lista.filter(item =>
+    item.situacao !== 'cancelado' && item.dataPedido && new Date(item.dataPedido).getTime() > base.ts
+  );
   const somaNovos = novosDesdeBase.reduce((s, item) => s + (item.valorEsperado ?? 0), 0);
   const totalT0 = base.liberado + base.aLiberar;
   const totalEsperado = totalT0 + somaNovos;
