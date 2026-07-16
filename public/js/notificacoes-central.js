@@ -34,15 +34,16 @@ function notifCentralRenderLista(itens) {
 async function notifCentralAtualizarBadge() {
   try {
     const d = await fetch('/api/notificacoes').then(r => r.json());
-    const badge = document.getElementById('notif-central-badge');
-    if (badge) {
+    ['notif-central-badge', 'notif-central-badge-drawer'].forEach(id => {
+      const badge = document.getElementById(id);
+      if (!badge) return;
       if (d.naoLidas > 0) {
         badge.textContent = d.naoLidas > 99 ? '99+' : d.naoLidas;
         badge.style.display = 'flex';
       } else {
         badge.style.display = 'none';
       }
-    }
+    });
     notifCentralRenderLista(d.itens || []);
   } catch {}
 }
@@ -57,8 +58,10 @@ async function notifCentralToggle() {
   if (notifCentralAberta) {
     await notifCentralAtualizarBadge();
     try { await fetch('/api/notificacoes/marcar-vistas', { method: 'POST' }); } catch {}
-    const badge = document.getElementById('notif-central-badge');
-    if (badge) badge.style.display = 'none';
+    ['notif-central-badge', 'notif-central-badge-drawer'].forEach(id => {
+      const badge = document.getElementById(id);
+      if (badge) badge.style.display = 'none';
+    });
   }
 }
 

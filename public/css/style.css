@@ -1408,8 +1408,44 @@ tr.lucro-sub-item td {
 }
 
 @media (max-width: 1024px) {
-  #notif-central-btn    { top: 10px; right: 10px; }
+  /* No mobile o sino mora dentro do menu hamburger, não flutuando por cima do topo */
+  #notif-central-btn    { display: none; }
   #notif-central-painel { top: 54px; right: 8px; left: 8px; width: auto; }
+}
+
+.mobile-drawer-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.mobile-drawer-notif-btn {
+  position: relative;
+  background: none;
+  border: none;
+  color: #94a3b8;
+  font-size: 17px;
+  cursor: pointer;
+  padding: 4px 8px;
+  line-height: 1;
+}
+
+.notif-central-badge-mini {
+  position: absolute;
+  top: -2px;
+  right: 2px;
+  background: #ef4444;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  min-width: 14px;
+  height: 14px;
+  border-radius: 7px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 0 3px;
+  line-height: 1;
 }
 
 /* ── Aba: Conexão ───────────────────────────────────────────── */

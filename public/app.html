@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Painel</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📦</text></svg>">
-  <link rel="stylesheet" href="/css/style.css?v=11">
+  <link rel="stylesheet" href="/css/style.css?v=12">
   <link rel="manifest" href="/manifest.json">
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
   <meta name="theme-color" content="#2563eb">
@@ -1326,7 +1326,13 @@
   <div class="mobile-drawer" id="mobileDrawer">
     <div class="mobile-drawer-header">
       <span>Menu</span>
-      <button class="mobile-drawer-close" onclick="fecharMobileMenu()">✕</button>
+      <div class="mobile-drawer-header-actions">
+        <button class="mobile-drawer-notif-btn" onclick="fecharMobileMenu(); notifCentralToggle();" aria-label="Notificações">
+          🔔
+          <span id="notif-central-badge-drawer" class="notif-central-badge-mini"></span>
+        </button>
+        <button class="mobile-drawer-close" onclick="fecharMobileMenu()">✕</button>
+      </div>
     </div>
     <nav class="mobile-drawer-nav">
       <button class="mobile-drawer-btn" data-tab="estoque">📦 Estoque</button>
@@ -1607,6 +1613,6 @@
     </div>
   </div>
 
-  <div id="version-badge">v644</div>
+  <div id="version-badge">v645</div>
 </body>
 </html>
