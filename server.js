@@ -6313,6 +6313,7 @@ app.get('/api/contas-receber/debug-pagamento/:order_id', async (req, res) => {
       orderId:        order.id,
       orderStatus:    order.status,
       paymentId,
+      allPayments:    order.payments, // pra ver se tem mais de um payment (ex: tentativa rejeitada + a que deu certo)
       collections_ml: colecao.status     === 'fulfilled' ? colecao.value.data     : { error: colecao.reason?.response?.data     || colecao.reason?.message },
       payments_mp:    pagamentoMP.status === 'fulfilled' ? pagamentoMP.value.data : { error: pagamentoMP.reason?.response?.data || pagamentoMP.reason?.message },
     });
