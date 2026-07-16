@@ -6011,22 +6011,21 @@ app.post('/api/contas-receber/sync', async (req, res) => {
 
     const dateFrom = new Date(Date.now() - dias * 86400000).toISOString().slice(0, 10);
     let todasOrdens = [];
-    // Busca "paid" E "cancelled" — um pedido pago que sofre reembolso via mediação muda de
-    // status pra "cancelled" no ML, e some da busca por "paid" pra sempre, mesmo tendo sido
-    // uma venda real com dinheiro envolvido (às vezes o vendedor ainda fica com uma parte).
-    for (const status of ['paid', 'cancelled']) {
-      let offset = 0;
-      while (offset < 5000) {
-        const params = {
-          seller: c.user_id, 'order.status': status, sort: 'date_desc', limit: 50, offset,
-          'order.date_created.from': dateFrom + 'T00:00:00.000-03:00',
-        };
-        const resp = await axios.get('https://api.mercadolibre.com/orders/search', { params, headers, timeout: 15000 });
-        const results = resp.data.results || [];
-        todasOrdens = todasOrdens.concat(results);
-        if (results.length < 50) break;
-        offset += 50;
-      }
+    // Sem filtro de order.status: um pedido pago pode acabar em vários status diferentes
+    // (paid, cancelled, partially_refunded, e possivelmente outros que ainda não vimos) —
+    // em vez de ficar catando status um por um, busca tudo e deixa o filtro "tem payment"
+    // abaixo decidir o que interessa rastrear.
+    let offset = 0;
+    while (offset < 5000) {
+      const params = {
+        seller: c.user_id, sort: 'date_desc', limit: 50, offset,
+        'order.date_created.from': dateFrom + 'T00:00:00.000-03:00',
+      };
+      const resp = await axios.get('https://api.mercadolibre.com/orders/search', { params, headers, timeout: 15000 });
+      const results = resp.data.results || [];
+      todasOrdens = todasOrdens.concat(results);
+      if (results.length < 50) break;
+      offset += 50;
     }
 
     const novasOrdens = todasOrdens.filter(o => !existentes.has(String(o.id)) && o.payments?.length);
