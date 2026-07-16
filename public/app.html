@@ -541,6 +541,23 @@
         <div class="card" style="margin-top:24px">
           <h2>Investigar divergência</h2>
           <p class="card-desc">Só use se os totais acima não baterem com o app do Mercado Pago. Passo 1: pede o relatório completo (gera um e-mail do Mercado Pago com o link de download). Passo 2: baixe o CSV desse e-mail e envie aqui — a gente aponta os movimentos que não são de nenhum pedido rastreado (saque, Ads, Full, etc).</p>
+          <details style="margin-bottom:14px;font-size:13px;color:#475569">
+            <summary style="cursor:pointer;color:#2563eb;font-weight:600">O que significa cada coluna?</summary>
+            <div style="margin-top:8px;line-height:1.7">
+              <strong>Origem (SOURCE_ID)</strong> — identificador único do movimento no extrato do Mercado Pago (geralmente é o ID interno do pagamento).<br>
+              <strong>Pedido</strong> — número do pedido do Mercado Livre ligado a esse movimento, quando existe. Aparece "—" quando o movimento não é uma venda (cashback, pagamento de fatura, compra pessoal feita com o saldo, etc).<br>
+              <strong>Tipo</strong> — o que gerou o movimento:
+              <ul style="margin:4px 0 4px 20px">
+                <li><strong>SETTLEMENT</strong> — liquidação do valor de uma venda (o produto).</li>
+                <li><strong>SETTLEMENT_SHIPPING</strong> — liquidação referente ao frete da venda, separado do produto.</li>
+                <li><strong>DISPUTE / DISPUTE_SHIPPING</strong> — contestação/chargeback: valor saindo (comprador contestou) ou voltando (contestação revertida a seu favor).</li>
+                <li><strong>REFUND</strong> — reembolso: pode ser de uma venda sua sendo estornada, ou de uma <em>compra que você mesmo fez</em> (ex: um serviço/assinatura) sendo devolvida.</li>
+                <li><strong>CASHBACK</strong> — bônus ou compensação do próprio Mercado Pago (ex: Programa de Proteção do Full por produto perdido) — nunca tem pedido associado.</li>
+              </ul>
+              <strong>Valor</strong> — valor líquido daquela linha (negativo = saiu da conta, positivo = entrou).<br>
+              <strong>Data</strong> — quando aquele movimento específico foi processado.
+            </div>
+          </details>
           <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px">
             <button class="btn-secondary" onclick="contasReceberSolicitarRelatorio()" id="btn-solicitar-relatorio">📨 1. Solicitar relatório (gera e-mail do MP)</button>
             <span id="cr-solicitar-status" style="font-size:13px;color:#64748b"></span>
@@ -1613,6 +1630,6 @@
     </div>
   </div>
 
-  <div id="version-badge">v657</div>
+  <div id="version-badge">v658</div>
 </body>
 </html>
