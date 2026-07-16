@@ -50,6 +50,7 @@ function detectarDirDados() {
 const DATA_DIR      = detectarDirDados();
 const DATA_FILE     = path.join(DATA_DIR, 'data.json');
 const FISCAL_FILE   = path.join(DATA_DIR, 'fiscal-notas.json');
+const NOTIF_HIST_FILE = path.join(DATA_DIR, 'notificacoes.json');
 const BACKUP_DIR    = path.join(DATA_DIR, 'backups');
 const USA_VOLUME    = DATA_DIR === '/data'; // true = volume persistente Railway
 
@@ -5117,20 +5118,29 @@ function salvarPushSubscriptions(lista) {
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
 }
 
-// Histórico de notificações — central de notificações do app (global, últimas 100)
+// Histórico de notificações — central de notificações do app (global, últimas 100).
+// Fica num arquivo próprio (não em data.json) pra não ser sobrescrito por outras
+// rotinas que carregam data.json no início e só salvam (saveData) bem depois —
+// isso apagava o histórico recém-gravado (race condition de read-modify-write).
+function loadNotifHistorico() {
+  try { return JSON.parse(fs.readFileSync(NOTIF_HIST_FILE, 'utf8')); } catch { return { itens: [], ultimaVista: 0 }; }
+}
+function saveNotifHistorico(hist) {
+  fs.writeFileSync(NOTIF_HIST_FILE, JSON.stringify(hist, null, 2));
+}
 function registrarNotificacaoHistorico(texto, categoria) {
   try {
-    const data = loadData();
-    const historico = Array.isArray(data.notificacoes_historico) ? data.notificacoes_historico : [];
-    historico.unshift({
+    const hist = loadNotifHistorico();
+    hist.itens = Array.isArray(hist.itens) ? hist.itens : [];
+    hist.itens.unshift({
       id:             Date.now() + '-' + Math.random().toString(36).slice(2, 7),
       categoria:      categoria || null,
       categoriaLabel: NOTIF_CATEGORIAS[categoria] || null,
       texto:          texto.replace(/<[^>]+>/g, ''),
       ts:             Date.now(),
     });
-    data.notificacoes_historico = historico.slice(0, 100);
-    fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+    hist.itens = hist.itens.slice(0, 100);
+    saveNotifHistorico(hist);
   } catch (e) {
     addLog(`Notificações: falha ao registrar histórico — ${e.message}`, 'warn');
   }
@@ -5815,17 +5825,17 @@ app.post('/api/push/teste', async (req, res) => {
 // ── Central de notificações (histórico, exibido no sino do app) ───
 
 app.get('/api/notificacoes', (req, res) => {
-  const data = loadData();
-  const itens = Array.isArray(data.notificacoes_historico) ? data.notificacoes_historico : [];
-  const ultimaVista = data.notificacoes_ultima_vista || 0;
+  const hist = loadNotifHistorico();
+  const itens = Array.isArray(hist.itens) ? hist.itens : [];
+  const ultimaVista = hist.ultimaVista || 0;
   const naoLidas = itens.filter(n => n.ts > ultimaVista).length;
   res.json({ itens, naoLidas });
 });
 
 app.post('/api/notificacoes/marcar-vistas', (req, res) => {
-  const data = loadData();
-  data.notificacoes_ultima_vista = Date.now();
-  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+  const hist = loadNotifHistorico();
+  hist.ultimaVista = Date.now();
+  saveNotifHistorico(hist);
   res.json({ ok: true });
 });
 
