@@ -257,3 +257,57 @@ function contasReceberRenderizarInvestigacao(d) {
     tbody.appendChild(tr);
   });
 }
+
+// ── Desvios de frete/comissão por SKU ────────────────────────────────────────
+
+async function contasReceberVerificarDesvios() {
+  const loading = document.getElementById('cr-desvios-loading');
+  const erro    = document.getElementById('cr-desvios-erro');
+  const status  = document.getElementById('cr-desvios-status');
+  const tabela  = document.getElementById('tabela-cr-desvios');
+  const tbody   = document.getElementById('tabela-cr-desvios-body');
+  const btn     = document.getElementById('btn-verificar-desvios');
+  if (loading) loading.style.display = 'block';
+  if (erro)    erro.style.display    = 'none';
+  if (btn)     btn.disabled          = true;
+
+  try {
+    const d = await fetch(`/api/lucro/desvios?conta=${window.CONTA_ATIVA}`).then(r => r.json());
+    if (d.error) throw new Error(typeof d.error === 'string' ? d.error : JSON.stringify(d.error));
+
+    const qtd = (d.desvios || []).length;
+    if (status) {
+      status.innerHTML = qtd > 0
+        ? `<span style="color:#dc2626;font-weight:600">⚠️ ${qtd} desvio${qtd !== 1 ? 's' : ''} encontrado${qtd !== 1 ? 's' : ''}</span> em ${d.totalPedidos} pedidos analisados.`
+        : `✅ Nenhum desvio encontrado em ${d.totalPedidos} pedidos analisados.`;
+    }
+
+    tbody.innerHTML = '';
+    if (!qtd) {
+      tabela.style.display = 'none';
+    } else {
+      tabela.style.display = 'table';
+      d.desvios.forEach(item => {
+        const fmtData = (iso) => iso ? String(iso).slice(0, 10).split('-').reverse().join('/') : '—';
+        const produto = item.sku ? `SKU ${item.sku}` : (item.mlb || '—');
+        const sinalCor = item.desvioPercent >= 0 ? '#dc2626' : '#16a34a';
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td><a href="https://www.mercadolivre.com.br/vendas/${escHtml(item.orderId)}/detalhe" target="_blank" rel="noopener">#${escHtml(item.orderId)}</a></td>
+          <td style="font-size:12px" title="${escHtml(item.titulo || '')}">${escHtml(produto)}</td>
+          <td style="font-size:12px">${item.tipo === 'frete' ? 'Frete' : 'Comissão'}</td>
+          <td class="col-num">${fmtBRL(item.valorCobrado)}</td>
+          <td class="col-num">${fmtBRL(item.valorTipico)}</td>
+          <td class="col-num" style="color:${sinalCor};font-weight:600">${item.desvioPercent >= 0 ? '+' : ''}${item.desvioPercent.toFixed(1)}%</td>
+          <td>${fmtData(item.data)}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+  } catch (err) {
+    if (erro) { erro.textContent = 'Erro ao verificar desvios: ' + err.message; erro.style.display = 'block'; }
+  }
+
+  if (loading) loading.style.display = 'none';
+  if (btn)     btn.disabled          = false;
+}

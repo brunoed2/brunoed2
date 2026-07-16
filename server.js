@@ -4097,6 +4097,75 @@ app.get('/api/lucro/gastos-auto', async (req, res) => {
   res.json({ ads_cost: adsCost, full_cost: fullCost });
 });
 
+// Busca pedidos pagos no período + custo de frete real por shipment (dividido entre pedidos
+// do mesmo pack). Compartilhado entre /api/lucro/vendas e /api/lucro/desvios.
+async function buscarVendasComCustos(c, headers, dateFrom, dateTo) {
+  let todasOrdens = [];
+  let offset = 0;
+  while (offset < 5000) {
+    const params = { seller: c.user_id, 'order.status': 'paid', sort: 'date_desc', limit: 50, offset };
+    if (dateFrom) params['order.date_created.from'] = dateFrom + 'T00:00:00.000-03:00';
+    if (dateTo)   params['order.date_created.to']   = dateTo   + 'T23:59:59.000-03:00';
+    const resp = await axios.get('https://api.mercadolibre.com/orders/search', { params, headers, timeout: 15000 });
+    const results = resp.data.results || [];
+    todasOrdens = todasOrdens.concat(results);
+    if (results.length < 50) break;
+    offset += 50;
+  }
+
+  // Busca custo de frete via /shipments/{id}/costs → senders[].cost, em lotes de 25
+  const shipmentIds = [...new Set(todasOrdens.map(o => o.shipping?.id).filter(Boolean))];
+  const fretePorShipment = {};
+  const BATCH = 25;
+  for (let i = 0; i < shipmentIds.length; i += BATCH) {
+    await Promise.all(
+      shipmentIds.slice(i, i + BATCH).map(async (sid) => {
+        try {
+          const r = await axios.get(`https://api.mercadolibre.com/shipments/${sid}/costs`, { headers, timeout: 8000 });
+          const senders = r.data?.senders || [];
+          const sender  = senders.find(s => s.user_id == c.user_id) || senders[0];
+          fretePorShipment[sid] = sender?.cost ?? 0;
+        } catch { fretePorShipment[sid] = 0; }
+      })
+    );
+  }
+
+  // Pedidos num mesmo pack (mesmo shipping.id) dividem o custo do frete igualmente
+  const pedidosPorShipment = {};
+  todasOrdens.forEach(o => {
+    const sid = o.shipping?.id;
+    if (sid) pedidosPorShipment[sid] = (pedidosPorShipment[sid] || 0) + 1;
+  });
+
+  return { todasOrdens, fretePorShipment, pedidosPorShipment, shipmentIds };
+}
+
+function montarVendas(todasOrdens, fretePorShipment, pedidosPorShipment) {
+  return todasOrdens.map(order => {
+    const itens = (order.order_items || []).map(oi => ({
+      mlb:        oi.item?.id         || '',
+      sku:        oi.item?.seller_sku || '',
+      titulo:     oi.item?.title      || '',
+      quantidade: oi.quantity         || 1,
+      precoUnit:  oi.unit_price       || 0,
+      taxaML:     (oi.sale_fee || 0) * (oi.quantity || 1), // sale_fee é por unidade
+    }));
+    const receita   = itens.reduce((s, i) => s + i.precoUnit * i.quantidade, 0);
+    const taxaML    = itens.reduce((s, i) => s + i.taxaML, 0);
+    const sid       = order.shipping?.id;
+    const freteBruto = fretePorShipment[sid] ?? 0;
+    const freteReal  = sid ? freteBruto / (pedidosPorShipment[sid] || 1) : 0;
+    return {
+      orderId: order.id,
+      data:    order.date_closed || order.date_created,
+      itens,
+      receita,
+      taxaML,
+      freteReal,
+    };
+  });
+}
+
 app.get('/api/lucro/vendas', async (req, res) => {
   const data    = loadData();
   const num     = req.query.conta || data.conta_ativa;
@@ -4110,48 +4179,8 @@ app.get('/api/lucro/vendas', async (req, res) => {
     const dateFrom = req.query.date_from; // YYYY-MM-DD (opcional)
     const dateTo   = req.query.date_to;   // YYYY-MM-DD (opcional)
 
-    // Busca pedidos paginando até acabar (max 20 páginas = 1000 pedidos por segurança)
-    let todasOrdens = [];
-    let offset = 0;
-    while (offset < 5000) {
-      const params = { seller: c.user_id, 'order.status': 'paid', sort: 'date_desc', limit: 50, offset };
-      if (dateFrom) params['order.date_created.from'] = dateFrom + 'T00:00:00.000-03:00';
-      if (dateTo)   params['order.date_created.to']   = dateTo   + 'T23:59:59.000-03:00';
-      const resp = await axios.get('https://api.mercadolibre.com/orders/search', {
-        params, headers, timeout: 15000,
-      });
-      const results = resp.data.results || [];
-      todasOrdens = todasOrdens.concat(results);
-      if (results.length < 50) break;
-      offset += 50;
-    }
-
-    // Busca custo de frete via /shipments/{id}/costs → senders[].cost
-    // Em lotes de 25 para não sobrecarregar a API do ML
-    const shipmentIds = [...new Set(todasOrdens.map(o => o.shipping?.id).filter(Boolean))];
-    const fretePorShipment = {};
-    const BATCH = 25;
-    for (let i = 0; i < shipmentIds.length; i += BATCH) {
-      await Promise.all(
-        shipmentIds.slice(i, i + BATCH).map(async (sid) => {
-          try {
-            const r = await axios.get(`https://api.mercadolibre.com/shipments/${sid}/costs`, {
-              headers, timeout: 8000,
-            });
-            const senders = r.data?.senders || [];
-            const sender  = senders.find(s => s.user_id == c.user_id) || senders[0];
-            fretePorShipment[sid] = sender?.cost ?? 0;
-          } catch { fretePorShipment[sid] = 0; }
-        })
-      );
-    }
-
-    // Pedidos num mesmo pack (mesmo shipping.id) dividem o custo do frete igualmente
-    const pedidosPorShipment = {};
-    todasOrdens.forEach(o => {
-      const sid = o.shipping?.id;
-      if (sid) pedidosPorShipment[sid] = (pedidosPorShipment[sid] || 0) + 1;
-    });
+    const { todasOrdens, fretePorShipment, pedidosPorShipment, shipmentIds } =
+      await buscarVendasComCustos(c, headers, dateFrom, dateTo);
 
     // Modo debug: mostra campo shipping dos pedidos + estrutura de custo dos shipments
     if (req.query.debug === '1') {
@@ -4171,34 +4200,83 @@ app.get('/api/lucro/vendas', async (req, res) => {
       return res.json({ shipment_ids_found: shipmentIds.length, orders_shipping: ordersShipping, shipments_raw: rawData });
     }
 
-    const vendas = todasOrdens.map(order => {
-      const itens = (order.order_items || []).map(oi => ({
-        mlb:        oi.item?.id         || '',
-        sku:        oi.item?.seller_sku || '',
-        titulo:     oi.item?.title      || '',
-        quantidade: oi.quantity         || 1,
-        precoUnit:  oi.unit_price       || 0,
-        taxaML:     (oi.sale_fee || 0) * (oi.quantity || 1), // sale_fee é por unidade
-      }));
-      const receita   = itens.reduce((s, i) => s + i.precoUnit * i.quantidade, 0);
-      const taxaML    = itens.reduce((s, i) => s + i.taxaML, 0);
-      const sid       = order.shipping?.id;
-      const freteBruto = fretePorShipment[sid] ?? 0;
-      const freteReal  = sid ? freteBruto / (pedidosPorShipment[sid] || 1) : 0;
-      return {
-        orderId: order.id,
-        data:    order.date_closed || order.date_created,
-        itens,
-        receita,
-        taxaML,
-        freteReal,
-      };
-    });
-
+    const vendas = montarVendas(todasOrdens, fretePorShipment, pedidosPorShipment);
     res.json({ vendas });
   } catch (err) {
     addLog(`Lucro: erro ao buscar vendas — ${err.message}`, 'erro');
     res.json({ error: `Erro ao buscar vendas: ${err.message}` });
+  }
+});
+
+function mediana(valores) {
+  const arr = [...valores].sort((a, b) => a - b);
+  const meio = Math.floor(arr.length / 2);
+  return arr.length % 2 ? arr[meio] : (arr[meio - 1] + arr[meio]) / 2;
+}
+
+// Agrupa por SKU (ou MLB quando não tem SKU) e aponta pedidos cujo frete ou comissão
+// destoam da mediana do grupo — não sabemos qual é o valor "correto" pela tabela do ML,
+// mas um pedido que foge muito do padrão do mesmo produto vale um olhar manual.
+function detectarDesvios(vendas, { desvioMinimo = 0.15, minAmostras = 3 } = {}) {
+  const grupos = {};
+  vendas.forEach(venda => {
+    venda.itens.forEach(item => {
+      // SKU vazio ou o placeholder '—' do backend não serve pra agrupar produtos diferentes juntos
+      const chave = (item.sku && item.sku !== '—') ? `sku:${item.sku}` : `mlb:${item.mlb}`;
+      if (!chave || chave === 'mlb:') return;
+      (grupos[chave] ||= []).push({
+        orderId:  venda.orderId,
+        data:     venda.data,
+        titulo:   item.titulo,
+        sku:      item.sku || null,
+        mlb:      item.mlb || null,
+        frete:    venda.itens.length ? venda.freteReal / venda.itens.length : 0,
+        comissao: item.taxaML,
+      });
+    });
+  });
+
+  const desvios = [];
+  for (const itens of Object.values(grupos)) {
+    if (itens.length < minAmostras) continue;
+    const medFrete    = mediana(itens.map(i => i.frete));
+    const medComissao = mediana(itens.map(i => i.comissao));
+    itens.forEach(item => {
+      if (medFrete > 0) {
+        const desvio = (item.frete - medFrete) / medFrete;
+        if (Math.abs(desvio) > desvioMinimo) {
+          desvios.push({ ...item, tipo: 'frete', valorCobrado: item.frete, valorTipico: medFrete, desvioPercent: desvio * 100 });
+        }
+      }
+      if (medComissao > 0) {
+        const desvio = (item.comissao - medComissao) / medComissao;
+        if (Math.abs(desvio) > desvioMinimo) {
+          desvios.push({ ...item, tipo: 'comissão', valorCobrado: item.comissao, valorTipico: medComissao, desvioPercent: desvio * 100 });
+        }
+      }
+    });
+  }
+  return desvios.sort((a, b) => Math.abs(b.desvioPercent) - Math.abs(a.desvioPercent));
+}
+
+// Verifica pedidos dos últimos N dias cujo frete/comissão destoa do histórico do mesmo SKU/MLB
+app.get('/api/lucro/desvios', async (req, res) => {
+  const data = loadData();
+  const num  = req.query.conta || data.conta_ativa;
+  const c    = data.contas[num];
+  if (!c?.access_token) return res.json({ error: 'Não conectado' });
+  if (!c.user_id)       return res.json({ error: 'user_id não encontrado' });
+  const headers = { Authorization: `Bearer ${c.access_token}` };
+  const dias = Math.min(parseInt(req.query.dias) || 60, 365);
+
+  try {
+    const dateFrom = new Date(Date.now() - dias * 86400000).toISOString().slice(0, 10);
+    const { todasOrdens, fretePorShipment, pedidosPorShipment } = await buscarVendasComCustos(c, headers, dateFrom, null);
+    const vendas  = montarVendas(todasOrdens, fretePorShipment, pedidosPorShipment);
+    const desvios = detectarDesvios(vendas);
+    res.json({ ok: true, totalPedidos: vendas.length, desvios });
+  } catch (err) {
+    res.json({ error: `Erro ao verificar desvios: ${err.message}` });
   }
 });
 

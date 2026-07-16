@@ -583,6 +583,32 @@
             <tbody id="tabela-cr-investigar-body"></tbody>
           </table>
         </div>
+
+        <!-- Desvios de frete/comissão por SKU -->
+        <div class="card" style="margin-top:24px">
+          <h2>Desvios de frete/comissão</h2>
+          <p class="card-desc">Compara o frete e a comissão de cada venda dos últimos 60 dias com a mediana do mesmo produto (SKU/MLB) — aponta pedidos que cobraram bem diferente do padrão, pra você avaliar se vale reclamar com o Mercado Livre. Não sabemos qual é o valor "correto" pela tabela deles, só o que foge do seu próprio histórico.</p>
+          <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+            <button class="btn-secondary" onclick="contasReceberVerificarDesvios()" id="btn-verificar-desvios">🔍 Verificar desvios (últimos 60 dias)</button>
+          </div>
+          <div id="cr-desvios-loading" class="loading" style="display:none">Analisando vendas dos últimos 60 dias...</div>
+          <div id="cr-desvios-erro" class="estoque-erro" style="display:none"></div>
+          <div id="cr-desvios-status" style="font-size:13px;color:#64748b;margin-bottom:10px"></div>
+          <table class="tabela" id="tabela-cr-desvios" style="display:none">
+            <thead>
+              <tr>
+                <th>Pedido</th>
+                <th>Produto</th>
+                <th>Tipo</th>
+                <th class="col-num">Cobrado</th>
+                <th class="col-num">Típico (mediana)</th>
+                <th class="col-num">Desvio</th>
+                <th>Data</th>
+              </tr>
+            </thead>
+            <tbody id="tabela-cr-desvios-body"></tbody>
+          </table>
+        </div>
       </section>
 
       <!-- ── Aba: Estoque ── -->
@@ -1631,6 +1657,6 @@
     </div>
   </div>
 
-  <div id="version-badge">v660</div>
+  <div id="version-badge">v661</div>
 </body>
 </html>
