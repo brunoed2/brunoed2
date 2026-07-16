@@ -6297,7 +6297,7 @@ app.post('/api/contas-receber/solicitar-relatorio', async (req, res) => {
   const c    = data.contas[num];
   if (!c?.access_token) return res.json({ error: 'Não conectado' });
   const headers = { Authorization: `Bearer ${c.access_token}` };
-  const dias  = Math.min(parseInt(req.query.dias) || 90, 365);
+  const dias  = Math.min(parseInt(req.query.dias) || 60, 60); // MP recusa (400) acima de 60 dias
   const hoje   = new Date();
   const inicio = new Date(hoje.getTime() - dias * 86400000);
 
