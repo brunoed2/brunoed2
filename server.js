@@ -6339,7 +6339,25 @@ app.get('/api/contas-receber/debug-pagamento/:order_id', async (req, res) => {
   if (!c?.access_token) return res.json({ error: 'Não conectado' });
   const headers = { Authorization: `Bearer ${c.access_token}` };
   try {
-    const order = await axios.get(`https://api.mercadolibre.com/orders/${req.params.order_id}`, { headers, timeout: 10000 }).then(r => r.data);
+    let order;
+    try {
+      order = await axios.get(`https://api.mercadolibre.com/orders/${req.params.order_id}`, { headers, timeout: 10000 }).then(r => r.data);
+    } catch (e) {
+      if (e.response?.status === 404) {
+        // Pode não ser um order_id de verdade — tenta como pack_id (venda com vários itens juntos)
+        try {
+          const pack = await axios.get(`https://api.mercadolibre.com/packs/${req.params.order_id}`, { headers, timeout: 10000 }).then(r => r.data);
+          return res.json({ eraPackId: true, pack });
+        } catch (e2) {
+          return res.json({
+            error: 'Não encontrado nem como order_id nem como pack_id',
+            order_error: e.response?.data || e.message,
+            pack_error:  e2.response?.data || e2.message,
+          });
+        }
+      }
+      throw e;
+    }
     const paymentId = order.payments?.[0]?.id;
     if (!paymentId) return res.json({ error: 'Pedido sem payment id', order_status: order.status, payments: order.payments });
 
