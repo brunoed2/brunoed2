@@ -132,7 +132,6 @@ function loadData() {
   raw.contas_receber                 = raw.contas_receber                 || {};
   raw.contas_receber['1']            = raw.contas_receber['1']            || [];
   raw.contas_receber['2']            = raw.contas_receber['2']            || [];
-  raw.contas_receber_extrato         = raw.contas_receber_extrato         || {};
   raw.contas_receber_saldo_base      = raw.contas_receber_saldo_base      || {};
   // Auto-configura fornecedor HANDDRY na conta 1
   raw.fornecedores_por_conta = raw.fornecedores_por_conta || {};
@@ -5902,7 +5901,6 @@ app.delete('/api/contas-pagar/:id', async (req, res) => {
 // A verificação periódica compara o previsto com o que realmente aconteceu.
 
 const CR_TOLERANCIA_VALOR = 0.05; // R$ — diferença acima disso é reportada como divergência
-const CR_TOLERANCIA_ATRASO_DIAS = 3; // dias após a previsão sem liberar = divergência
 
 function crEstaLiberado(col) {
   const s = (col?.money_release_status || '').toLowerCase();
@@ -5925,76 +5923,6 @@ async function crBuscarPagamento(paymentId, headers) {
   } catch (e) {
     return { error: e.response?.data || e.message };
   }
-}
-
-// ── Reconciliação agregada — extrato (settlement_report) do Mercado Pago ─────
-// Fica em api.mercadopago.com (não api.mercadolibre.com) e é um relatório
-// assíncrono: gera (POST), espera processar (GET list), baixa o CSV (GET file_name).
-// Cada linha traz ORDER_ID + SETTLEMENT_NET_AMOUNT + SETTLEMENT_DATE — dá pra bater
-// contra os pedidos já rastreados e sobra o que não tem pedido associado.
-
-function crParseCsvLinha(linha, delim = ';') {
-  const out = [];
-  let cur = '';
-  let emAspas = false;
-  for (let i = 0; i < linha.length; i++) {
-    const ch = linha[i];
-    if (emAspas) {
-      if (ch === '"') {
-        if (linha[i + 1] === '"') { cur += '"'; i++; }
-        else emAspas = false;
-      } else cur += ch;
-    } else {
-      if (ch === '"') emAspas = true;
-      else if (ch === delim) { out.push(cur); cur = ''; }
-      else cur += ch;
-    }
-  }
-  out.push(cur);
-  return out;
-}
-
-function crParseCsv(csvText) {
-  const linhas = csvText.split(/\r?\n/).filter(l => l.trim().length);
-  if (!linhas.length) return [];
-  const colunas = crParseCsvLinha(linhas[0]);
-  return linhas.slice(1).map(linha => {
-    const valores = crParseCsvLinha(linha);
-    const obj = {};
-    colunas.forEach((col, i) => { obj[col] = valores[i]; });
-    return obj;
-  });
-}
-
-// Gera o settlement_report (últimos `dias` OU a partir de `beginDate` explícito), espera
-// processar e devolve o CSV cru. Pode levar dezenas de segundos — é síncrono de propósito
-// (chamado só sob demanda, pelo botão "Verificar extrato completo" — dispara e-mail do MP).
-async function crGerarEBaixarExtrato(headers, { dias, beginDate } = {}) {
-  const hoje   = new Date();
-  const inicio = beginDate ? new Date(beginDate) : new Date(hoje.getTime() - (dias || 30) * 86400000);
-  const gerar  = await axios.post(
-    'https://api.mercadopago.com/v1/account/settlement_report',
-    { begin_date: inicio.toISOString(), end_date: hoje.toISOString() },
-    { headers, timeout: 15000 },
-  );
-  const reportId = gerar.data.id;
-
-  // Na prática o MP pode levar bem mais que 30s pra processar (visto com relatório real
-  // demorando ~40s) — espera até 2min antes de desistir.
-  let fileName = null;
-  for (let tentativa = 0; tentativa < 30 && !fileName; tentativa++) {
-    await new Promise(r => setTimeout(r, 4000));
-    const lista = await axios.get('https://api.mercadopago.com/v1/account/settlement_report/list', { headers, timeout: 10000 });
-    const item = (lista.data || []).find(x => x.id === reportId);
-    if (item?.status === 'processed') fileName = item.file_name;
-    else if (item?.status === 'cancelled' || item?.status === 'error') {
-      throw new Error(`Relatório do MP falhou (status=${item.status})`);
-    }
-  }
-  if (!fileName) throw new Error('Relatório não processou a tempo (timeout de 2min) — tente de novo em alguns minutos');
-
-  const csv = await axios.get(`https://api.mercadopago.com/v1/account/settlement_report/${fileName}`, { headers, timeout: 20000 });
-  return String(csv.data);
 }
 
 app.get('/api/contas-receber', (req, res) => {
@@ -6112,13 +6040,13 @@ app.post('/api/contas-receber/verificar', async (req, res) => {
             item.situacao    = 'liberado';
             item.divergencia = null;
           }
-        } else if (item.dataLiberacaoEsperada) {
-          const previsao = new Date(item.dataLiberacaoEsperada);
-          const diasAtraso = (Date.now() - previsao.getTime()) / 86400000;
-          if (diasAtraso > CR_TOLERANCIA_ATRASO_DIAS) {
-            item.situacao    = 'divergente';
-            item.divergencia = { tipo: 'atraso', detalhe: `Previsto para ${item.dataLiberacaoEsperada.slice(0,10)}, ainda não liberado (${Math.floor(diasAtraso)} dias de atraso)` };
-          } else if (col.money_release_date && col.money_release_date !== item.dataLiberacaoEsperada) {
+        } else {
+          // Ainda não liberou — fica "pendente" independente de quanto atrasou (atraso sozinho
+          // não é problema, só timing; só vira "divergente" se o VALOR não bater na liberação).
+          // Reseta registros antigos que ficaram presos em "divergente" pelo bug de atraso já corrigido.
+          item.situacao    = 'pendente';
+          item.divergencia = null;
+          if (col.money_release_date && col.money_release_date !== item.dataLiberacaoEsperada) {
             item.dataLiberacaoEsperada = col.money_release_date; // MP revisou a previsão
           }
         }
@@ -6139,95 +6067,18 @@ app.post('/api/contas-receber/verificar', async (req, res) => {
   }
 });
 
-// Verificação agregada: gera o extrato completo (settlement_report) do Mercado Pago,
-// atualiza os pedidos conhecidos com o valor/data REAIS de liquidação, e separa os
-// movimentos que não batem com nenhum pedido rastreado (dinheiro sem "dono" na base).
-app.post('/api/contas-receber/sync-extrato', async (req, res) => {
-  const data = loadData();
-  const num  = String(req.query.conta || data.conta_ativa || '1');
-  const c    = data.contas[num];
-  if (!c?.access_token) return res.json({ error: 'Não conectado' });
-  const headers = { Authorization: `Bearer ${c.access_token}` };
-  const dias = Math.min(parseInt(req.query.dias) || 30, 90);
-
-  try {
-    const csvText = await crGerarEBaixarExtrato(headers, { dias });
-    const linhas  = crParseCsv(csvText);
-
-    data.contas_receber = data.contas_receber || {};
-    const lista = data.contas_receber[num] = data.contas_receber[num] || [];
-    const porOrderId = {};
-    lista.forEach(item => { porOrderId[String(item.orderId)] = item; });
-
-    const gruposPorOrder    = {};
-    const naoIdentificados  = [];
-
-    for (const linha of linhas) {
-      const tipo    = linha.TRANSACTION_TYPE;
-      const orderId = (linha.ORDER_ID || '').trim();
-      const valor   = parseFloat(linha.SETTLEMENT_NET_AMOUNT) || 0;
-      const ehSettlementDeVenda = tipo === 'SETTLEMENT' || tipo === 'SETTLEMENT_SHIPPING';
-
-      if (ehSettlementDeVenda && orderId && porOrderId[orderId]) {
-        if (!gruposPorOrder[orderId]) gruposPorOrder[orderId] = { valor: 0, data: linha.SETTLEMENT_DATE };
-        gruposPorOrder[orderId].valor += valor;
-        if (linha.SETTLEMENT_DATE > gruposPorOrder[orderId].data) gruposPorOrder[orderId].data = linha.SETTLEMENT_DATE;
-      } else {
-        naoIdentificados.push({
-          sourceId: linha.SOURCE_ID,
-          orderId:  orderId || null,
-          tipo,
-          valor,
-          data: linha.SETTLEMENT_DATE || linha.TRANSACTION_DATE,
-        });
-      }
-    }
-
-    let atualizados = 0;
-    const agora = new Date().toISOString();
-    for (const [orderId, grupo] of Object.entries(gruposPorOrder)) {
-      const item = porOrderId[orderId];
-      const diff = Math.abs(grupo.valor - (item.valorEsperado ?? 0));
-      item.valorReal         = grupo.valor;
-      item.dataLiberacaoReal = grupo.data;
-      if (item.valorEsperado != null && diff > CR_TOLERANCIA_VALOR) {
-        item.situacao    = 'divergente';
-        item.divergencia = { tipo: 'valor', detalhe: `Extrato mostra R$${grupo.valor.toFixed(2)} liquidado, esperado R$${item.valorEsperado.toFixed(2)}` };
-      } else {
-        item.situacao    = 'liberado';
-        item.divergencia = null;
-      }
-      item.atualizadoEm = agora;
-      atualizados++;
-    }
-
-    data.contas_receber_extrato = data.contas_receber_extrato || {};
-    data.contas_receber_extrato[num] = { ts: Date.now(), diasVerificados: dias, totalMovimentos: linhas.length, naoIdentificados };
-
-    saveData(data);
-    res.json({ ok: true, atualizados, totalMovimentos: linhas.length, naoIdentificados: naoIdentificados.length });
-  } catch (err) {
-    res.json({ error: err.response?.data || err.message });
-  }
-});
-
-app.get('/api/contas-receber/extrato', (req, res) => {
-  const data = loadData();
-  const num  = String(req.query.conta || data.conta_ativa || '1');
-  const snap = (data.contas_receber_extrato || {})[num] || null;
-  res.json({ extrato: snap });
-});
-
 // ── Saldo informado: usuário digita o saldo real (visto no app do MP) num momento,
-// e a gente soma, por cima disso, o que os pedidos JÁ RASTREADOS liberaram desde então
-// (via /v1/payments, sem gerar relatório nenhum — não dispara e-mail do MP).
+// já separado em liberado + a liberar, e a gente projeta os três totais (liberado, a
+// liberar, geral) somando por cima o que os pedidos JÁ RASTREADOS forem liberando desde
+// então (via /v1/payments — sem gerar relatório nenhum, não dispara e-mail do MP).
 app.post('/api/contas-receber/saldo-base', (req, res) => {
-  const valor = parseFloat(req.body?.valor);
-  if (isNaN(valor)) return res.status(400).json({ error: 'Valor inválido' });
+  const liberado  = parseFloat(req.body?.liberado);
+  const aLiberar  = parseFloat(req.body?.aLiberar);
+  if (isNaN(liberado) || isNaN(aLiberar)) return res.status(400).json({ error: 'Valores inválidos' });
   const data = loadData();
   const num  = String(req.query.conta || data.conta_ativa || '1');
   data.contas_receber_saldo_base = data.contas_receber_saldo_base || {};
-  data.contas_receber_saldo_base[num] = { valor, ts: Date.now() };
+  data.contas_receber_saldo_base[num] = { liberado, aLiberar, ts: Date.now() };
   saveData(data);
   res.json({ ok: true, saldoBase: data.contas_receber_saldo_base[num] });
 });
@@ -6239,17 +6090,34 @@ app.get('/api/contas-receber/saldo-base', (req, res) => {
   if (!base) return res.json({ saldoBase: null });
 
   const lista = (data.contas_receber || {})[num] || [];
+
+  // Total geral: soma de TODO pedido aprovado depois do marco (liberado ou não — o dinheiro
+  // já existe em algum lugar da conta assim que a venda aprova, só muda de gaveta depois).
+  const novosDesdeBase = lista.filter(item => item.dataPedido && new Date(item.dataPedido).getTime() > base.ts);
+  const somaNovos = novosDesdeBase.reduce((s, item) => s + (item.valorEsperado ?? 0), 0);
+  const totalT0 = base.liberado + base.aLiberar;
+  const totalEsperado = totalT0 + somaNovos;
+
+  // Liberado: soma de qualquer pedido (novo ou já existente antes do marco) cuja liberação
+  // aconteceu depois do marco — não importa quando o pedido foi feito, só quando liberou.
   const liberadosDepois = lista.filter(item => {
     if (item.situacao !== 'liberado') return false;
     const dataLiberacao = item.dataLiberacaoReal || item.dataLiberacaoEsperada || item.atualizadoEm;
     return dataLiberacao && new Date(dataLiberacao).getTime() > base.ts;
   });
-  const soma = liberadosDepois.reduce((s, item) => s + (item.valorReal ?? item.valorEsperado ?? 0), 0);
+  const somaLiberados = liberadosDepois.reduce((s, item) => s + (item.valorReal ?? item.valorEsperado ?? 0), 0);
+  const liberadoEsperado = base.liberado + somaLiberados;
+
+  // A liberar é derivado (total - liberado), assim nunca destoa do total por construção.
+  const aLiberarEsperado = totalEsperado - liberadoEsperado;
 
   res.json({
-    saldoBase:      base,
-    saldoEsperado:  base.valor + soma,
-    qtdLiberacoes:  liberadosDepois.length,
+    saldoBase:       base,
+    totalEsperado,
+    liberadoEsperado,
+    aLiberarEsperado,
+    qtdNovos:        novosDesdeBase.length,
+    qtdLiberacoes:   liberadosDepois.length,
   });
 });
 

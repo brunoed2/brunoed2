@@ -7,7 +7,6 @@ let crCarregado   = false;
 
 function contasReceberInit() {
   if (!crCarregado) contasReceberAtualizar();
-  contasReceberCarregarExtrato();
   contasReceberCarregarSaldoBase();
 }
 
@@ -28,6 +27,7 @@ async function contasReceberAtualizar() {
     if (verif.error) throw new Error(typeof verif.error === 'string' ? verif.error : JSON.stringify(verif.error));
 
     await contasReceberCarregar();
+    await contasReceberCarregarSaldoBase(); // pedidos novos/liberados mudam a projeção
   } catch (err) {
     if (erro) {
       erro.textContent   = 'Erro ao atualizar contas a receber: ' + err.message;
@@ -114,81 +114,6 @@ function contasReceberRenderizar() {
   if (elD) elD.textContent = divergentes;
 }
 
-// ── Extrato agregado (settlement_report do Mercado Pago) ────────────────────
-
-// Carrega a última verificação já salva, sem disparar uma nova (rápido, ao abrir a aba)
-async function contasReceberCarregarExtrato() {
-  try {
-    const d = await fetch(`/api/contas-receber/extrato?conta=${window.CONTA_ATIVA}`).then(r => r.json());
-    contasReceberRenderizarExtrato(d.extrato);
-  } catch {
-    contasReceberRenderizarExtrato(null);
-  }
-}
-
-// Dispara a geração + download do extrato completo no Mercado Pago (pode levar até ~1min)
-async function contasReceberVerificarExtrato() {
-  const loading = document.getElementById('cr-extrato-loading');
-  const erro    = document.getElementById('cr-extrato-erro');
-  const btn     = document.getElementById('btn-verificar-extrato');
-  if (loading) loading.style.display = 'block';
-  if (erro)    erro.style.display    = 'none';
-  if (btn)     btn.disabled          = true;
-
-  try {
-    const r = await fetch(`/api/contas-receber/sync-extrato?conta=${window.CONTA_ATIVA}`, { method: 'POST' }).then(r => r.json());
-    if (r.error) throw new Error(typeof r.error === 'string' ? r.error : JSON.stringify(r.error));
-    await contasReceberCarregar();          // pedidos podem ter mudado de situação
-    await contasReceberCarregarExtrato();   // recarrega o resumo salvo
-  } catch (err) {
-    if (erro) {
-      erro.textContent   = 'Erro ao verificar extrato: ' + err.message;
-      erro.style.display = 'block';
-    }
-  }
-
-  if (loading) loading.style.display = 'none';
-  if (btn)     btn.disabled          = false;
-}
-
-function contasReceberRenderizarExtrato(snap) {
-  const statusEl = document.getElementById('cr-extrato-status');
-  const tabela   = document.getElementById('tabela-cr-extrato');
-  const tbody    = document.getElementById('tabela-cr-extrato-body');
-  if (!statusEl || !tbody) return;
-
-  if (!snap) {
-    statusEl.textContent = 'Ainda não verificado.';
-    tabela.style.display = 'none';
-    return;
-  }
-
-  const dataHora = new Date(snap.ts).toLocaleString('pt-BR');
-  const qtd = (snap.naoIdentificados || []).length;
-  statusEl.innerHTML = qtd > 0
-    ? `<span style="color:#dc2626;font-weight:600">⚠️ ${qtd} movimento${qtd !== 1 ? 's' : ''} não identificado${qtd !== 1 ? 's' : ''}</span> de ${snap.totalMovimentos} no extrato — última verificação em ${dataHora} (últimos ${snap.diasVerificados} dias)`
-    : `✅ Nenhum movimento não identificado — última verificação em ${dataHora} (últimos ${snap.diasVerificados} dias, ${snap.totalMovimentos} movimentos no total)`;
-
-  tbody.innerHTML = '';
-  if (!qtd) {
-    tabela.style.display = 'none';
-    return;
-  }
-  tabela.style.display = 'table';
-  snap.naoIdentificados.forEach(m => {
-    const fmtData = (iso) => iso ? String(iso).slice(0, 10).split('-').reverse().join('/') : '—';
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td style="font-size:12px">${escHtml(m.sourceId)}</td>
-      <td>${m.orderId ? '#' + escHtml(m.orderId) : '—'}</td>
-      <td style="font-size:12px">${escHtml(m.tipo)}</td>
-      <td class="col-num">${fmtBRL(m.valor)}</td>
-      <td>${fmtData(m.data)}</td>
-    `;
-    tbody.appendChild(tr);
-  });
-}
-
 // ── Saldo informado — sem gerar relatório, só com o que já rastreamos por pedido ─────
 
 async function contasReceberCarregarSaldoBase() {
@@ -201,11 +126,13 @@ async function contasReceberCarregarSaldoBase() {
 }
 
 async function contasReceberSalvarSaldoBase() {
-  const input = document.getElementById('cr-saldo-input');
-  const erro  = document.getElementById('cr-saldo-base-erro');
-  const valor = parseFloat(input?.value);
-  if (isNaN(valor)) {
-    if (erro) { erro.textContent = 'Digite um valor válido.'; erro.style.display = 'block'; }
+  const inputLiberado = document.getElementById('cr-saldo-liberado-input');
+  const inputALiberar = document.getElementById('cr-saldo-aliberar-input');
+  const erro          = document.getElementById('cr-saldo-base-erro');
+  const liberado = parseFloat(inputLiberado?.value);
+  const aLiberar = parseFloat(inputALiberar?.value);
+  if (isNaN(liberado) || isNaN(aLiberar)) {
+    if (erro) { erro.textContent = 'Preencha os dois valores.'; erro.style.display = 'block'; }
     return;
   }
   if (erro) erro.style.display = 'none';
@@ -213,10 +140,11 @@ async function contasReceberSalvarSaldoBase() {
     const d = await fetch(`/api/contas-receber/saldo-base?conta=${window.CONTA_ATIVA}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ valor }),
+      body: JSON.stringify({ liberado, aLiberar }),
     }).then(r => r.json());
     if (d.error) throw new Error(d.error);
-    if (input) input.value = '';
+    if (inputLiberado) inputLiberado.value = '';
+    if (inputALiberar) inputALiberar.value = '';
     await contasReceberCarregarSaldoBase();
   } catch (err) {
     if (erro) { erro.textContent = 'Erro ao salvar saldo: ' + err.message; erro.style.display = 'block'; }
@@ -224,16 +152,25 @@ async function contasReceberSalvarSaldoBase() {
 }
 
 function contasReceberRenderizarSaldoBase(d) {
-  const statusEl = document.getElementById('cr-saldo-base-status');
+  const statusEl   = document.getElementById('cr-saldo-base-status');
+  const elLiberado = document.getElementById('cr-saldo-out-liberado');
+  const elALiberar = document.getElementById('cr-saldo-out-aliberar');
+  const elTotal    = document.getElementById('cr-saldo-out-total');
   if (!statusEl) return;
 
   if (!d || !d.saldoBase) {
     statusEl.textContent = 'Nenhum saldo informado ainda.';
+    if (elLiberado) elLiberado.textContent = '—';
+    if (elALiberar) elALiberar.textContent = '—';
+    if (elTotal)    elTotal.textContent    = '—';
     return;
   }
 
+  if (elLiberado) elLiberado.textContent = fmtBRL(d.liberadoEsperado);
+  if (elALiberar) elALiberar.textContent = fmtBRL(d.aLiberarEsperado);
+  if (elTotal)    elTotal.textContent    = fmtBRL(d.totalEsperado);
+
   const dataBase = new Date(d.saldoBase.ts).toLocaleString('pt-BR');
-  statusEl.innerHTML = `Saldo informado: <strong>${fmtBRL(d.saldoBase.valor)}</strong> em ${dataBase}.<br>`
-    + `Saldo esperado agora: <strong style="color:#16a34a">${fmtBRL(d.saldoEsperado)}</strong> `
-    + `(${d.qtdLiberacoes} liberaç${d.qtdLiberacoes !== 1 ? 'ões' : 'ão'} desde então) — confira com o app do Mercado Pago.`;
+  statusEl.innerHTML = `Informado em ${dataBase}: liberado ${fmtBRL(d.saldoBase.liberado)} + a liberar ${fmtBRL(d.saldoBase.aLiberar)}. `
+    + `Desde então: ${d.qtdNovos} pedido${d.qtdNovos !== 1 ? 's' : ''} novo${d.qtdNovos !== 1 ? 's' : ''}, ${d.qtdLiberacoes} liberaç${d.qtdLiberacoes !== 1 ? 'ões' : 'ão'}.`;
 }
