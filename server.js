@@ -6138,14 +6138,19 @@ app.post('/api/contas-receber/verificar', async (req, res) => {
         } else {
           // Ainda não liberou — fica "pendente" independente de quanto atrasou (atraso sozinho
           // não é problema, só timing; só vira "divergente" se o VALOR não bater na liberação).
-          // Reseta registros antigos que ficaram presos em "divergente" pelo bug de atraso já corrigido.
-          item.situacao    = 'pendente';
-          item.divergencia = null;
           if (col.money_release_date && col.money_release_date !== item.dataLiberacaoEsperada) {
-            item.dataLiberacaoEsperada = col.money_release_date; // MP revisou a previsão
+            item.dataLiberacaoEsperada = col.money_release_date; // data pode mudar livremente, é só timing
           }
-          if (col.net_received_amount != null && col.net_received_amount !== item.valorEsperado) {
-            item.valorEsperado = col.net_received_amount; // MP recalculou o valor líquido
+          // O valor esperado NUNCA é sobrescrito aqui — é a "promessa original". Se o MP revisar
+          // pra baixo/cima antes de liberar, isso é sinal de alerta (vira divergente), não algo
+          // pra aceitar em silêncio — senão, quando liberasse o valor já revisado, pareceria "ok".
+          if (item.valorEsperado != null && col.net_received_amount != null
+              && Math.abs(col.net_received_amount - item.valorEsperado) > CR_TOLERANCIA_VALOR) {
+            item.situacao    = 'divergente';
+            item.divergencia = { tipo: 'valor_revisto', detalhe: `MP revisou de R$${item.valorEsperado.toFixed(2)} pra R$${col.net_received_amount.toFixed(2)} antes de liberar` };
+          } else {
+            item.situacao    = 'pendente';
+            item.divergencia = null;
           }
         }
         item.atualizadoEm = agora;
