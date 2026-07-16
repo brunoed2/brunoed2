@@ -6333,9 +6333,11 @@ app.post('/api/contas-receber/investigar', uploadMem.single('csv'), (req, res) =
       const tipo    = linha.TRANSACTION_TYPE;
       const orderId = (linha.ORDER_ID || '').trim();
       const valor   = parseFloat(linha.SETTLEMENT_NET_AMOUNT) || 0;
-      const ehSettlementDeVenda = tipo === 'SETTLEMENT' || tipo === 'SETTLEMENT_SHIPPING';
 
-      if (ehSettlementDeVenda && orderId && porOrderId[orderId]) {
+      // Qualquer linha com ORDER_ID de um pedido já rastreado é "identificada" — não só
+      // SETTLEMENT. Um DISPUTE ou REFUND ligado a um pedido conhecido não é dinheiro "sem
+      // dono", é exatamente o cancelamento/estorno que o /verificar já rastreia.
+      if (orderId && porOrderId[orderId]) {
         identificados++;
       } else {
         naoIdentificados.push({
