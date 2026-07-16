@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Painel</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📦</text></svg>">
-  <link rel="stylesheet" href="/css/style.css?v=10">
+  <link rel="stylesheet" href="/css/style.css?v=11">
   <link rel="manifest" href="/manifest.json">
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
   <meta name="theme-color" content="#2563eb">
@@ -27,6 +27,17 @@
       location.href = '/';
     }
   </script>
+
+  <!-- Central de notificações -->
+  <button id="notif-central-btn" onclick="notifCentralToggle()" aria-label="Notificações">
+    🔔
+    <span id="notif-central-badge"></span>
+  </button>
+  <div id="notif-central-overlay" onclick="notifCentralFechar()"></div>
+  <div id="notif-central-painel">
+    <div id="notif-central-header">Notificações</div>
+    <div id="notif-central-lista"></div>
+  </div>
 
   <div class="layout">
 
@@ -1364,6 +1375,7 @@
   <script src="/js/app-v2.js?v=3"></script>
   <script src="/js/operacoes.js?v=1"></script>
   <script src="/js/conexao.js"></script>
+  <script src="/js/notificacoes-central.js?v=1"></script>
   <script src="/js/contas-pagar.js?v=1"></script>
   <script src="/js/contas-receber.js?v=1"></script>
   <script src="/js/backup.js?v=1"></script>
@@ -1595,6 +1607,6 @@
     </div>
   </div>
 
-  <div id="version-badge">v643</div>
+  <div id="version-badge">v644</div>
 </body>
 </html>

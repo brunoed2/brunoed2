@@ -4989,6 +4989,25 @@ function salvarPushSubscriptions(lista) {
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
 }
 
+// Histórico de notificações — central de notificações do app (global, últimas 100)
+function registrarNotificacaoHistorico(texto, categoria) {
+  try {
+    const data = loadData();
+    const historico = Array.isArray(data.notificacoes_historico) ? data.notificacoes_historico : [];
+    historico.unshift({
+      id:             Date.now() + '-' + Math.random().toString(36).slice(2, 7),
+      categoria:      categoria || null,
+      categoriaLabel: NOTIF_CATEGORIAS[categoria] || null,
+      texto:          texto.replace(/<[^>]+>/g, ''),
+      ts:             Date.now(),
+    });
+    data.notificacoes_historico = historico.slice(0, 100);
+    fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+  } catch (e) {
+    addLog(`Notificações: falha ao registrar histórico — ${e.message}`, 'warn');
+  }
+}
+
 // Um usuário recebe a categoria se: não tiver preferência salva (padrão = recebe tudo)
 // ou se a categoria estiver na lista de notificações escolhidas por ele.
 function usuarioRecebeCategoria(usuario, categoria) {
@@ -5038,6 +5057,7 @@ async function enviarWhatsApp(phone, apikey, texto) {
 
 // Notificações de contas a pagar e anúncios pausados
 async function notificar(texto, categoria) {
+  registrarNotificacaoHistorico(texto, categoria);
   await Promise.allSettled([
     enviarTelegram(texto),
     enviarWhatsApp(CALLMEBOT_PHONE, CALLMEBOT_APIKEY, texto),
@@ -5047,6 +5067,7 @@ async function notificar(texto, categoria) {
 
 // Notificações de pedidos novos — Telegram + CallMeBot
 async function notificarPedido(texto, categoria = 'pedido') {
+  registrarNotificacaoHistorico(texto, categoria);
   await Promise.allSettled([
     enviarTelegram(texto),
     enviarWhatsApp(CALLMEBOT_PHONE_PEDIDOS, CALLMEBOT_APIKEY_PEDIDOS, texto),
@@ -5661,6 +5682,23 @@ app.post('/api/push/teste', async (req, res) => {
   } catch (e) {
     res.json({ ok: false, erro: e.message });
   }
+});
+
+// ── Central de notificações (histórico, exibido no sino do app) ───
+
+app.get('/api/notificacoes', (req, res) => {
+  const data = loadData();
+  const itens = Array.isArray(data.notificacoes_historico) ? data.notificacoes_historico : [];
+  const ultimaVista = data.notificacoes_ultima_vista || 0;
+  const naoLidas = itens.filter(n => n.ts > ultimaVista).length;
+  res.json({ itens, naoLidas });
+});
+
+app.post('/api/notificacoes/marcar-vistas', (req, res) => {
+  const data = loadData();
+  data.notificacoes_ultima_vista = Date.now();
+  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+  res.json({ ok: true });
 });
 
 // ── Notas Fiscais de Compra (Fiscal.io) ───────────────────────────────────────
