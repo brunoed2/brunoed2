@@ -269,7 +269,7 @@ async function cxAtivarPush() {
     await fetch('/api/push/subscribe', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ subscription: sub }),
+      body:    JSON.stringify({ subscription: sub, senha: localStorage.getItem('usuarioSenha') || null }),
     });
     alert('✅ Notificações ativadas neste dispositivo!');
   } catch (e) {

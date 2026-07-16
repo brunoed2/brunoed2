@@ -511,30 +511,38 @@ app.get('/api/usuarios', (req, res) => {
     senha,
     nome: info.nome || senha,
     abas: info.abas || [],
+    // null = sem preferência definida (recebe todas as categorias)
+    notificacoes: Array.isArray(info.notificacoes) ? info.notificacoes : null,
   }));
   res.json(lista);
 });
 
+app.get('/api/notificacoes/categorias', (req, res) => {
+  res.json(Object.entries(NOTIF_CATEGORIAS).map(([id, label]) => ({ id, label })));
+});
+
 app.post('/api/usuarios', (req, res) => {
-  const { senha, nome, abas, painel } = req.body || {};
+  const { senha, nome, abas, painel, notificacoes } = req.body || {};
   if (!senha || !String(senha).trim()) return res.status(400).json({ error: 'Senha obrigatória' });
   if (String(senha) === '199412') return res.status(400).json({ error: 'Senha reservada' });
   const data = loadData();
   data.usuarios = data.usuarios || {};
   if (data.usuarios[String(senha)]) return res.status(409).json({ error: 'Usuário já existe com essa senha' });
   data.usuarios[String(senha)] = { nome: nome || String(senha), abas: abas || [], painel: painel || 'painel2' };
+  if (Array.isArray(notificacoes)) data.usuarios[String(senha)].notificacoes = notificacoes;
   saveData(data);
   res.json({ ok: true });
 });
 
 app.put('/api/usuarios/:senha', (req, res) => {
   const { senha } = req.params;
-  const { nome, abas } = req.body || {};
+  const { nome, abas, notificacoes } = req.body || {};
   const data = loadData();
   data.usuarios = data.usuarios || {};
   if (!data.usuarios[senha]) return res.status(404).json({ error: 'Usuário não encontrado' });
   if (nome !== undefined) data.usuarios[senha].nome = nome;
   if (abas !== undefined) data.usuarios[senha].abas = abas;
+  if (notificacoes !== undefined) data.usuarios[senha].notificacoes = notificacoes;
   saveData(data);
   res.json({ ok: true });
 });
@@ -719,7 +727,7 @@ function avisarConexaoCaida(data, num) {
   if (!c || c.conexao_alerta_enviado) return;
   c.conexao_alerta_enviado = true;
   saveData(data);
-  notificar(`🔌 <b>Conexão perdida — conta ${num}</b>\n\nO token do Mercado Livre expirou e não foi possível renovar. Reconecte a conta no painel.`).catch(() => {});
+  notificar(`🔌 <b>Conexão perdida — conta ${num}</b>\n\nO token do Mercado Livre expirou e não foi possível renovar. Reconecte a conta no painel.`, 'conexao').catch(() => {});
 }
 
 // Na inicialização, tenta renovar tokens expirados de todas as contas
@@ -1321,7 +1329,7 @@ async function _executarRefreshBling(conta) {
       delete dataClean[`bling_${conta}`];
       if (conta === '1') delete dataClean.bling;
       saveData(dataClean);
-      notificar(`🔌 <b>Conexão Bling perdida — conta ${conta}</b>\n\nO refresh_token expirou. Reconecte a conta no painel.`).catch(() => {});
+      notificar(`🔌 <b>Conexão Bling perdida — conta ${conta}</b>\n\nO refresh_token expirou. Reconecte a conta no painel.`, 'conexao').catch(() => {});
     }
 
     // 429 = rate limit — aguarda 5s antes de lançar erro
@@ -2084,7 +2092,7 @@ async function autoSuperJob() {
       const valor   = (p.valor_total || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
       const prods   = (p.produtos || []).join('\n• ');
       const texto   = `⚡ Pedido pronto para NF\n\n#${p.numero} — ${p.comprador} — ${valor}\nConta ${conta}${prods ? `\n\n• ${prods}` : ''}\n\nConfirmar emissão:\n${link}\n\n(Link válido por 48h)`;
-      notificar(texto).catch(() => {});
+      notificar(texto, 'auto_super').catch(() => {});
       addLog(`[auto-super] notificado pedido ${p.numero} conta ${conta}`, 'ok');
       await new Promise(r => setTimeout(r, 4000));
     }
@@ -2118,7 +2126,7 @@ app.get('/api/bling/confirmar/:token', async (req, res) => {
     saveData(data);
 
     const valorFmt = (valor || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-    notificar(`✅ NF emitida automaticamente\n\n#${numero} — ${comprador} — ${valorFmt}\nConta ${conta}`).catch(() => {});
+    notificar(`✅ NF emitida automaticamente\n\n#${numero} — ${comprador} — ${valorFmt}\nConta ${conta}`, 'nf_emitida').catch(() => {});
     addLog(`[auto-super] NF emitida e enviada: pedido ${numero} conta ${conta}`, 'ok');
     return res.send(autoSuperHtml(true, `Pedido #${numero} — ${comprador}<br>${valorFmt} · Conta ${conta}<br><br>NF gerada e enviada para a SEFAZ.`));
   } catch (err) {
@@ -2228,7 +2236,7 @@ app.get('/api/ml/estoque', async (req, res) => {
             // Notifica Telegram quando anúncio é pausado pela primeira vez
             const titulo = r.body.title || mlb;
             const conta  = (data.contas[num] || {}).nickname || `Conta ${num}`;
-            notificar(`⏸ <b>Anúncio pausado — ${conta}</b>\n\n${titulo}\n<code>${mlb}</code>`).catch(() => {});
+            notificar(`⏸ <b>Anúncio pausado — ${conta}</b>\n\n${titulo}\n<code>${mlb}</code>`, 'anuncio_pausado').catch(() => {});
             // Salva snapshot automático no log do anúncio
             if (!data.item_logs) data.item_logs = {};
             const logs = data.item_logs[mlb] || [];
@@ -2256,7 +2264,7 @@ app.get('/api/ml/estoque', async (req, res) => {
           catalogChanged = true;
           const tituloC   = r.body.title || mlb;
           const contaNome = (data.contas[num] || {}).nickname || `Conta ${num}`;
-          notificar(`📦 *Anúncio virou catálogo!*\n\n${tituloC}\n${mlb}\nID catálogo: ${novoCatalogId}\nConta: ${contaNome}`).catch(() => {});
+          notificar(`📦 *Anúncio virou catálogo!*\n\n${tituloC}\n${mlb}\nID catálogo: ${novoCatalogId}\nConta: ${contaNome}`, 'anuncio_catalogo').catch(() => {});
         }
 
         return {
@@ -4958,6 +4966,19 @@ if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
   webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
 }
 
+// Categorias de notificação — controlam quais usuários recebem qual tipo de push
+const NOTIF_CATEGORIAS = {
+  pedido:           '🛍️ Novos pedidos',
+  estoque_baixo:    '📦 Estoque baixo',
+  conexao:          '🔌 Conexão caída (ML/Bling)',
+  anuncio_pausado:  '⏸️ Anúncio pausado',
+  anuncio_catalogo: '📦 Anúncio virou catálogo',
+  nf_emitida:       '✅ NF emitida automaticamente',
+  nf_travada:       '⚠️ NF travada (recusada pelo ML)',
+  auto_super:       '⚡ Pedido pronto pra NF',
+  contas_pagar:     '📅 Contas a pagar vencendo',
+};
+
 // Inscrições de push — carregadas do disco, persistem entre restarts
 function carregarPushSubscriptions() {
   const data = loadData();
@@ -4969,26 +4990,36 @@ function salvarPushSubscriptions(lista) {
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
 }
 
-async function enviarPush(texto) {
+// Um usuário recebe a categoria se: não tiver preferência salva (padrão = recebe tudo)
+// ou se a categoria estiver na lista de notificações escolhidas por ele.
+function usuarioRecebeCategoria(usuario, categoria) {
+  if (!categoria || !usuario || !Array.isArray(usuario.notificacoes)) return true;
+  return usuario.notificacoes.includes(categoria);
+}
+
+async function enviarPush(texto, categoria) {
   if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) return;
   const subs = carregarPushSubscriptions();
   if (!subs.length) return;
+  const usuarios = loadData().usuarios || {};
+  const alvo = subs.filter(sub => usuarioRecebeCategoria(sub.senha && usuarios[sub.senha], categoria));
+  if (!alvo.length) return;
+
   const titulo = 'Painel';
   const corpo  = texto.replace(/<[^>]+>/g, '');
   const payload = JSON.stringify({ title: titulo, body: corpo });
 
-  const restantes = [];
-  await Promise.allSettled(subs.map(async (sub) => {
+  const expirados = [];
+  await Promise.allSettled(alvo.map(async (sub) => {
     try {
       await webpush.sendNotification(sub, payload);
-      restantes.push(sub);
     } catch (err) {
       // 404/410 = inscrição inválida/expirada — remove
-      if (err.statusCode !== 404 && err.statusCode !== 410) restantes.push(sub);
+      if (err.statusCode === 404 || err.statusCode === 410) expirados.push(sub.endpoint);
       addLog(`Push: falha ao enviar (${err.statusCode || err.message}) — ${err.statusCode === 404 || err.statusCode === 410 ? 'removendo inscrição' : 'mantendo'}`, 'warn');
     }
   }));
-  if (restantes.length !== subs.length) salvarPushSubscriptions(restantes);
+  if (expirados.length) salvarPushSubscriptions(subs.filter(s => !expirados.includes(s.endpoint)));
 }
 
 async function enviarWhatsApp(phone, apikey, texto) {
@@ -5007,20 +5038,20 @@ async function enviarWhatsApp(phone, apikey, texto) {
 }
 
 // Notificações de contas a pagar e anúncios pausados
-async function notificar(texto) {
+async function notificar(texto, categoria) {
   await Promise.allSettled([
     enviarTelegram(texto),
     enviarWhatsApp(CALLMEBOT_PHONE, CALLMEBOT_APIKEY, texto),
-    enviarPush(texto),
+    enviarPush(texto, categoria),
   ]);
 }
 
 // Notificações de pedidos novos — Telegram + CallMeBot
-async function notificarPedido(texto) {
+async function notificarPedido(texto, categoria = 'pedido') {
   await Promise.allSettled([
     enviarTelegram(texto),
     enviarWhatsApp(CALLMEBOT_PHONE_PEDIDOS, CALLMEBOT_APIKEY_PEDIDOS, texto),
-    enviarPush(texto),
+    enviarPush(texto, categoria),
   ]);
 }
 
@@ -5242,7 +5273,7 @@ async function verificarAnunciosPausadosTelegram() {
               const conta  = c.nickname || `Conta ${num}`;
               pauseDates[mlb] = new Date().toISOString();
               pauseChanged = true;
-              notificar(`⏸ <b>Anúncio pausado — ${conta}</b>\n\n${titulo}\n<code>${mlb}</code>`).catch(() => {});
+              notificar(`⏸ <b>Anúncio pausado — ${conta}</b>\n\n${titulo}\n<code>${mlb}</code>`, 'anuncio_pausado').catch(() => {});
               addLog(`Notificação: anúncio pausado — ${mlb}`, 'info');
             }
           } catch {}
@@ -5292,7 +5323,7 @@ async function verificarNotasTravadasML(opts = {}) {
       changed = true;
       const valor = (n.valor_total || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
       const texto = `⚠️ <b>NF travada — Mercado Livre recusou os dados</b>\n\nNota #${n.numero} — ${n.destinatario} — ${valor}\nConta ${conta} · autorizada há ${n.horasParada}h\nPedido ML: ${n.numeroPedidoLoja}\n\nA nota foi autorizada mas o ML não recebeu os dados corretos (provável divergência de valor ou produto). Cancele a nota errada no Bling e emita uma nova.`;
-      notificar(texto).catch(() => {});
+      notificar(texto, 'nf_travada').catch(() => {});
       addLog(`[notas-travadas-ml] notificado NF #${n.numero} conta ${conta}`, 'warn');
     }
   }
@@ -5331,7 +5362,7 @@ async function verificarCatalogosML() {
               catalogChanged = true;
               const titulo    = item.body.title || mlb;
               const contaNome = c.nickname || `Conta ${num}`;
-              notificar(`📦 *Anúncio virou catálogo!*\n\n${titulo}\n${mlb}\nID catálogo: ${catalogId}\nConta: ${contaNome}`).catch(() => {});
+              notificar(`📦 *Anúncio virou catálogo!*\n\n${titulo}\n${mlb}\nID catálogo: ${catalogId}\nConta: ${contaNome}`, 'anuncio_catalogo').catch(() => {});
               addLog(`Catálogo ML detectado: ${mlb} → ${catalogId}`, 'info');
             }
           }
@@ -5471,7 +5502,7 @@ async function verificarEstoqueBaixo() {
         if (bloco.length) blocos.push(bloco);
         for (let i = 0; i < blocos.length; i++) {
           const sufixo = blocos.length > 1 ? ` (${i + 1}/${blocos.length})` : '';
-          notificar(`${header}${sufixo}\n\n${blocos[i].join('\n\n')}`).catch(() => {});
+          notificar(`${header}${sufixo}\n\n${blocos[i].join('\n\n')}`, 'estoque_baixo').catch(() => {});
         }
         addLog(`Notificação: estoque baixo — ${alertas.length} item(s) — conta ${num}`, 'info');
       }
@@ -5506,7 +5537,7 @@ async function notificarContasVencendoHoje() {
 
   const dataFmt = hoje.split('-').reverse().join('/');
   const texto = `📅 <b>Contas a pagar — vencimento hoje (${dataFmt})</b>\n\n` + linhas.join('\n');
-  await notificar(texto).catch(() => {});
+  await notificar(texto, 'contas_pagar').catch(() => {});
   addLog(`Notificação: ${linhas.length} conta(s) vencendo hoje`, 'info');
 }
 
@@ -5593,14 +5624,18 @@ app.get('/api/push/vapid-public-key', (req, res) => {
 });
 
 app.post('/api/push/subscribe', (req, res) => {
-  const sub = req.body?.subscription;
+  const sub   = req.body?.subscription;
+  const senha = req.body?.senha ? String(req.body.senha) : null;
   if (!sub?.endpoint) return res.json({ ok: false, erro: 'Inscrição inválida' });
   const lista = carregarPushSubscriptions();
-  const jaExiste = lista.some(s => s.endpoint === sub.endpoint);
-  if (!jaExiste) {
-    lista.push(sub);
+  const idx = lista.findIndex(s => s.endpoint === sub.endpoint);
+  if (idx === -1) {
+    lista.push({ ...sub, senha });
     salvarPushSubscriptions(lista);
     addLog(`Push: nova inscrição registrada (${lista.length} total)`, 'ok');
+  } else if (lista[idx].senha !== senha) {
+    lista[idx] = { ...lista[idx], ...sub, senha };
+    salvarPushSubscriptions(lista);
   }
   res.json({ ok: true });
 });

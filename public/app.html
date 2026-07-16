@@ -908,6 +908,10 @@
               <label>Módulos permitidos</label>
               <div id="nu-abas-container" style="display:flex;gap:12px;flex-wrap:wrap;margin-top:8px"></div>
             </div>
+            <div class="field">
+              <label>Notificações push</label>
+              <div id="nu-notif-container" style="display:flex;gap:12px;flex-wrap:wrap;margin-top:8px"></div>
+            </div>
             <div class="btn-row">
               <button class="btn-primary" onclick="usuariosCriar()">💾 Salvar</button>
               <button class="btn-secondary" onclick="document.getElementById('usuarios-form-novo').style.display='none'">Cancelar</button>
@@ -1369,13 +1373,28 @@
     { id: 'configuracoes', label: '⚙️ Configurações' },
   ];
 
-  function usuariosAbrirForm() {
+  let NOTIF_CATEGORIAS_CACHE = null;
+  async function notifCategoriasCarregar() {
+    if (!NOTIF_CATEGORIAS_CACHE) {
+      try { NOTIF_CATEGORIAS_CACHE = await fetch('/api/notificacoes/categorias').then(r => r.json()); }
+      catch { NOTIF_CATEGORIAS_CACHE = []; }
+    }
+    return NOTIF_CATEGORIAS_CACHE;
+  }
+
+  async function usuariosAbrirForm() {
     document.getElementById('nu-senha').value = '';
     document.getElementById('nu-nome').value = '';
     const container = document.getElementById('nu-abas-container');
     container.innerHTML = TODOS_MODULOS.map(a =>
       `<label style="display:flex;align-items:center;gap:6px;cursor:pointer">
         <input type="checkbox" class="nu-aba" value="${a.id}"> ${a.label}
+      </label>`
+    ).join('');
+    const cats = await notifCategoriasCarregar();
+    document.getElementById('nu-notif-container').innerHTML = cats.map(c =>
+      `<label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+        <input type="checkbox" class="nu-notif" value="${c.id}" checked> ${c.label}
       </label>`
     ).join('');
     document.getElementById('usuarios-msg-novo').textContent = '';
@@ -1387,8 +1406,10 @@
     const lista = document.getElementById('usuarios-lista');
     lista.innerHTML = '<p style="color:#94a3b8;font-size:13px">Carregando...</p>';
     try {
-      const resp = await fetch('/api/usuarios');
-      const usuarios = await resp.json();
+      const [usuarios, cats] = await Promise.all([
+        fetch('/api/usuarios').then(r => r.json()),
+        notifCategoriasCarregar(),
+      ]);
       if (!usuarios.length) {
         lista.innerHTML = '<p style="color:#94a3b8;font-size:13px">Nenhum usuário cadastrado.</p>';
         return;
@@ -1397,14 +1418,14 @@
       // Admin (199412) sempre primeiro
       usuarios.sort((a, b) => (a.senha === '199412' ? -1 : b.senha === '199412' ? 1 : 0));
       for (const u of usuarios) {
-        lista.appendChild(usuariosRenderCard(u));
+        lista.appendChild(usuariosRenderCard(u, cats));
       }
     } catch {
       lista.innerHTML = '<p style="color:#e74c3c;font-size:13px">Erro ao carregar usuários.</p>';
     }
   }
 
-  function usuariosRenderCard(u) {
+  function usuariosRenderCard(u, cats) {
     const card = document.createElement('div');
     card.className = 'card';
     card.style.marginBottom = '12px';
@@ -1416,6 +1437,14 @@
       const locked = isAdmin && a.id === 'configuracoes';
       return `<label style="display:flex;align-items:center;gap:6px;cursor:${locked ? 'not-allowed' : 'pointer'};opacity:${locked ? '.5' : '1'}">
         <input type="checkbox" class="eu-aba" value="${a.id}" ${u.abas.includes(a.id) ? 'checked' : ''} ${locked ? 'disabled checked' : ''}> ${a.label}
+      </label>`;
+    }).join('');
+
+    // notificacoes === null significa "sem preferência" (recebe todas)
+    const notifHtml = cats.map(c => {
+      const marcado = u.notificacoes === null || u.notificacoes.includes(c.id);
+      return `<label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+        <input type="checkbox" class="eu-notif" value="${c.id}" ${marcado ? 'checked' : ''}> ${c.label}
       </label>`;
     }).join('');
 
@@ -1433,6 +1462,10 @@
             <input class="eu-nome" type="text" value="${u.nome}" style="font-size:13px;padding:3px 8px;border:1px solid #334155;border-radius:6px;background:#1e293b;color:#e2e8f0;width:140px;letter-spacing:0">
           </div>
           <div style="display:flex;gap:16px;flex-wrap:wrap">${abasHtml}</div>
+          <div style="margin-top:12px;padding-top:12px;border-top:1px solid #334155">
+            <span style="font-size:13px;color:#94a3b8;display:block;margin-bottom:8px">🔔 Notificações push:</span>
+            <div style="display:flex;gap:16px;flex-wrap:wrap">${notifHtml}</div>
+          </div>
         </div>
         <div style="display:flex;gap:6px;flex-shrink:0">
           <button class="btn-primary" style="padding:5px 12px;font-size:12px" onclick="usuariosSalvar('${u.senha}', this)">💾 Salvar</button>
@@ -1448,13 +1481,16 @@
     const senha = document.getElementById('nu-senha').value.trim();
     const nome  = document.getElementById('nu-nome').value.trim();
     const abas  = [...document.querySelectorAll('.nu-aba:checked')].map(c => c.value);
+    const cats  = await notifCategoriasCarregar();
+    const notifMarcados = [...document.querySelectorAll('.nu-notif:checked')].map(c => c.value);
+    const notificacoes  = notifMarcados.length === cats.length ? null : notifMarcados;
     const msg   = document.getElementById('usuarios-msg-novo');
     if (!senha) { msg.textContent = 'Informe a senha.'; msg.className = 'msg erro'; return; }
     try {
       const resp = await fetch('/api/usuarios', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ senha, nome: nome || senha, abas }),
+        body: JSON.stringify({ senha, nome: nome || senha, abas, notificacoes }),
       });
       const data = await resp.json();
       if (!resp.ok) { msg.textContent = data.error; msg.className = 'msg erro'; return; }
@@ -1472,12 +1508,15 @@
     const card = btn.closest('.card');
     const nome = card.querySelector('.eu-nome').value.trim();
     const abas = [...card.querySelectorAll('.eu-aba:checked')].map(c => c.value);
+    const cats = await notifCategoriasCarregar();
+    const notifMarcados = [...card.querySelectorAll('.eu-notif:checked')].map(c => c.value);
+    const notificacoes  = notifMarcados.length === cats.length ? null : notifMarcados;
     const msg  = card.querySelector('.eu-msg');
     try {
       const resp = await fetch(`/api/usuarios/${encodeURIComponent(senha)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nome, abas }),
+        body: JSON.stringify({ nome, abas, notificacoes }),
       });
       const data = await resp.json();
       if (!resp.ok) { msg.textContent = data.error; msg.className = 'msg erro'; return; }
@@ -1529,6 +1568,6 @@
     </div>
   </div>
 
-  <div id="version-badge">v639</div>
+  <div id="version-badge">v640</div>
 </body>
 </html>

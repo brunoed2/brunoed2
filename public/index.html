@@ -81,6 +81,7 @@
         var data = await resp.json();
         localStorage.setItem('abasPermitidas', JSON.stringify(data.abas));
         localStorage.setItem('usuarioNome', data.nome || '');
+        localStorage.setItem('usuarioSenha', val);
         if (data.painel === 'app') {
           localStorage.setItem('auth', '1');
           location.href = '/app.html';
