@@ -6132,15 +6132,26 @@ app.post('/api/contas-receber/verificar', async (req, res) => {
 
         if (crEstaLiberado(col)) {
           const valorReal = col.net_received_amount ?? null;
-          const diff = Math.abs((valorReal ?? 0) - (item.valorEsperado ?? 0));
           item.valorReal         = valorReal;
           item.dataLiberacaoReal = col.money_release_date ?? null;
-          if (item.valorEsperado != null && valorReal != null && diff > CR_TOLERANCIA_VALOR) {
-            item.situacao    = 'divergente';
-            item.divergencia = { tipo: 'valor', detalhe: `Esperado R$${item.valorEsperado.toFixed(2)}, liberado R$${valorReal.toFixed(2)}` };
+
+          if (!item.valorEsperado && valorReal) {
+            // valorEsperado nunca foi um número válido (0 ou nulo) — provavelmente capturado
+            // no sync antes do MP terminar de processar o pagamento, ou de um payment errado já
+            // corrigido. R$0,00 nunca foi uma "promessa" de verdade, então corrigir aqui não tem
+            // o mesmo risco de mascarar uma revisão legítima (diferente do caso do v649).
+            item.valorEsperado = valorReal;
+            item.situacao      = 'liberado';
+            item.divergencia   = null;
           } else {
-            item.situacao    = 'liberado';
-            item.divergencia = null;
+            const diff = Math.abs((valorReal ?? 0) - (item.valorEsperado ?? 0));
+            if (item.valorEsperado != null && valorReal != null && diff > CR_TOLERANCIA_VALOR) {
+              item.situacao    = 'divergente';
+              item.divergencia = { tipo: 'valor', detalhe: `Esperado R$${item.valorEsperado.toFixed(2)}, liberado R$${valorReal.toFixed(2)}` };
+            } else {
+              item.situacao    = 'liberado';
+              item.divergencia = null;
+            }
           }
         } else {
           // Ainda não liberou — fica "pendente" independente de quanto atrasou (atraso sozinho
