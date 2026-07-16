@@ -4248,18 +4248,24 @@ function detectarDesvios(vendas, { desvioMinimo = 0.15, minAmostras = 3 } = {}) 
     if (itens.length < minAmostras) continue;
     const medFretePorUnidade    = mediana(itens.map(i => i.fretePorUnidade));
     const medComissaoPorUnidade = mediana(itens.map(i => i.comissaoPorUnidade));
+    // Amostras cruas do grupo — pra poder inspecionar o que formou a mediana (debug visível pro usuário)
+    const amostrasGrupo = itens.map(i => ({
+      orderId: i.orderId, quantidade: i.quantidade,
+      freteLinha: i.freteLinha, fretePorUnidade: i.fretePorUnidade,
+      comissaoLinha: i.comissaoLinha, comissaoPorUnidade: i.comissaoPorUnidade,
+    }));
     itens.forEach(item => {
       const base = { orderId: item.orderId, data: item.data, titulo: item.titulo, sku: item.sku, mlb: item.mlb };
       if (medFretePorUnidade > 0) {
         const desvio = (item.fretePorUnidade - medFretePorUnidade) / medFretePorUnidade;
         if (Math.abs(desvio) > desvioMinimo) {
-          desvios.push({ ...base, tipo: 'frete', valorCobrado: item.freteLinha, valorTipico: medFretePorUnidade * item.quantidade, desvioPercent: desvio * 100 });
+          desvios.push({ ...base, tipo: 'frete', valorCobrado: item.freteLinha, valorTipico: medFretePorUnidade * item.quantidade, desvioPercent: desvio * 100, amostrasGrupo });
         }
       }
       if (medComissaoPorUnidade > 0) {
         const desvio = (item.comissaoPorUnidade - medComissaoPorUnidade) / medComissaoPorUnidade;
         if (Math.abs(desvio) > desvioMinimo) {
-          desvios.push({ ...base, tipo: 'comissão', valorCobrado: item.comissaoLinha, valorTipico: medComissaoPorUnidade * item.quantidade, desvioPercent: desvio * 100 });
+          desvios.push({ ...base, tipo: 'comissão', valorCobrado: item.comissaoLinha, valorTipico: medComissaoPorUnidade * item.quantidade, desvioPercent: desvio * 100, amostrasGrupo });
         }
       }
     });
@@ -6530,6 +6536,35 @@ app.get('/api/contas-receber/debug-movimento/:source_id', async (req, res) => {
   try {
     const r = await axios.get(`https://api.mercadopago.com/v1/payments/${req.params.source_id}`, { headers, timeout: 10000 });
     res.json(r.data);
+  } catch (err) {
+    res.json({ error: err.response?.data || err.message });
+  }
+});
+
+// Debug — pedido grande dividido em vários pacotes de envio (usuário escolhe "separar em
+// envios" no ML) pode custar bem mais de frete que o normal do mesmo SKU. Devolve o pedido
+// e o(s) shipment(s) crus pra achar o campo que indica "múltiplos pacotes".
+app.get('/api/contas-receber/debug-pacotes/:order_id', async (req, res) => {
+  const data = loadData();
+  const num  = req.query.conta || data.conta_ativa;
+  const c    = data.contas[num];
+  if (!c?.access_token) return res.json({ error: 'Não conectado' });
+  const headers = { Authorization: `Bearer ${c.access_token}` };
+  try {
+    const order = await axios.get(`https://api.mercadolibre.com/orders/${req.params.order_id}`, { headers, timeout: 10000 }).then(r => r.data);
+    const sid = order.shipping?.id;
+    const [ship, shipCosts] = await Promise.all([
+      sid ? axios.get(`https://api.mercadolibre.com/shipments/${sid}`, { headers, timeout: 10000 }).then(r => r.data).catch(e => ({ error: e.response?.data || e.message })) : null,
+      sid ? axios.get(`https://api.mercadolibre.com/shipments/${sid}/costs`, { headers, timeout: 10000 }).then(r => r.data).catch(e => ({ error: e.response?.data || e.message })) : null,
+    ]);
+    res.json({
+      orderId:     order.id,
+      order_items: order.order_items,
+      order_shipping: order.shipping,
+      pack_id:     order.pack_id,
+      shipment:    ship,
+      shipment_costs: shipCosts,
+    });
   } catch (err) {
     res.json({ error: err.response?.data || err.message });
   }

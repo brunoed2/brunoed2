@@ -287,7 +287,7 @@ async function contasReceberVerificarDesvios() {
       tabela.style.display = 'none';
     } else {
       tabela.style.display = 'table';
-      d.desvios.forEach(item => {
+      d.desvios.forEach((item, idx) => {
         const fmtData = (iso) => iso ? String(iso).slice(0, 10).split('-').reverse().join('/') : '—';
         const produto = item.sku ? `SKU ${item.sku}` : (item.mlb || '—');
         const sinalCor = item.desvioPercent >= 0 ? '#dc2626' : '#16a34a';
@@ -297,11 +297,35 @@ async function contasReceberVerificarDesvios() {
           <td style="font-size:12px" title="${escHtml(item.titulo || '')}">${escHtml(produto)}</td>
           <td style="font-size:12px">${item.tipo === 'frete' ? 'Frete' : 'Comissão'}</td>
           <td class="col-num">${fmtBRL(item.valorCobrado)}</td>
-          <td class="col-num">${fmtBRL(item.valorTipico)}</td>
+          <td class="col-num">${fmtBRL(item.valorTipico)} <a href="#" onclick="crToggleAmostras(event, ${idx})" style="font-size:11px">(ver amostras)</a></td>
           <td class="col-num" style="color:${sinalCor};font-weight:600">${item.desvioPercent >= 0 ? '+' : ''}${item.desvioPercent.toFixed(1)}%</td>
           <td>${fmtData(item.data)}</td>
         `;
         tbody.appendChild(tr);
+
+        const trAmostras = document.createElement('tr');
+        trAmostras.id = `cr-amostras-${idx}`;
+        trAmostras.style.display = 'none';
+        const linhasAmostras = (item.amostrasGrupo || []).map(a => `
+          <tr>
+            <td>#${escHtml(a.orderId)}</td>
+            <td class="col-num">${a.quantidade}</td>
+            <td class="col-num">${fmtBRL(a.freteLinha)}</td>
+            <td class="col-num">${fmtBRL(a.fretePorUnidade)}</td>
+            <td class="col-num">${fmtBRL(a.comissaoLinha)}</td>
+            <td class="col-num">${fmtBRL(a.comissaoPorUnidade)}</td>
+          </tr>
+        `).join('');
+        trAmostras.innerHTML = `
+          <td colspan="7" style="background:#f8fafc;padding:10px">
+            <div style="font-size:12px;color:#64748b;margin-bottom:6px">Amostras usadas pra calcular a mediana deste produto:</div>
+            <table class="tabela" style="font-size:12px">
+              <thead><tr><th>Pedido</th><th class="col-num">Qtd</th><th class="col-num">Frete (pedido)</th><th class="col-num">Frete/un.</th><th class="col-num">Comissão (pedido)</th><th class="col-num">Comissão/un.</th></tr></thead>
+              <tbody>${linhasAmostras}</tbody>
+            </table>
+          </td>
+        `;
+        tbody.appendChild(trAmostras);
       });
     }
   } catch (err) {
