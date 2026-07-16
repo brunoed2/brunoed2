@@ -338,3 +338,10 @@ async function contasReceberVerificarDesvios() {
   if (loading) loading.style.display = 'none';
   if (btn)     btn.disabled          = false;
 }
+
+function crToggleAmostras(event, idx) {
+  event.preventDefault();
+  const linha = document.getElementById(`cr-amostras-${idx}`);
+  if (!linha) return;
+  linha.style.display = linha.style.display === 'none' ? 'table-row' : 'none';
+}
