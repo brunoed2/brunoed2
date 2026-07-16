@@ -252,6 +252,7 @@ function contasReceberRenderizarInvestigacao(d) {
       <td style="font-size:12px">${escHtml(m.tipo)}</td>
       <td class="col-num">${fmtBRL(m.valor)}</td>
       <td>${fmtData(m.data)}</td>
+      <td style="font-size:12px;color:#64748b">${m.descricao ? escHtml(m.descricao) : '—'}</td>
     `;
     tbody.appendChild(tr);
   });

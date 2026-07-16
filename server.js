@@ -6318,10 +6318,22 @@ app.post('/api/contas-receber/solicitar-relatorio', async (req, res) => {
   }
 });
 
+// Busca a descrição real do movimento no MP (mesma consulta do debug-movimento) — usada só
+// pra enriquecer os "não identificados", que costuma ser uma lista pequena.
+async function crDescreverMovimento(sourceId, headers) {
+  try {
+    const r = await axios.get(`https://api.mercadopago.com/v1/payments/${sourceId}`, { headers, timeout: 8000 });
+    return r.data?.description || null;
+  } catch {
+    return null; // SOURCE_ID nem sempre é um payment id consultável (ex: pagamento de fatura)
+  }
+}
+
 // Recebe o CSV que o usuário baixou do e-mail do MP e aponta o que não bate com pedido rastreado
-app.post('/api/contas-receber/investigar', uploadMem.single('csv'), (req, res) => {
+app.post('/api/contas-receber/investigar', uploadMem.single('csv'), async (req, res) => {
   const data = loadData();
   const num  = String(req.query.conta || data.conta_ativa || '1');
+  const c    = data.contas[num];
   if (!req.file) return res.status(400).json({ error: 'Arquivo CSV não recebido' });
 
   try {
@@ -6352,6 +6364,18 @@ app.post('/api/contas-receber/investigar', uploadMem.single('csv'), (req, res) =
           valor,
           data: linha.SETTLEMENT_DATE || linha.TRANSACTION_DATE,
         });
+      }
+    }
+
+    // Enriquece cada não identificado com a descrição real do movimento no MP — poupa o
+    // usuário de testar SOURCE_ID por SOURCE_ID manualmente no debug.
+    if (c?.access_token && naoIdentificados.length) {
+      const headers = { Authorization: `Bearer ${c.access_token}` };
+      const BATCH = 20;
+      for (let i = 0; i < naoIdentificados.length; i += BATCH) {
+        const lote = naoIdentificados.slice(i, i + BATCH);
+        const descricoes = await Promise.all(lote.map(m => crDescreverMovimento(m.sourceId, headers)));
+        lote.forEach((m, idx) => { m.descricao = descricoes[idx]; });
       }
     }
 
