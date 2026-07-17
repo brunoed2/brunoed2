@@ -51,6 +51,7 @@ const DATA_DIR      = detectarDirDados();
 const DATA_FILE     = path.join(DATA_DIR, 'data.json');
 const FISCAL_FILE   = path.join(DATA_DIR, 'fiscal-notas.json');
 const NOTIF_HIST_FILE = path.join(DATA_DIR, 'notificacoes.json');
+const BLING_FILE    = path.join(DATA_DIR, 'bling-tokens.json');
 const BACKUP_DIR    = path.join(DATA_DIR, 'backups');
 const USA_VOLUME    = DATA_DIR === '/data'; // true = volume persistente Railway
 
@@ -63,11 +64,16 @@ function criarSnapshotDiario() {
     const dest = path.join(BACKUP_DIR, `data.backup.${hoje}.json`);
     if (!fs.existsSync(dest)) {
       fs.copyFileSync(DATA_FILE, dest);
+      if (fs.existsSync(BLING_FILE)) fs.copyFileSync(BLING_FILE, path.join(BACKUP_DIR, `bling-tokens.backup.${hoje}.json`));
       // Apaga backups com mais de 7 dias
       const arquivos = fs.readdirSync(BACKUP_DIR)
         .filter(f => f.startsWith('data.backup.') && f.endsWith('.json'))
         .sort().reverse();
       arquivos.slice(7).forEach(f => { try { fs.unlinkSync(path.join(BACKUP_DIR, f)); } catch {} });
+      const arquivosBling = fs.readdirSync(BACKUP_DIR)
+        .filter(f => f.startsWith('bling-tokens.backup.') && f.endsWith('.json'))
+        .sort().reverse();
+      arquivosBling.slice(7).forEach(f => { try { fs.unlinkSync(path.join(BACKUP_DIR, f)); } catch {} });
     }
   } catch (e) { console.error('[backup] Erro ao criar snapshot:', e.message); }
 }
@@ -176,6 +182,31 @@ function saveData(data) {
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
 }
 
+// Tokens Bling ficam num arquivo próprio (não em data.json) pra não serem apagados por
+// outras rotinas que carregam data.json no início e só salvam (saveData) bem depois —
+// isso sobrescrevia o refresh_token recém-rotacionado pelo antigo (já invalidado pelo
+// Bling), causando "refresh_token expirou" e desconexão sem motivo real.
+function loadBlingTokens() {
+  try { return JSON.parse(fs.readFileSync(BLING_FILE, 'utf8')); } catch { return {}; }
+}
+function saveBlingTokens(tokens) {
+  fs.writeFileSync(BLING_FILE, JSON.stringify(tokens, null, 2));
+}
+// Migração única: se ainda não existe bling-tokens.json, importa de dentro do data.json antigo
+function migrarBlingTokensSeNecessario() {
+  if (fs.existsSync(BLING_FILE)) return;
+  const data = loadData();
+  const tokens = {};
+  for (const num of ['1', '2']) {
+    const b = data[`bling_${num}`] || (num === '1' ? data.bling : null);
+    if (b?.access_token) tokens[num] = b;
+  }
+  if (Object.keys(tokens).length) {
+    saveBlingTokens(tokens);
+    addLog('[bling] Tokens migrados de data.json para bling-tokens.json', 'info');
+  }
+}
+
 // Retorna as credenciais da conta — usa num se fornecido, senão usa conta_ativa
 function contaAtiva(data, num) {
   return data.contas[num || data.conta_ativa] || {};
@@ -264,18 +295,15 @@ function initFromEnvVars() {
       changed = true;
     }
     data.contas[num] = c;
-    // Restaura tokens Bling da conta
-    const bKey = `bling_${num}`;
-    const bExistente = data[bKey] || (num === '1' ? data.bling : null);
-    if (!bExistente?.access_token && process.env[`BLING_ACCESS_TOKEN_${num}`]) {
-      const bRestored = {
+    // Restaura tokens Bling da conta (arquivo próprio bling-tokens.json, não data.json)
+    const blingTokens = loadBlingTokens();
+    if (!blingTokens[num]?.access_token && process.env[`BLING_ACCESS_TOKEN_${num}`]) {
+      blingTokens[num] = {
         access_token:  process.env[`BLING_ACCESS_TOKEN_${num}`],
         refresh_token: process.env[`BLING_REFRESH_TOKEN_${num}`] || '',
         expires_at:    parseInt(process.env[`BLING_EXPIRES_AT_${num}`]) || 0,
       };
-      data[bKey] = bRestored;
-      if (num === '1') data.bling = bRestored;
-      changed = true;
+      saveBlingTokens(blingTokens);
     }
   }
 
@@ -401,6 +429,7 @@ function initFromEnvVars() {
   if (changed) fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
 }
 
+migrarBlingTokensSeNecessario();
 initFromEnvVars();
 
 // Evita crash do processo por promessas não tratadas (ex: falha de rede em polling)
@@ -431,8 +460,9 @@ process.on('SIGTERM', () => process.exit(0));
       : 'expires_at ausente';
     addLog(`Conta ${num}: access_token=${temToken ? 'presente' : 'AUSENTE'}, refresh_token=${temRefresh ? 'presente' : 'AUSENTE'}, ${expiraInfo}`, temToken ? 'ok' : 'warn');
   }
+  const blingTokensBoot = loadBlingTokens();
   for (const num of ['1', '2']) {
-    const b = data[`bling_${num}`] || (num === '1' && data.bling) || null;
+    const b = blingTokensBoot[num] || null;
     if (b?.access_token) {
       const min = b.expires_at ? Math.round((b.expires_at - Date.now()) / 60000) : null;
       addLog(`Bling Conta ${num}: conectado, expira em ${min ?? '?'} min`, 'ok');
@@ -1213,9 +1243,11 @@ app.get('/api/dashboard', async (req, res) => {
 
 // ── Bling OAuth v3 ────────────────────────────────────────────
 
-// Helper: retorna dados bling da conta (com fallback legado para conta 1)
-function getBlingDataConta(data, conta) {
-  return data[`bling_${conta}`] || (conta === '1' ? data.bling : null) || null;
+// Helper: retorna dados bling da conta. Lê sempre do arquivo bling-tokens.json (não do
+// `data` de data.json passado) pra nunca devolver uma cópia desatualizada de um `data`
+// carregado antes de um refresh concorrente ter rodado.
+function getBlingDataConta(_data, conta) {
+  return loadBlingTokens()[conta] || null;
 }
 
 // Helper: retorna client_id e client_secret da conta correta
@@ -1263,15 +1295,14 @@ app.get('/api/bling/callback', async (req, res) => {
       new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri: callback }),
       { headers: { Authorization: `Basic ${creds}`, 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 15000 }
     );
-    const data = loadData();
     const token = {
       access_token:  resp.data.access_token,
       refresh_token: resp.data.refresh_token,
       expires_at:    Date.now() + ((resp.data.expires_in || 21600) - 300) * 1000,
     };
-    data[`bling_${conta}`] = token;
-    if (conta === '1') data.bling = token; // compatibilidade legada
-    saveData(data);
+    const tokens = loadBlingTokens();
+    tokens[conta] = token;
+    saveBlingTokens(tokens);
     addLog(`[bling] ✅ Token conta ${conta} obtido e salvo`, 'ok');
     res.redirect(`/app.html?tab=configuracoes&bling_connected=true&bling_conta=${conta}`);
   } catch (err) {
@@ -1291,8 +1322,7 @@ async function blingRefreshToken(conta) {
     addLog(`[bling] refresh conta ${conta} já em andamento — aguardando`, 'info');
     try { return await blingRefreshEmAndamento[conta]; } catch { /* cai no throw abaixo */ }
     // Se o refresh em andamento falhou, relança o erro (lido do disco)
-    const dataPos = loadData();
-    const bPos = getBlingDataConta(dataPos, conta);
+    const bPos = loadBlingTokens()[conta];
     if (bPos?.access_token) return bPos.access_token;
     throw new Error(`Bling conta ${conta} — refresh anterior falhou`);
   }
@@ -1304,8 +1334,7 @@ async function blingRefreshToken(conta) {
 }
 
 async function _executarRefreshBling(conta) {
-  const data = loadData();
-  const b = getBlingDataConta(data, conta);
+  const b = loadBlingTokens()[conta];
   if (!b?.refresh_token) throw new Error(`Sem refresh_token do Bling (conta ${conta})`);
   const { id: clientId, secret: clientSecret } = getBlingCreds(conta);
   const creds = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
@@ -1325,10 +1354,9 @@ async function _executarRefreshBling(conta) {
     // invalid_grant = refresh token inválido/expirado — limpa tokens para evitar loop infinito de tentativas
     if (body?.error?.type === 'invalid_grant' || body?.error === 'invalid_grant') {
       addLog(`[bling] ⚠️ Conta ${conta}: refresh_token inválido — desconectando conta (reconexão manual necessária)`, 'warn');
-      const dataClean = loadData();
-      delete dataClean[`bling_${conta}`];
-      if (conta === '1') delete dataClean.bling;
-      saveData(dataClean);
+      const tokensClean = loadBlingTokens();
+      delete tokensClean[conta];
+      saveBlingTokens(tokensClean);
       notificar(`🔌 <b>Conexão Bling perdida — conta ${conta}</b>\n\nO refresh_token expirou. Reconecte a conta no painel.`, 'conexao').catch(() => {});
     }
 
@@ -1344,19 +1372,17 @@ async function _executarRefreshBling(conta) {
     refresh_token: resp.data.refresh_token || b.refresh_token,
     expires_at:    Date.now() + ((resp.data.expires_in || 21600) - 300) * 1000,
   };
-  // Re-lê do disco antes de salvar para não sobrescrever dados de outros requests
-  const dataFresh = loadData();
-  dataFresh[`bling_${conta}`] = updated;
-  if (conta === '1') dataFresh.bling = updated;
-  saveData(dataFresh);
+  // Re-lê do disco antes de salvar para não sobrescrever refresh de outra conta em paralelo
+  const tokensFresh = loadBlingTokens();
+  tokensFresh[conta] = updated;
+  saveBlingTokens(tokensFresh);
   addLog(`[bling] 🔄 Token conta ${conta} renovado — expira ${new Date(updated.expires_at).toLocaleTimeString('pt-BR')}`, 'ok');
   return updated.access_token;
 }
 
 // Retorna token válido, renovando se necessário
 async function getBlingToken(conta) {
-  const data = loadData();
-  const b = getBlingDataConta(data, conta);
+  const b = loadBlingTokens()[conta];
   if (!b?.access_token) throw new Error(`Bling conta ${conta} não conectado`);
   if (Date.now() >= (b.expires_at || 0)) return blingRefreshToken(conta);
   return b.access_token;
@@ -1366,8 +1392,7 @@ async function getBlingToken(conta) {
 // Contas são renovadas sequencialmente (3s de intervalo) para evitar 429 no Bling
 setInterval(async () => {
   for (const conta of ['1', '2']) {
-    const data = loadData();
-    const b = getBlingDataConta(data, conta);
+    const b = getBlingDataConta(null, conta);
     if (!b?.access_token || !b?.refresh_token) continue;
     const minutosRestantes = Math.round(((b.expires_at || 0) - Date.now()) / 60000);
     if (minutosRestantes < 120) {
@@ -6808,7 +6833,8 @@ app.post('/api/admin/restore-lucro-envvars', (req, res) => {
 
 // Mescla o backup (data.json.bak) com dados atuais.
 // Estratégia: backup é a base (tem estoque local, fornecedores, contas a pagar, etc.)
-// Tokens ML e Bling do estado atual (env vars) sobrescrevem o backup por serem mais recentes.
+// Tokens ML do estado atual (env vars) sobrescrevem o backup por serem mais recentes.
+// Tokens Bling não moram mais em data.json (ver bling-tokens.json) — não fazem parte desse merge.
 app.post('/api/admin/merge-backup', (req, res) => {
   const bak = DATA_FILE + '.bak';
   if (!fs.existsSync(bak)) return res.status(404).json({ error: 'Backup não encontrado' });
@@ -6827,19 +6853,15 @@ app.post('/api/admin/merge-backup', (req, res) => {
     ['client_id','client_secret','access_token','refresh_token','user_id','token_expires_at'].forEach(k => {
       if (cur[k]) merged.contas[num][k] = cur[k];
     });
-    // Tokens Bling
-    const bKey = `bling_${num}`;
-    if ((current[bKey] || {}).access_token) merged[bKey] = current[bKey];
     // Contas a pagar: usa o conjunto com mais registros
     const cpBak = ((backup.contas_pagar || {})[num] || []);
     const cpCur = ((current.contas_pagar || {})[num] || []);
     merged.contas_pagar = merged.contas_pagar || {};
     merged.contas_pagar[num] = cpBak.length >= cpCur.length ? cpBak : cpCur;
   }
-  if ((current.bling || {}).access_token) merged.bling = current.bling;
 
   fs.writeFileSync(DATA_FILE, JSON.stringify(merged, null, 2));
-  res.json({ ok: true, msg: 'Dados mesclados: backup restaurado com tokens atualizados das env vars.' });
+  res.json({ ok: true, msg: 'Dados mesclados: backup restaurado com tokens ML atualizados das env vars.' });
 });
 
 // ── Notas de Entrada (SEFAZ NF-e) ────────────────────────────────────────────
