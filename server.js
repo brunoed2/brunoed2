@@ -163,9 +163,10 @@ function loadData() {
   // 199412 é sempre admin no painel app — forçado mesmo se já existir com dados errados
   const adminAbas = ['estoque','vendas','historico','ads','lucro','promocoes','contas-pagar','contas-receber','bling','fiscal','compras','calculadora','etiquetas','log-anuncio','configuracoes','scanner'];
   raw.usuarios['199412'] = {
-    nome:   (raw.usuarios['199412'] || {}).nome || 'Admin',
-    abas:   adminAbas,
-    painel: 'app',
+    nome:         (raw.usuarios['199412'] || {}).nome || 'Admin',
+    abas:         adminAbas,
+    painel:       'app',
+    notificacoes: (raw.usuarios['199412'] || {}).notificacoes,
   };
   // Migração: garante campo painel em usuários antigos
   for (const [senha, u] of Object.entries(raw.usuarios)) {
