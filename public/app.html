@@ -1521,6 +1521,8 @@
     card.dataset.senha = u.senha;
 
     const isAdmin = u.senha === '199412';
+    const ativo = u.ativo !== false;
+    card.style.opacity = ativo ? '1' : '.55';
 
     const abasHtml = TODOS_MODULOS.map(a => {
       const locked = isAdmin && a.id === 'configuracoes';
@@ -1541,6 +1543,16 @@
       ? ''
       : `<button class="btn-secondary" style="padding:5px 12px;font-size:12px;color:#e74c3c" onclick="usuariosDeletar('${u.senha}', this)">🗑️</button>`;
 
+    const toggleBtn = isAdmin
+      ? ''
+      : ativo
+        ? `<button class="btn-secondary" style="padding:5px 12px;font-size:12px;color:#f59e0b" onclick="usuariosToggleAtivo('${u.senha}', true, this)">⏸️ Pausar</button>`
+        : `<button class="btn-secondary" style="padding:5px 12px;font-size:12px;color:#22c55e" onclick="usuariosToggleAtivo('${u.senha}', false, this)">▶️ Ativar</button>`;
+
+    const statusBadge = ativo
+      ? ''
+      : `<span style="font-size:11px;color:#f59e0b;background:#78350f;padding:2px 8px;border-radius:4px">pausado</span>`;
+
     card.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
         <div style="flex:1">
@@ -1549,6 +1561,7 @@
             <code style="background:#1e293b;padding:2px 8px;border-radius:4px;font-size:14px">${u.senha}</code>
             <span style="font-size:13px;color:#94a3b8">Nome:</span>
             <input class="eu-nome" type="text" value="${u.nome}" style="font-size:13px;padding:3px 8px;border:1px solid #334155;border-radius:6px;background:#1e293b;color:#e2e8f0;width:140px;letter-spacing:0">
+            ${statusBadge}
           </div>
           <div style="display:flex;gap:16px;flex-wrap:wrap">${abasHtml}</div>
           <div style="margin-top:12px;padding-top:12px;border-top:1px solid #334155">
@@ -1558,6 +1571,7 @@
         </div>
         <div style="display:flex;gap:6px;flex-shrink:0">
           <button class="btn-primary" style="padding:5px 12px;font-size:12px" onclick="usuariosSalvar('${u.senha}', this)">💾 Salvar</button>
+          ${toggleBtn}
           ${deleteBtn}
         </div>
       </div>
@@ -1618,6 +1632,25 @@
     }
   }
 
+  async function usuariosToggleAtivo(senha, ativoAtual, btn) {
+    const acao = ativoAtual ? 'pausar' : 'reativar';
+    if (!confirm(`Deseja ${acao} o usuário com senha "${senha}"?`)) return;
+    btn.disabled = true;
+    try {
+      const resp = await fetch(`/api/usuarios/${encodeURIComponent(senha)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ativo: !ativoAtual }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) { alert(data.error); btn.disabled = false; return; }
+      usuariosCarregar();
+    } catch {
+      alert('Erro ao atualizar status do usuário.');
+      btn.disabled = false;
+    }
+  }
+
   async function usuariosDeletar(senha, btn) {
     if (!confirm(`Remover o usuário com senha "${senha}"?`)) return;
     const card = btn.closest('.card');
@@ -1657,6 +1690,6 @@
     </div>
   </div>
 
-  <div id="version-badge">v669</div>
+  <div id="version-badge">v670</div>
 </body>
 </html>

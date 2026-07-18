@@ -525,6 +525,9 @@ app.post('/api/login', (req, res) => {
   const data = loadData();
   const usuario = (data.usuarios || {})[String(senha)];
   if (!usuario) return res.status(401).json({ error: 'Senha incorreta' });
+  if (usuario.ativo === false) {
+    return res.status(403).json({ error: 'desativado', painel: usuario.painel });
+  }
   if (usuario.painel === 'fornecedor') {
     return res.json({ ok: true, nome: usuario.nome, abas: [], painel: 'fornecedor' });
   }
@@ -542,6 +545,7 @@ app.get('/api/usuarios', (req, res) => {
     senha,
     nome: info.nome || senha,
     abas: info.abas || [],
+    ativo: info.ativo !== false,
     // null = sem preferência definida (recebe todas as categorias)
     notificacoes: Array.isArray(info.notificacoes) ? info.notificacoes : null,
   }));
@@ -567,13 +571,15 @@ app.post('/api/usuarios', (req, res) => {
 
 app.put('/api/usuarios/:senha', (req, res) => {
   const { senha } = req.params;
-  const { nome, abas, notificacoes } = req.body || {};
+  const { nome, abas, notificacoes, ativo } = req.body || {};
   const data = loadData();
   data.usuarios = data.usuarios || {};
   if (!data.usuarios[senha]) return res.status(404).json({ error: 'Usuário não encontrado' });
+  if (senha === '199412' && ativo === false) return res.status(400).json({ error: 'Não é possível desativar o administrador' });
   if (nome !== undefined) data.usuarios[senha].nome = nome;
   if (abas !== undefined) data.usuarios[senha].abas = abas;
   if (notificacoes !== undefined) data.usuarios[senha].notificacoes = notificacoes;
+  if (ativo !== undefined) data.usuarios[senha].ativo = ativo;
   saveData(data);
   res.json({ ok: true });
 });

@@ -77,7 +77,14 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ senha: val }),
         });
-        if (!resp.ok) throw new Error('invalido');
+        if (!resp.ok) {
+          var erroData = await resp.json().catch(function () { return {}; });
+          if (erroData.error === 'desativado' && erroData.painel === 'fornecedor') {
+            location.href = '/fornecedor-erro.html';
+            return;
+          }
+          throw new Error('invalido');
+        }
         var data = await resp.json();
         localStorage.setItem('abasPermitidas', JSON.stringify(data.abas));
         localStorage.setItem('usuarioNome', data.nome || '');
