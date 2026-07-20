@@ -1079,6 +1079,17 @@ tr.venda-atendida td { opacity: .45; }
   margin-left: 4px;
 }
 
+tr.lucro-linha-cancelada td {
+  color: #dc2626;
+  background: #fef2f2;
+  text-decoration: line-through;
+  font-style: italic;
+}
+tr.lucro-linha-cancelada td.lucro-td-pedido,
+tr.lucro-linha-cancelada td.lucro-td-mlb {
+  text-decoration: line-through;
+}
+
 tr.lucro-sub-item td {
   border-top: none;
   padding-top: 2px;

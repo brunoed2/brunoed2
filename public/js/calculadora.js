@@ -45,7 +45,7 @@ async function calcCarregarDados() {
 
     // Filtrar vendas pelo MLB e ordenar pela data mais recente
     const vendasProduto = data.vendas
-      .filter(v => v.itens.some(i => i.mlb === mlb))
+      .filter(v => !v.cancelado && v.itens.some(i => i.mlb === mlb))
       .sort((a, b) => new Date(b.data) - new Date(a.data));
 
     if (!vendasProduto.length) {

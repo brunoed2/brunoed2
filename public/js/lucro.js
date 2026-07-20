@@ -171,9 +171,10 @@ function lucroTotais(vendas) {
 function lucroRecalcularERenderizar() {
   if (!lucroVendasRaw.length) return;
   const vendas = lucroCalcular(lucroVendasRaw);
-  const total  = lucroTotais(vendas);
-  lucroRenderizarCards(total, vendas.length);
-  lucroRenderizarTabela(vendas);
+  const ativas = vendas.filter(v => !v.cancelado);
+  const total  = lucroTotais(ativas);
+  lucroRenderizarCards(total, ativas.length);
+  lucroRenderizarTabela(vendas); // inclui canceladas, que a tabela mostra em vermelho sem somar
 }
 
 function lucroRenderizarCards(t, qtd) {
@@ -214,6 +215,22 @@ function lucroRenderizarTabela(vendas) {
     const multi      = v.itens.length > 1;
     const qtdTotal   = v.itens.reduce((s, i) => s + i.quantidade, 0);
     const chave0     = item0.sku || item0.mlb || '';
+
+    if (v.cancelado) {
+      const tr = document.createElement('tr');
+      tr.classList.add('lucro-linha-cancelada');
+      tr.innerHTML = `
+        <td class="lucro-td-data">${new Date(v.data).toLocaleDateString('pt-BR')}</td>
+        <td class="lucro-td-pedido" onclick="lucroCopiarPedido(this, '${v.orderId}')" title="Clique para copiar">${v.orderId || '—'}</td>
+        <td class="td-titulo">${item0.titulo || '—'}${multi ? `<span class="lucro-multi"> +${v.itens.length - 1}</span>` : ''}</td>
+        <td class="lucro-td-mlb">${chave0 || '—'}</td>
+        <td class="col-num">${qtdTotal}</td>
+        <td class="col-num" colspan="7">CANCELADO — não entra no total</td>
+      `;
+      tbody.appendChild(tr);
+      return;
+    }
+
     const custoSalvo = lucroConfig.custos[chave0] || 0;
     const margemCls  = v.margem >= 10 ? 'lucro-val-pos' : v.margem < 0 ? 'lucro-val-neg' : '';
 
@@ -793,7 +810,7 @@ function gastosAtualizarCards() {
   }
   const totalGastos  = totalGastosManuais + totalAuto + totalFixos;
   // Lucro do mês completo (buscado independentemente da aba Vendas)
-  const vendas  = gastosVendasRaw.length ? lucroCalcular(gastosVendasRaw) : [];
+  const vendas  = gastosVendasRaw.length ? lucroCalcular(gastosVendasRaw).filter(v => !v.cancelado) : [];
   const totais  = vendas.length ? lucroTotais(vendas) : null;
   const lucroPeriodo = totais ? totais.lucro : null;
 
@@ -968,7 +985,7 @@ async function dreCarregar() {
           fetch(`/api/lucro/gastos-auto?conta=${conta}&mes=${m.mes}`).then(r => r.json()),
         ]);
         const vendas  = vendasResp.vendas || [];
-        const calc    = vendas.length ? lucroCalcular(vendas) : [];
+        const calc    = vendas.length ? lucroCalcular(vendas).filter(v => !v.cancelado) : [];
         const totais  = calc.length  ? lucroTotais(calc)     : null;
         const lucroML = totais ? totais.lucro   : null;
         const taxaML  = totais ? totais.taxaML  : null;

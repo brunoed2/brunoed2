@@ -4146,6 +4146,20 @@ async function buscarVendasComCustos(c, headers, dateFrom, dateTo) {
     offset += 50;
   }
 
+  // Pedidos cancelados no mesmo período — trazidos só pra exibição (marcados
+  // com cancelado:true em montarVendas), nunca somados no lucro.
+  offset = 0;
+  while (offset < 5000) {
+    const params = { seller: c.user_id, 'order.status': 'cancelled', sort: 'date_desc', limit: 50, offset };
+    if (dateFrom) params['order.date_created.from'] = dateFrom + 'T00:00:00.000-03:00';
+    if (dateTo)   params['order.date_created.to']   = dateTo   + 'T23:59:59.000-03:00';
+    const resp = await axios.get('https://api.mercadolibre.com/orders/search', { params, headers, timeout: 15000 });
+    const results = resp.data.results || [];
+    todasOrdens = todasOrdens.concat(results);
+    if (results.length < 50) break;
+    offset += 50;
+  }
+
   // Busca custo de frete via /shipments/{id}/costs → senders[].cost, em lotes de 25
   const shipmentIds = [...new Set(todasOrdens.map(o => o.shipping?.id).filter(Boolean))];
   const fretePorShipment = {};
@@ -4196,6 +4210,7 @@ function montarVendas(todasOrdens, fretePorShipment, pedidosPorShipment) {
       taxaML,
       freteReal,
       shipmentId: sid || null,
+      cancelado: order.status === 'cancelled',
     };
   });
 }
@@ -4347,6 +4362,7 @@ app.get('/api/lucro/desvios', async (req, res) => {
       }));
     }
     const vendasConsideradas = vendas.filter(v =>
+      !v.cancelado &&
       !(v.shipmentId && (tagsPorShipment[v.shipmentId] || []).includes('source_pack_split'))
     );
 
