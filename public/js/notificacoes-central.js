@@ -33,7 +33,8 @@ function notifCentralRenderLista(itens) {
 
 async function notifCentralAtualizarBadge() {
   try {
-    const d = await fetch('/api/notificacoes').then(r => r.json());
+    const senha = localStorage.getItem('usuarioSenha') || '';
+    const d = await fetch('/api/notificacoes?senha=' + encodeURIComponent(senha)).then(r => r.json());
     ['notif-central-badge', 'notif-central-badge-drawer'].forEach(id => {
       const badge = document.getElementById(id);
       if (!badge) return;

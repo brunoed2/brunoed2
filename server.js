@@ -5858,7 +5858,11 @@ app.post('/api/push/teste', async (req, res) => {
 
 app.get('/api/notificacoes', (req, res) => {
   const hist = loadNotifHistorico();
-  const itens = Array.isArray(hist.itens) ? hist.itens : [];
+  const todos = Array.isArray(hist.itens) ? hist.itens : [];
+  const senha = req.query.senha ? String(req.query.senha) : null;
+  const usuario = senha ? (loadData().usuarios || {})[senha] : null;
+  // Sem senha (usuário ainda não identificado no dispositivo) = mostra tudo, igual ao push
+  const itens = senha ? todos.filter(n => usuarioRecebeCategoria(usuario, n.categoria)) : todos;
   const ultimaVista = hist.ultimaVista || 0;
   const naoLidas = itens.filter(n => n.ts > ultimaVista).length;
   res.json({ itens, naoLidas });
