@@ -231,7 +231,7 @@ function lucroRenderizarTabela(vendas) {
       return;
     }
 
-    const custoSalvo = lucroConfig.custos[chave0] || 0;
+    const custoSalvo = lucroCustoNaData(chave0, v.data) || 0;
     const margemCls  = v.margem >= 10 ? 'lucro-val-pos' : v.margem < 0 ? 'lucro-val-neg' : '';
 
     const tr = document.createElement('tr');
@@ -265,7 +265,7 @@ function lucroRenderizarTabela(vendas) {
     for (let i = 1; i < v.itens.length; i++) {
       const item    = v.itens[i];
       const chaveI  = item.sku || item.mlb || '';
-      const cSalvo2 = lucroConfig.custos[chaveI] || 0;
+      const cSalvo2 = lucroCustoNaData(chaveI, v.data) || 0;
       const trSub   = document.createElement('tr');
       trSub.classList.add('lucro-sub-item');
       trSub.innerHTML = `
