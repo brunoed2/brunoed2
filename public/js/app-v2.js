@@ -102,13 +102,16 @@ function abrirSubConfig(sub) {
   document.getElementById('subtab-btn-ml').classList.toggle('active', sub === 'ml');
   document.getElementById('subtab-btn-conexao').classList.toggle('active', sub === 'conexao');
   document.getElementById('subtab-btn-usuarios').classList.toggle('active', sub === 'usuarios');
+  document.getElementById('subtab-btn-acessos')?.classList.toggle('active', sub === 'acessos');
   document.getElementById('subtab-btn-backup')?.classList.toggle('active', sub === 'backup');
   document.getElementById('subtab-ml').style.display       = sub === 'ml'       ? '' : 'none';
   document.getElementById('subtab-conexao').style.display  = sub === 'conexao'  ? '' : 'none';
   document.getElementById('subtab-usuarios').style.display = sub === 'usuarios' ? '' : 'none';
+  document.getElementById('subtab-acessos').style.display  = sub === 'acessos' ? '' : 'none';
   document.getElementById('subtab-backup').style.display   = sub === 'backup'   ? '' : 'none';
   if (sub === 'ml') carregarConfig(contaConfigurando);
   if (sub === 'usuarios') usuariosCarregar();
+  if (sub === 'acessos') acessosCarregar();
   if (sub === 'conexao') {
     if (typeof cxIniciarStream    === 'function') cxIniciarStream();
     if (typeof verificarConexao   === 'function') verificarConexao();

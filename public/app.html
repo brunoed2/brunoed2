@@ -27,6 +27,7 @@
       location.href = '/';
     }
   </script>
+  <script src="/js/sessao-check.js"></script>
 
   <!-- Central de notificações -->
   <button id="notif-central-btn" onclick="notifCentralToggle()" aria-label="Notificações">
@@ -908,6 +909,7 @@
           <button class="filtro-btn active" id="subtab-btn-ml" onclick="abrirSubConfig('ml')">⚙️ Mercado Livre</button>
           <button class="filtro-btn" id="subtab-btn-conexao" onclick="abrirSubConfig('conexao')">🔌 Conexão</button>
           <button class="filtro-btn" id="subtab-btn-usuarios" onclick="abrirSubConfig('usuarios')">👥 Usuários</button>
+          <button class="filtro-btn" id="subtab-btn-acessos" onclick="abrirSubConfig('acessos')">🔒 Acessos</button>
           <button class="filtro-btn" id="subtab-btn-backup" onclick="abrirSubConfig('backup')">💾 Backup</button>
         </div>
 
@@ -1002,6 +1004,16 @@
           </div>
 
           <div id="usuarios-lista"></div>
+        </div>
+
+        <!-- Sub-aba: Acessos -->
+        <div id="subtab-acessos" style="display:none">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;gap:12px;flex-wrap:wrap">
+            <h2 style="font-size:16px;font-weight:600">Histórico de acessos</h2>
+            <button class="btn-secondary" style="color:#e74c3c" onclick="acessosDerrubarTodos()">🚪 Derrubar todas as sessões</button>
+          </div>
+          <p class="card-desc" style="margin-bottom:12px">Últimos logins registrados, com IP e dispositivo de origem. Use "Derrubar todas as sessões" se suspeitar que alguém mais está usando uma senha sua — isso força todo mundo (inclusive você) a entrar de novo.</p>
+          <div id="acessos-lista"></div>
         </div>
 
         <!-- Sub-aba: Conexão -->
@@ -1665,6 +1677,76 @@
       alert('Erro ao remover usuário.');
     }
   }
+
+  function resumirUserAgent(ua) {
+    if (!ua) return '—';
+    let os = 'Desconhecido';
+    if (/iPhone|iPad/.test(ua))        os = 'iOS';
+    else if (/Android/.test(ua))       os = 'Android';
+    else if (/Windows/.test(ua))       os = 'Windows';
+    else if (/Mac OS X/.test(ua))      os = 'Mac';
+    else if (/Linux/.test(ua))         os = 'Linux';
+    let nav = 'Navegador';
+    if (/Edg\//.test(ua))                              nav = 'Edge';
+    else if (/Chrome\//.test(ua) && !/Edg\//.test(ua)) nav = 'Chrome';
+    else if (/Firefox\//.test(ua))                     nav = 'Firefox';
+    else if (/Safari\//.test(ua) && !/Chrome\//.test(ua)) nav = 'Safari';
+    return `${nav} · ${os}`;
+  }
+
+  async function acessosCarregar() {
+    const lista = document.getElementById('acessos-lista');
+    lista.innerHTML = '<p style="color:#94a3b8;font-size:13px">Carregando...</p>';
+    try {
+      const log = await fetch('/api/acessos').then(r => r.json());
+      if (!log.length) {
+        lista.innerHTML = '<p style="color:#94a3b8;font-size:13px">Nenhum acesso registrado ainda.</p>';
+        return;
+      }
+      lista.innerHTML = `
+        <div style="overflow-x:auto">
+          <table style="width:100%;border-collapse:collapse;font-size:13px">
+            <thead>
+              <tr style="text-align:left;color:#94a3b8;border-bottom:1px solid #334155">
+                <th style="padding:6px 8px">Data/hora</th>
+                <th style="padding:6px 8px">Usuário</th>
+                <th style="padding:6px 8px">Painel</th>
+                <th style="padding:6px 8px">IP</th>
+                <th style="padding:6px 8px">Dispositivo</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${log.map(a => `
+                <tr style="border-bottom:1px solid #1e293b">
+                  <td style="padding:6px 8px;white-space:nowrap">${new Date(a.data).toLocaleString('pt-BR')}</td>
+                  <td style="padding:6px 8px">${a.nome || a.senha}</td>
+                  <td style="padding:6px 8px">${a.painel || '—'}</td>
+                  <td style="padding:6px 8px">${a.ip || '—'}</td>
+                  <td style="padding:6px 8px">${resumirUserAgent(a.userAgent)}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+    } catch {
+      lista.innerHTML = '<p style="color:#e74c3c;font-size:13px">Erro ao carregar histórico.</p>';
+    }
+  }
+
+  async function acessosDerrubarTodos() {
+    if (!confirm('Isso vai derrubar TODAS as sessões abertas (inclusive a sua) e exigir login novamente em todos os painéis. Continuar?')) return;
+    try {
+      const resp = await fetch('/api/sessao/derrubar-todos', { method: 'POST' });
+      if (!resp.ok) { alert('Erro ao derrubar sessões.'); return; }
+      alert('Todas as sessões foram encerradas. Você também vai precisar entrar de novo.');
+      localStorage.removeItem('auth');
+      localStorage.removeItem('sessionVersion');
+      location.href = '/';
+    } catch {
+      alert('Erro ao derrubar sessões.');
+    }
+  }
   </script>
   <!-- Modal histórico de estoque -->
   <div id="modal-hist-estoque" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;align-items:center;justify-content:center" onclick="if(event.target===this)this.style.display='none'">
@@ -1690,6 +1772,6 @@
     </div>
   </div>
 
-  <div id="version-badge">v673</div>
+  <div id="version-badge">v674</div>
 </body>
 </html>

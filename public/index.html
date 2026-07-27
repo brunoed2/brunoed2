@@ -89,6 +89,7 @@
         localStorage.setItem('abasPermitidas', JSON.stringify(data.abas));
         localStorage.setItem('usuarioNome', data.nome || '');
         localStorage.setItem('usuarioSenha', val);
+        localStorage.setItem('sessionVersion', String(data.sessionVersion || 0));
         if (data.painel === 'app') {
           localStorage.setItem('auth', '1');
           location.href = '/app.html';
