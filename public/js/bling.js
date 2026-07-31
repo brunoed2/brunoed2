@@ -5,6 +5,23 @@
 
 let blingSubAtual = 'pedidos';
 
+function blingMostrarResultadoLote(titulo, itens) {
+  const modal    = document.getElementById('modal-bling-resultado');
+  const tituloEl = document.getElementById('modal-bling-resultado-titulo');
+  const lista    = document.getElementById('modal-bling-resultado-lista');
+  if (!modal || !tituloEl || !lista) return;
+  const ok    = itens.filter(i => i.ok).length;
+  const erros = itens.length - ok;
+  tituloEl.textContent = `${titulo} — ${ok} ok, ${erros} erro${erros !== 1 ? 's' : ''}`;
+  lista.innerHTML = itens.map(i => `
+    <div style="display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px solid #f1f5f9">
+      <span>${escapeHtml(i.label)}</span>
+      <span style="color:${i.ok ? '#16a34a' : '#dc2626'};text-align:right;white-space:nowrap">${i.ok ? '✅ OK' : '❌ ' + escapeHtml(i.msg || 'erro desconhecido')}</span>
+    </div>
+  `).join('');
+  modal.style.display = 'flex';
+}
+
 function blingInit() {
   blingAbrirSub(blingSubAtual);
 }
@@ -135,29 +152,31 @@ async function blingEmitirSelecionadas() {
   const btn = document.getElementById('btn-emitir-selecionadas');
   btn.disabled    = true;
   btn.textContent = `Emitindo 0/${checks.length}...`;
-  let ok = 0, erros = 0;
+  const itens = [];
   for (const chk of checks) {
     const id    = chk.dataset.id;
     const conta = chk.dataset.conta || '1';
+    const label = chk.closest('tr')?.children[2]?.textContent?.trim() || id;
     const btnLinha = document.querySelector(`button[data-bling-id="${id}"]`);
     if (btnLinha) { btnLinha.disabled = true; btnLinha.textContent = 'Emitindo...'; }
     const res = await fetch(`/api/bling/emitir-nf/${id}?conta=${conta}`, { method: 'POST' }).then(r => r.json()).catch(() => ({ ok: false }));
     if (res.ok) {
-      ok++;
+      itens.push({ label, ok: true });
       if (btnLinha) { btnLinha.textContent = '✅ Emitida'; btnLinha.style.color = 'green'; }
       chk.checked = false;
     } else {
-      erros++;
+      itens.push({ label, ok: false, msg: res.erro });
       if (btnLinha) { btnLinha.disabled = false; btnLinha.textContent = 'Emitir NF'; }
     }
-    btn.textContent = `Emitindo ${ok + erros}/${checks.length}...`;
+    btn.textContent = `Emitindo ${itens.length}/${checks.length}...`;
   }
   btn.disabled = false;
   blingAtualizarBotaoLote();
   const checkAll = document.getElementById('bling-check-all');
   if (checkAll) checkAll.checked = false;
+  const erros = itens.filter(i => !i.ok).length;
   if (erros === 0) setTimeout(() => blingCarregarPedidos(), 1500);
-  else alert(`${ok} NF(s) emitida(s) com sucesso. ${erros} erro(s).`);
+  blingMostrarResultadoLote('Emitir NF selecionadas', itens);
 }
 
 async function blingSuperSelecionadas() {
@@ -165,17 +184,18 @@ async function blingSuperSelecionadas() {
   if (checks.length === 0) return;
   const btn = document.getElementById('btn-super-selecionadas');
   btn.disabled = true;
-  let ok = 0, erros = 0;
+  const itens = [];
   for (const chk of checks) {
     const id    = chk.dataset.id;
     const conta = chk.dataset.conta || '1';
+    const label = chk.closest('tr')?.children[2]?.textContent?.trim() || id;
     const btnSuper = document.querySelector(`button[data-bling-super-id="${id}"]`);
-    btn.textContent = `⚡ Super ${ok + erros + 1}/${checks.length}...`;
+    btn.textContent = `⚡ Super ${itens.length + 1}/${checks.length}...`;
 
     if (btnSuper) { btnSuper.disabled = true; btnSuper.textContent = '⚡ Gerando...'; }
     const emissao = await fetch(`/api/bling/emitir-nf/${id}?conta=${conta}`, { method: 'POST' }).then(r => r.json()).catch(() => ({ ok: false }));
     if (!emissao.ok) {
-      erros++;
+      itens.push({ label, ok: false, msg: emissao.erro });
       if (btnSuper) { btnSuper.disabled = false; btnSuper.textContent = '⚡ Super'; }
       continue;
     }
@@ -184,11 +204,11 @@ async function blingSuperSelecionadas() {
     await new Promise(r => setTimeout(r, 3500));
     const envio = await fetch(`/api/bling/enviar-nf/${emissao.nfId}?conta=${conta}`, { method: 'POST' }).then(r => r.json()).catch(() => ({ ok: false }));
     if (envio.ok) {
-      ok++;
+      itens.push({ label, ok: true });
       chk.checked = false;
       if (btnSuper) { btnSuper.textContent = '✅ Enviada'; btnSuper.style.background = '#16a34a'; }
     } else {
-      erros++;
+      itens.push({ label, ok: false, msg: envio.erro });
       if (btnSuper) { btnSuper.disabled = false; btnSuper.textContent = '⚡ Super'; }
     }
   }
@@ -197,7 +217,7 @@ async function blingSuperSelecionadas() {
   const checkAll = document.getElementById('bling-check-all');
   if (checkAll) checkAll.checked = false;
   setTimeout(() => blingCarregarPedidos(), 1500);
-  if (erros > 0) alert(`${ok} NF(s) enviada(s) com sucesso. ${erros} com erro — verifique no Bling.`);
+  blingMostrarResultadoLote('Super selecionadas', itens);
 }
 
 async function blingSuperEnvio(pedidoId, btn, conta) {
@@ -361,28 +381,30 @@ async function blingEnviarSelecionadas() {
   const btn = document.getElementById('btn-enviar-selecionadas');
   btn.disabled    = true;
   btn.textContent = `Enviando 0/${checks.length}...`;
-  let ok = 0, erros = 0;
+  const itens = [];
   for (const chk of checks) {
     const id      = chk.dataset.id;
+    const label   = chk.closest('tr')?.children[1]?.textContent?.trim() || id;
     const btnLinha = document.querySelector(`button[data-bling-nota-id="${id}"]`);
     if (btnLinha) { btnLinha.disabled = true; btnLinha.textContent = 'Enviando...'; }
     const res = await fetch(`/api/bling/enviar-nf/${id}?conta=${window.CONTA_ATIVA}`, { method: 'POST' }).then(r => r.json()).catch(() => ({ ok: false }));
     if (res.ok) {
-      ok++;
+      itens.push({ label, ok: true });
       if (btnLinha) { btnLinha.textContent = '✅ Enviada'; btnLinha.style.color = 'green'; }
       chk.checked = false;
     } else {
-      erros++;
+      itens.push({ label, ok: false, msg: res.erro });
       if (btnLinha) { btnLinha.disabled = false; btnLinha.textContent = 'Enviar'; }
     }
-    btn.textContent = `Enviando ${ok + erros}/${checks.length}...`;
+    btn.textContent = `Enviando ${itens.length}/${checks.length}...`;
   }
   btn.disabled = false;
   blingAtualizarBotaoLoteNotas();
   const checkAll = document.getElementById('bling-check-all-notas');
   if (checkAll) checkAll.checked = false;
+  const erros = itens.filter(i => !i.ok).length;
   if (erros === 0) setTimeout(() => blingCarregarNotas(), 1500);
-  else alert(`${ok} nota(s) enviada(s) com sucesso. ${erros} erro(s).`);
+  blingMostrarResultadoLote('Enviar notas selecionadas', itens);
 }
 
 async function blingEnviarNF(notaId, btn) {
