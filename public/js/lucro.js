@@ -535,6 +535,7 @@ async function gastosAtualizarTudo() {
 let gastosFixosTipos      = [];
 let gastosFixosValores    = {};
 let gastosFixosValoresMes = {}; // valores explicitamente salvos neste mês (sem auto-fill)
+let gastosFixosRemovidoEm = {}; // { nome: 'YYYY-MM' } mês em que o item foi excluído da lista
 
 async function gastosFixosCarregar() {
   const conta = lucroContaAtual();
@@ -545,11 +546,13 @@ async function gastosFixosCarregar() {
     gastosFixosValores    = d.valores    || {};
     gastosFixosValoresMes = d.valoresMes || {};
     gastosFixosTravados   = new Set(d.travados || []);
+    gastosFixosRemovidoEm = d.removidoEm || {};
   } catch {
     gastosFixosTipos      = [];
     gastosFixosValores    = {};
     gastosFixosValoresMes = {};
     gastosFixosTravados   = new Set();
+    gastosFixosRemovidoEm = {};
   }
   gastosFixosRenderizar();
 }
@@ -562,9 +565,15 @@ function gastosFixosRenderizar() {
   if (!tbody) return;
   tbody.innerHTML = '';
 
-  // Itens com valor salvo explicitamente neste mês mas removidos da lista ativa
+  const mesAtual = gastosMesAtual();
+  // Itens com valor salvo explicitamente neste mês mas removidos da lista ativa.
+  // Se sabemos em que mês foi excluído: meses depois da exclusão nem aparecem.
   const historicos = Object.entries(gastosFixosValoresMes)
-    .filter(([nome, val]) => !gastosFixosTipos.includes(nome) && parseFloat(val) > 0);
+    .filter(([nome, val]) => !gastosFixosTipos.includes(nome) && parseFloat(val) > 0)
+    .filter(([nome]) => {
+      const removidoEm = gastosFixosRemovidoEm[nome];
+      return !removidoEm || mesAtual <= removidoEm;
+    });
 
   const temAtivos    = gastosFixosTipos.length > 0;
   const temHistorico = historicos.length > 0;
@@ -611,12 +620,16 @@ function gastosFixosRenderizar() {
     tbody.appendChild(tr);
   });
 
-  // Itens arquivados: exibidos como somente-leitura para meses onde tinham valor
+  // Itens excluídos da lista: somente-leitura para meses onde tinham valor.
+  // No mês exato da exclusão aparece marcado "(arquivado)"; em meses antes disso
+  // (quando o gasto era real e o item ainda estava ativo) aparece normal.
   historicos.forEach(([nome, valor]) => {
+    const removidoEm    = gastosFixosRemovidoEm[nome];
+    const ehMesExclusao = removidoEm && mesAtual === removidoEm;
     const tr = document.createElement('tr');
-    tr.style.opacity = '0.55';
+    tr.style.opacity = ehMesExclusao ? '0.55' : '1';
     tr.innerHTML = `
-      <td>${nome} <span style="font-size:0.78em;color:#888;font-style:italic">(arquivado)</span></td>
+      <td>${nome} ${ehMesExclusao ? '<span style="font-size:0.78em;color:#888;font-style:italic">(arquivado)</span>' : ''}</td>
       <td class="col-num">
         <input type="hidden" data-nome="${nome}" value="${parseFloat(valor) || 0}">
         <span style="padding-right:8px;color:#888">R$ ${parseFloat(valor).toFixed(2).replace('.', ',')}</span>
@@ -649,14 +662,16 @@ async function gastosFixoAdicionar() {
 
 async function gastosFixoRemoverTipo(nome) {
   const conta = lucroContaAtual();
+  const mes   = gastosMesAtual();
   try {
     await fetch('/api/lucro/gastos-fixo-tipo', {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ conta, nome }),
+      body: JSON.stringify({ conta, nome, mes }),
     });
     gastosFixosTipos   = gastosFixosTipos.filter(t => t !== nome);
     delete gastosFixosValores[nome];
+    gastosFixosRemovidoEm[nome] = mes;
     gastosFixosRenderizar();
   } catch {}
 }
@@ -687,7 +702,9 @@ async function gastosFixosSalvarBtn() {
   const tbody = document.getElementById('tabela-gastos-fixos-body');
   const valores = {};
   if (tbody) {
-    tbody.querySelectorAll('input[data-nome]').forEach(inp => {
+    // Só itens ativos (input visível) — os arquivados/hidden não devem ser
+    // regravados a cada save, senão o valor "vaza" pra meses futuros.
+    tbody.querySelectorAll('input.lucro-custo-input[data-nome]').forEach(inp => {
       valores[inp.dataset.nome] = parseFloat(inp.value.replace(',', '.')) || 0;
     });
   }

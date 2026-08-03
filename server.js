@@ -3893,6 +3893,7 @@ app.get('/api/lucro/gastos-fixos', (req, res) => {
     valores,
     valoresMes, // somente valores explicitamente salvos neste mês (sem auto-fill)
     travados,
+    removidoEm: lc.gastos_fixos_removido_em || {},
   });
 });
 
@@ -3915,11 +3916,26 @@ app.post('/api/lucro/gastos-fixo-tipo', async (req, res) => {
 
 // Remove tipo
 app.delete('/api/lucro/gastos-fixo-tipo', async (req, res) => {
-  const { conta, nome } = req.body;
+  const { conta, nome, mes } = req.body;
   const num = String(conta || '1');
   const data = loadData();
   data.lucro_contas = data.lucro_contas || {};
   const lc = data.lucro_contas[num] = data.lucro_contas[num] || {};
+  // Marca o mês da exclusão — meses anteriores mantêm o valor normalmente (era um
+  // gasto real na época), o mês da exclusão aparece como "arquivado", e meses
+  // seguintes não mostram mais o item. Grava o valor efetivo desse mês (mesmo que
+  // só existisse por auto-fill do padrão travado) pra garantir que fique visível.
+  if (mes) {
+    lc.gastos_fixos_removido_em = lc.gastos_fixos_removido_em || {};
+    lc.gastos_fixos_removido_em[nome] = mes;
+    const valorMes = (lc.gastos_fixos_valores?.[mes] || {})[nome];
+    const valorEfetivo = valorMes ?? lc.gastos_fixos_padrao?.[nome];
+    if (valorEfetivo != null) {
+      lc.gastos_fixos_valores = lc.gastos_fixos_valores || {};
+      lc.gastos_fixos_valores[mes] = lc.gastos_fixos_valores[mes] || {};
+      lc.gastos_fixos_valores[mes][nome] = valorEfetivo;
+    }
+  }
   lc.gastos_fixos_tipos    = (lc.gastos_fixos_tipos    || []).filter(t => t !== nome);
   lc.gastos_fixos_travados = (lc.gastos_fixos_travados || []).filter(t => t !== nome);
   if (lc.gastos_fixos_padrao) delete lc.gastos_fixos_padrao[nome];
@@ -4012,6 +4028,7 @@ app.get('/api/lucro/dre-local', (req, res) => {
   const travados = lc.gastos_fixos_travados || [];
   const padrao   = lc.gastos_fixos_padrao   || {};
   const tiposAtivos = lc.gastos_fixos_tipos || [];
+  const removidoEm  = lc.gastos_fixos_removido_em || {};
   const meses    = [];
   for (let m = 1; m <= 12; m++) {
     const mes         = `${ano}-${String(m).padStart(2, '0')}`;
@@ -4022,6 +4039,10 @@ app.get('/api/lucro/dre-local', (req, res) => {
     const fixos = { ...fixosRaw };
     for (const nome of travados) {
       if (!(nome in fixos) && nome in padrao && tiposAtivos.includes(nome)) fixos[nome] = padrao[nome];
+    }
+    // Item excluído da lista: mantém valor em meses até o da exclusão, some depois
+    for (const nome of Object.keys(fixos)) {
+      if (removidoEm[nome] && mes > removidoEm[nome]) delete fixos[nome];
     }
     const totalEntradas  = gastosDoMes.filter(g => g.tipo === 'entrada').reduce((s, g) => s + g.valor, 0);
     const totalGastosVar = gastosDoMes.filter(g => g.tipo !== 'entrada').reduce((s, g) => s + g.valor, 0);
