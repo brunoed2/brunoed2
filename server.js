@@ -965,100 +965,6 @@ app.get('/api/debug/egress-ip', async (req, res) => {
   }
 });
 
-// TEMP: diagnosticar por que o custo de Ads (Product Ads) está vindo zerado no DRE/Gastos.
-// Chama a API de advertising do ML sem engolir o erro. Remover depois de usado.
-app.get('/api/debug/ads-raw', async (req, res) => {
-  const data = loadData();
-  const num  = String(req.query.conta || data.conta_ativa || '1');
-  const c    = data.contas[num];
-  const mes  = req.query.mes || new Date().toISOString().slice(0, 7);
-  const out  = { conta: num, mes, temToken: !!c?.access_token, userId: c?.user_id || null };
-  if (!c?.access_token || !c.user_id) return res.json(out);
-
-  const [ano, m]  = mes.split('-').map(Number);
-  const de        = `${mes}-01`;
-  const hoje      = new Date().toISOString().split('T')[0];
-  const ultimoDia = new Date(ano, m, 0).getDate();
-  const ate_full  = `${mes}-${String(ultimoDia).padStart(2, '0')}`;
-  const ate       = ate_full > hoje ? hoje : ate_full;
-  const headers   = { Authorization: `Bearer ${c.access_token}` };
-  out.periodo = { de, ate };
-
-  try {
-    const r = await axios.get('https://api.mercadolibre.com/advertising/product_ads/metrics', {
-      params: { seller_id: c.user_id, date_from: de, date_to: ate }, headers, timeout: 12000,
-    });
-    out.seller_metrics = { status: r.status, data: r.data };
-  } catch (e) {
-    out.seller_metrics_erro = { status: e.response?.status, data: e.response?.data, message: e.message };
-  }
-
-  try {
-    const r = await axios.get(
-      `https://api.mercadolibre.com/marketplace/advertising/MLB/advertisers/156629/product_ads/campaigns/search`,
-      {
-        params: { date_from: de, date_to: ate, metrics: 'cost,clicks,roas,acos', limit: 50, offset: 0 },
-        headers: { ...headers, 'api-version': '2' }, timeout: 12000,
-      }
-    );
-    out.campaigns_search_novo = { status: r.status, data: r.data };
-  } catch (e) {
-    out.campaigns_search_novo_erro = { status: e.response?.status, data: e.response?.data, message: e.message };
-  }
-
-  try {
-    const r = await axios.get('https://api.mercadolibre.com/advertising/product_ads/metrics', {
-      params: { advertiser_id: 156629, date_from: de, date_to: ate },
-      headers: { ...headers, 'Api-Version': '1' }, timeout: 12000,
-    });
-    out.advertiser_metrics = { status: r.status, data: r.data };
-  } catch (e) {
-    out.advertiser_metrics_erro = { status: e.response?.status, data: e.response?.data, message: e.message };
-  }
-
-  try {
-    const r = await axios.get('https://api.mercadolibre.com/advertising/product_ads/ads/search', {
-      params: { seller_id: c.user_id, limit: 50, offset: 0 }, headers, timeout: 12000,
-    });
-    out.ads_search = { status: r.status, total: r.data?.paging?.total, results: (r.data.results || []).slice(0, 5) };
-  } catch (e) {
-    out.ads_search_erro = { status: e.response?.status, data: e.response?.data, message: e.message };
-  }
-
-  try {
-    const r = await axios.get('https://api.mercadolibre.com/advertising/product_ads/ads/search', {
-      params: { advertiser_id: 156629, limit: 50, offset: 0 },
-      headers: { ...headers, 'Api-Version': '1' }, timeout: 12000,
-    });
-    out.ads_search_v2 = { status: r.status, total: r.data?.paging?.total, results: (r.data.results || []).slice(0, 5) };
-  } catch (e) {
-    out.ads_search_v2_erro = { status: e.response?.status, data: e.response?.data, message: e.message };
-  }
-
-  try {
-    const r = await axios.get('https://api.mercadolibre.com/advertising/advertisers', {
-      params: { product_id: 'PADS' }, headers: { ...headers, 'Api-Version': '1' }, timeout: 12000,
-    });
-    out.advertisers = { status: r.status, data: r.data };
-    const advertiserId = r.data?.advertisers?.[0]?.advertiser_id;
-    if (advertiserId) {
-      try {
-        const r2 = await axios.get('https://api.mercadolibre.com/advertising/product_ads/campaigns', {
-          params: { advertiser_id: advertiserId, date_from: de, date_to: ate },
-          headers: { ...headers, 'Api-Version': '1' }, timeout: 12000,
-        });
-        out.campaigns_metrics = { status: r2.status, data: r2.data };
-      } catch (e2) {
-        out.campaigns_metrics_erro = { status: e2.response?.status, data: e2.response?.data, message: e2.message };
-      }
-    }
-  } catch (e) {
-    out.advertisers_erro = { status: e.response?.status, data: e.response?.data, message: e.message };
-  }
-
-  res.json(out);
-});
-
 // ── Estoque Local ─────────────────────────────────────────────
 function addEstoqueHistorico(data, entry) {
   data.estoque_local_historico = data.estoque_local_historico || [];
@@ -4199,50 +4105,32 @@ app.get('/api/lucro/gastos-auto', async (req, res) => {
 
   const [adsCost, fullCost] = await Promise.all([
 
-    // ── Ads: usa endpoint seller-level para custo total (mais estável)
+    // ── Ads: soma o custo de todas as campanhas via endpoint novo (marketplace/advertising/...).
+    // O endpoint antigo (advertising/product_ads/*) foi descontinuado pelo ML — sempre dava
+    // 404 aqui e virava silenciosamente R$0 no DRE/Gastos.
     (async () => {
       try {
-        // Tenta endpoint de métricas por seller (única chamada, evita inconsistência por timeout por campanha)
-        const r = await axios.get('https://api.mercadolibre.com/advertising/product_ads/metrics', {
-          params: { seller_id: c.user_id, date_from: de, date_to: ate }, headers, timeout: 12000,
-        });
-        const custo = Number(r.data?.cost ?? r.data?.total_cost);
-        if (!isNaN(custo) && custo >= 0) {
-          console.log(`[gastos-auto] ads seller_metrics: R$${custo}`);
-          return custo;
+        const adv = await buscarAdvertiser(headers);
+        if (!adv) return 0;
+        const { advertiserId, siteId } = adv;
+        const v2 = { ...headers, 'Api-Version': '2' };
+        let total = 0, offset = 0;
+        const LIMIT = 50;
+        while (true) {
+          const r = await axios.get(
+            `https://api.mercadolibre.com/marketplace/advertising/${siteId}/advertisers/${advertiserId}/product_ads/campaigns/search`,
+            { params: { limit: LIMIT, offset, metrics: 'cost', date_from: de, date_to: ate }, headers: v2, timeout: 15000 }
+          );
+          const results = r.data.results || [];
+          total += results.reduce((s, camp) => s + (Number(camp.metrics?.cost) || 0), 0);
+          const totalPaging = r.data.paging?.total || 0;
+          offset += LIMIT;
+          if (offset >= totalPaging || !results.length) break;
         }
-        throw new Error('seller_metrics sem campo cost');
-      } catch (e1) {
-        // Fallback: soma por campanha com retry por campanha falha
-        console.log('[gastos-auto] fallback por campanha:', e1.message);
-        try {
-          const todosAds = [];
-          let offset = 0;
-          while (true) {
-            const r = await axios.get('https://api.mercadolibre.com/advertising/product_ads/ads/search', {
-              params: { seller_id: c.user_id, limit: 50, offset }, headers, timeout: 12000,
-            });
-            const results = r.data.results || [];
-            todosAds.push(...results);
-            if (results.length < 50 || todosAds.length >= 500) break;
-            offset += 50;
-          }
-          const campIds = [...new Set(todosAds.filter(a => a.campaign_id > 0).map(a => a.campaign_id))];
-          if (!campIds.length) return 0;
-          const custos = await Promise.all(campIds.map(async (campId) => {
-            for (let t = 0; t < 3; t++) {
-              try {
-                const r = await axios.get(
-                  `https://api.mercadolibre.com/advertising/product_ads/campaigns/${campId}/metrics`,
-                  { params: { date_from: de, date_to: ate }, headers, timeout: 10000 }
-                );
-                return Number(r.data.cost) || 0;
-              } catch { if (t < 2) await new Promise(res => setTimeout(res, 1000 * (t + 1))); }
-            }
-            return 0;
-          }));
-          return custos.reduce((s, v) => s + v, 0);
-        } catch { return 0; }
+        return total;
+      } catch (e) {
+        console.log('[gastos-auto] erro ao buscar Ads:', e.message);
+        return 0;
       }
     })(),
 
