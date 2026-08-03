@@ -1003,6 +1003,16 @@ app.get('/api/debug/ads-raw', async (req, res) => {
   }
 
   try {
+    const r = await axios.get('https://api.mercadolibre.com/advertising/product_ads/ads/search', {
+      params: { advertiser_id: 156629, limit: 50, offset: 0 },
+      headers: { ...headers, 'Api-Version': '1' }, timeout: 12000,
+    });
+    out.ads_search_v2 = { status: r.status, total: r.data?.paging?.total, results: (r.data.results || []).slice(0, 5) };
+  } catch (e) {
+    out.ads_search_v2_erro = { status: e.response?.status, data: e.response?.data, message: e.message };
+  }
+
+  try {
     const r = await axios.get('https://api.mercadolibre.com/advertising/advertisers', {
       params: { product_id: 'PADS' }, headers: { ...headers, 'Api-Version': '1' }, timeout: 12000,
     });
