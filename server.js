@@ -954,6 +954,17 @@ function extrairSku(body) {
 // Ping simples para testar conectividade frontend→servidor
 app.get('/api/ping', (req, res) => res.json({ ok: true, ts: Date.now() }));
 
+// TEMP: descobrir o IP de saída (egress) do servidor, para cadastro no whitelist da Shopee.
+// Remover depois de usado.
+app.get('/api/debug/egress-ip', async (req, res) => {
+  try {
+    const r = await axios.get('https://api.ipify.org?format=json', { timeout: 8000 });
+    res.json(r.data);
+  } catch (err) {
+    res.status(500).json({ erro: err.message });
+  }
+});
+
 // ── Estoque Local ─────────────────────────────────────────────
 function addEstoqueHistorico(data, entry) {
   data.estoque_local_historico = data.estoque_local_historico || [];
