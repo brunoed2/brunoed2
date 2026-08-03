@@ -965,6 +965,46 @@ app.get('/api/debug/egress-ip', async (req, res) => {
   }
 });
 
+// TEMP: diagnosticar por que o custo de Ads (Product Ads) está vindo zerado no DRE/Gastos.
+// Chama a API de advertising do ML sem engolir o erro. Remover depois de usado.
+app.get('/api/debug/ads-raw', async (req, res) => {
+  const data = loadData();
+  const num  = String(req.query.conta || data.conta_ativa || '1');
+  const c    = data.contas[num];
+  const mes  = req.query.mes || new Date().toISOString().slice(0, 7);
+  const out  = { conta: num, mes, temToken: !!c?.access_token, userId: c?.user_id || null };
+  if (!c?.access_token || !c.user_id) return res.json(out);
+
+  const [ano, m]  = mes.split('-').map(Number);
+  const de        = `${mes}-01`;
+  const hoje      = new Date().toISOString().split('T')[0];
+  const ultimoDia = new Date(ano, m, 0).getDate();
+  const ate_full  = `${mes}-${String(ultimoDia).padStart(2, '0')}`;
+  const ate       = ate_full > hoje ? hoje : ate_full;
+  const headers   = { Authorization: `Bearer ${c.access_token}` };
+  out.periodo = { de, ate };
+
+  try {
+    const r = await axios.get('https://api.mercadolibre.com/advertising/product_ads/metrics', {
+      params: { seller_id: c.user_id, date_from: de, date_to: ate }, headers, timeout: 12000,
+    });
+    out.seller_metrics = { status: r.status, data: r.data };
+  } catch (e) {
+    out.seller_metrics_erro = { status: e.response?.status, data: e.response?.data, message: e.message };
+  }
+
+  try {
+    const r = await axios.get('https://api.mercadolibre.com/advertising/product_ads/ads/search', {
+      params: { seller_id: c.user_id, limit: 50, offset: 0 }, headers, timeout: 12000,
+    });
+    out.ads_search = { status: r.status, total: r.data?.paging?.total, results: (r.data.results || []).slice(0, 5) };
+  } catch (e) {
+    out.ads_search_erro = { status: e.response?.status, data: e.response?.data, message: e.message };
+  }
+
+  res.json(out);
+});
+
 // ── Estoque Local ─────────────────────────────────────────────
 function addEstoqueHistorico(data, entry) {
   data.estoque_local_historico = data.estoque_local_historico || [];
