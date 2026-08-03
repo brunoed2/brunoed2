@@ -35,6 +35,16 @@ document.getElementById('cx-callback-url').textContent = `${location.origin}/api
     blingMostrarMsg(`❌ Falha na conexão com o Bling: ${decodeURIComponent(params.get('bling_error'))}`, 'erro');
   }
 
+  // Shopee
+  if (params.get('shopee_ok')) {
+    if (typeof abrirSubConfig === 'function') abrirSubConfig('shopee');
+    setTimeout(() => shopeeMostrarMsg('✅ Shopee conectada com sucesso!', 'ok'), 0);
+  }
+  if (params.get('shopee_error')) {
+    if (typeof abrirSubConfig === 'function') abrirSubConfig('shopee');
+    setTimeout(() => shopeeMostrarMsg(`❌ Falha na conexão com a Shopee: ${decodeURIComponent(params.get('shopee_error'))}`, 'erro'), 0);
+  }
+
   history.replaceState({}, '', '/app.html');
 })();
 
@@ -352,6 +362,14 @@ function blingMostrarMsg(texto, tipo) {
   if (!el) return;
   el.textContent = texto;
   el.className   = `msg ${tipo}`;
+}
+
+function shopeeMostrarMsg(texto, tipo) {
+  const el = document.getElementById('shopee-msg');
+  if (!el) return;
+  el.textContent   = texto;
+  el.className     = `msg ${tipo}`;
+  el.style.display = 'block';
 }
 
 // ── Hook na troca de aba ──────────────────────────────────────

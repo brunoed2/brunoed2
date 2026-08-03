@@ -1967,6 +1967,13 @@ app.post('/api/shopee/enviar-nf', async (req, res) => {
   const sp   = data.shopee || {};
   if (!sp.access_token) return res.json({ ok: false, erro: 'Shopee não conectada — use a opção via Bling situação 6' });
 
+  let accessToken;
+  try {
+    accessToken = await getShopeeToken(data);
+  } catch (err) {
+    return res.json({ ok: false, erro: err.message });
+  }
+
   const tentativas = [];
 
   // Endpoints candidatos da Shopee para NF-e Brasil
@@ -1994,7 +2001,7 @@ app.post('/api/shopee/enviar-nf', async (req, res) => {
   for (const c of candidatos) {
     await new Promise(r => setTimeout(r, 1000));
     try {
-      const params = shopeeParams(c.path, sp.partner_key, sp.partner_id, sp.access_token, sp.shop_id);
+      const params = shopeeParams(c.path, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
       const r = await axios.post(`${SHOPEE_BASE}${c.path.replace('/api/v2', '')}`, c.body, { params, timeout: 15000 });
       addLog(`[shopee] enviar-nf ${orderSn} SUCESSO via ${c.label}`, 'ok');
       return res.json({ ok: true, endpoint: c.label, resposta: r.data });
@@ -5081,7 +5088,7 @@ app.post('/api/shopee/config', (req, res) => {
 app.get('/api/shopee/auth', (req, res) => {
   const data = loadData();
   const sp   = data.shopee || {};
-  if (!sp.partner_id || !sp.partner_key) return res.redirect('/app.html?shopee_error=sem_credenciais');
+  if (!sp.partner_id || !sp.partner_key) return res.redirect('/app.html?tab=configuracoes&shopee_error=sem_credenciais');
   const proto    = req.get('x-forwarded-proto') || req.protocol;
   const callback = `${proto}://${req.get('host')}/api/shopee/callback`;
   const timestamp = Math.floor(Date.now() / 1000);
@@ -5095,10 +5102,10 @@ app.get('/api/shopee/auth', (req, res) => {
 
 app.get('/api/shopee/callback', async (req, res) => {
   const { code, shop_id, error } = req.query;
-  if (error || !code || !shop_id) return res.redirect('/app.html?shopee_error=auth_cancelado');
+  if (error || !code || !shop_id) return res.redirect('/app.html?tab=configuracoes&shopee_error=auth_cancelado');
   const data = loadData();
   const sp   = data.shopee || {};
-  if (!sp.partner_id || !sp.partner_key) return res.redirect('/app.html?shopee_error=sem_credenciais');
+  if (!sp.partner_id || !sp.partner_key) return res.redirect('/app.html?tab=configuracoes&shopee_error=sem_credenciais');
   try {
     const path      = '/api/v2/auth/token/get';
     const timestamp = Math.floor(Date.now() / 1000);
@@ -5108,23 +5115,112 @@ app.get('/api/shopee/callback', async (req, res) => {
     }, { params: { partner_id: Number(sp.partner_id), timestamp, sign }, timeout: 10000 });
     const { access_token, refresh_token, expire_in } = r.data;
     if (!access_token) throw new Error(JSON.stringify(r.data));
-    data.shopee = { ...sp, shop_id: String(shop_id), access_token, refresh_token, expires_at: Date.now() + (expire_in || 14400) * 1000 };
+    data.shopee = { ...sp, shop_id: String(shop_id), access_token, refresh_token, expires_at: Date.now() + ((expire_in || 14400) - 300) * 1000, conexao_alerta_enviado: false };
     saveData(data);
-    addLog(`Shopee: conectado — shop_id ${shop_id}`, 'info');
-    res.redirect('/app.html?shopee_ok=1');
+    addLog(`Shopee: conectado — shop_id ${shop_id}`, 'ok');
+    res.redirect('/app.html?tab=configuracoes&shopee_ok=1');
   } catch (err) {
-    addLog(`Shopee callback erro: ${err.message}`, 'warn');
-    res.redirect('/app.html?shopee_error=token');
+    const detalhe = JSON.stringify(err.response?.data || err.message);
+    addLog(`Shopee callback erro: ${detalhe}`, 'warn');
+    res.redirect(`/app.html?tab=configuracoes&shopee_error=${encodeURIComponent(detalhe)}`);
   }
 });
+
+// Renova o access_token da Shopee usando o refresh_token salvo
+async function refreshShopeeToken(data) {
+  const sp = data.shopee || {};
+  if (!sp.partner_id || !sp.partner_key || !sp.refresh_token || !sp.shop_id) {
+    throw new Error('Credenciais Shopee insuficientes para refresh');
+  }
+  const path      = '/api/v2/auth/access_token/get';
+  const timestamp = Math.floor(Date.now() / 1000);
+  const sign      = shopeeSign(sp.partner_id, path, timestamp, sp.partner_key);
+  let r;
+  try {
+    r = await axios.post(`${SHOPEE_BASE}/auth/access_token/get`, {
+      refresh_token: sp.refresh_token,
+      shop_id:       Number(sp.shop_id),
+      partner_id:    Number(sp.partner_id),
+    }, { params: { partner_id: Number(sp.partner_id), timestamp, sign }, timeout: 10000 });
+  } catch (err) {
+    avisarShopeeConexaoCaida(data);
+    throw err;
+  }
+  const { access_token, refresh_token, expire_in, error: apiErr } = r.data;
+  if (!access_token || apiErr) {
+    avisarShopeeConexaoCaida(data);
+    throw new Error(JSON.stringify(r.data));
+  }
+  data.shopee.access_token  = access_token;
+  data.shopee.refresh_token = refresh_token;
+  data.shopee.expires_at    = Date.now() + ((expire_in || 14400) - 300) * 1000;
+  data.shopee.conexao_alerta_enviado = false;
+  saveData(data);
+  addLog('🔄 Token Shopee renovado automaticamente', 'ok');
+  return data.shopee;
+}
+
+// Retorna o access_token válido da Shopee, renovando automaticamente se necessário
+async function getShopeeToken(data) {
+  const sp = data.shopee || {};
+  if (!sp.access_token) throw new Error('Shopee não conectada');
+  const expira = sp.expires_at || 0;
+  if (!expira || Date.now() < expira) return sp.access_token;
+  if (!sp.refresh_token) {
+    avisarShopeeConexaoCaida(data);
+    throw new Error('Token Shopee expirado e sem refresh_token. Reconecte a loja.');
+  }
+  const renovado = await refreshShopeeToken(data);
+  return renovado.access_token;
+}
+
+function avisarShopeeConexaoCaida(data) {
+  const sp = data.shopee || {};
+  if (!sp.access_token || sp.conexao_alerta_enviado) return;
+  data.shopee.conexao_alerta_enviado = true;
+  saveData(data);
+  notificar('🔌 <b>Conexão Shopee perdida</b>\n\nO token da Shopee expirou e não foi possível renovar. Reconecte a loja no painel.', 'conexao').catch(() => {});
+}
+
+// Renova o token Shopee na inicialização, se necessário
+(async () => {
+  try {
+    const data = loadData();
+    const sp = data.shopee || {};
+    if (sp.refresh_token && Date.now() >= (sp.expires_at || 0)) {
+      try {
+        await refreshShopeeToken(data);
+        console.log('[init] Token Shopee renovado na inicialização.');
+      } catch (e) {
+        console.warn('[init] Falha ao renovar token Shopee:', e.message);
+      }
+    }
+  } catch (e) {
+    console.warn('[init] Erro na renovação inicial do token Shopee:', e.message);
+  }
+})();
+
+// Renova o token Shopee a cada 3 horas (access_token dura 4h)
+setInterval(async () => {
+  try {
+    const data = loadData();
+    const sp = data.shopee || {};
+    if (sp.refresh_token && Date.now() >= (sp.expires_at || 0)) {
+      try { await refreshShopeeToken(data); } catch (e) {
+        addLog(`❌ Falha ao renovar token Shopee: ${e.message}`, 'erro');
+      }
+    }
+  } catch {}
+}, 3 * 60 * 60 * 1000);
 
 app.get('/api/shopee/status', async (req, res) => {
   const data = loadData();
   const sp   = data.shopee || {};
   if (!sp.access_token) return res.json({ connected: false });
   try {
+    const accessToken = await getShopeeToken(data);
     const path      = '/api/v2/shop/get_shop_info';
-    const params    = shopeeParams(path, sp.partner_key, sp.partner_id, sp.access_token, sp.shop_id);
+    const params    = shopeeParams(path, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
     const r = await axios.get(`${SHOPEE_BASE}/shop/get_shop_info`, { params, timeout: 8000 });
     if (r.data.error) return res.json({ connected: false, error: r.data.message });
     res.json({ connected: true, shop_name: r.data.response?.shop_name || '—', shop_id: sp.shop_id });
@@ -5138,8 +5234,9 @@ app.get('/api/shopee/orders', async (req, res) => {
   const sp   = data.shopee || {};
   if (!sp.access_token) return res.json({ error: 'Shopee não conectada' });
   try {
+    const accessToken = await getShopeeToken(data);
     const path   = '/api/v2/order/get_order_list';
-    const params = shopeeParams(path, sp.partner_key, sp.partner_id, sp.access_token, sp.shop_id);
+    const params = shopeeParams(path, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
     params.order_status = 'READY_TO_SHIP';
     params.page_size    = 50;
     params.cursor       = '';
@@ -5151,7 +5248,7 @@ app.get('/api/shopee/orders', async (req, res) => {
     // Busca detalhes dos pedidos
     const sns = orders.map(o => o.order_sn);
     const pathD   = '/api/v2/order/get_order_detail';
-    const paramsD = shopeeParams(pathD, sp.partner_key, sp.partner_id, sp.access_token, sp.shop_id);
+    const paramsD = shopeeParams(pathD, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
     paramsD.order_sn_list   = sns.join(',');
     paramsD.response_optional_fields = 'buyer_username,item_list,recipient_address';
     const rd = await axios.get(`${SHOPEE_BASE}/order/get_order_detail`, { params: paramsD, timeout: 10000 });

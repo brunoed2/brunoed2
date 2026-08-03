@@ -907,6 +907,7 @@
       <section id="tab-configuracoes" class="tab">
         <div style="display:flex;gap:8px;margin-bottom:20px;border-bottom:1px solid #334155;padding-bottom:12px">
           <button class="filtro-btn active" id="subtab-btn-ml" onclick="abrirSubConfig('ml')">⚙️ Mercado Livre</button>
+          <button class="filtro-btn" id="subtab-btn-shopee" onclick="abrirSubConfig('shopee')">🛒 Shopee</button>
           <button class="filtro-btn" id="subtab-btn-conexao" onclick="abrirSubConfig('conexao')">🔌 Conexão</button>
           <button class="filtro-btn" id="subtab-btn-usuarios" onclick="abrirSubConfig('usuarios')">👥 Usuários</button>
           <button class="filtro-btn" id="subtab-btn-acessos" onclick="abrirSubConfig('acessos')">🔒 Acessos</button>
@@ -967,6 +968,47 @@
             </ol>
             <p class="obs">⚠️ Configure a URL de retorno (Redirect URI) no seu app ML como:<br>
               <code id="callback-url"></code>
+            </p>
+          </div>
+        </div>
+
+        <!-- Sub-aba: Shopee -->
+        <div id="subtab-shopee" style="display:none">
+          <div class="status-bar" id="shopee-status-bar">
+            <span class="dot" id="shopee-status-dot"></span>
+            <span id="shopee-status-txt">Verificando conexão...</span>
+          </div>
+
+          <div class="card">
+            <h2>Credenciais — Shopee Open Platform</h2>
+            <p class="card-desc">
+              Obtenha Partner ID e Partner Key em
+              <a href="https://open.shopee.com/" target="_blank">open.shopee.com</a> (aplicativo aprovado no programa de parceiros).
+            </p>
+            <div class="field">
+              <label>Partner ID</label>
+              <input type="text" id="shopee-partner-id" placeholder="Ex: 1234567" autocomplete="off">
+            </div>
+            <div class="field">
+              <label>Partner Key</label>
+              <input type="password" id="shopee-partner-key" placeholder="Sua partner key" autocomplete="off">
+            </div>
+            <div class="btn-row">
+              <button type="button" class="btn-primary" onclick="shopeeSalvarEConectar()">🔗 Salvar e Conectar via OAuth</button>
+            </div>
+            <div class="msg" id="shopee-msg"></div>
+          </div>
+
+          <div class="card card-info">
+            <h2>Como conectar</h2>
+            <ol>
+              <li>Crie/abra seu app em <strong>open.shopee.com</strong></li>
+              <li>Copie o <strong>Partner ID</strong> e a <strong>Partner Key</strong></li>
+              <li>Preencha os campos acima e clique em <strong>Salvar e Conectar via OAuth</strong></li>
+              <li>Autorize a loja na tela da Shopee — você volta pra cá conectado</li>
+            </ol>
+            <p class="obs">⚠️ Configure a URL de retorno (Redirect URI) no seu app Shopee como:<br>
+              <code id="shopee-callback-url"></code>
             </p>
           </div>
         </div>
@@ -1447,6 +1489,7 @@
   <script src="/js/lucro.js"></script>
   <script src="/js/app-v2.js?v=3"></script>
   <script src="/js/operacoes.js?v=1"></script>
+  <script src="/js/shopee.js?v=1"></script>
   <script src="/js/conexao.js"></script>
   <script src="/js/notificacoes-central.js?v=1"></script>
   <script src="/js/contas-pagar.js?v=1"></script>
@@ -1783,6 +1826,6 @@
     </div>
   </div>
 
-  <div id="version-badge">v675</div>
+  <div id="version-badge">v676</div>
 </body>
 </html>

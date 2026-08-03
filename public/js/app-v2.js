@@ -100,16 +100,22 @@ function abrirAba(nome) {
 
 function abrirSubConfig(sub) {
   document.getElementById('subtab-btn-ml').classList.toggle('active', sub === 'ml');
+  document.getElementById('subtab-btn-shopee')?.classList.toggle('active', sub === 'shopee');
   document.getElementById('subtab-btn-conexao').classList.toggle('active', sub === 'conexao');
   document.getElementById('subtab-btn-usuarios').classList.toggle('active', sub === 'usuarios');
   document.getElementById('subtab-btn-acessos')?.classList.toggle('active', sub === 'acessos');
   document.getElementById('subtab-btn-backup')?.classList.toggle('active', sub === 'backup');
   document.getElementById('subtab-ml').style.display       = sub === 'ml'       ? '' : 'none';
+  document.getElementById('subtab-shopee').style.display   = sub === 'shopee'   ? '' : 'none';
   document.getElementById('subtab-conexao').style.display  = sub === 'conexao'  ? '' : 'none';
   document.getElementById('subtab-usuarios').style.display = sub === 'usuarios' ? '' : 'none';
   document.getElementById('subtab-acessos').style.display  = sub === 'acessos' ? '' : 'none';
   document.getElementById('subtab-backup').style.display   = sub === 'backup'   ? '' : 'none';
   if (sub === 'ml') carregarConfig(contaConfigurando);
+  if (sub === 'shopee') {
+    if (typeof shopeeCarregarConfig  === 'function') shopeeCarregarConfig();
+    if (typeof shopeeVerificarStatus === 'function') shopeeVerificarStatus();
+  }
   if (sub === 'usuarios') usuariosCarregar();
   if (sub === 'acessos') acessosCarregar();
   if (sub === 'conexao') {
@@ -233,6 +239,9 @@ async function atualizarStatus() {
 
 const elCallbackUrl = document.getElementById('callback-url');
 if (elCallbackUrl) elCallbackUrl.textContent = `${location.origin}/api/ml/callback`;
+
+const elShopeeCallbackUrl = document.getElementById('shopee-callback-url');
+if (elShopeeCallbackUrl) elShopeeCallbackUrl.textContent = `${location.origin}/api/shopee/callback`;
 
 function abrirConfigConta(num) {
   contaConfigurando = num;
