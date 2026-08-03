@@ -994,6 +994,19 @@ app.get('/api/debug/ads-raw', async (req, res) => {
   }
 
   try {
+    const r = await axios.get(
+      `https://api.mercadolibre.com/marketplace/advertising/MLB/advertisers/156629/product_ads/campaigns/search`,
+      {
+        params: { date_from: de, date_to: ate, metrics: 'cost,clicks,roas,acos', limit: 50, offset: 0 },
+        headers: { ...headers, 'api-version': '2' }, timeout: 12000,
+      }
+    );
+    out.campaigns_search_novo = { status: r.status, data: r.data };
+  } catch (e) {
+    out.campaigns_search_novo_erro = { status: e.response?.status, data: e.response?.data, message: e.message };
+  }
+
+  try {
     const r = await axios.get('https://api.mercadolibre.com/advertising/product_ads/metrics', {
       params: { advertiser_id: 156629, date_from: de, date_to: ate },
       headers: { ...headers, 'Api-Version': '1' }, timeout: 12000,
