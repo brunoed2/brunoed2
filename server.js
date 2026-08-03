@@ -965,20 +965,6 @@ app.get('/api/debug/egress-ip', async (req, res) => {
   }
 });
 
-// TEMP: inspecionar gastos fixos crus (raw) por conta, pra achar valores órfãos
-// que somem no DRE mas não aparecem mais na aba Gastos. Remover depois de usado.
-app.get('/api/debug/gastos-fixos-raw', (req, res) => {
-  const data = loadData();
-  const num  = String(req.query.conta || data.conta_ativa || '1');
-  const lc   = (data.lucro_contas || {})[num] || {};
-  res.json({
-    tipos_ativos: lc.gastos_fixos_tipos || [],
-    travados:     lc.gastos_fixos_travados || [],
-    padrao:       lc.gastos_fixos_padrao || {},
-    valores_por_mes: lc.gastos_fixos_valores || {},
-  });
-});
-
 // ── Estoque Local ─────────────────────────────────────────────
 function addEstoqueHistorico(data, entry) {
   data.estoque_local_historico = data.estoque_local_historico || [];
@@ -3893,10 +3879,12 @@ app.get('/api/lucro/gastos-fixos', (req, res) => {
   const travados = lc.gastos_fixos_travados || [];
   const padrao   = lc.gastos_fixos_padrao   || {};
   const valoresMes = (lc.gastos_fixos_valores || {})[mes] || {};
-  // Itens travados sem valor no mês herdam o valor padrão (último salvo)
+  const tiposAtivos = lc.gastos_fixos_tipos || [];
+  // Itens travados sem valor no mês herdam o valor padrão (último salvo) —
+  // só se o tipo ainda estiver ativo (evita reviver item excluído da lista)
   const valores = { ...valoresMes };
   for (const nome of travados) {
-    if (!(nome in valores) && nome in padrao) {
+    if (!(nome in valores) && nome in padrao && tiposAtivos.includes(nome)) {
       valores[nome] = padrao[nome];
     }
   }
@@ -4023,15 +4011,17 @@ app.get('/api/lucro/dre-local', (req, res) => {
   const lc       = (data.lucro_contas || {})[num] || {};
   const travados = lc.gastos_fixos_travados || [];
   const padrao   = lc.gastos_fixos_padrao   || {};
+  const tiposAtivos = lc.gastos_fixos_tipos || [];
   const meses    = [];
   for (let m = 1; m <= 12; m++) {
     const mes         = `${ano}-${String(m).padStart(2, '0')}`;
     const gastosDoMes = (lc.gastos || {})[mes] || [];
     const fixosRaw    = (lc.gastos_fixos_valores || {})[mes] || {};
-    // Auto-fill para itens travados sem valor no mês
+    // Auto-fill para itens travados sem valor no mês — só se o tipo ainda
+    // estiver ativo (evita contar item excluído da lista de gastos fixos)
     const fixos = { ...fixosRaw };
     for (const nome of travados) {
-      if (!(nome in fixos) && nome in padrao) fixos[nome] = padrao[nome];
+      if (!(nome in fixos) && nome in padrao && tiposAtivos.includes(nome)) fixos[nome] = padrao[nome];
     }
     const totalEntradas  = gastosDoMes.filter(g => g.tipo === 'entrada').reduce((s, g) => s + g.valor, 0);
     const totalGastosVar = gastosDoMes.filter(g => g.tipo !== 'entrada').reduce((s, g) => s + g.valor, 0);
