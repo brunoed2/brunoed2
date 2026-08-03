@@ -567,12 +567,13 @@ function gastosFixosRenderizar() {
 
   const mesAtual = gastosMesAtual();
   // Itens com valor salvo explicitamente neste mês mas removidos da lista ativa.
-  // Se sabemos em que mês foi excluído: meses depois da exclusão nem aparecem.
+  // A partir do mês da exclusão (inclusive) o item some de vez — só aparece
+  // normalmente nos meses anteriores a isso, como se nunca tivesse sido excluído.
   const historicos = Object.entries(gastosFixosValoresMes)
     .filter(([nome, val]) => !gastosFixosTipos.includes(nome) && parseFloat(val) > 0)
     .filter(([nome]) => {
       const removidoEm = gastosFixosRemovidoEm[nome];
-      return !removidoEm || mesAtual <= removidoEm;
+      return !removidoEm || mesAtual < removidoEm;
     });
 
   const temAtivos    = gastosFixosTipos.length > 0;
@@ -620,37 +621,22 @@ function gastosFixosRenderizar() {
     tbody.appendChild(tr);
   });
 
-  // Itens excluídos da lista de tipos ativos, mas com valor salvo neste mês.
-  // Antes do mês da exclusão: era um gasto real e ativo — mostra editável, normal.
-  // No mês exato da exclusão: fica travado e marcado "(arquivado)".
+  // Itens excluídos da lista de tipos ativos, mas com valor salvo em mês anterior
+  // ao da exclusão — mostra normal, editável, como se nunca tivesse sido excluído.
+  // A partir do mês da exclusão (inclusive) nem entra nessa lista (filtro acima).
   historicos.forEach(([nome, valor]) => {
-    const removidoEm    = gastosFixosRemovidoEm[nome];
-    const ehMesExclusao = removidoEm && mesAtual === removidoEm;
     const tr = document.createElement('tr');
-    if (ehMesExclusao) {
-      tr.style.opacity = '0.55';
-      tr.innerHTML = `
-        <td>${nome} <span style="font-size:0.78em;color:#888;font-style:italic">(arquivado)</span></td>
-        <td class="col-num">
-          <input type="hidden" data-nome="${nome}" data-excluido-total="1" value="${parseFloat(valor) || 0}">
-          <span style="padding-right:8px;color:#888">R$ ${parseFloat(valor).toFixed(2).replace('.', ',')}</span>
-        </td>
-        <td></td>
-        <td></td>
-      `;
-    } else {
-      tr.innerHTML = `
-        <td>${nome}</td>
-        <td class="col-num">
-          <input type="number" step="0.01" min="0" value="${valor || ''}" placeholder="0,00"
-            class="lucro-custo-input" style="width:110px"
-            data-nome="${nome}"
-            oninput="gastosAtualizarCards()">
-        </td>
-        <td></td>
-        <td></td>
-      `;
-    }
+    tr.innerHTML = `
+      <td>${nome}</td>
+      <td class="col-num">
+        <input type="number" step="0.01" min="0" value="${valor || ''}" placeholder="0,00"
+          class="lucro-custo-input" style="width:110px"
+          data-nome="${nome}"
+          oninput="gastosAtualizarCards()">
+      </td>
+      <td></td>
+      <td></td>
+    `;
     tbody.appendChild(tr);
   });
 
@@ -716,11 +702,9 @@ async function gastosFixosSalvarBtn() {
   const tbody = document.getElementById('tabela-gastos-fixos-body');
   const valores = {};
   if (tbody) {
-    // Inclui tudo que está renderizado nesta tela: ativos + históricos do mês
-    // exato da exclusão (input hidden). O vazamento pra meses futuros já é
-    // evitado antes disso, no filtro de `historicos` (só renderiza até o mês
-    // da exclusão) — então um item excluído nunca chega a aparecer aqui fora
-    // do período em que deveria contar.
+    // Inclui tudo que está renderizado nesta tela: ativos + históricos de meses
+    // anteriores ao da exclusão. Itens excluídos não aparecem mais a partir do
+    // mês da exclusão (filtro de `historicos`), então nunca vazam pra cá.
     tbody.querySelectorAll('input[data-nome]').forEach(inp => {
       valores[inp.dataset.nome] = parseFloat(inp.value.replace(',', '.')) || 0;
     });
@@ -836,9 +820,7 @@ function gastosAtualizarCards() {
   const tbody = document.getElementById('tabela-gastos-fixos-body');
   let totalFixos = 0;
   if (tbody) {
-    // Ignora itens "(arquivado)" do mês exato da exclusão — só ficam visíveis
-    // como registro histórico, não contam mais no total a partir desse mês.
-    tbody.querySelectorAll('input[data-nome]:not([data-excluido-total])').forEach(inp => {
+    tbody.querySelectorAll('input[data-nome]').forEach(inp => {
       totalFixos += parseFloat(inp.value.replace(',', '.')) || 0;
     });
   } else {
