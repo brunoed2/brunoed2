@@ -965,6 +965,20 @@ app.get('/api/debug/egress-ip', async (req, res) => {
   }
 });
 
+// TEMP: inspecionar gastos fixos crus (raw) por conta, pra achar valores órfãos
+// que somem no DRE mas não aparecem mais na aba Gastos. Remover depois de usado.
+app.get('/api/debug/gastos-fixos-raw', (req, res) => {
+  const data = loadData();
+  const num  = String(req.query.conta || data.conta_ativa || '1');
+  const lc   = (data.lucro_contas || {})[num] || {};
+  res.json({
+    tipos_ativos: lc.gastos_fixos_tipos || [],
+    travados:     lc.gastos_fixos_travados || [],
+    padrao:       lc.gastos_fixos_padrao || {},
+    valores_por_mes: lc.gastos_fixos_valores || {},
+  });
+});
+
 // ── Estoque Local ─────────────────────────────────────────────
 function addEstoqueHistorico(data, entry) {
   data.estoque_local_historico = data.estoque_local_historico || [];
