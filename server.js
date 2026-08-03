@@ -994,6 +994,16 @@ app.get('/api/debug/ads-raw', async (req, res) => {
   }
 
   try {
+    const r = await axios.get('https://api.mercadolibre.com/advertising/product_ads/metrics', {
+      params: { advertiser_id: 156629, date_from: de, date_to: ate },
+      headers: { ...headers, 'Api-Version': '1' }, timeout: 12000,
+    });
+    out.advertiser_metrics = { status: r.status, data: r.data };
+  } catch (e) {
+    out.advertiser_metrics_erro = { status: e.response?.status, data: e.response?.data, message: e.message };
+  }
+
+  try {
     const r = await axios.get('https://api.mercadolibre.com/advertising/product_ads/ads/search', {
       params: { seller_id: c.user_id, limit: 50, offset: 0 }, headers, timeout: 12000,
     });
