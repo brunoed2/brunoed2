@@ -620,23 +620,37 @@ function gastosFixosRenderizar() {
     tbody.appendChild(tr);
   });
 
-  // Itens excluídos da lista: somente-leitura para meses onde tinham valor.
-  // No mês exato da exclusão aparece marcado "(arquivado)"; em meses antes disso
-  // (quando o gasto era real e o item ainda estava ativo) aparece normal.
+  // Itens excluídos da lista de tipos ativos, mas com valor salvo neste mês.
+  // Antes do mês da exclusão: era um gasto real e ativo — mostra editável, normal.
+  // No mês exato da exclusão: fica travado e marcado "(arquivado)".
   historicos.forEach(([nome, valor]) => {
     const removidoEm    = gastosFixosRemovidoEm[nome];
     const ehMesExclusao = removidoEm && mesAtual === removidoEm;
     const tr = document.createElement('tr');
-    tr.style.opacity = ehMesExclusao ? '0.55' : '1';
-    tr.innerHTML = `
-      <td>${nome} ${ehMesExclusao ? '<span style="font-size:0.78em;color:#888;font-style:italic">(arquivado)</span>' : ''}</td>
-      <td class="col-num">
-        <input type="hidden" data-nome="${nome}" value="${parseFloat(valor) || 0}">
-        <span style="padding-right:8px;color:#888">R$ ${parseFloat(valor).toFixed(2).replace('.', ',')}</span>
-      </td>
-      <td></td>
-      <td></td>
-    `;
+    if (ehMesExclusao) {
+      tr.style.opacity = '0.55';
+      tr.innerHTML = `
+        <td>${nome} <span style="font-size:0.78em;color:#888;font-style:italic">(arquivado)</span></td>
+        <td class="col-num">
+          <input type="hidden" data-nome="${nome}" data-excluido-total="1" value="${parseFloat(valor) || 0}">
+          <span style="padding-right:8px;color:#888">R$ ${parseFloat(valor).toFixed(2).replace('.', ',')}</span>
+        </td>
+        <td></td>
+        <td></td>
+      `;
+    } else {
+      tr.innerHTML = `
+        <td>${nome}</td>
+        <td class="col-num">
+          <input type="number" step="0.01" min="0" value="${valor || ''}" placeholder="0,00"
+            class="lucro-custo-input" style="width:110px"
+            data-nome="${nome}"
+            oninput="gastosAtualizarCards()">
+        </td>
+        <td></td>
+        <td></td>
+      `;
+    }
     tbody.appendChild(tr);
   });
 
@@ -702,9 +716,12 @@ async function gastosFixosSalvarBtn() {
   const tbody = document.getElementById('tabela-gastos-fixos-body');
   const valores = {};
   if (tbody) {
-    // Só itens ativos (input visível) — os arquivados/hidden não devem ser
-    // regravados a cada save, senão o valor "vaza" pra meses futuros.
-    tbody.querySelectorAll('input.lucro-custo-input[data-nome]').forEach(inp => {
+    // Inclui tudo que está renderizado nesta tela: ativos + históricos do mês
+    // exato da exclusão (input hidden). O vazamento pra meses futuros já é
+    // evitado antes disso, no filtro de `historicos` (só renderiza até o mês
+    // da exclusão) — então um item excluído nunca chega a aparecer aqui fora
+    // do período em que deveria contar.
+    tbody.querySelectorAll('input[data-nome]').forEach(inp => {
       valores[inp.dataset.nome] = parseFloat(inp.value.replace(',', '.')) || 0;
     });
   }
@@ -819,7 +836,9 @@ function gastosAtualizarCards() {
   const tbody = document.getElementById('tabela-gastos-fixos-body');
   let totalFixos = 0;
   if (tbody) {
-    tbody.querySelectorAll('input[data-nome]').forEach(inp => {
+    // Ignora itens "(arquivado)" do mês exato da exclusão — só ficam visíveis
+    // como registro histórico, não contam mais no total a partir desse mês.
+    tbody.querySelectorAll('input[data-nome]:not([data-excluido-total])').forEach(inp => {
       totalFixos += parseFloat(inp.value.replace(',', '.')) || 0;
     });
   } else {

@@ -4040,9 +4040,11 @@ app.get('/api/lucro/dre-local', (req, res) => {
     for (const nome of travados) {
       if (!(nome in fixos) && nome in padrao && tiposAtivos.includes(nome)) fixos[nome] = padrao[nome];
     }
-    // Item excluído da lista: mantém valor em meses até o da exclusão, some depois
+    // Item excluído da lista: conta normalmente nos meses antes da exclusão (era
+    // gasto real e ativo); no mês da exclusão em diante já não entra no total
+    // (fica só como registro visual "arquivado" na tela de Gastos).
     for (const nome of Object.keys(fixos)) {
-      if (removidoEm[nome] && mes > removidoEm[nome]) delete fixos[nome];
+      if (removidoEm[nome] && mes >= removidoEm[nome]) delete fixos[nome];
     }
     const totalEntradas  = gastosDoMes.filter(g => g.tipo === 'entrada').reduce((s, g) => s + g.valor, 0);
     const totalGastosVar = gastosDoMes.filter(g => g.tipo !== 'entrada').reduce((s, g) => s + g.valor, 0);
