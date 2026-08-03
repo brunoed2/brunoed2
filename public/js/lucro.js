@@ -625,6 +625,7 @@ function gastosFixosRenderizar() {
   // ao da exclusão — mostra normal, editável, como se nunca tivesse sido excluído.
   // A partir do mês da exclusão (inclusive) nem entra nessa lista (filtro acima).
   historicos.forEach(([nome, valor]) => {
+    const escNome = nome.replace(/'/g, "\\'");
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>${nome}</td>
@@ -635,7 +636,10 @@ function gastosFixosRenderizar() {
           oninput="gastosAtualizarCards()">
       </td>
       <td></td>
-      <td></td>
+      <td style="text-align:center">
+        <button class="lucro-btn-remover" onclick="gastosFixoRemoverTipo('${escNome}')"
+          title="Excluir a partir deste mês (empurra o corte pra cá)">✕</button>
+      </td>
     `;
     tbody.appendChild(tr);
   });
