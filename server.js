@@ -1007,6 +1007,18 @@ app.get('/api/debug/ads-raw', async (req, res) => {
       params: { product_id: 'PADS' }, headers: { ...headers, 'Api-Version': '1' }, timeout: 12000,
     });
     out.advertisers = { status: r.status, data: r.data };
+    const advertiserId = r.data?.advertisers?.[0]?.advertiser_id;
+    if (advertiserId) {
+      try {
+        const r2 = await axios.get('https://api.mercadolibre.com/advertising/product_ads/campaigns', {
+          params: { advertiser_id: advertiserId, date_from: de, date_to: ate },
+          headers: { ...headers, 'Api-Version': '1' }, timeout: 12000,
+        });
+        out.campaigns_metrics = { status: r2.status, data: r2.data };
+      } catch (e2) {
+        out.campaigns_metrics_erro = { status: e2.response?.status, data: e2.response?.data, message: e2.message };
+      }
+    }
   } catch (e) {
     out.advertisers_erro = { status: e.response?.status, data: e.response?.data, message: e.message };
   }
