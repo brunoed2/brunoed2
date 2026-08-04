@@ -94,13 +94,13 @@
 
   .campo { margin-bottom: 6px; }
   .campo:last-child { margin-bottom: 0; }
-  .campo label { display: block; font-size: 11.5px; color: var(--text); font-weight: 500; margin-bottom: 2px; }
+  .campo label { display: block; min-height: 30px; font-size: 11.5px; color: var(--text); font-weight: 500; margin-bottom: 2px; }
   .ajuda { font-size: 10px; color: var(--text3); margin-top: 4px; line-height: 1.3; }
   .campo input[type=text], .campo input[type=number] {
-    width: 100%; padding: 5px 8px; font-size: 12.5px; border: 1px solid var(--border);
-    border-radius: 6px; background: #f8fafc; color: var(--text); font-family: inherit;
+    width: 100%; padding: 5px 8px; font-size: 12.5px; border: 1.5px solid #bfdbfe;
+    border-radius: 6px; background: #eff6ff; color: var(--text); font-family: inherit;
   }
-  .campo input:focus { outline: none; border-color: #93c5fd; background: #fff; }
+  .campo input:focus { outline: none; border-color: #60a5fa; background: #fff; }
   .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 
   .radio-group { display: flex; gap: 14px; }
@@ -166,7 +166,7 @@
     </div>
   </div>
   <div class="h-right">
-    <div id="version-badge">v703</div>
+    <div id="version-badge">v704</div>
     <button class="btn-sair" onclick="sair()">Sair</button>
   </div>
 </header>
@@ -178,15 +178,15 @@
         <legend>Produto</legend>
         <div class="row2">
           <div class="campo">
-            <label for="preco">Preço de venda (R$)</label>
-            <input type="number" id="preco" step="0.01" min="0" value="100.00">
-          </div>
-          <div class="campo">
             <label for="custoProduto">Custo do produto (R$)</label>
             <input type="number" id="custoProduto" step="0.01" min="0" value="40.00">
           </div>
+          <div class="campo">
+            <label for="preco">Preço de venda (R$)</label>
+            <input type="number" id="preco" step="0.01" min="0" value="100.00">
+          </div>
         </div>
-        <div class="ajuda">Acima de R$ 79,00 o Mercado Livre exige frete grátis pro comprador — o custo do envio cai pra empresa.</div>
+        <div class="ajuda">Acima de R$ 79,00 o Mercado Livre exige frete grátis pro comprador — o custo do frete passa a ser pago pela empresa.</div>
 
         <div class="campo" style="margin-top:10px">
           <label>Oferecer parcelamento sem juros pro comprador?</label>
