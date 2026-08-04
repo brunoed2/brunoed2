@@ -161,7 +161,7 @@
     </div>
   </div>
   <div class="h-right">
-    <div id="version-badge">v699</div>
+    <div id="version-badge">v700</div>
     <button class="btn-sair" onclick="sair()">Sair</button>
   </div>
 </header>
@@ -171,10 +171,6 @@
   <div class="config-grid">
       <fieldset>
         <legend>Produto</legend>
-        <div class="campo">
-          <label for="nome">Nome do produto</label>
-          <input type="text" id="nome" value="">
-        </div>
         <div class="row2">
           <div class="campo">
             <label for="preco">Preço de venda (R$)</label>
@@ -190,10 +186,10 @@
       <fieldset>
         <legend>Mercado Livre</legend>
         <div class="campo">
-          <label>Tipo de anúncio</label>
+          <label>Oferecer parcelamento sem juros pro comprador?</label>
           <div class="radio-group">
-            <label><input type="radio" name="tipoAnuncio" value="classico" checked onchange="recalcular()"> Clássico</label>
-            <label><input type="radio" name="tipoAnuncio" value="premium" onchange="recalcular()"> Premium</label>
+            <label><input type="radio" name="tipoAnuncio" value="classico" checked onchange="recalcular()"> Não</label>
+            <label><input type="radio" name="tipoAnuncio" value="premium" onchange="recalcular()"> Sim</label>
           </div>
         </div>
         <div class="campo">
@@ -207,6 +203,7 @@
         <div class="campo">
           <label>Custo do frete</label>
           <div class="info-auto" id="freteValorTxt">R$ 7,95</div>
+          <div class="ajuda">Estimado a partir de vendas anteriores, mas varia de acordo com tamanho e peso do produto.</div>
         </div>
       </fieldset>
 
