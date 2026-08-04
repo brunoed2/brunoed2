@@ -3159,6 +3159,7 @@ app.get('/api/simulador-ml/frete-real', async (req, res) => {
   if (!mlbs.length) return res.status(400).json({ error: 'informe ?mlbs=MLBX,MLBY' });
   const num  = String(req.query.conta || '1');
   const dias = Math.min(parseInt(req.query.dias) || 90, 180);
+  const maxOrdens = Math.min(parseInt(req.query.max) || 1000, 1000);
   try {
     const data  = loadData();
     const token = await getToken(data, num);
@@ -3168,7 +3169,7 @@ app.get('/api/simulador-ml/frete-real', async (req, res) => {
 
     let ordens = [];
     let off = 0;
-    while (ordens.length < 400) {
+    while (ordens.length < maxOrdens) {
       const resp = await axios.get('https://api.mercadolibre.com/orders/search', {
         params: { seller: c.user_id, 'order.status': 'paid', sort: 'date_desc', limit: 50, offset: off,
                   'order.date_created.from': dateFrom + 'T00:00:00.000-03:00' },
@@ -3213,7 +3214,11 @@ app.get('/api/simulador-ml/frete-real', async (req, res) => {
         : { frete_medio: null, pedidos_encontrados: 0 };
     }
 
-    res.json({ conta: num, dias, pedidos_total: ordens.length, resultado });
+    const datas = ordens.map(o => o.date_created).filter(Boolean).sort();
+    res.json({
+      conta: num, dias, pedidos_total: ordens.length, resultado,
+      cobertura: { mais_antigo: datas[0] || null, mais_recente: datas[datas.length - 1] || null },
+    });
   } catch (err) {
     res.status(500).json({ error: err.response?.data || err.message });
   }
