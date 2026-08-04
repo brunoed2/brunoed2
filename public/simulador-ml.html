@@ -76,10 +76,11 @@
     padding-right: 24px;
   }
 
-  .config-grid {
-    display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
-    gap: 10px; margin-top: 8px; margin-bottom: 16px; align-items: start;
+  .layout-2col {
+    display: grid; grid-template-columns: 340px 1fr;
+    gap: 20px; align-items: start; margin-top: 8px;
   }
+  @media (max-width: 860px) { .layout-2col { grid-template-columns: 1fr; } }
 
   .pendente-msg {
     background: #f8fafc; border: 1px dashed var(--border); border-radius: 10px;
@@ -88,8 +89,9 @@
 
   fieldset {
     background: var(--card); border: 1px solid var(--border); border-radius: 10px;
-    padding: 8px 12px;
+    padding: 8px 12px; margin-bottom: 10px;
   }
+  fieldset:last-child { margin-bottom: 0; }
   legend { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: var(--text2); padding: 0 3px; }
 
   .campo { margin-bottom: 6px; }
@@ -131,28 +133,25 @@
 
   .breakdown-card {
     background: var(--card); border: 1px solid var(--border); border-radius: 12px;
-    padding: 12px 16px; margin-bottom: 12px;
+    padding: 6px 16px; margin-bottom: 12px;
   }
-  .breakdown-title { font-size: 13px; font-weight: 700; margin-bottom: 2px; }
-  .breakdown-sub { font-size: 11px; color: var(--text3); margin-bottom: 8px; }
+  .breakdown-title { font-size: 13px; font-weight: 700; padding: 10px 0 2px; }
+  .breakdown-sub { font-size: 11px; color: var(--text3); padding-bottom: 8px; }
 
-  .bar {
-    display: flex; width: 100%; height: 28px; border-radius: 7px; overflow: hidden;
-    background: #f1f5f9; margin-bottom: 10px;
+  .lista-itens { display: flex; flex-direction: column; }
+  .item-linha {
+    display: flex; align-items: center; gap: 12px; padding: 10px 0;
+    border-top: 1px solid var(--border);
   }
-  .bar .seg {
-    height: 100%; display: flex; align-items: center; justify-content: center;
-    color: #fff; font-size: 11px; font-weight: 700; white-space: nowrap; overflow: hidden;
-    border-right: 2px solid #fff; transition: flex-basis .2s;
+  .item-icon {
+    width: 30px; height: 30px; border-radius: 8px; flex-shrink: 0;
+    background: color-mix(in srgb, var(--icon-cor) 14%, white);
+    color: var(--icon-cor);
   }
-  .bar .seg:last-child { border-right: none; }
-
-  .lista-itens { display: flex; flex-direction: column; gap: 8px; }
-  .item-linha { display: flex; align-items: center; gap: 10px; font-size: 12.5px; }
-  .item-dot { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
-  .item-label { color: var(--text2); flex: 1; }
-  .item-valor { font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
-  .item-pct   { color: var(--text3); font-size: 11.5px; width: 46px; text-align: right; font-variant-numeric: tabular-nums; }
+  .item-label { color: var(--text); font-size: 12.5px; font-weight: 500; flex: 1; }
+  .item-right { text-align: right; }
+  .item-valor { display: block; font-weight: 700; color: var(--text); font-size: 13.5px; font-variant-numeric: tabular-nums; }
+  .item-pct   { display: block; color: var(--text3); font-size: 11px; font-variant-numeric: tabular-nums; }
 </style>
 </head>
 <body>
@@ -166,14 +165,15 @@
     </div>
   </div>
   <div class="h-right">
-    <div id="version-badge">v705</div>
+    <div id="version-badge">v706</div>
     <button class="btn-sair" onclick="sair()">Sair</button>
   </div>
 </header>
 
 <main>
 
-  <div class="config-grid">
+  <div class="layout-2col">
+    <div class="config-col">
       <fieldset>
         <legend>Produto</legend>
         <div class="row2">
@@ -245,21 +245,23 @@
           <input type="number" id="minhaComissaoPct" step="0.1" min="0" value="">
         </div>
       </fieldset>
-  </div>
+    </div>
 
-  <!-- ── Resultados ──────────────────────────────────────────── -->
-  <div class="pendente-msg" id="pendenteMsg">Preencha o imposto e a comissão do agente para ver o resultado.</div>
+    <!-- ── Resultados ────────────────────────────────────────── -->
+    <div class="results-col">
+      <div class="pendente-msg" id="pendenteMsg">Preencha o imposto e a comissão do agente para ver o resultado.</div>
 
-  <div id="resultados" style="display:none">
-    <div class="cards" id="kpis"></div>
+      <div id="resultados" style="display:none">
+        <div class="cards" id="kpis"></div>
 
-    <div class="prejuizo-banner" id="prejuizoBanner"></div>
+        <div class="prejuizo-banner" id="prejuizoBanner"></div>
 
-    <div class="breakdown-card">
-      <div class="breakdown-title">Para onde vai cada real do preço de venda</div>
-      <div class="breakdown-sub" id="breakdownSub"></div>
-      <div class="bar" id="bar"></div>
-      <div class="lista-itens" id="listaItens"></div>
+        <div class="breakdown-card">
+          <div class="breakdown-title">Para onde vai cada real do preço de venda</div>
+          <div class="breakdown-sub" id="breakdownSub"></div>
+          <div class="lista-itens" id="listaItens"></div>
+        </div>
+      </div>
     </div>
   </div>
 </main>
@@ -369,20 +371,15 @@
 
     const base = preco > 0 ? preco : segmentos.reduce((s, x) => s + x.valor, 0) || 1;
 
-    const barEl = document.getElementById('bar');
-    barEl.innerHTML = segmentos.filter(s => s.valor > 0).map(s => {
-      const pct = s.valor / base * 100;
-      const mostrarLabel = pct >= 9;
-      return `<div class="seg" style="flex-basis:${pct}%;background:${s.cor}" title="${s.label}: ${brl(s.valor)} (${pct.toFixed(1)}%)">${mostrarLabel ? pct.toFixed(0) + '%' : ''}</div>`;
-    }).join('');
-
     document.getElementById('listaItens').innerHTML = segmentos.map(s => {
       const pct = s.valor / base * 100;
       return `<div class="item-linha">
-        <span class="item-dot" style="background:${s.cor}"></span>
+        <span class="item-icon" style="--icon-cor:${s.cor}"></span>
         <span class="item-label">${s.label}</span>
-        <span class="item-valor">${brl(s.valor)}</span>
-        <span class="item-pct">${pct.toFixed(1)}%</span>
+        <span class="item-right">
+          <span class="item-valor">${brl(s.valor)}</span>
+          <span class="item-pct">${pct.toFixed(1)}%</span>
+        </span>
       </div>`;
     }).join('');
   }
