@@ -3151,6 +3151,74 @@ async function calcFretePorSku(data, c) {
   return result;
 }
 
+// Endpoint de apoio (temporário) pro Simulador ML: frete real médio pago em
+// pedidos recentes de MLBs específicos — usado pra calibrar o simulador com
+// número real da conta em vez de estimativa de mercado.
+app.get('/api/simulador-ml/frete-real', async (req, res) => {
+  const mlbs = String(req.query.mlbs || '').split(',').map(s => s.trim()).filter(Boolean);
+  if (!mlbs.length) return res.status(400).json({ error: 'informe ?mlbs=MLBX,MLBY' });
+  const num  = String(req.query.conta || '1');
+  const dias = Math.min(parseInt(req.query.dias) || 90, 180);
+  try {
+    const data  = loadData();
+    const token = await getToken(data, num);
+    const c     = data.contas[num];
+    const headers  = { Authorization: `Bearer ${token}` };
+    const dateFrom = new Date(Date.now() - dias * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+    let ordens = [];
+    let off = 0;
+    while (ordens.length < 400) {
+      const resp = await axios.get('https://api.mercadolibre.com/orders/search', {
+        params: { seller: c.user_id, 'order.status': 'paid', sort: 'date_desc', limit: 50, offset: off,
+                  'order.date_created.from': dateFrom + 'T00:00:00.000-03:00' },
+        headers, timeout: 15000,
+      });
+      const results = resp.data.results || [];
+      ordens = ordens.concat(results);
+      if (results.length < 50) break;
+      off += 50;
+    }
+
+    const shipIds = [...new Set(ordens.map(o => o.shipping?.id).filter(Boolean))];
+    const fretePorShipment = {};
+    for (let i = 0; i < shipIds.length; i += 25) {
+      await Promise.all(shipIds.slice(i, i + 25).map(async sid => {
+        try {
+          const r = await axios.get(`https://api.mercadolibre.com/shipments/${sid}/costs`, { headers, timeout: 8000 });
+          const senders = r.data?.senders || [];
+          const sender  = senders.find(sv => sv.user_id == c.user_id) || senders[0];
+          fretePorShipment[sid] = sender?.cost ?? 0;
+        } catch { fretePorShipment[sid] = 0; }
+      }));
+    }
+
+    const acc = {};
+    for (const order of ordens) {
+      const frete = fretePorShipment[order.shipping?.id] ?? 0;
+      for (const oi of (order.order_items || [])) {
+        const itemId = oi.item?.id;
+        if (!itemId || !mlbs.includes(itemId)) continue;
+        if (!acc[itemId]) acc[itemId] = { sum: 0, n: 0, precoUnit: oi.unit_price ?? null, titulo: oi.item?.title || null };
+        acc[itemId].sum += frete;
+        acc[itemId].n++;
+      }
+    }
+
+    const resultado = {};
+    for (const mlb of mlbs) {
+      const a = acc[mlb];
+      resultado[mlb] = a
+        ? { frete_medio: +(a.sum / a.n).toFixed(2), pedidos_encontrados: a.n, preco_unit_exemplo: a.precoUnit, titulo: a.titulo }
+        : { frete_medio: null, pedidos_encontrados: 0 };
+    }
+
+    res.json({ conta: num, dias, pedidos_total: ordens.length, resultado });
+  } catch (err) {
+    res.status(500).json({ error: err.response?.data || err.message });
+  }
+});
+
 const PROMO_TIPO_LABEL_SERVER = {
   SMART:          'Oferta Inteligente',
   DOD:            'Oferta do Dia',
