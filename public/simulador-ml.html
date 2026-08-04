@@ -78,7 +78,12 @@
 
   .config-grid {
     display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
-    gap: 10px; margin-top: 8px; margin-bottom: 16px;
+    gap: 10px; margin-top: 8px; margin-bottom: 16px; align-items: start;
+  }
+
+  .pendente-msg {
+    background: #f8fafc; border: 1px dashed var(--border); border-radius: 10px;
+    padding: 16px; text-align: center; font-size: 12.5px; color: var(--text3);
   }
 
   fieldset {
@@ -161,7 +166,7 @@
     </div>
   </div>
   <div class="h-right">
-    <div id="version-badge">v702</div>
+    <div id="version-badge">v703</div>
     <button class="btn-sair" onclick="sair()">Sair</button>
   </div>
 </header>
@@ -182,30 +187,25 @@
           </div>
         </div>
         <div class="ajuda">Acima de R$ 79,00 o Mercado Livre exige frete grátis pro comprador — o custo do envio cai pra empresa.</div>
-      </fieldset>
 
-      <fieldset>
-        <legend>Mercado Livre</legend>
-        <div class="campo">
+        <div class="campo" style="margin-top:10px">
           <label>Oferecer parcelamento sem juros pro comprador?</label>
           <div class="radio-group">
             <label><input type="radio" name="tipoAnuncio" value="classico" checked onchange="recalcular()"> Não</label>
             <label><input type="radio" name="tipoAnuncio" value="premium" onchange="recalcular()"> Sim</label>
           </div>
         </div>
-        <div class="campo">
-          <label>Comissão do Mercado Livre</label>
-          <div class="info-auto" id="comissaoValor">11,5%</div>
+        <div class="row2">
+          <div class="campo">
+            <label>Comissão do Mercado Livre</label>
+            <div class="info-auto" id="comissaoValor">11,5%</div>
+          </div>
+          <div class="campo">
+            <label>Custo do frete</label>
+            <div class="info-auto" id="freteValorTxt">R$ 7,95</div>
+          </div>
         </div>
-      </fieldset>
-
-      <fieldset>
-        <legend>Frete</legend>
-        <div class="campo">
-          <label>Custo do frete</label>
-          <div class="info-auto" id="freteValorTxt">R$ 7,95</div>
-          <div class="ajuda">Estimado a partir de vendas anteriores, mas varia de acordo com tamanho e peso do produto.</div>
-        </div>
+        <div class="ajuda">Frete estimado a partir de vendas anteriores, mas varia de acordo com tamanho e peso do produto.</div>
       </fieldset>
 
       <fieldset>
@@ -223,40 +223,44 @@
       </fieldset>
 
       <fieldset>
-        <legend>Impostos e Ads</legend>
-        <div class="row2">
-          <div class="campo">
-            <label for="impostoPct">Imposto sobre a venda (%)</label>
-            <input type="number" id="impostoPct" step="0.1" min="0" value="6">
-          </div>
-          <div class="campo">
-            <label for="adsPct">Ads / Mercado Ads (%)</label>
-            <input type="number" id="adsPct" step="0.1" min="0" value="0">
-          </div>
+        <legend>Impostos</legend>
+        <div class="campo">
+          <label for="impostoPct">Imposto sobre a venda (%)</label>
+          <input type="number" id="impostoPct" step="0.1" min="0" value="">
         </div>
-        <div class="ajuda">Ads é opcional — só entra se a empresa decidir investir em anúncios patrocinados por venda.</div>
       </fieldset>
 
       <fieldset>
-        <legend>Comissão de implementação</legend>
+        <legend>Ads</legend>
+        <div class="campo">
+          <label for="adsPct">Ads / Mercado Ads (%)</label>
+          <input type="number" id="adsPct" step="0.1" min="0" value="0">
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Comissão do agente</legend>
         <div class="campo">
           <label for="minhaComissaoPct">Comissão sobre o faturamento (%)</label>
           <input type="number" id="minhaComissaoPct" step="0.1" min="0" value="">
-          <div class="ajuda">Campo livre — teste diferentes percentuais e veja o impacto na margem líquida da empresa.</div>
         </div>
       </fieldset>
   </div>
 
   <!-- ── Resultados ──────────────────────────────────────────── -->
-  <div class="cards" id="kpis"></div>
+  <div class="pendente-msg" id="pendenteMsg">Preencha o imposto e a comissão do agente para ver o resultado.</div>
 
-  <div class="prejuizo-banner" id="prejuizoBanner"></div>
+  <div id="resultados" style="display:none">
+    <div class="cards" id="kpis"></div>
 
-  <div class="breakdown-card">
-    <div class="breakdown-title">Para onde vai cada real do preço de venda</div>
-    <div class="breakdown-sub" id="breakdownSub"></div>
-    <div class="bar" id="bar"></div>
-    <div class="lista-itens" id="listaItens"></div>
+    <div class="prejuizo-banner" id="prejuizoBanner"></div>
+
+    <div class="breakdown-card">
+      <div class="breakdown-title">Para onde vai cada real do preço de venda</div>
+      <div class="breakdown-sub" id="breakdownSub"></div>
+      <div class="bar" id="bar"></div>
+      <div class="lista-itens" id="listaItens"></div>
+    </div>
   </div>
 </main>
 
@@ -305,6 +309,17 @@
     // ── Frete (automático pela regra dos R$79) ──────────────────
     const freteValor = preco > 0 ? (preco >= LIMITE_FRETE ? FRETE_ACIMA : FRETE_ABAIXO) : 0;
     document.getElementById('freteValorTxt').textContent = brl(freteValor);
+
+    // ── Imposto e comissão do agente são obrigatórios ───────────
+    const impostoPreenchido  = document.getElementById('impostoPct').value !== '';
+    const comissaoPreenchida = document.getElementById('minhaComissaoPct').value !== '';
+    if (!impostoPreenchido || !comissaoPreenchida) {
+      document.getElementById('pendenteMsg').style.display = 'block';
+      document.getElementById('resultados').style.display = 'none';
+      return;
+    }
+    document.getElementById('pendenteMsg').style.display = 'none';
+    document.getElementById('resultados').style.display = 'block';
 
     const impostos  = preco * impostoPct / 100;
     const ads       = preco * adsPct / 100;
