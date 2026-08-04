@@ -76,12 +76,14 @@
     padding-right: 24px;
   }
 
-  .layout { display: grid; grid-template-columns: 380px 1fr; gap: 20px; align-items: start; margin-top: 8px; }
-  @media (max-width: 920px) { .layout { grid-template-columns: 1fr; } }
+  .config-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 16px; margin-top: 8px; margin-bottom: 24px;
+  }
 
   fieldset {
     background: var(--card); border: 1px solid var(--border); border-radius: 14px;
-    padding: 16px 18px; margin-bottom: 16px;
+    padding: 16px 18px;
   }
   legend { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: var(--text2); padding: 0 4px; }
 
@@ -105,8 +107,8 @@
   }
 
   /* ── Resultados ─────────────────────────────────────────── */
-  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 18px; }
-  @media (max-width: 640px) { .cards { grid-template-columns: 1fr 1fr; } }
+  .cards { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin-bottom: 18px; max-width: 480px; }
+  @media (max-width: 640px) { .cards { grid-template-columns: 1fr; max-width: none; } }
   .card {
     background: var(--card); border-radius: 14px; padding: 16px 18px;
     border: 1px solid var(--border);
@@ -159,17 +161,14 @@
     </div>
   </div>
   <div class="h-right">
-    <div id="version-badge">v698</div>
+    <div id="version-badge">v699</div>
     <button class="btn-sair" onclick="sair()">Sair</button>
   </div>
 </header>
 
 <main>
 
-  <div class="layout">
-
-    <!-- ── Coluna: formulário ────────────────────────────────── -->
-    <div>
+  <div class="config-grid">
       <fieldset>
         <legend>Produto</legend>
         <div class="campo">
@@ -248,22 +247,18 @@
           <div class="ajuda">Campo livre — teste diferentes percentuais e veja o impacto na margem líquida da empresa.</div>
         </div>
       </fieldset>
-    </div>
+  </div>
 
-    <!-- ── Coluna: resultados ─────────────────────────────────── -->
-    <div>
-      <div class="cards" id="kpis"></div>
+  <!-- ── Resultados ──────────────────────────────────────────── -->
+  <div class="cards" id="kpis"></div>
 
-      <div class="prejuizo-banner" id="prejuizoBanner"></div>
+  <div class="prejuizo-banner" id="prejuizoBanner"></div>
 
-      <div class="breakdown-card">
-        <div class="breakdown-title">Para onde vai cada real do preço de venda</div>
-        <div class="breakdown-sub" id="breakdownSub"></div>
-        <div class="bar" id="bar"></div>
-        <div class="lista-itens" id="listaItens"></div>
-      </div>
-    </div>
-
+  <div class="breakdown-card">
+    <div class="breakdown-title">Para onde vai cada real do preço de venda</div>
+    <div class="breakdown-sub" id="breakdownSub"></div>
+    <div class="bar" id="bar"></div>
+    <div class="lista-itens" id="listaItens"></div>
   </div>
 </main>
 
@@ -334,11 +329,6 @@
         <div class="card-value ${margem >= 0 ? 'pos' : 'neg'}">${margem.toFixed(1).replace('.', ',')}%</div>
         <div class="card-sub">sobre o preço de venda</div>
       </div>
-      <div class="card">
-        <div class="card-label">Sua comissão / un.</div>
-        <div class="card-value">${brl(minhaComissao)}</div>
-        <div class="card-sub">${minhaComPct || 0}% do faturamento</div>
-      </div>
     `;
 
     const banner = document.getElementById('prejuizoBanner');
@@ -360,7 +350,7 @@
       { label: 'Impostos',               valor: impostos,           cor: 'var(--c-imposto)' },
       { label: 'Custos operacionais',    valor: custosOp,           cor: 'var(--c-op)' },
       { label: 'Lucro líquido',          valor: Math.max(lucro, 0), cor: 'var(--c-lucro)' },
-      { label: 'Sua comissão',           valor: minhaComissao,      cor: 'var(--c-comissao)' },
+      { label: 'Comissão do agente',     valor: minhaComissao,      cor: 'var(--c-comissao)' },
       { label: 'Ads',                    valor: ads,                cor: 'var(--c-ads)' },
     ];
 
