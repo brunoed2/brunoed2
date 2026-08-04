@@ -3183,6 +3183,7 @@ app.get('/api/simulador-ml/frete-real', async (req, res) => {
 
     const shipIds = [...new Set(ordens.map(o => o.shipping?.id).filter(Boolean))];
     const fretePorShipment = {};
+    const custosRawPorShipment = {};
     for (let i = 0; i < shipIds.length; i += 25) {
       await Promise.all(shipIds.slice(i, i + 25).map(async sid => {
         try {
@@ -3190,17 +3191,19 @@ app.get('/api/simulador-ml/frete-real', async (req, res) => {
           const senders = r.data?.senders || [];
           const sender  = senders.find(sv => sv.user_id == c.user_id) || senders[0];
           fretePorShipment[sid] = sender?.cost ?? 0;
+          custosRawPorShipment[sid] = r.data;
         } catch { fretePorShipment[sid] = 0; }
       }));
     }
 
+    const debug = req.query.debug === '1';
     const acc = {};
     for (const order of ordens) {
       const frete = fretePorShipment[order.shipping?.id] ?? 0;
       for (const oi of (order.order_items || [])) {
         const itemId = oi.item?.id;
         if (!itemId || !mlbs.includes(itemId)) continue;
-        if (!acc[itemId]) acc[itemId] = { sum: 0, n: 0, precoUnit: oi.unit_price ?? null, titulo: oi.item?.title || null };
+        if (!acc[itemId]) acc[itemId] = { sum: 0, n: 0, precoUnit: oi.unit_price ?? null, titulo: oi.item?.title || null, primeiroShipId: order.shipping?.id || null };
         acc[itemId].sum += frete;
         acc[itemId].n++;
       }
@@ -3211,6 +3214,19 @@ app.get('/api/simulador-ml/frete-real', async (req, res) => {
       const a = acc[mlb];
       if (a) {
         resultado[mlb] = { frete_medio: +(a.sum / a.n).toFixed(2), pedidos_encontrados: a.n, preco_unit_exemplo: a.precoUnit, titulo: a.titulo };
+        if (debug) {
+          try {
+            const itemInfo = await axios.get(`https://api.mercadolibre.com/items/${mlb}`, { headers, timeout: 8000 });
+            resultado[mlb].debug_item = {
+              free_shipping: itemInfo.data.shipping?.free_shipping,
+              logistic_type: itemInfo.data.shipping?.logistic_type,
+              mode: itemInfo.data.shipping?.mode,
+              tags: itemInfo.data.shipping?.tags,
+            };
+          } catch (e) { resultado[mlb].debug_item = { erro: e.message }; }
+          resultado[mlb].debug_shipment_id = a.primeiroShipId;
+          resultado[mlb].debug_costs_raw = a.primeiroShipId ? custosRawPorShipment[a.primeiroShipId] : null;
+        }
       } else {
         let diag = null;
         try {
