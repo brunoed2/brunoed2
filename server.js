@@ -3209,9 +3209,16 @@ app.get('/api/simulador-ml/frete-real', async (req, res) => {
     const resultado = {};
     for (const mlb of mlbs) {
       const a = acc[mlb];
-      resultado[mlb] = a
-        ? { frete_medio: +(a.sum / a.n).toFixed(2), pedidos_encontrados: a.n, preco_unit_exemplo: a.precoUnit, titulo: a.titulo }
-        : { frete_medio: null, pedidos_encontrados: 0 };
+      if (a) {
+        resultado[mlb] = { frete_medio: +(a.sum / a.n).toFixed(2), pedidos_encontrados: a.n, preco_unit_exemplo: a.precoUnit, titulo: a.titulo };
+      } else {
+        let diag = null;
+        try {
+          const r = await axios.get(`https://api.mercadolibre.com/items/${mlb}`, { headers, timeout: 8000 });
+          diag = { titulo: r.data.title, preco: r.data.price, status: r.data.status, seller_id: r.data.seller_id, sold_quantity: r.data.sold_quantity };
+        } catch (e) { diag = { erro: e.response?.data?.message || e.message }; }
+        resultado[mlb] = { frete_medio: null, pedidos_encontrados: 0, diagnostico: diag };
+      }
     }
 
     const datas = ordens.map(o => o.date_created).filter(Boolean).sort();
