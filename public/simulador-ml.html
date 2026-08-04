@@ -23,7 +23,7 @@
     --c-op:       #e87ba4; /* Custos operacionais */
     --c-lucro:    #008300; /* Lucro líquido */
     --c-comissao: #4a3aa7; /* Sua comissão */
-    --c-outras:   #e34948; /* Outras taxas */
+    --c-ads:      #e34948; /* Ads */
 
     --good:     #006300;
     --critical: #d03b3b;
@@ -83,7 +83,12 @@
   .intro h1 { font-size: 18px; font-weight: 700; margin-bottom: 6px; }
   .intro p  { font-size: 13px; color: var(--text2); max-width: 780px; }
   .intro .aviso {
-    margin-top: 12px; font-size: 12px; color: #92400e; background: #fffbeb;
+    margin-top: 12px; font-size: 12px; color: #166534; background: #f0fdf4;
+    border: 1px solid #bbf7d0; border-radius: 8px; padding: 8px 12px;
+  }
+  .intro .aviso b { color: #14532d; }
+  .intro .aviso2 {
+    margin-top: 8px; font-size: 12px; color: #92400e; background: #fffbeb;
     border: 1px solid #fde68a; border-radius: 8px; padding: 8px 12px;
   }
 
@@ -114,19 +119,24 @@
     border-radius: 7px; background: #f8fafc; color: var(--text); font-family: inherit;
   }
   .campo input:focus { outline: none; border-color: #93c5fd; background: #fff; }
-  .campo input:disabled { color: var(--text3); background: #f1f5f9; cursor: not-allowed; }
   .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 
   .radio-group { display: flex; gap: 16px; }
   .radio-group label { display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 500; cursor: pointer; }
 
-  .check-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-  .check-row label { font-size: 12.5px; font-weight: 500; cursor: pointer; }
-  .check-row input[type=checkbox] { width: 15px; height: 15px; cursor: pointer; }
-
   .badge { font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 20px; text-transform: uppercase; letter-spacing: .3px; }
   .badge-obrig { background: #fee2e2; color: #b91c1c; }
   .badge-opc   { background: #dcfce7; color: #15803d; }
+  .badge-real  { background: #dcfce7; color: #15803d; }
+  .badge-est   { background: #fef3c7; color: #92400e; }
+
+  .info-auto {
+    background: #f8fafc; border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px 12px; font-size: 12.5px; color: var(--text2); display: flex;
+    align-items: center; justify-content: space-between; gap: 10px;
+  }
+  .info-auto .valor { font-weight: 700; color: var(--text); font-size: 14px; }
+  .info-auto .fonte { font-size: 10.5px; color: var(--text3); margin-top: 2px; }
 
   /* ── Resultados ─────────────────────────────────────────── */
   .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 18px; }
@@ -170,12 +180,6 @@
   .item-label { color: var(--text2); flex: 1; }
   .item-valor { font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
   .item-pct   { color: var(--text3); font-size: 11.5px; width: 46px; text-align: right; font-variant-numeric: tabular-nums; }
-
-  .projecao-card {
-    background: var(--card); border: 1px solid var(--border); border-radius: 14px;
-    padding: 20px 22px;
-  }
-  .projecao-title { font-size: 13.5px; font-weight: 700; margin-bottom: 14px; }
 </style>
 </head>
 <body>
@@ -189,7 +193,7 @@
     </div>
   </div>
   <div class="h-right">
-    <div id="version-badge">v692</div>
+    <div id="version-badge">v696</div>
     <button class="btn-sair" onclick="sair()">Sair</button>
   </div>
 </header>
@@ -198,13 +202,14 @@
 
   <div class="intro">
     <h1>Quanto sobra vendendo no Mercado Livre?</h1>
-    <p>Ajuste os campos abaixo com os números reais do produto e veja, na hora, para onde vai cada real do preço de venda: custo do produto, comissão do Mercado Livre, frete, impostos, custos operacionais e a comissão de implementação.</p>
-    <div class="aviso">⚠️ Os percentuais de comissão do ML, frete e impostos abaixo são valores de referência, editáveis. Confirme os percentuais reais da categoria do anúncio e do regime tributário da empresa antes de fechar a conta definitiva.</div>
+    <p>Ajuste os campos abaixo com os números reais do produto e veja, na hora, para onde vai cada real do preço de venda. A comissão do Mercado Livre e o frete não são estimativas de mercado — vêm de pedidos reais de uma conta que já vende artigos esportivos no Mercado Livre.</p>
+    <div class="aviso"><b>Comissão (11,5%) e frete (R$ 7,95 abaixo de R$79 / R$ 20,75 a partir de R$79)</b> conferidos em dois pedidos reais recentes — não são editáveis porque não dependem de você, dependem do Mercado Livre.</div>
+    <div class="aviso2">⚠️ A comissão do anúncio Premium (16,5%) é uma estimativa de mercado, não confirmada em pedido real — ainda não temos exemplo de venda Premium nesta conta.</div>
   </div>
 
   <div class="presets">
-    <button class="preset-btn active" onclick="carregarPreset('a')">Exemplo A — ticket baixo (abaixo de R$ 79, frete opcional)</button>
-    <button class="preset-btn" onclick="carregarPreset('b')">Exemplo B — ticket alto (acima de R$ 79, frete grátis obrigatório)</button>
+    <button class="preset-btn active" onclick="carregarPreset('a')">Exemplo real — abaixo de R$79 (pedido #171088519535)</button>
+    <button class="preset-btn" onclick="carregarPreset('b')">Exemplo real — acima de R$79</button>
     <button class="preset-btn" onclick="carregarPreset('vazio')">Produto em branco</button>
   </div>
 
@@ -216,21 +221,17 @@
         <legend>Produto</legend>
         <div class="campo">
           <label for="nome">Nome do produto</label>
-          <input type="text" id="nome" value="Exemplo A">
+          <input type="text" id="nome" value="Exemplo real — abaixo de R$79">
         </div>
         <div class="row2">
           <div class="campo">
             <label for="preco">Preço de venda (R$)</label>
-            <input type="number" id="preco" step="0.01" min="0" value="49.90">
+            <input type="number" id="preco" step="0.01" min="0" value="74.00">
           </div>
           <div class="campo">
             <label for="custoProduto">Custo do produto (R$)</label>
-            <input type="number" id="custoProduto" step="0.01" min="0" value="20.00">
+            <input type="number" id="custoProduto" step="0.01" min="0" value="0">
           </div>
-        </div>
-        <div class="campo">
-          <label for="qtdMensal">Vendas estimadas por mês (un.)</label>
-          <input type="number" id="qtdMensal" step="1" min="0" value="100">
         </div>
       </fieldset>
 
@@ -239,43 +240,37 @@
         <div class="campo">
           <label>Tipo de anúncio</label>
           <div class="radio-group">
-            <label><input type="radio" name="tipoAnuncio" value="classico" checked onchange="tipoAnuncioMudou()"> Clássico</label>
-            <label><input type="radio" name="tipoAnuncio" value="premium" onchange="tipoAnuncioMudou()"> Premium</label>
+            <label><input type="radio" name="tipoAnuncio" value="classico" checked onchange="recalcular()"> Clássico</label>
+            <label><input type="radio" name="tipoAnuncio" value="premium" onchange="recalcular()"> Premium</label>
           </div>
-          <div class="ajuda">Premium cobra comissão maior, mas parcela a venda em mais vezes sem juros pro comprador.</div>
         </div>
         <div class="campo">
-          <label for="comissaoPct">Comissão do Mercado Livre (%)</label>
-          <input type="number" id="comissaoPct" step="0.1" min="0" value="12">
-          <div class="ajuda">Varia por categoria — este é só um ponto de partida.</div>
-        </div>
-        <div class="check-row">
-          <input type="checkbox" id="baixoValorCheck">
-          <label for="baixoValorCheck">Produto de baixo valor (taxa fixa adicional do ML)</label>
-        </div>
-        <div class="campo">
-          <label for="taxaFixaBaixoValor">Taxa fixa por venda (R$)</label>
-          <input type="number" id="taxaFixaBaixoValor" step="0.01" min="0" value="6.00" disabled>
+          <label>Comissão do Mercado Livre</label>
+          <div class="info-auto">
+            <div>
+              <div class="valor" id="comissaoValor">11,5%</div>
+              <div class="fonte" id="comissaoFonte">confirmado em pedido real</div>
+            </div>
+            <span class="badge badge-real" id="comissaoBadge">Real</span>
+          </div>
         </div>
       </fieldset>
 
       <fieldset>
         <legend>Frete</legend>
         <div class="campo">
-          <label for="limiteFrete">Limite obrigatório de frete grátis (R$)</label>
-          <input type="number" id="limiteFrete" step="0.01" min="0" value="79.00">
+          <label>Frete grátis obrigatório a partir de R$ 79,00 <span class="badge badge-opc" id="freteBadge">Opcional</span></label>
+          <div class="ajuda">Regra fixa do Mercado Livre — não editável.</div>
         </div>
         <div class="campo">
-          <label>Frete grátis neste produto <span class="badge badge-opc" id="freteBadge">Opcional</span></label>
-          <div class="check-row" style="margin-top:6px">
-            <input type="checkbox" id="freteGratisCheck">
-            <label for="freteGratisCheck">Oferecer frete grátis</label>
+          <label>Custo do frete</label>
+          <div class="info-auto">
+            <div>
+              <div class="valor" id="freteValorTxt">R$ 7,95</div>
+              <div class="fonte">real, conta 1 (artigos esportivos)</div>
+            </div>
+            <span class="badge badge-real">Real</span>
           </div>
-        </div>
-        <div class="campo">
-          <label for="custoFrete">Custo do frete pago por você (R$)</label>
-          <input type="number" id="custoFrete" step="0.01" min="0" value="0" disabled>
-          <div class="ajuda">Só entra na conta se o frete grátis estiver ativo. Abaixo do limite, o comprador paga o frete.</div>
         </div>
       </fieldset>
 
@@ -283,29 +278,29 @@
         <legend>Custos operacionais</legend>
         <div class="row2">
           <div class="campo">
-            <label for="embalagem">Embalagem + mão de obra (R$)</label>
+            <label for="embalagem">Embalagem (R$)</label>
             <input type="number" id="embalagem" step="0.01" min="0" value="3.00">
           </div>
           <div class="campo">
-            <label for="outrosFixos">Outros custos por venda (R$)</label>
-            <input type="number" id="outrosFixos" step="0.01" min="0" value="2.00">
+            <label for="picking">Picking / separação (R$)</label>
+            <input type="number" id="picking" step="0.01" min="0" value="2.00">
           </div>
         </div>
       </fieldset>
 
       <fieldset>
-        <legend>Impostos e taxas financeiras</legend>
+        <legend>Impostos e Ads</legend>
         <div class="row2">
           <div class="campo">
             <label for="impostoPct">Imposto sobre a venda (%)</label>
             <input type="number" id="impostoPct" step="0.1" min="0" value="6">
           </div>
           <div class="campo">
-            <label for="antecipacaoPct">Antecipação de recebíveis (%)</label>
-            <input type="number" id="antecipacaoPct" step="0.1" min="0" value="0">
+            <label for="adsPct">Ads / Mercado Ads (%)</label>
+            <input type="number" id="adsPct" step="0.1" min="0" value="0">
           </div>
         </div>
-        <div class="ajuda">Antecipação é opcional — só se cobra se a empresa quiser receber na hora em vez do prazo padrão do Mercado Pago.</div>
+        <div class="ajuda">Ads é opcional — só entra se a empresa decidir investir em anúncios patrocinados por venda.</div>
       </fieldset>
 
       <fieldset>
@@ -330,11 +325,6 @@
         <div class="bar" id="bar"></div>
         <div class="lista-itens" id="listaItens"></div>
       </div>
-
-      <div class="projecao-card">
-        <div class="projecao-title">Projeção mensal</div>
-        <div class="cards" id="projecao"></div>
-      </div>
     </div>
 
   </div>
@@ -352,25 +342,29 @@
     location.href = '/';
   }
 
+  // ── Regras reais do Mercado Livre (não editáveis) ───────────────
+  // Comissão clássico e frete: confirmados em pedidos reais da conta 1
+  // (pedido #171088519535, R$74,00, e pedido de R$178,20). Premium é
+  // estimativa de mercado (+5pp sobre o clássico), sem exemplo real ainda.
+  const COMISSAO_CLASSICO = 11.5;
+  const COMISSAO_PREMIUM  = 16.5;
+  const LIMITE_FRETE      = 79.00;
+  const FRETE_ABAIXO      = 7.95;
+  const FRETE_ACIMA       = 20.75;
+
   // ── Presets ──────────────────────────────────────────────────
   const PRESETS = {
     a: {
-      nome: 'Exemplo A — ticket baixo', preco: 49.90, custoProduto: 20.00, qtdMensal: 100,
-      tipoAnuncio: 'classico', comissaoPct: 12, baixoValor: false, taxaFixaBaixoValor: 6.00,
-      limiteFrete: 79.00, freteGratis: false, custoFrete: 0,
-      embalagem: 3.00, outrosFixos: 2.00, impostoPct: 6, antecipacaoPct: 0, minhaComissaoPct: '',
+      nome: 'Exemplo real — abaixo de R$79', preco: 74.00, custoProduto: 0,
+      tipoAnuncio: 'classico', embalagem: 3.00, picking: 2.00, impostoPct: 6, adsPct: 0, minhaComissaoPct: '',
     },
     b: {
-      nome: 'Exemplo B — ticket alto', preco: 149.90, custoProduto: 60.00, qtdMensal: 60,
-      tipoAnuncio: 'classico', comissaoPct: 12, baixoValor: false, taxaFixaBaixoValor: 6.00,
-      limiteFrete: 79.00, freteGratis: true, custoFrete: 22.00,
-      embalagem: 4.00, outrosFixos: 2.00, impostoPct: 6, antecipacaoPct: 0, minhaComissaoPct: '',
+      nome: 'Exemplo real — acima de R$79', preco: 178.20, custoProduto: 0,
+      tipoAnuncio: 'classico', embalagem: 4.00, picking: 2.00, impostoPct: 6, adsPct: 0, minhaComissaoPct: '',
     },
     vazio: {
-      nome: 'Novo produto', preco: 0, custoProduto: 0, qtdMensal: 0,
-      tipoAnuncio: 'classico', comissaoPct: 12, baixoValor: false, taxaFixaBaixoValor: 6.00,
-      limiteFrete: 79.00, freteGratis: false, custoFrete: 0,
-      embalagem: 0, outrosFixos: 0, impostoPct: 6, antecipacaoPct: 0, minhaComissaoPct: '',
+      nome: 'Novo produto', preco: 0, custoProduto: 0,
+      tipoAnuncio: 'classico', embalagem: 0, picking: 0, impostoPct: 6, adsPct: 0, minhaComissaoPct: '',
     },
   };
 
@@ -379,30 +373,16 @@
     document.getElementById('nome').value = p.nome;
     document.getElementById('preco').value = p.preco;
     document.getElementById('custoProduto').value = p.custoProduto;
-    document.getElementById('qtdMensal').value = p.qtdMensal;
     document.querySelector(`input[name=tipoAnuncio][value=${p.tipoAnuncio}]`).checked = true;
-    document.getElementById('comissaoPct').value = p.comissaoPct;
-    document.getElementById('baixoValorCheck').checked = p.baixoValor;
-    document.getElementById('taxaFixaBaixoValor').value = p.taxaFixaBaixoValor;
-    document.getElementById('taxaFixaBaixoValor').disabled = !p.baixoValor;
-    document.getElementById('limiteFrete').value = p.limiteFrete;
-    document.getElementById('freteGratisCheck').checked = p.freteGratis;
-    document.getElementById('custoFrete').value = p.custoFrete;
     document.getElementById('embalagem').value = p.embalagem;
-    document.getElementById('outrosFixos').value = p.outrosFixos;
+    document.getElementById('picking').value = p.picking;
     document.getElementById('impostoPct').value = p.impostoPct;
-    document.getElementById('antecipacaoPct').value = p.antecipacaoPct;
+    document.getElementById('adsPct').value = p.adsPct;
     document.getElementById('minhaComissaoPct').value = p.minhaComissaoPct;
 
     document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
     event.target.classList.add('active');
 
-    recalcular();
-  }
-
-  function tipoAnuncioMudou() {
-    const premium = document.querySelector('input[name=tipoAnuncio]:checked').value === 'premium';
-    document.getElementById('comissaoPct').value = premium ? 17 : 12;
     recalcular();
   }
 
@@ -412,42 +392,37 @@
 
   // ── Cálculo principal ───────────────────────────────────────
   function recalcular() {
-    const preco         = num('preco');
-    const custoProduto  = num('custoProduto');
-    const comissaoPct   = num('comissaoPct');
-    const limiteFrete   = num('limiteFrete');
-    const embalagem     = num('embalagem');
-    const outrosFixos   = num('outrosFixos');
-    const impostoPct    = num('impostoPct');
-    const antecipacaoPct= num('antecipacaoPct');
-    const minhaComPct   = num('minhaComissaoPct');
-    const qtdMensal     = num('qtdMensal');
+    const preco        = num('preco');
+    const custoProduto = num('custoProduto');
+    const embalagem    = num('embalagem');
+    const picking      = num('picking');
+    const impostoPct   = num('impostoPct');
+    const adsPct       = num('adsPct');
+    const minhaComPct  = num('minhaComissaoPct');
+    const premium      = document.querySelector('input[name=tipoAnuncio]:checked').value === 'premium';
 
-    const baixoValorAtivo = document.getElementById('baixoValorCheck').checked;
-    document.getElementById('taxaFixaBaixoValor').disabled = !baixoValorAtivo;
-    const taxaFixaBaixoValor = baixoValorAtivo ? num('taxaFixaBaixoValor') : 0;
+    // ── Comissão ML (real / estimativa) ─────────────────────────
+    const comissaoPct = premium ? COMISSAO_PREMIUM : COMISSAO_CLASSICO;
+    document.getElementById('comissaoValor').textContent = comissaoPct.toFixed(1).replace('.', ',') + '%';
+    document.getElementById('comissaoFonte').textContent = premium ? 'estimativa de mercado — sem exemplo real' : 'confirmado em pedido real';
+    document.getElementById('comissaoBadge').textContent = premium ? 'Estimativa' : 'Real';
+    document.getElementById('comissaoBadge').className = 'badge ' + (premium ? 'badge-est' : 'badge-real');
+    const comissaoML = preco * comissaoPct / 100;
 
-    // Frete: obrigatório acima do limite
-    const obrigatorio = preco > 0 && limiteFrete > 0 && preco >= limiteFrete;
-    const freteCheck = document.getElementById('freteGratisCheck');
-    freteCheck.disabled = obrigatorio;
-    if (obrigatorio) freteCheck.checked = true;
+    // ── Frete (real, automático pela regra dos R$79) ────────────
+    const obrigatorio = preco >= LIMITE_FRETE;
     const freteBadge = document.getElementById('freteBadge');
     freteBadge.textContent = obrigatorio ? 'Obrigatório' : 'Opcional';
     freteBadge.className = 'badge ' + (obrigatorio ? 'badge-obrig' : 'badge-opc');
+    const freteValor = preco > 0 ? (obrigatorio ? FRETE_ACIMA : FRETE_ABAIXO) : 0;
+    document.getElementById('freteValorTxt').textContent = brl(freteValor);
 
-    const freteAtivo = freteCheck.checked;
-    document.getElementById('custoFrete').disabled = !freteAtivo;
-    const freteValor = freteAtivo ? num('custoFrete') : 0;
+    const impostos  = preco * impostoPct / 100;
+    const ads       = preco * adsPct / 100;
+    const minhaComissao = preco * minhaComPct / 100;
+    const custosOp  = embalagem + picking;
 
-    const comissaoML  = preco * comissaoPct / 100;
-    const impostos     = preco * impostoPct / 100;
-    const antecipacao  = preco * antecipacaoPct / 100;
-    const minhaComissao= preco * minhaComPct / 100;
-    const custosOp     = embalagem + outrosFixos;
-    const outrasTaxas  = taxaFixaBaixoValor + antecipacao;
-
-    const totalCustos = custoProduto + comissaoML + freteValor + impostos + custosOp + minhaComissao + outrasTaxas;
+    const totalCustos = custoProduto + comissaoML + freteValor + impostos + custosOp + ads + minhaComissao;
     const lucro   = preco - totalCustos;
     const margem  = preco > 0 ? (lucro / preco * 100) : 0;
 
@@ -483,14 +458,14 @@
       preco > 0 ? `Preço de venda: ${brl(preco)}` : 'Informe um preço de venda para ver a composição.';
 
     const segmentos = [
-      { label: 'Custo do produto',          valor: custoProduto,           cor: 'var(--c-custo)' },
-      { label: 'Comissão Mercado Livre',    valor: comissaoML,             cor: 'var(--c-ml)' },
-      { label: 'Frete',                     valor: freteValor,             cor: 'var(--c-frete)' },
-      { label: 'Impostos',                  valor: impostos,               cor: 'var(--c-imposto)' },
-      { label: 'Custos operacionais',       valor: custosOp,               cor: 'var(--c-op)' },
-      { label: 'Lucro líquido',             valor: Math.max(lucro, 0),     cor: 'var(--c-lucro)' },
-      { label: 'Sua comissão',              valor: minhaComissao,          cor: 'var(--c-comissao)' },
-      { label: 'Outras taxas',              valor: outrasTaxas,            cor: 'var(--c-outras)' },
+      { label: 'Custo do produto',       valor: custoProduto,       cor: 'var(--c-custo)' },
+      { label: 'Comissão Mercado Livre', valor: comissaoML,         cor: 'var(--c-ml)' },
+      { label: 'Frete',                  valor: freteValor,         cor: 'var(--c-frete)' },
+      { label: 'Impostos',               valor: impostos,           cor: 'var(--c-imposto)' },
+      { label: 'Custos operacionais',    valor: custosOp,           cor: 'var(--c-op)' },
+      { label: 'Lucro líquido',          valor: Math.max(lucro, 0), cor: 'var(--c-lucro)' },
+      { label: 'Sua comissão',           valor: minhaComissao,      cor: 'var(--c-comissao)' },
+      { label: 'Ads',                    valor: ads,                cor: 'var(--c-ads)' },
     ];
 
     const base = preco > 0 ? preco : segmentos.reduce((s, x) => s + x.valor, 0) || 1;
@@ -511,28 +486,6 @@
         <span class="item-pct">${pct.toFixed(1)}%</span>
       </div>`;
     }).join('');
-
-    // ── Projeção mensal ─────────────────────────────────────────
-    const faturamentoMensal = preco * qtdMensal;
-    const lucroMensal       = lucro * qtdMensal;
-    const comissaoMensal    = minhaComissao * qtdMensal;
-    document.getElementById('projecao').innerHTML = `
-      <div class="card">
-        <div class="card-label">Faturamento mensal</div>
-        <div class="card-value">${brl(faturamentoMensal)}</div>
-        <div class="card-sub">${qtdMensal} un./mês</div>
-      </div>
-      <div class="card">
-        <div class="card-label">Lucro líquido mensal</div>
-        <div class="card-value ${lucroMensal >= 0 ? 'pos' : 'neg'}">${brl(lucroMensal)}</div>
-        <div class="card-sub">da empresa</div>
-      </div>
-      <div class="card">
-        <div class="card-label">Sua comissão mensal</div>
-        <div class="card-value">${brl(comissaoMensal)}</div>
-        <div class="card-sub">implementação</div>
-      </div>
-    `;
   }
 
   // ── Liga os listeners e inicia ──────────────────────────────
