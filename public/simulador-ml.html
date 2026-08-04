@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Simulador — Venda no Mercado Livre</title>
+<style>
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg:        #f1f5f9;
+    --card:      #ffffff;
+    --border:    #e2e8f0;
+    --text:      #0f172a;
+    --text2:     #52514e;
+    --text3:     #898781;
+
+    /* paleta categórica (fixa por entidade — não reordenar) */
+    --c-custo:    #2a78d6; /* Custo do produto */
+    --c-ml:       #eb6834; /* Comissão Mercado Livre */
+    --c-frete:    #1baf7a; /* Frete */
+    --c-imposto:  #eda100; /* Impostos */
+    --c-op:       #e87ba4; /* Custos operacionais */
+    --c-lucro:    #008300; /* Lucro líquido */
+    --c-comissao: #4a3aa7; /* Sua comissão */
+    --c-outras:   #e34948; /* Outras taxas */
+
+    --good:     #006300;
+    --critical: #d03b3b;
+
+    --header-h: 60px;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  header {
+    position: fixed; top: 0; left: 0; right: 0; height: var(--header-h);
+    background: #0f172a;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 28px; z-index: 100;
+    box-shadow: 0 1px 0 rgba(255,255,255,.06);
+  }
+  .h-brand { display: flex; align-items: center; gap: 14px; }
+  .h-logo {
+    width: 34px; height: 34px; background: #2a78d6; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 800; color: #fff; letter-spacing: -.5px;
+  }
+  .h-name { font-size: 15px; font-weight: 700; color: #f1f5f9; }
+  .h-sub  { font-size: 11px; color: #64748b; margin-top: 1px; }
+  .h-right { display: flex; align-items: center; gap: 12px; }
+  #version-badge {
+    font-size: 10px; background: #1e293b; color: #475569;
+    border: 1px solid #334155; border-radius: 4px; padding: 3px 8px; letter-spacing: .3px;
+  }
+  .btn-sair {
+    font-size: 12px; background: transparent; color: #94a3b8;
+    border: 1px solid #334155; border-radius: 6px; padding: 6px 14px;
+    cursor: pointer; transition: all .15s; font-weight: 500;
+  }
+  .btn-sair:hover { background: #1e293b; color: #e2e8f0; border-color: #475569; }
+
+  main {
+    padding-top: calc(var(--header-h) + 28px);
+    padding-bottom: 60px;
+    max-width: 1180px;
+    margin: 0 auto;
+    padding-left: 24px;
+    padding-right: 24px;
+  }
+
+  .intro {
+    background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+    padding: 20px 24px; margin-bottom: 20px;
+  }
+  .intro h1 { font-size: 18px; font-weight: 700; margin-bottom: 6px; }
+  .intro p  { font-size: 13px; color: var(--text2); max-width: 780px; }
+  .intro .aviso {
+    margin-top: 12px; font-size: 12px; color: #92400e; background: #fffbeb;
+    border: 1px solid #fde68a; border-radius: 8px; padding: 8px 12px;
+  }
+
+  .presets { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
+  .preset-btn {
+    font-size: 12.5px; font-weight: 600; background: var(--card);
+    color: var(--text2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 9px 16px; cursor: pointer; transition: all .15s;
+  }
+  .preset-btn:hover  { border-color: #2a78d6; color: #2a78d6; }
+  .preset-btn.active { background: #eaf2fd; border-color: #2a78d6; color: #1d4ed8; }
+
+  .layout { display: grid; grid-template-columns: 380px 1fr; gap: 20px; align-items: start; }
+  @media (max-width: 920px) { .layout { grid-template-columns: 1fr; } }
+
+  fieldset {
+    background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+    padding: 16px 18px; margin-bottom: 16px;
+  }
+  legend { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: var(--text2); padding: 0 4px; }
+
+  .campo { margin-bottom: 12px; }
+  .campo:last-child { margin-bottom: 0; }
+  .campo label { display: block; font-size: 12.5px; color: var(--text); font-weight: 500; margin-bottom: 4px; }
+  .campo .ajuda { font-size: 11px; color: var(--text3); margin-top: 3px; line-height: 1.4; }
+  .campo input[type=text], .campo input[type=number] {
+    width: 100%; padding: 8px 10px; font-size: 13.5px; border: 1px solid var(--border);
+    border-radius: 7px; background: #f8fafc; color: var(--text); font-family: inherit;
+  }
+  .campo input:focus { outline: none; border-color: #93c5fd; background: #fff; }
+  .campo input:disabled { color: var(--text3); background: #f1f5f9; cursor: not-allowed; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+  .radio-group { display: flex; gap: 16px; }
+  .radio-group label { display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 500; cursor: pointer; }
+
+  .check-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .check-row label { font-size: 12.5px; font-weight: 500; cursor: pointer; }
+  .check-row input[type=checkbox] { width: 15px; height: 15px; cursor: pointer; }
+
+  .badge { font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 20px; text-transform: uppercase; letter-spacing: .3px; }
+  .badge-obrig { background: #fee2e2; color: #b91c1c; }
+  .badge-opc   { background: #dcfce7; color: #15803d; }
+
+  /* ── Resultados ─────────────────────────────────────────── */
+  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 18px; }
+  @media (max-width: 640px) { .cards { grid-template-columns: 1fr 1fr; } }
+  .card {
+    background: var(--card); border-radius: 14px; padding: 16px 18px;
+    border: 1px solid var(--border);
+  }
+  .card-label { font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; color: var(--text2); margin-bottom: 8px; }
+  .card-value { font-size: 24px; font-weight: 800; line-height: 1; margin-bottom: 4px; font-variant-numeric: tabular-nums; }
+  .card-sub   { font-size: 11px; color: var(--text3); }
+  .card-value.pos { color: var(--good); }
+  .card-value.neg { color: var(--critical); }
+
+  .prejuizo-banner {
+    display: none; background: #fef2f2; border: 1px solid #fecaca; color: #b91c1c;
+    border-radius: 10px; padding: 12px 16px; font-size: 13px; font-weight: 600; margin-bottom: 18px;
+  }
+
+  .breakdown-card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+    padding: 20px 22px; margin-bottom: 18px;
+  }
+  .breakdown-title { font-size: 13.5px; font-weight: 700; margin-bottom: 4px; }
+  .breakdown-sub { font-size: 11.5px; color: var(--text3); margin-bottom: 14px; }
+
+  .bar {
+    display: flex; width: 100%; height: 34px; border-radius: 8px; overflow: hidden;
+    background: #f1f5f9; margin-bottom: 16px;
+  }
+  .bar .seg {
+    height: 100%; display: flex; align-items: center; justify-content: center;
+    color: #fff; font-size: 11px; font-weight: 700; white-space: nowrap; overflow: hidden;
+    border-right: 2px solid #fff; transition: flex-basis .2s;
+  }
+  .bar .seg:last-child { border-right: none; }
+
+  .lista-itens { display: flex; flex-direction: column; gap: 8px; }
+  .item-linha { display: flex; align-items: center; gap: 10px; font-size: 12.5px; }
+  .item-dot { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+  .item-label { color: var(--text2); flex: 1; }
+  .item-valor { font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+  .item-pct   { color: var(--text3); font-size: 11.5px; width: 46px; text-align: right; font-variant-numeric: tabular-nums; }
+
+  .projecao-card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+    padding: 20px 22px;
+  }
+  .projecao-title { font-size: 13.5px; font-weight: 700; margin-bottom: 14px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="h-brand">
+    <div class="h-logo">ML</div>
+    <div>
+      <div class="h-name">Simulador de Custos</div>
+      <div class="h-sub">Venda no Mercado Livre</div>
+    </div>
+  </div>
+  <div class="h-right">
+    <div id="version-badge">v692</div>
+    <button class="btn-sair" onclick="sair()">Sair</button>
+  </div>
+</header>
+
+<main>
+
+  <div class="intro">
+    <h1>Quanto sobra vendendo no Mercado Livre?</h1>
+    <p>Ajuste os campos abaixo com os números reais do produto e veja, na hora, para onde vai cada real do preço de venda: custo do produto, comissão do Mercado Livre, frete, impostos, custos operacionais e a comissão de implementação.</p>
+    <div class="aviso">⚠️ Os percentuais de comissão do ML, frete e impostos abaixo são valores de referência, editáveis. Confirme os percentuais reais da categoria do anúncio e do regime tributário da empresa antes de fechar a conta definitiva.</div>
+  </div>
+
+  <div class="presets">
+    <button class="preset-btn active" onclick="carregarPreset('a')">Exemplo A — ticket baixo (abaixo de R$ 79, frete opcional)</button>
+    <button class="preset-btn" onclick="carregarPreset('b')">Exemplo B — ticket alto (acima de R$ 79, frete grátis obrigatório)</button>
+    <button class="preset-btn" onclick="carregarPreset('vazio')">Produto em branco</button>
+  </div>
+
+  <div class="layout">
+
+    <!-- ── Coluna: formulário ────────────────────────────────── -->
+    <div>
+      <fieldset>
+        <legend>Produto</legend>
+        <div class="campo">
+          <label for="nome">Nome do produto</label>
+          <input type="text" id="nome" value="Exemplo A">
+        </div>
+        <div class="row2">
+          <div class="campo">
+            <label for="preco">Preço de venda (R$)</label>
+            <input type="number" id="preco" step="0.01" min="0" value="49.90">
+          </div>
+          <div class="campo">
+            <label for="custoProduto">Custo do produto (R$)</label>
+            <input type="number" id="custoProduto" step="0.01" min="0" value="20.00">
+          </div>
+        </div>
+        <div class="campo">
+          <label for="qtdMensal">Vendas estimadas por mês (un.)</label>
+          <input type="number" id="qtdMensal" step="1" min="0" value="100">
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Mercado Livre</legend>
+        <div class="campo">
+          <label>Tipo de anúncio</label>
+          <div class="radio-group">
+            <label><input type="radio" name="tipoAnuncio" value="classico" checked onchange="tipoAnuncioMudou()"> Clássico</label>
+            <label><input type="radio" name="tipoAnuncio" value="premium" onchange="tipoAnuncioMudou()"> Premium</label>
+          </div>
+          <div class="ajuda">Premium cobra comissão maior, mas parcela a venda em mais vezes sem juros pro comprador.</div>
+        </div>
+        <div class="campo">
+          <label for="comissaoPct">Comissão do Mercado Livre (%)</label>
+          <input type="number" id="comissaoPct" step="0.1" min="0" value="12">
+          <div class="ajuda">Varia por categoria — este é só um ponto de partida.</div>
+        </div>
+        <div class="check-row">
+          <input type="checkbox" id="baixoValorCheck">
+          <label for="baixoValorCheck">Produto de baixo valor (taxa fixa adicional do ML)</label>
+        </div>
+        <div class="campo">
+          <label for="taxaFixaBaixoValor">Taxa fixa por venda (R$)</label>
+          <input type="number" id="taxaFixaBaixoValor" step="0.01" min="0" value="6.00" disabled>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Frete</legend>
+        <div class="campo">
+          <label for="limiteFrete">Limite obrigatório de frete grátis (R$)</label>
+          <input type="number" id="limiteFrete" step="0.01" min="0" value="79.00">
+        </div>
+        <div class="campo">
+          <label>Frete grátis neste produto <span class="badge badge-opc" id="freteBadge">Opcional</span></label>
+          <div class="check-row" style="margin-top:6px">
+            <input type="checkbox" id="freteGratisCheck">
+            <label for="freteGratisCheck">Oferecer frete grátis</label>
+          </div>
+        </div>
+        <div class="campo">
+          <label for="custoFrete">Custo do frete pago por você (R$)</label>
+          <input type="number" id="custoFrete" step="0.01" min="0" value="0" disabled>
+          <div class="ajuda">Só entra na conta se o frete grátis estiver ativo. Abaixo do limite, o comprador paga o frete.</div>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Custos operacionais</legend>
+        <div class="row2">
+          <div class="campo">
+            <label for="embalagem">Embalagem + mão de obra (R$)</label>
+            <input type="number" id="embalagem" step="0.01" min="0" value="3.00">
+          </div>
+          <div class="campo">
+            <label for="outrosFixos">Outros custos por venda (R$)</label>
+            <input type="number" id="outrosFixos" step="0.01" min="0" value="2.00">
+          </div>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Impostos e taxas financeiras</legend>
+        <div class="row2">
+          <div class="campo">
+            <label for="impostoPct">Imposto sobre a venda (%)</label>
+            <input type="number" id="impostoPct" step="0.1" min="0" value="6">
+          </div>
+          <div class="campo">
+            <label for="antecipacaoPct">Antecipação de recebíveis (%)</label>
+            <input type="number" id="antecipacaoPct" step="0.1" min="0" value="0">
+          </div>
+        </div>
+        <div class="ajuda">Antecipação é opcional — só se cobra se a empresa quiser receber na hora em vez do prazo padrão do Mercado Pago.</div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Comissão de implementação</legend>
+        <div class="campo">
+          <label for="minhaComissaoPct">Comissão sobre o faturamento (%)</label>
+          <input type="number" id="minhaComissaoPct" step="0.1" min="0" value="">
+          <div class="ajuda">Campo livre — teste diferentes percentuais e veja o impacto na margem líquida da empresa.</div>
+        </div>
+      </fieldset>
+    </div>
+
+    <!-- ── Coluna: resultados ─────────────────────────────────── -->
+    <div>
+      <div class="cards" id="kpis"></div>
+
+      <div class="prejuizo-banner" id="prejuizoBanner"></div>
+
+      <div class="breakdown-card">
+        <div class="breakdown-title">Para onde vai cada real do preço de venda</div>
+        <div class="breakdown-sub" id="breakdownSub"></div>
+        <div class="bar" id="bar"></div>
+        <div class="lista-itens" id="listaItens"></div>
+      </div>
+
+      <div class="projecao-card">
+        <div class="projecao-title">Projeção mensal</div>
+        <div class="cards" id="projecao"></div>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<script src="/js/sessao-check.js"></script>
+<script>
+  const isAdmin = localStorage.getItem('auth') === '1';
+  const isSim   = localStorage.getItem('auth') === '5';
+  if (!isSim && !isAdmin) location.href = '/';
+
+  function sair() {
+    localStorage.removeItem('auth');
+    localStorage.removeItem('usuarioNome');
+    location.href = '/';
+  }
+
+  // ── Presets ──────────────────────────────────────────────────
+  const PRESETS = {
+    a: {
+      nome: 'Exemplo A — ticket baixo', preco: 49.90, custoProduto: 20.00, qtdMensal: 100,
+      tipoAnuncio: 'classico', comissaoPct: 12, baixoValor: false, taxaFixaBaixoValor: 6.00,
+      limiteFrete: 79.00, freteGratis: false, custoFrete: 0,
+      embalagem: 3.00, outrosFixos: 2.00, impostoPct: 6, antecipacaoPct: 0, minhaComissaoPct: '',
+    },
+    b: {
+      nome: 'Exemplo B — ticket alto', preco: 149.90, custoProduto: 60.00, qtdMensal: 60,
+      tipoAnuncio: 'classico', comissaoPct: 12, baixoValor: false, taxaFixaBaixoValor: 6.00,
+      limiteFrete: 79.00, freteGratis: true, custoFrete: 22.00,
+      embalagem: 4.00, outrosFixos: 2.00, impostoPct: 6, antecipacaoPct: 0, minhaComissaoPct: '',
+    },
+    vazio: {
+      nome: 'Novo produto', preco: 0, custoProduto: 0, qtdMensal: 0,
+      tipoAnuncio: 'classico', comissaoPct: 12, baixoValor: false, taxaFixaBaixoValor: 6.00,
+      limiteFrete: 79.00, freteGratis: false, custoFrete: 0,
+      embalagem: 0, outrosFixos: 0, impostoPct: 6, antecipacaoPct: 0, minhaComissaoPct: '',
+    },
+  };
+
+  function carregarPreset(chave) {
+    const p = PRESETS[chave];
+    document.getElementById('nome').value = p.nome;
+    document.getElementById('preco').value = p.preco;
+    document.getElementById('custoProduto').value = p.custoProduto;
+    document.getElementById('qtdMensal').value = p.qtdMensal;
+    document.querySelector(`input[name=tipoAnuncio][value=${p.tipoAnuncio}]`).checked = true;
+    document.getElementById('comissaoPct').value = p.comissaoPct;
+    document.getElementById('baixoValorCheck').checked = p.baixoValor;
+    document.getElementById('taxaFixaBaixoValor').value = p.taxaFixaBaixoValor;
+    document.getElementById('taxaFixaBaixoValor').disabled = !p.baixoValor;
+    document.getElementById('limiteFrete').value = p.limiteFrete;
+    document.getElementById('freteGratisCheck').checked = p.freteGratis;
+    document.getElementById('custoFrete').value = p.custoFrete;
+    document.getElementById('embalagem').value = p.embalagem;
+    document.getElementById('outrosFixos').value = p.outrosFixos;
+    document.getElementById('impostoPct').value = p.impostoPct;
+    document.getElementById('antecipacaoPct').value = p.antecipacaoPct;
+    document.getElementById('minhaComissaoPct').value = p.minhaComissaoPct;
+
+    document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+    event.target.classList.add('active');
+
+    recalcular();
+  }
+
+  function tipoAnuncioMudou() {
+    const premium = document.querySelector('input[name=tipoAnuncio]:checked').value === 'premium';
+    document.getElementById('comissaoPct').value = premium ? 17 : 12;
+    recalcular();
+  }
+
+  // ── Helpers ──────────────────────────────────────────────────
+  function num(id) { return parseFloat(document.getElementById(id).value) || 0; }
+  function brl(v) { return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); }
+
+  // ── Cálculo principal ───────────────────────────────────────
+  function recalcular() {
+    const preco         = num('preco');
+    const custoProduto  = num('custoProduto');
+    const comissaoPct   = num('comissaoPct');
+    const limiteFrete   = num('limiteFrete');
+    const embalagem     = num('embalagem');
+    const outrosFixos   = num('outrosFixos');
+    const impostoPct    = num('impostoPct');
+    const antecipacaoPct= num('antecipacaoPct');
+    const minhaComPct   = num('minhaComissaoPct');
+    const qtdMensal     = num('qtdMensal');
+
+    const baixoValorAtivo = document.getElementById('baixoValorCheck').checked;
+    document.getElementById('taxaFixaBaixoValor').disabled = !baixoValorAtivo;
+    const taxaFixaBaixoValor = baixoValorAtivo ? num('taxaFixaBaixoValor') : 0;
+
+    // Frete: obrigatório acima do limite
+    const obrigatorio = preco > 0 && limiteFrete > 0 && preco >= limiteFrete;
+    const freteCheck = document.getElementById('freteGratisCheck');
+    freteCheck.disabled = obrigatorio;
+    if (obrigatorio) freteCheck.checked = true;
+    const freteBadge = document.getElementById('freteBadge');
+    freteBadge.textContent = obrigatorio ? 'Obrigatório' : 'Opcional';
+    freteBadge.className = 'badge ' + (obrigatorio ? 'badge-obrig' : 'badge-opc');
+
+    const freteAtivo = freteCheck.checked;
+    document.getElementById('custoFrete').disabled = !freteAtivo;
+    const freteValor = freteAtivo ? num('custoFrete') : 0;
+
+    const comissaoML  = preco * comissaoPct / 100;
+    const impostos     = preco * impostoPct / 100;
+    const antecipacao  = preco * antecipacaoPct / 100;
+    const minhaComissao= preco * minhaComPct / 100;
+    const custosOp     = embalagem + outrosFixos;
+    const outrasTaxas  = taxaFixaBaixoValor + antecipacao;
+
+    const totalCustos = custoProduto + comissaoML + freteValor + impostos + custosOp + minhaComissao + outrasTaxas;
+    const lucro   = preco - totalCustos;
+    const margem  = preco > 0 ? (lucro / preco * 100) : 0;
+
+    // ── KPIs ──────────────────────────────────────────────────
+    document.getElementById('kpis').innerHTML = `
+      <div class="card">
+        <div class="card-label">Lucro líquido / un.</div>
+        <div class="card-value ${lucro >= 0 ? 'pos' : 'neg'}">${brl(lucro)}</div>
+        <div class="card-sub">por unidade vendida</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Margem líquida</div>
+        <div class="card-value ${margem >= 0 ? 'pos' : 'neg'}">${margem.toFixed(1).replace('.', ',')}%</div>
+        <div class="card-sub">sobre o preço de venda</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Sua comissão / un.</div>
+        <div class="card-value">${brl(minhaComissao)}</div>
+        <div class="card-sub">${minhaComPct || 0}% do faturamento</div>
+      </div>
+    `;
+
+    const banner = document.getElementById('prejuizoBanner');
+    if (lucro < 0 && preco > 0) {
+      banner.style.display = 'block';
+      banner.textContent = `⚠️ Com esses valores, a venda dá prejuízo de ${brl(Math.abs(lucro))} por unidade — os custos somados superam o preço de venda.`;
+    } else {
+      banner.style.display = 'none';
+    }
+
+    // ── Breakdown (barra empilhada + lista) ────────────────────
+    document.getElementById('breakdownSub').textContent =
+      preco > 0 ? `Preço de venda: ${brl(preco)}` : 'Informe um preço de venda para ver a composição.';
+
+    const segmentos = [
+      { label: 'Custo do produto',          valor: custoProduto,           cor: 'var(--c-custo)' },
+      { label: 'Comissão Mercado Livre',    valor: comissaoML,             cor: 'var(--c-ml)' },
+      { label: 'Frete',                     valor: freteValor,             cor: 'var(--c-frete)' },
+      { label: 'Impostos',                  valor: impostos,               cor: 'var(--c-imposto)' },
+      { label: 'Custos operacionais',       valor: custosOp,               cor: 'var(--c-op)' },
+      { label: 'Lucro líquido',             valor: Math.max(lucro, 0),     cor: 'var(--c-lucro)' },
+      { label: 'Sua comissão',              valor: minhaComissao,          cor: 'var(--c-comissao)' },
+      { label: 'Outras taxas',              valor: outrasTaxas,            cor: 'var(--c-outras)' },
+    ];
+
+    const base = preco > 0 ? preco : segmentos.reduce((s, x) => s + x.valor, 0) || 1;
+
+    const barEl = document.getElementById('bar');
+    barEl.innerHTML = segmentos.filter(s => s.valor > 0).map(s => {
+      const pct = s.valor / base * 100;
+      const mostrarLabel = pct >= 9;
+      return `<div class="seg" style="flex-basis:${pct}%;background:${s.cor}" title="${s.label}: ${brl(s.valor)} (${pct.toFixed(1)}%)">${mostrarLabel ? pct.toFixed(0) + '%' : ''}</div>`;
+    }).join('');
+
+    document.getElementById('listaItens').innerHTML = segmentos.map(s => {
+      const pct = s.valor / base * 100;
+      return `<div class="item-linha">
+        <span class="item-dot" style="background:${s.cor}"></span>
+        <span class="item-label">${s.label}</span>
+        <span class="item-valor">${brl(s.valor)}</span>
+        <span class="item-pct">${pct.toFixed(1)}%</span>
+      </div>`;
+    }).join('');
+
+    // ── Projeção mensal ─────────────────────────────────────────
+    const faturamentoMensal = preco * qtdMensal;
+    const lucroMensal       = lucro * qtdMensal;
+    const comissaoMensal    = minhaComissao * qtdMensal;
+    document.getElementById('projecao').innerHTML = `
+      <div class="card">
+        <div class="card-label">Faturamento mensal</div>
+        <div class="card-value">${brl(faturamentoMensal)}</div>
+        <div class="card-sub">${qtdMensal} un./mês</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Lucro líquido mensal</div>
+        <div class="card-value ${lucroMensal >= 0 ? 'pos' : 'neg'}">${brl(lucroMensal)}</div>
+        <div class="card-sub">da empresa</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Sua comissão mensal</div>
+        <div class="card-value">${brl(comissaoMensal)}</div>
+        <div class="card-sub">implementação</div>
+      </div>
+    `;
+  }
+
+  // ── Liga os listeners e inicia ──────────────────────────────
+  document.querySelectorAll('input').forEach(el => el.addEventListener('input', recalcular));
+  recalcular();
+</script>
+</body>
+</html>

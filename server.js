@@ -162,6 +162,9 @@ function loadData() {
   if (!raw.usuarios['1111']) {
     raw.usuarios['1111'] = { nome: 'Legado', abas: ['vendas', 'scanner'], painel: 'legado' };
   }
+  if (!raw.usuarios['1234']) {
+    raw.usuarios['1234'] = { nome: 'Proposta ML (cliente)', abas: [], painel: 'simulador-ml' };
+  }
   // 199412 é sempre admin no painel app — forçado mesmo se já existir com dados errados
   const adminAbas = ['estoque','vendas','historico','ads','lucro','promocoes','contas-pagar','contas-receber','bling','fiscal','compras','calculadora','etiquetas','log-anuncio','configuracoes','scanner'];
   raw.usuarios['199412'] = {
@@ -562,6 +565,9 @@ app.post('/api/login', (req, res) => {
   }
   if (usuario.painel === 'legado') {
     return res.json({ ok: true, nome: usuario.nome, abas: usuario.abas || [], painel: 'legado', sessionVersion });
+  }
+  if (usuario.painel === 'simulador-ml') {
+    return res.json({ ok: true, nome: usuario.nome, abas: [], painel: 'simulador-ml', sessionVersion });
   }
   const APP_TABS = new Set(['ads','lucro','promocoes','contas-pagar','contas-receber','bling','fiscal','compras','calculadora','configuracoes']);
   const painel = (usuario.painel === 'app' || (usuario.abas || []).some(t => APP_TABS.has(t))) ? 'app' : 'painel2';
