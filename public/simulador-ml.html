@@ -166,7 +166,7 @@
     </div>
   </div>
   <div class="h-right">
-    <div id="version-badge">v704</div>
+    <div id="version-badge">v705</div>
     <button class="btn-sair" onclick="sair()">Sair</button>
   </div>
 </header>
@@ -277,14 +277,14 @@
   }
 
   // ── Regras reais do Mercado Livre (não editáveis) ───────────────
-  // Comissão clássico e frete: confirmados em pedidos reais da conta 1
-  // (pedido #171088519535, R$74,00, e pedido de R$178,20). Premium é
-  // estimativa de mercado (+5pp sobre o clássico), sem exemplo real ainda.
-  const COMISSAO_CLASSICO = 11.5;
-  const COMISSAO_PREMIUM  = 16.5;
+  // Comissão e frete acima de R$79: calculadora oficial do Mercado Livre
+  // pra um anúncio de R$130,00. Frete abaixo de R$79: pedido real da
+  // conta 1 (#171088519535, produto de R$74,00).
+  const COMISSAO_CLASSICO = 11.6;
+  const COMISSAO_PREMIUM  = 16.6;
   const LIMITE_FRETE      = 79.00;
   const FRETE_ABAIXO      = 7.95;
-  const FRETE_ACIMA       = 20.75;
+  const FRETE_ACIMA       = 18.45;
 
   // ── Helpers ──────────────────────────────────────────────────
   function num(id) { return parseFloat(document.getElementById(id).value) || 0; }
