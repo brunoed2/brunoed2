@@ -150,7 +150,7 @@
     </div>
   </div>
   <div class="h-right">
-    <div id="version-badge">v707</div>
+    <div id="version-badge">v708</div>
     <button class="btn-sair" onclick="sair()">Sair</button>
   </div>
 </header>
@@ -226,15 +226,15 @@
       <fieldset>
         <legend>Comissão do agente</legend>
         <div class="campo">
-          <label for="minhaComissaoPct">Comissão sobre o faturamento (%)</label>
-          <input type="number" id="minhaComissaoPct" step="0.1" min="0" value="">
+          <label>Comissão sobre o faturamento</label>
+          <div class="info-auto">5%</div>
         </div>
       </fieldset>
     </div>
 
     <!-- ── Resultados ────────────────────────────────────────── -->
     <div class="results-col">
-      <div class="pendente-msg" id="pendenteMsg">Preencha o imposto e a comissão do agente para ver o resultado.</div>
+      <div class="pendente-msg" id="pendenteMsg">Preencha o imposto sobre a venda para ver o resultado.</div>
 
       <div id="resultados" style="display:none">
         <div class="cards" id="kpis"></div>
@@ -272,6 +272,7 @@
   const LIMITE_FRETE      = 79.00;
   const FRETE_ABAIXO      = 7.95;
   const FRETE_ACIMA       = 18.45;
+  const COMISSAO_AGENTE   = 5;
 
   // ── Helpers ──────────────────────────────────────────────────
   function num(id) { return parseFloat(document.getElementById(id).value) || 0; }
@@ -285,7 +286,7 @@
     const picking      = num('picking');
     const impostoPct   = num('impostoPct');
     const adsPct       = num('adsPct');
-    const minhaComPct  = num('minhaComissaoPct');
+    const minhaComPct  = COMISSAO_AGENTE;
     const premium      = document.querySelector('input[name=tipoAnuncio]:checked').value === 'premium';
 
     // ── Comissão ML (automática pelo tipo de anúncio) ───────────
@@ -297,10 +298,9 @@
     const freteValor = preco > 0 ? (preco >= LIMITE_FRETE ? FRETE_ACIMA : FRETE_ABAIXO) : 0;
     document.getElementById('freteValorTxt').textContent = brl(freteValor);
 
-    // ── Imposto e comissão do agente são obrigatórios ───────────
-    const impostoPreenchido  = document.getElementById('impostoPct').value !== '';
-    const comissaoPreenchida = document.getElementById('minhaComissaoPct').value !== '';
-    if (!impostoPreenchido || !comissaoPreenchida) {
+    // ── Imposto é obrigatório ────────────────────────────────────
+    const impostoPreenchido = document.getElementById('impostoPct').value !== '';
+    if (!impostoPreenchido) {
       document.getElementById('pendenteMsg').style.display = 'block';
       document.getElementById('resultados').style.display = 'none';
       return;
