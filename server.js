@@ -5065,9 +5065,10 @@ app.post('/api/ml/sair-full/:mlb', async (req, res) => {
 // ── Shopee: helpers ──────────────────────────────────────────
 
 function shopeeSign(partnerId, path, timestamp, partnerKey, accessToken, shopId) {
-  let base = `${partnerId}|${path}|${timestamp}`;
-  if (accessToken) base += `|${accessToken}`;
-  if (shopId)      base += `|${shopId}`;
+  // Shopee Open Platform v2 exige concatenação direta, sem separador entre os campos.
+  let base = `${partnerId}${path}${timestamp}`;
+  if (accessToken) base += accessToken;
+  if (shopId)      base += shopId;
   return crypto.createHmac('sha256', partnerKey).update(base).digest('hex');
 }
 
