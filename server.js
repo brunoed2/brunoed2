@@ -5478,64 +5478,6 @@ app.get('/api/lucro/vendas-shopee', async (req, res) => {
   }
 });
 
-// TEMP: investigação dos campos reais da API Shopee para montar o bloco de Lucro. Remover depois.
-app.get('/api/debug/shopee-orders-raw', async (req, res) => {
-  const data = loadData();
-  const sp   = data.shopee || {};
-  if (!sp.access_token) return res.json({ error: 'Shopee não conectada' });
-  try {
-    const accessToken = await getShopeeToken(data);
-    const path   = '/api/v2/order/get_order_list';
-    const params = shopeeParams(path, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
-    const agora  = Math.floor(Date.now() / 1000);
-    params.page_size        = 100;
-    params.cursor           = '';
-    params.time_range_field = 'create_time';
-    params.time_from        = agora - 15 * 24 * 60 * 60;
-    params.time_to          = agora;
-    params.order_status     = req.query.status || 'COMPLETED';
-    const r = await axios.get(`${SHOPEE_BASE}/order/get_order_list`, { params, timeout: 10000 });
-    res.json(r.data);
-  } catch (err) {
-    res.json({ error: err.message, detalhe: err.response?.data });
-  }
-});
-
-app.get('/api/debug/shopee-order-detail-raw', async (req, res) => {
-  const data = loadData();
-  const sp   = data.shopee || {};
-  const orderSn = req.query.order_sn;
-  if (!orderSn) return res.json({ error: 'order_sn obrigatório' });
-  try {
-    const accessToken = await getShopeeToken(data);
-    const path    = '/api/v2/order/get_order_detail';
-    const params  = shopeeParams(path, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
-    params.order_sn_list = orderSn;
-    params.response_optional_fields = 'buyer_username,item_list,recipient_address,total_amount,order_status,payment_method,actual_shipping_fee,goods_to_declare,note';
-    const r = await axios.get(`${SHOPEE_BASE}/order/get_order_detail`, { params, timeout: 10000 });
-    res.json(r.data);
-  } catch (err) {
-    res.json({ error: err.message, detalhe: err.response?.data });
-  }
-});
-
-app.get('/api/debug/shopee-escrow-raw', async (req, res) => {
-  const data = loadData();
-  const sp   = data.shopee || {};
-  const orderSn = req.query.order_sn;
-  if (!orderSn) return res.json({ error: 'order_sn obrigatório' });
-  try {
-    const accessToken = await getShopeeToken(data);
-    const path    = '/api/v2/payment/get_escrow_detail';
-    const params  = shopeeParams(path, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
-    params.order_sn = orderSn;
-    const r = await axios.get(`${SHOPEE_BASE}/payment/get_escrow_detail`, { params, timeout: 10000 });
-    res.json(r.data);
-  } catch (err) {
-    res.json({ error: err.message, detalhe: err.response?.data });
-  }
-});
-
 // ── Telegram: notificação de novos pedidos ────────────────────
 
 const TELEGRAM_TOKEN   = process.env.TELEGRAM_TOKEN;
