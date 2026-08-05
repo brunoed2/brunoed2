@@ -5260,9 +5260,13 @@ app.get('/api/shopee/orders', async (req, res) => {
     const accessToken = await getShopeeToken(data);
     const path   = '/api/v2/order/get_order_list';
     const params = shopeeParams(path, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
-    params.order_status = 'READY_TO_SHIP';
-    params.page_size    = 50;
-    params.cursor       = '';
+    const agora  = Math.floor(Date.now() / 1000);
+    params.order_status     = 'READY_TO_SHIP';
+    params.page_size        = 50;
+    params.cursor           = '';
+    params.time_range_field = 'create_time';
+    params.time_from        = agora - 15 * 24 * 60 * 60; // Shopee limita a janela a 15 dias
+    params.time_to          = agora;
     const r = await axios.get(`${SHOPEE_BASE}/order/get_order_list`, { params, timeout: 10000 });
     if (r.data.error) return res.json({ error: r.data.message });
     const orders = r.data.response?.order_list || [];
