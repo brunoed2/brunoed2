@@ -5,6 +5,11 @@
 let lucroConfig       = { taxa_imposto: 0, taxa_imposto_por_mes: {}, frete_medio: 0, custos: {} };
 let lucroVendasRaw    = []; // dados brutos da API (sem custos/imposto aplicados)
 let lucroCarregado    = false; // evita recarregar ao trocar de aba sem trocar conta
+
+// Shopee — bloco separado do ML, mesmo período de data, sem conceito de "conta 1/2"
+let lucroShopeeConfig    = { taxa_imposto: 0, taxa_imposto_por_mes: {}, custos: {}, custos_historico: {} };
+let lucroShopeeVendasRaw = [];
+let lucroShopeeCarregado = false;
 let gastosLista       = []; // gastos carregados para o mês atual
 let gastosVendasRaw   = []; // vendas do mês completo (exclusivo para aba Gastos)
 let gastosAuto        = { ads_cost: null }; // detectados automaticamente
@@ -123,6 +128,96 @@ async function lucroSalvarCusto(input, btn) {
   }
 }
 
+// ── Shopee: config e custo por item_id ──────────────────────────
+// Produtos Shopee não têm SKU cadastrado ainda, então o custo é indexado
+// pelo item_id da Shopee (catálogo separado do custo por SKU do ML).
+
+async function lucroShopeeCarregarConfig() {
+  try {
+    const cfg = await fetch('/api/lucro/config-shopee').then(r => r.json());
+    lucroShopeeConfig = { taxa_imposto: 0, taxa_imposto_por_mes: {}, custos: {}, custos_historico: {}, ...cfg };
+    if (lucroShopeeVendasRaw.length) lucroRecalcularERenderizar();
+  } catch {}
+}
+
+async function lucroShopeeSalvarCusto(input, btn) {
+  const itemId = input.dataset.itemId;
+  const custo  = parseFloat(input.value.replace(',', '.')) || 0;
+  if (!itemId) return;
+  const desde = input.dataset.vdata || lucroHoje();
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  try {
+    const r = await fetch('/api/lucro/custo-shopee', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ item_id: itemId, custo, desde }),
+    }).then(r => r.json());
+    lucroShopeeConfig.custos_historico = lucroShopeeConfig.custos_historico || {};
+    if (r.custos_historico) lucroShopeeConfig.custos_historico[itemId] = r.custos_historico;
+    lucroShopeeConfig.custos[itemId] = r.custo_atual ?? custo;
+    lucroRecalcularERenderizar();
+    const custoAtual = r.custo_atual ?? custo;
+    document.querySelectorAll(`.lucro-shopee-custo-input[data-item-id="${itemId}"]`).forEach(el => {
+      el.value = custoAtual || '';
+    });
+    const targets = btn && btn.isConnected
+      ? [btn]
+      : [...document.querySelectorAll(`.lucro-shopee-ok-btn[data-item-id="${itemId}"]`)];
+    targets.forEach(b => {
+      b.disabled = false;
+      b.textContent = '✓';
+      b.classList.add('lucro-ok-btn--ok');
+      setTimeout(() => { b.textContent = 'OK'; b.classList.remove('lucro-ok-btn--ok'); }, 1500);
+    });
+  } catch {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = 'OK';
+      btn.classList.add('lucro-ok-btn--err');
+      setTimeout(() => { btn.classList.remove('lucro-ok-btn--err'); }, 1500);
+    }
+  }
+}
+
+function lucroShopeeCustoNaData(itemId, dataVendaMs) {
+  const hist = (lucroShopeeConfig.custos_historico || {})[itemId];
+  if (!hist || !hist.length) return (lucroShopeeConfig.custos || {})[itemId] || 0;
+  const dataISO = new Date(dataVendaMs).toISOString().slice(0, 10);
+  let valor = 0;
+  for (const h of hist) {
+    if (h.desde <= dataISO) valor = h.valor; else break;
+  }
+  return valor;
+}
+
+function lucroShopeeCalcular(raw) {
+  const { taxa_imposto = 0, taxa_imposto_por_mes = {} } = lucroShopeeConfig;
+  return raw.map(v => {
+    const mes     = new Date(v.data).toISOString().slice(0, 7);
+    const taxa    = mes in taxa_imposto_por_mes ? taxa_imposto_por_mes[mes] : taxa_imposto;
+    const custo   = v.itens.reduce((s, i) => s + lucroShopeeCustoNaData(i.itemId, v.data) * i.quantidade, 0);
+    const frete   = v.freteReal ?? 0;
+    const imposto = v.receita * (taxa / 100);
+    const lucro   = v.receita - v.taxaShopee - frete - custo - imposto;
+    const margem  = v.receita > 0 ? (lucro / v.receita) * 100 : 0;
+    return { ...v, taxa, custo, frete, imposto, lucro, margem };
+  });
+}
+
+function lucroShopeeTotais(vendas) {
+  const t = vendas.reduce((acc, v) => {
+    acc.receita    += v.receita;
+    acc.taxaShopee += v.taxaShopee;
+    acc.frete      += v.frete;
+    acc.custo      += v.custo;
+    acc.imposto    += v.imposto;
+    acc.lucro      += v.lucro;
+    return acc;
+  }, { receita: 0, taxaShopee: 0, frete: 0, custo: 0, imposto: 0, lucro: 0 });
+  t.margem = t.receita > 0 ? (t.lucro / t.receita) * 100 : 0;
+  return t;
+}
+
 // ── Cálculo ──────────────────────────────────────────────────
 
 // Custo vigente de um SKU numa data 'YYYY-MM-DD' (ou ISO completo) — usa o histórico
@@ -169,12 +264,29 @@ function lucroTotais(vendas) {
 // ── Renderização ──────────────────────────────────────────────
 
 function lucroRecalcularERenderizar() {
-  if (!lucroVendasRaw.length) return;
-  const vendas = lucroCalcular(lucroVendasRaw);
-  const ativas = vendas.filter(v => !v.cancelado);
-  const total  = lucroTotais(ativas);
-  lucroRenderizarCards(total, ativas.length);
-  lucroRenderizarTabela(vendas); // inclui canceladas, que a tabela mostra em vermelho sem somar
+  if (!lucroVendasRaw.length && !lucroShopeeVendasRaw.length) return;
+
+  const vendasML     = lucroVendasRaw.length     ? lucroCalcular(lucroVendasRaw)             : [];
+  const vendasShopee = lucroShopeeVendasRaw.length ? lucroShopeeCalcular(lucroShopeeVendasRaw) : [];
+  const ativasML      = vendasML.filter(v => !v.cancelado);
+  const ativasShopee  = vendasShopee.filter(v => !v.cancelado);
+  const totalML       = lucroTotais(ativasML);
+  const totalShopee   = lucroShopeeTotais(ativasShopee);
+
+  // Totalizador do topo soma os dois canais; as tabelas ficam em blocos separados.
+  const totalCombinado = {
+    receita: totalML.receita + totalShopee.receita,
+    taxaML:  totalML.taxaML  + totalShopee.taxaShopee,
+    frete:   totalML.frete   + totalShopee.frete,
+    custo:   totalML.custo   + totalShopee.custo,
+    imposto: totalML.imposto + totalShopee.imposto,
+    lucro:   totalML.lucro   + totalShopee.lucro,
+  };
+  totalCombinado.margem = totalCombinado.receita > 0 ? (totalCombinado.lucro / totalCombinado.receita) * 100 : 0;
+
+  lucroRenderizarCards(totalCombinado, ativasML.length + ativasShopee.length);
+  if (lucroVendasRaw.length)       lucroRenderizarTabela(vendasML); // inclui canceladas, mostradas em vermelho sem somar
+  if (lucroShopeeVendasRaw.length) lucroShopeeRenderizarTabela(vendasShopee);
 }
 
 function lucroRenderizarCards(t, qtd) {
@@ -284,6 +396,107 @@ function lucroRenderizarTabela(vendas) {
                 step="0.01" min="0">
                <button class="lucro-ok-btn" data-sku="${chaveI}"
                 onclick="lucroSalvarCusto(this.previousElementSibling, this)">OK</button>`
+            : ''}
+        </td>
+        <td colspan="3"></td>
+      `;
+      tbody.appendChild(trSub);
+    }
+  });
+
+  tabela.style.display = 'table';
+}
+
+function lucroShopeeRenderizarTabela(vendas) {
+  const tbody  = document.getElementById('tabela-lucro-shopee-body');
+  const tabela = document.getElementById('tabela-lucro-shopee');
+  const totalEl = document.getElementById('lucro-shopee-total');
+  if (!tbody || !tabela) return;
+  tbody.innerHTML = '';
+
+  const ativas = vendas.filter(v => !v.cancelado);
+  if (totalEl) totalEl.textContent = `${ativas.length} venda${ativas.length !== 1 ? 's' : ''}`;
+
+  if (!vendas.length) {
+    tabela.style.display = 'none';
+    return;
+  }
+
+  const fmtCusto = (val) => val > 0 ? lucroFmt(val) : '—';
+
+  vendas.forEach(v => {
+    const item0    = v.itens[0] || {};
+    const multi    = v.itens.length > 1;
+    const qtdTotal = v.itens.reduce((s, i) => s + i.quantidade, 0);
+    const chave0   = item0.itemId || '';
+    const dataVdata = new Date(v.data).toISOString().slice(0, 10);
+
+    if (v.cancelado) {
+      const tr = document.createElement('tr');
+      tr.classList.add('lucro-linha-cancelada');
+      tr.innerHTML = `
+        <td class="lucro-td-data">${new Date(v.data).toLocaleDateString('pt-BR')}</td>
+        <td class="lucro-td-pedido" onclick="lucroCopiarPedido(this, '${v.orderId}')" title="Clique para copiar">${v.orderId || '—'}</td>
+        <td class="td-titulo">${item0.titulo || '—'}${multi ? `<span class="lucro-multi"> +${v.itens.length - 1}</span>` : ''}</td>
+        <td class="lucro-td-mlb">${chave0 || '—'}</td>
+        <td class="col-num">${qtdTotal}</td>
+        <td class="col-num" colspan="7">CANCELADO/DEVOLVIDO — não entra no total</td>
+      `;
+      tbody.appendChild(tr);
+      return;
+    }
+
+    const custoSalvo = lucroShopeeCustoNaData(chave0, v.data) || 0;
+    const margemCls  = v.margem >= 10 ? 'lucro-val-pos' : v.margem < 0 ? 'lucro-val-neg' : '';
+
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="lucro-td-data">${new Date(v.data).toLocaleDateString('pt-BR')}</td>
+      <td class="lucro-td-pedido" onclick="lucroCopiarPedido(this, '${v.orderId}')" title="Clique para copiar">${v.orderId || '—'}</td>
+      <td class="td-titulo">${item0.titulo || '—'}${multi ? `<span class="lucro-multi"> +${v.itens.length - 1}</span>` : ''}</td>
+      <td class="lucro-td-mlb">${chave0 || '—'}</td>
+      <td class="col-num">${qtdTotal}</td>
+      <td class="col-num">${lucroFmt(v.receita)}</td>
+      <td class="col-num lucro-neg-leve">${fmtCusto(v.taxaShopee)}</td>
+      <td class="col-num lucro-neg-leve">${fmtCusto(v.frete)}</td>
+      <td class="col-num">
+        ${chave0
+          ? `${custoSalvo > 0 ? `<span class="lucro-custo-total">${fmtCusto(custoSalvo * qtdTotal)}</span>` : ''}
+             <input type="number" class="lucro-shopee-custo-input" data-item-id="${chave0}" data-vdata="${dataVdata}"
+              value="${custoSalvo || ''}" placeholder="unit."
+              step="0.01" min="0">
+             <button class="lucro-shopee-ok-btn lucro-ok-btn" data-item-id="${chave0}"
+              onclick="lucroShopeeSalvarCusto(this.previousElementSibling, this)">OK</button>`
+          : '—'}
+      </td>
+      <td class="col-num lucro-neg-leve">${fmtCusto(v.imposto)}${v.taxa > 0 ? `<span class="lucro-taxa-pct">${v.taxa}%</span>` : ''}</td>
+      <td class="col-num ${margemCls}"><strong>${lucroFmt(v.lucro)}</strong></td>
+      <td class="col-num ${margemCls}">${lucroFmtPct(v.margem)}</td>
+    `;
+    tbody.appendChild(tr);
+
+    for (let i = 1; i < v.itens.length; i++) {
+      const item    = v.itens[i];
+      const chaveI  = item.itemId || '';
+      const cSalvo2 = lucroShopeeCustoNaData(chaveI, v.data) || 0;
+      const trSub   = document.createElement('tr');
+      trSub.classList.add('lucro-sub-item');
+      trSub.innerHTML = `
+        <td></td>
+        <td></td>
+        <td class="td-titulo" style="color:#94a3b8;font-size:12px">↳ ${item.titulo || chaveI}</td>
+        <td class="lucro-td-mlb">${chaveI || '—'}</td>
+        <td class="col-num">${item.quantidade}</td>
+        <td class="col-num" style="color:#94a3b8">${lucroFmt(item.precoUnit * item.quantidade)}</td>
+        <td></td><td></td>
+        <td class="col-num">
+          ${chaveI
+            ? `${cSalvo2 > 0 ? `<span class="lucro-custo-total">${lucroFmt(cSalvo2 * item.quantidade)}</span>` : ''}
+               <input type="number" class="lucro-shopee-custo-input" data-item-id="${chaveI}" data-vdata="${dataVdata}"
+                value="${cSalvo2 || ''}" placeholder="unit."
+                step="0.01" min="0">
+               <button class="lucro-shopee-ok-btn lucro-ok-btn" data-item-id="${chaveI}"
+                onclick="lucroShopeeSalvarCusto(this.previousElementSibling, this)">OK</button>`
             : ''}
         </td>
         <td colspan="3"></td>
@@ -405,7 +618,7 @@ function lucroSetMesAtual() {
   const ate = document.getElementById('lucro-data-ate');
   if (de)  de.value  = primeiroDia;
   if (ate) ate.value = hoje;
-  lucroCarregarVendas();
+  lucroAtualizarAmbos();
 }
 
 function lucroSetPeriodoRapido(dias) {
@@ -414,7 +627,12 @@ function lucroSetPeriodoRapido(dias) {
   const de   = document.getElementById('lucro-data-de');
   if (ate) ate.value = hoje;
   if (de)  de.value  = hoje; // "Hoje" = mesmo dia nos dois
+  lucroAtualizarAmbos();
+}
+
+function lucroAtualizarAmbos() {
   lucroCarregarVendas();
+  lucroShopeeCarregarVendas();
 }
 
 // ── Carregamento ──────────────────────────────────────────────
@@ -452,6 +670,33 @@ async function lucroCarregarVendas() {
     erroEl.textContent = 'Erro ao carregar vendas.'; erroEl.style.display = 'block';
   }
   if (btn) btn.disabled = false;
+}
+
+async function lucroShopeeCarregarVendas() {
+  const loading = document.getElementById('lucro-shopee-loading');
+  const erroEl  = document.getElementById('lucro-shopee-erro');
+  const tabela  = document.getElementById('tabela-lucro-shopee');
+  if (loading) loading.style.display = 'block';
+  if (erroEl)  erroEl.style.display  = 'none';
+  if (tabela)  tabela.style.display  = 'none';
+
+  try {
+    const de  = document.getElementById('lucro-data-de')?.value  || '';
+    const ate = document.getElementById('lucro-data-ate')?.value || '';
+    const qs  = new URLSearchParams({ date_from: de, date_to: ate });
+    const d = await fetch(`/api/lucro/vendas-shopee?${qs}`).then(r => r.json());
+    if (loading) loading.style.display = 'none';
+    if (d.error) {
+      if (erroEl) { erroEl.textContent = d.error; erroEl.style.display = 'block'; }
+      return;
+    }
+    lucroShopeeVendasRaw = d.vendas || [];
+    lucroShopeeCarregado = true;
+    lucroRecalcularERenderizar();
+  } catch {
+    if (loading) loading.style.display = 'none';
+    if (erroEl) { erroEl.textContent = 'Erro ao carregar vendas Shopee.'; erroEl.style.display = 'block'; }
+  }
 }
 
 // ── Sub-abas ──────────────────────────────────────────────────
@@ -921,8 +1166,12 @@ async function gastosRemover(id) {
 async function lucroInit() {
   lucroInitDatas();
   await lucroCarregarConfig();
+  await lucroShopeeCarregarConfig();
   if (!lucroCarregado) {
     await lucroCarregarVendas();
+  }
+  if (!lucroShopeeCarregado) {
+    await lucroShopeeCarregarVendas();
   }
   // Recarrega tudo ao trocar o mês
   const mesEl = document.getElementById('gastos-mes');

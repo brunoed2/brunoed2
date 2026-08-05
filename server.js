@@ -5451,7 +5451,8 @@ async function buscarVendasShopeeComCustos(data, dateFrom, dateTo) {
     const receita     = income?.order_selling_price ?? receitaItens;
     const taxaShopee  = income ? (income.commission_fee || 0) + (income.service_fee || 0) : 0;
     const escrow      = income?.escrow_amount ?? null;
-    const freteReal   = (income && escrow != null) ? (receita - taxaShopee - escrow) : 0;
+    const freteRealBruto = (income && escrow != null) ? (receita - taxaShopee - escrow) : 0;
+    const freteReal   = Math.round(freteRealBruto * 100) / 100; // limpa ruído de ponto flutuante
     return {
       orderId:  sn,
       data:     (det.create_time || 0) * 1000,

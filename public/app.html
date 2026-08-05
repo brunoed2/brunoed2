@@ -115,7 +115,7 @@
               <div class="lucro-card-valor" id="lucro-sum-receita">—</div>
             </div>
             <div class="lucro-card">
-              <div class="lucro-card-label">Taxa ML</div>
+              <div class="lucro-card-label">Comissão</div>
               <div class="lucro-card-valor lucro-val-neg" id="lucro-sum-taxaml">—</div>
             </div>
             <div class="lucro-card">
@@ -150,12 +150,13 @@
                 <input type="date" id="lucro-data-ate" class="lucro-date-input">
                 <button class="filtro-btn" onclick="lucroSetPeriodoRapido(0)">Hoje</button>
                 <button class="filtro-btn" onclick="lucroSetMesAtual()">Mês</button>
-                <button class="btn-secondary" onclick="lucroCarregarVendas()" id="btn-atualizar-lucro">↻ Atualizar</button>
+                <button class="btn-secondary" onclick="lucroAtualizarAmbos()" id="btn-atualizar-lucro">↻ Atualizar</button>
               </div>
             </div>
 
             <div id="lucro-loading" class="loading" style="display:none">Carregando vendas...</div>
 
+            <h2 style="font-size:14px;font-weight:600;margin:4px 0 8px;color:#64748b">🛍️ Mercado Livre</h2>
             <table class="tabela" id="tabela-lucro" style="display:none">
               <thead>
                 <tr>
@@ -174,6 +175,35 @@
                 </tr>
               </thead>
               <tbody id="tabela-lucro-body"></tbody>
+            </table>
+          </div>
+
+          <!-- Bloco separado: vendas Shopee (mesmo período do filtro acima) -->
+          <div class="tabela-container" style="margin-top:20px">
+            <div class="tabela-topo">
+              <span id="lucro-shopee-total"></span>
+            </div>
+            <div id="lucro-shopee-loading" class="loading" style="display:none">Carregando vendas Shopee...</div>
+            <div id="lucro-shopee-erro" class="estoque-erro" style="display:none"></div>
+            <h2 style="font-size:14px;font-weight:600;margin:4px 0 8px;color:#64748b">🛒 Shopee</h2>
+            <table class="tabela" id="tabela-lucro-shopee" style="display:none">
+              <thead>
+                <tr>
+                  <th>Data</th>
+                  <th>Pedido</th>
+                  <th>Produto</th>
+                  <th>ID Shopee</th>
+                  <th class="col-num">Qtd</th>
+                  <th class="col-num">Receita</th>
+                  <th class="col-num">Comissão</th>
+                  <th class="col-num">Frete</th>
+                  <th class="col-num">Custo</th>
+                  <th class="col-num">Imposto</th>
+                  <th class="col-num">Lucro</th>
+                  <th class="col-num">Margem</th>
+                </tr>
+              </thead>
+              <tbody id="tabela-lucro-shopee-body"></tbody>
             </table>
           </div>
         </div>
@@ -1826,6 +1856,6 @@
     </div>
   </div>
 
-  <div id="version-badge">v715</div>
+  <div id="version-badge">v716</div>
 </body>
 </html>
