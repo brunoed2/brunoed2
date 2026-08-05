@@ -5087,15 +5087,22 @@ function shopeeParams(path, partnerKey, partnerId, accessToken, shopId) {
 app.get('/api/shopee/config', (req, res) => {
   const data = loadData();
   const sp   = data.shopee || {};
-  res.json({ partner_id: sp.partner_id || '', shop_id: sp.shop_id || '', connected: !!sp.access_token });
+  const key  = sp.partner_key || '';
+  res.json({
+    partner_id: sp.partner_id || '',
+    shop_id:    sp.shop_id || '',
+    connected:  !!sp.access_token,
+    partner_key_len:          key.length,
+    partner_key_tem_espacos:  key !== key.trim(),
+  });
 });
 
 app.post('/api/shopee/config', (req, res) => {
   const { partner_id, partner_key } = req.body;
   const data = loadData();
   if (!data.shopee) data.shopee = {};
-  if (partner_id  !== undefined) data.shopee.partner_id  = String(partner_id);
-  if (partner_key !== undefined) data.shopee.partner_key = String(partner_key);
+  if (partner_id  !== undefined) data.shopee.partner_id  = String(partner_id).trim();
+  if (partner_key !== undefined) data.shopee.partner_key = String(partner_key).trim();
   saveData(data);
   res.json({ ok: true });
 });
