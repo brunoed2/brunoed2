@@ -188,6 +188,17 @@ function saveData(data) {
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
 }
 
+// Serializa ciclos "loadData → modifica → saveData" concorrentes, evitando que dois
+// pedidos quase simultâneos leiam o arquivo antes um do outro terminar de gravar e
+// um sobrescreva a mudança do outro (ex: cliques rápidos em "OK" em linhas diferentes
+// da mesma tabela). Uso: await withDataLock(async () => { const data = loadData(); ...; saveData(data); }).
+let _dataWriteChain = Promise.resolve();
+function withDataLock(fn) {
+  const run = _dataWriteChain.then(fn, fn); // roda mesmo se a anterior falhou
+  _dataWriteChain = run.catch(() => {}); // não deixa uma falha travar a fila pras próximas
+  return run;
+}
+
 // Tokens Bling ficam num arquivo próprio (não em data.json) pra não serem apagados por
 // outras rotinas que carregam data.json no início e só salvam (saveData) bem depois —
 // isso sobrescrevia o refresh_token recém-rotacionado pelo antigo (já invalidado pelo
@@ -3801,53 +3812,67 @@ app.post('/api/lucro/custo', async (req, res) => {
   const num = String(conta || '1');
   if (!sku) return res.status(400).json({ error: 'sku obrigatório' });
   const dataVigencia = /^\d{4}-\d{2}-\d{2}$/.test(desde || '') ? desde : lucroHojeISO();
-  const data = loadData();
-  data.lucro_contas = data.lucro_contas || {};
-  const lc = data.lucro_contas[num] = data.lucro_contas[num] || {};
-  lc.custos = lc.custos || {};
-  lc.custos_historico = lc.custos_historico || {};
+  try {
+    const resultado = await withDataLock(() => {
+      const data = loadData();
+      data.lucro_contas = data.lucro_contas || {};
+      const lc = data.lucro_contas[num] = data.lucro_contas[num] || {};
+      lc.custos = lc.custos || {};
+      lc.custos_historico = lc.custos_historico || {};
 
-  // Migração lazy: preserva o valor flat antigo como vigente desde sempre,
-  // antes de aplicar a nova entrada — não retroage vendas já calculadas.
-  if (!lc.custos_historico[sku] && lc.custos[sku]) {
-    lc.custos_historico[sku] = [{ desde: '1970-01-01', valor: lc.custos[sku] }];
+      // Migração lazy: preserva o valor flat antigo como vigente desde sempre,
+      // antes de aplicar a nova entrada — não retroage vendas já calculadas.
+      if (!lc.custos_historico[sku] && lc.custos[sku]) {
+        lc.custos_historico[sku] = [{ desde: '1970-01-01', valor: lc.custos[sku] }];
+      }
+      lc.custos_historico[sku] = lc.custos_historico[sku] || [];
+
+      const valor = parseFloat(custo) || 0;
+      const hist  = lc.custos_historico[sku];
+      const idx   = hist.findIndex(h => h.desde === dataVigencia);
+      if (idx >= 0) hist[idx].valor = valor;
+      else hist.push({ desde: dataVigencia, valor });
+      hist.sort((a, b) => a.desde.localeCompare(b.desde));
+
+      lc.custos[sku] = custoVigenteNaData(hist, lucroHojeISO());
+
+      saveData(data);
+      return { custos_historico: hist, custo_atual: lc.custos[sku] };
+    });
+    syncRailwayEnvVars().catch(e => console.error('[lucro/custo] sync erro:', e.message));
+    res.json({ ok: true, ...resultado });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-  lc.custos_historico[sku] = lc.custos_historico[sku] || [];
-
-  const valor = parseFloat(custo) || 0;
-  const hist  = lc.custos_historico[sku];
-  const idx   = hist.findIndex(h => h.desde === dataVigencia);
-  if (idx >= 0) hist[idx].valor = valor;
-  else hist.push({ desde: dataVigencia, valor });
-  hist.sort((a, b) => a.desde.localeCompare(b.desde));
-
-  lc.custos[sku] = custoVigenteNaData(hist, lucroHojeISO());
-
-  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
-  syncRailwayEnvVars(data).catch(e => console.error('[lucro/custo] sync erro:', e.message));
-  res.json({ ok: true, custos_historico: hist, custo_atual: lc.custos[sku] });
 });
 
 app.post('/api/lucro/custo-remover', async (req, res) => {
   const { conta, sku, desde } = req.body;
   const num = String(conta || '1');
   if (!sku || !desde) return res.status(400).json({ error: 'sku e desde obrigatórios' });
-  const data = loadData();
-  const lc = (data.lucro_contas || {})[num];
-  if (!lc || !lc.custos_historico || !lc.custos_historico[sku]) return res.json({ ok: true });
+  try {
+    const resultado = await withDataLock(() => {
+      const data = loadData();
+      const lc = (data.lucro_contas || {})[num];
+      if (!lc || !lc.custos_historico || !lc.custos_historico[sku]) return { custos_historico: [], custo_atual: 0 };
 
-  lc.custos_historico[sku] = lc.custos_historico[sku].filter(h => h.desde !== desde);
-  if (lc.custos_historico[sku].length === 0) {
-    delete lc.custos_historico[sku];
-    lc.custos = lc.custos || {};
-    lc.custos[sku] = 0;
-  } else {
-    lc.custos[sku] = custoVigenteNaData(lc.custos_historico[sku], lucroHojeISO());
+      lc.custos_historico[sku] = lc.custos_historico[sku].filter(h => h.desde !== desde);
+      if (lc.custos_historico[sku].length === 0) {
+        delete lc.custos_historico[sku];
+        lc.custos = lc.custos || {};
+        lc.custos[sku] = 0;
+      } else {
+        lc.custos[sku] = custoVigenteNaData(lc.custos_historico[sku], lucroHojeISO());
+      }
+
+      saveData(data);
+      return { custos_historico: lc.custos_historico[sku] || [], custo_atual: lc.custos[sku] };
+    });
+    syncRailwayEnvVars().catch(e => console.error('[lucro/custo-remover] sync erro:', e.message));
+    res.json({ ok: true, ...resultado });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-
-  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
-  syncRailwayEnvVars(data).catch(e => console.error('[lucro/custo-remover] sync erro:', e.message));
-  res.json({ ok: true, custos_historico: lc.custos_historico[sku] || [], custo_atual: lc.custos[sku] });
 });
 
 // ── Gastos mensais ───────────────────────────────────────────
@@ -5321,51 +5346,65 @@ app.post('/api/lucro/taxa-imposto-mes-shopee', (req, res) => {
   res.json({ ok: true });
 });
 
-app.post('/api/lucro/custo-shopee', (req, res) => {
+app.post('/api/lucro/custo-shopee', async (req, res) => {
   const { item_id, custo, desde } = req.body;
   if (!item_id) return res.status(400).json({ error: 'item_id obrigatório' });
   const dataVigencia = /^\d{4}-\d{2}-\d{2}$/.test(desde || '') ? desde : lucroHojeISO();
-  const data = loadData();
-  data.lucro_shopee = data.lucro_shopee || {};
-  const ls = data.lucro_shopee;
-  ls.custos = ls.custos || {};
-  ls.custos_historico = ls.custos_historico || {};
+  try {
+    const resultado = await withDataLock(() => {
+      const data = loadData();
+      data.lucro_shopee = data.lucro_shopee || {};
+      const ls = data.lucro_shopee;
+      ls.custos = ls.custos || {};
+      ls.custos_historico = ls.custos_historico || {};
 
-  if (!ls.custos_historico[item_id] && ls.custos[item_id]) {
-    ls.custos_historico[item_id] = [{ desde: '1970-01-01', valor: ls.custos[item_id] }];
+      if (!ls.custos_historico[item_id] && ls.custos[item_id]) {
+        ls.custos_historico[item_id] = [{ desde: '1970-01-01', valor: ls.custos[item_id] }];
+      }
+      ls.custos_historico[item_id] = ls.custos_historico[item_id] || [];
+
+      const valor = parseFloat(custo) || 0;
+      const hist  = ls.custos_historico[item_id];
+      const idx   = hist.findIndex(h => h.desde === dataVigencia);
+      if (idx >= 0) hist[idx].valor = valor;
+      else hist.push({ desde: dataVigencia, valor });
+      hist.sort((a, b) => a.desde.localeCompare(b.desde));
+
+      ls.custos[item_id] = custoVigenteNaData(hist, lucroHojeISO());
+
+      saveData(data);
+      return { custos_historico: hist, custo_atual: ls.custos[item_id] };
+    });
+    res.json({ ok: true, ...resultado });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-  ls.custos_historico[item_id] = ls.custos_historico[item_id] || [];
-
-  const valor = parseFloat(custo) || 0;
-  const hist  = ls.custos_historico[item_id];
-  const idx   = hist.findIndex(h => h.desde === dataVigencia);
-  if (idx >= 0) hist[idx].valor = valor;
-  else hist.push({ desde: dataVigencia, valor });
-  hist.sort((a, b) => a.desde.localeCompare(b.desde));
-
-  ls.custos[item_id] = custoVigenteNaData(hist, lucroHojeISO());
-
-  saveData(data);
-  res.json({ ok: true, custos_historico: hist, custo_atual: ls.custos[item_id] });
 });
 
-app.post('/api/lucro/custo-remover-shopee', (req, res) => {
+app.post('/api/lucro/custo-remover-shopee', async (req, res) => {
   const { item_id, desde } = req.body;
   if (!item_id || !desde) return res.status(400).json({ error: 'item_id e desde obrigatórios' });
-  const data = loadData();
-  const ls = data.lucro_shopee;
-  if (!ls || !ls.custos_historico || !ls.custos_historico[item_id]) return res.json({ ok: true });
+  try {
+    const resultado = await withDataLock(() => {
+      const data = loadData();
+      const ls = data.lucro_shopee;
+      if (!ls || !ls.custos_historico || !ls.custos_historico[item_id]) return { custos_historico: [], custo_atual: 0 };
 
-  ls.custos_historico[item_id] = ls.custos_historico[item_id].filter(h => h.desde !== desde);
-  if (ls.custos_historico[item_id].length === 0) {
-    delete ls.custos_historico[item_id];
-    ls.custos = ls.custos || {};
-    ls.custos[item_id] = 0;
-  } else {
-    ls.custos[item_id] = custoVigenteNaData(ls.custos_historico[item_id], lucroHojeISO());
+      ls.custos_historico[item_id] = ls.custos_historico[item_id].filter(h => h.desde !== desde);
+      if (ls.custos_historico[item_id].length === 0) {
+        delete ls.custos_historico[item_id];
+        ls.custos = ls.custos || {};
+        ls.custos[item_id] = 0;
+      } else {
+        ls.custos[item_id] = custoVigenteNaData(ls.custos_historico[item_id], lucroHojeISO());
+      }
+      saveData(data);
+      return { custos_historico: ls.custos_historico[item_id] || [], custo_atual: ls.custos[item_id] };
+    });
+    res.json({ ok: true, ...resultado });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-  saveData(data);
-  res.json({ ok: true, custos_historico: ls.custos_historico[item_id] || [], custo_atual: ls.custos[item_id] });
 });
 
 // Status Shopee que representam devolução/cancelamento — excluídos do total de lucro
