@@ -5286,6 +5286,197 @@ app.get('/api/shopee/orders', async (req, res) => {
   }
 });
 
+// ── Shopee: custos por produto e vendas para a aba Lucro ────────
+// Produtos Shopee ainda não têm SKU cadastrado, então o custo é indexado pelo
+// item_id da Shopee (namespace separado do custo por SKU do Mercado Livre).
+
+app.get('/api/lucro/config-shopee', (req, res) => {
+  const data = loadData();
+  const ls   = data.lucro_shopee || {};
+  res.json({
+    taxa_imposto:         ls.taxa_imposto ?? 0,
+    taxa_imposto_por_mes: ls.taxa_imposto_por_mes || {},
+    custos:               ls.custos || {},
+    custos_historico:     ls.custos_historico || {},
+  });
+});
+
+app.post('/api/lucro/config-shopee', (req, res) => {
+  const { taxa_imposto } = req.body;
+  const data = loadData();
+  data.lucro_shopee = data.lucro_shopee || {};
+  if (taxa_imposto !== undefined) data.lucro_shopee.taxa_imposto = parseFloat(taxa_imposto) || 0;
+  saveData(data);
+  res.json({ ok: true });
+});
+
+app.post('/api/lucro/taxa-imposto-mes-shopee', (req, res) => {
+  const { mes, taxa } = req.body;
+  if (!mes || !/^\d{4}-\d{2}$/.test(mes)) return res.status(400).json({ error: 'mes inválido' });
+  const data = loadData();
+  data.lucro_shopee = data.lucro_shopee || {};
+  data.lucro_shopee.taxa_imposto_por_mes = data.lucro_shopee.taxa_imposto_por_mes || {};
+  data.lucro_shopee.taxa_imposto_por_mes[mes] = parseFloat(taxa) || 0;
+  saveData(data);
+  res.json({ ok: true });
+});
+
+app.post('/api/lucro/custo-shopee', (req, res) => {
+  const { item_id, custo, desde } = req.body;
+  if (!item_id) return res.status(400).json({ error: 'item_id obrigatório' });
+  const dataVigencia = /^\d{4}-\d{2}-\d{2}$/.test(desde || '') ? desde : lucroHojeISO();
+  const data = loadData();
+  data.lucro_shopee = data.lucro_shopee || {};
+  const ls = data.lucro_shopee;
+  ls.custos = ls.custos || {};
+  ls.custos_historico = ls.custos_historico || {};
+
+  if (!ls.custos_historico[item_id] && ls.custos[item_id]) {
+    ls.custos_historico[item_id] = [{ desde: '1970-01-01', valor: ls.custos[item_id] }];
+  }
+  ls.custos_historico[item_id] = ls.custos_historico[item_id] || [];
+
+  const valor = parseFloat(custo) || 0;
+  const hist  = ls.custos_historico[item_id];
+  const idx   = hist.findIndex(h => h.desde === dataVigencia);
+  if (idx >= 0) hist[idx].valor = valor;
+  else hist.push({ desde: dataVigencia, valor });
+  hist.sort((a, b) => a.desde.localeCompare(b.desde));
+
+  ls.custos[item_id] = custoVigenteNaData(hist, lucroHojeISO());
+
+  saveData(data);
+  res.json({ ok: true, custos_historico: hist, custo_atual: ls.custos[item_id] });
+});
+
+app.post('/api/lucro/custo-remover-shopee', (req, res) => {
+  const { item_id, desde } = req.body;
+  if (!item_id || !desde) return res.status(400).json({ error: 'item_id e desde obrigatórios' });
+  const data = loadData();
+  const ls = data.lucro_shopee;
+  if (!ls || !ls.custos_historico || !ls.custos_historico[item_id]) return res.json({ ok: true });
+
+  ls.custos_historico[item_id] = ls.custos_historico[item_id].filter(h => h.desde !== desde);
+  if (ls.custos_historico[item_id].length === 0) {
+    delete ls.custos_historico[item_id];
+    ls.custos = ls.custos || {};
+    ls.custos[item_id] = 0;
+  } else {
+    ls.custos[item_id] = custoVigenteNaData(ls.custos_historico[item_id], lucroHojeISO());
+  }
+  saveData(data);
+  res.json({ ok: true, custos_historico: ls.custos_historico[item_id] || [], custo_atual: ls.custos[item_id] });
+});
+
+// Status Shopee que representam devolução/cancelamento — excluídos do total de lucro
+const SHOPEE_STATUS_CANCELADO = ['CANCELLED', 'TO_RETURN', 'IN_CANCEL'];
+
+async function buscarVendasShopeeComCustos(data, dateFrom, dateTo) {
+  const sp = data.shopee || {};
+  const accessToken = await getShopeeToken(data);
+
+  const fromTs = dateFrom ? Math.floor(new Date(dateFrom + 'T00:00:00-03:00').getTime() / 1000)
+                          : Math.floor(Date.now() / 1000) - 15 * 24 * 60 * 60;
+  const toTs   = dateTo   ? Math.floor(new Date(dateTo   + 'T23:59:59-03:00').getTime() / 1000)
+                          : Math.floor(Date.now() / 1000);
+
+  // Shopee exige um order_status por chamada — busca os status relevantes separadamente
+  let orderSns = [];
+  for (const status of ['SHIPPED', 'COMPLETED', 'CANCELLED']) {
+    let cursor = '';
+    let more   = true;
+    while (more) {
+      const path   = '/api/v2/order/get_order_list';
+      const params = shopeeParams(path, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
+      params.order_status     = status;
+      params.page_size        = 100;
+      params.cursor           = cursor;
+      params.time_range_field = 'create_time';
+      params.time_from        = fromTs;
+      params.time_to          = toTs;
+      const r = await axios.get(`${SHOPEE_BASE}/order/get_order_list`, { params, timeout: 15000 });
+      if (r.data.error) break;
+      const list = r.data.response?.order_list || [];
+      orderSns = orderSns.concat(list.map(o => o.order_sn));
+      more   = !!r.data.response?.more;
+      cursor = r.data.response?.next_cursor || '';
+      if (!more || !cursor) break;
+    }
+  }
+  orderSns = [...new Set(orderSns)];
+  if (!orderSns.length) return [];
+
+  // Detalhe dos pedidos (produtos, status real, data), em lotes de 50
+  const detalhesPorSn = {};
+  for (let i = 0; i < orderSns.length; i += 50) {
+    const lote    = orderSns.slice(i, i + 50);
+    const pathD   = '/api/v2/order/get_order_detail';
+    const paramsD = shopeeParams(pathD, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
+    paramsD.order_sn_list = lote.join(',');
+    paramsD.response_optional_fields = 'item_list,order_status,total_amount';
+    const rd = await axios.get(`${SHOPEE_BASE}/order/get_order_detail`, { params: paramsD, timeout: 15000 });
+    (rd.data.response?.order_list || []).forEach(o => { detalhesPorSn[o.order_sn] = o; });
+  }
+
+  // Comissão/valor líquido real — só para pedidos não cancelados, em lotes de 10 (paralelo)
+  const escrowPorSn = {};
+  const pendentes = orderSns.filter(sn => {
+    const det = detalhesPorSn[sn];
+    return det && !SHOPEE_STATUS_CANCELADO.includes(det.order_status);
+  });
+  for (let i = 0; i < pendentes.length; i += 10) {
+    await Promise.all(pendentes.slice(i, i + 10).map(async (sn) => {
+      try {
+        const pathE   = '/api/v2/payment/get_escrow_detail';
+        const paramsE = shopeeParams(pathE, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
+        paramsE.order_sn = sn;
+        const re = await axios.get(`${SHOPEE_BASE}/payment/get_escrow_detail`, { params: paramsE, timeout: 10000 });
+        escrowPorSn[sn] = re.data.response?.order_income || null;
+      } catch { escrowPorSn[sn] = null; }
+    }));
+  }
+
+  return orderSns.map(sn => {
+    const det = detalhesPorSn[sn];
+    if (!det) return null;
+    const cancelado = SHOPEE_STATUS_CANCELADO.includes(det.order_status);
+    const income  = escrowPorSn[sn];
+    const itens = (det.item_list || []).map(i => ({
+      itemId:     i.item_id,
+      titulo:     i.item_name || '',
+      quantidade: i.model_quantity_purchased || 1,
+      precoUnit:  i.model_discounted_price ?? i.model_original_price ?? 0,
+    }));
+    const receitaItens = itens.reduce((s, i) => s + i.precoUnit * i.quantidade, 0);
+    const receita     = income?.order_selling_price ?? receitaItens;
+    const taxaShopee  = income ? (income.commission_fee || 0) + (income.service_fee || 0) : 0;
+    const escrow      = income?.escrow_amount ?? null;
+    const freteReal   = (income && escrow != null) ? (receita - taxaShopee - escrow) : 0;
+    return {
+      orderId:  sn,
+      data:     (det.create_time || 0) * 1000,
+      itens,
+      receita,
+      taxaShopee,
+      freteReal,
+      cancelado,
+    };
+  }).filter(Boolean);
+}
+
+app.get('/api/lucro/vendas-shopee', async (req, res) => {
+  const data = loadData();
+  const sp   = data.shopee || {};
+  if (!sp.access_token) return res.json({ error: 'Shopee não conectada' });
+  try {
+    const vendas = await buscarVendasShopeeComCustos(data, req.query.date_from, req.query.date_to);
+    res.json({ vendas });
+  } catch (err) {
+    addLog(`Lucro Shopee: erro ao buscar vendas — ${err.message}`, 'erro');
+    res.json({ error: `Erro ao buscar vendas: ${err.message}` });
+  }
+});
+
 // TEMP: investigação dos campos reais da API Shopee para montar o bloco de Lucro. Remover depois.
 app.get('/api/debug/shopee-orders-raw', async (req, res) => {
   const data = loadData();
