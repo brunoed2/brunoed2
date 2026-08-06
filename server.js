@@ -5517,6 +5517,45 @@ app.get('/api/lucro/vendas-shopee', async (req, res) => {
   }
 });
 
+// TEMP: sonda upload_invoice_doc SEM enviar arquivo (só pra ver a validação de campos, sem risco
+// de mandar uma "nota fiscal" falsa que a Shopee aceite como real). Remover depois.
+app.get('/api/debug/shopee-probe-invoice', async (req, res) => {
+  const data = loadData();
+  const sp   = data.shopee || {};
+  const orderSn = req.query.order_sn;
+  if (!orderSn) return res.json({ error: 'order_sn obrigatório' });
+  const resultados = [];
+  try {
+    const accessToken = await getShopeeToken(data);
+
+    // 1) upload_invoice_doc sem invoice_file — espera erro de validação revelando o campo exigido
+    try {
+      const path1   = '/api/v2/order/upload_invoice_doc';
+      const params1 = shopeeParams(path1, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
+      const r1 = await axios.post(`${SHOPEE_BASE}/order/upload_invoice_doc`, { order_sn: orderSn }, { params: params1, timeout: 10000 });
+      resultados.push({ path: path1, status: 200, data: r1.data });
+    } catch (err) {
+      resultados.push({ path: '/api/v2/order/upload_invoice_doc', status: err.response?.status, data: err.response?.data || err.message });
+    }
+
+    await new Promise(r => setTimeout(r, 400));
+
+    // 2) get_buyer_invoice_info via POST (o GET deu 404)
+    try {
+      const path2   = '/api/v2/order/get_buyer_invoice_info';
+      const params2 = shopeeParams(path2, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
+      const r2 = await axios.post(`${SHOPEE_BASE}/order/get_buyer_invoice_info`, { order_sn_list: [orderSn] }, { params: params2, timeout: 10000 });
+      resultados.push({ path: path2 + ' (POST)', status: 200, data: r2.data });
+    } catch (err) {
+      resultados.push({ path: '/api/v2/order/get_buyer_invoice_info (POST)', status: err.response?.status, data: err.response?.data || err.message });
+    }
+
+    res.json(resultados);
+  } catch (err) {
+    res.json({ error: err.message });
+  }
+});
+
 // TEMP: sondar API real da Shopee (NF pendente + candidatos de etiqueta de transporte). Remover depois.
 app.get('/api/debug/shopee-invoice-pendentes', async (req, res) => {
   const data = loadData();
