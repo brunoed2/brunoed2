@@ -5517,6 +5517,47 @@ app.get('/api/lucro/vendas-shopee', async (req, res) => {
   }
 });
 
+// TEMP: gera e baixa a etiqueta de transporte (create + download shipping document). Remover depois.
+app.get('/api/debug/shopee-gerar-etiqueta', async (req, res) => {
+  const orderSn = req.query.order_sn;
+  if (!orderSn) return res.json({ error: 'order_sn obrigatório' });
+  const data = loadData();
+  const sp   = data.shopee || {};
+  try {
+    const accessToken = await getShopeeToken(data);
+
+    const path1   = '/api/v2/logistics/create_shipping_document';
+    const params1 = shopeeParams(path1, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
+    const r1 = await axios.post(`${SHOPEE_BASE}/logistics/create_shipping_document`,
+      { order_list: [{ order_sn: orderSn }] }, { params: params1, timeout: 15000 });
+
+    if (r1.data.error) return res.json({ etapa: 'create_shipping_document', data: r1.data });
+    const falhou = r1.data.response?.result_list?.some(r => r.fail_error);
+    if (falhou) return res.json({ etapa: 'create_shipping_document', data: r1.data });
+
+    await new Promise(r => setTimeout(r, 2000));
+
+    const path2   = '/api/v2/logistics/download_shipping_document';
+    const params2 = shopeeParams(path2, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
+    const r2 = await axios.post(`${SHOPEE_BASE}/logistics/download_shipping_document`,
+      { order_list: [{ order_sn: orderSn }] }, { params: params2, timeout: 15000, responseType: 'arraybuffer' });
+
+    const contentType = r2.headers['content-type'] || '';
+    if (contentType.includes('json')) {
+      return res.json({ etapa: 'download_shipping_document', data: JSON.parse(Buffer.from(r2.data).toString('utf8')) });
+    }
+    res.json({
+      etapa: 'download_shipping_document',
+      ok: true,
+      bytes: r2.data.length,
+      content_type: contentType,
+      primeiros_30_bytes_ascii: Buffer.from(r2.data).slice(0, 30).toString('ascii'),
+    });
+  } catch (err) {
+    res.json({ error: err.message, detalhe: err.response?.data });
+  }
+});
+
 // ── Telegram: notificação de novos pedidos ────────────────────
 
 const TELEGRAM_TOKEN   = process.env.TELEGRAM_TOKEN;
