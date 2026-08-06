@@ -5678,6 +5678,24 @@ app.get('/api/debug/shopee-gerar-etiqueta', async (req, res) => {
   }
 });
 
+// TEMP: lista os itens ativos da loja. Remover depois.
+app.get('/api/debug/shopee-item-list', async (req, res) => {
+  const data = loadData();
+  const sp   = data.shopee || {};
+  try {
+    const accessToken = await getShopeeToken(data);
+    const path   = '/api/v2/product/get_item_list';
+    const params = shopeeParams(path, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
+    params.offset = 0;
+    params.page_size = 100;
+    params.item_status = 'NORMAL';
+    const r = await axios.get(`${SHOPEE_BASE}/product/get_item_list`, { params, timeout: 10000 });
+    res.json(r.data);
+  } catch (err) {
+    res.json({ error: err.message, detalhe: err.response?.data });
+  }
+});
+
 // TEMP: testa impulsionar produto (product.boost_item / get_boosted_list). Remover depois.
 app.get('/api/debug/shopee-boost-status', async (req, res) => {
   const data = loadData();
