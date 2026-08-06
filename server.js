@@ -2110,7 +2110,7 @@ app.post('/api/bling/enviar-nf/:notaId', async (req, res) => {
   }
 });
 
-// ── Bling: Shopee Super — gera NF + envia SEFAZ + envia dados para Shopee ──
+// ── Bling: Shopee Super — gera NF + SEFAZ + aguarda autorização + envia XML pra Shopee ──
 
 app.post('/api/bling/shopee-super/:pedidoId', async (req, res) => {
   const conta = blingContaReq(req);
@@ -2122,11 +2122,47 @@ app.post('/api/bling/shopee-super/:pedidoId', async (req, res) => {
   try {
     addLog(`[bling] shopee-super pedido ${req.params.pedidoId}`, 'info');
     const nfId = await blingEmitirNFHelper(req.params.pedidoId, conta);
+
     etapa = 'enviar-sefaz';
     await new Promise(r => setTimeout(r, 3500));
     await blingEnviarNFHelper(nfId, conta);
-    addLog(`[bling] shopee-super pedido ${req.params.pedidoId} NF ${nfId} transmitida`, 'ok');
-    return res.json({ ok: true, nfId });
+
+    etapa = 'aguardar-autorizacao';
+    const token = await getBlingToken(conta);
+    await blingAguardarAutorizacaoNF(nfId, token);
+
+    etapa = 'buscar-nf-autorizada';
+    const det = await axios.get(`https://api.bling.com.br/Api/v3/nfe/${nfId}`, {
+      headers: { Authorization: `Bearer ${token}` }, timeout: 10000,
+    });
+    const nf = det.data?.data;
+    if (!/autorizada/i.test(nf?.situacao?.valor || '')) {
+      throw new Error(`NF não autorizada a tempo (situação atual: ${nf?.situacao?.valor || 'desconhecida'})`);
+    }
+    const orderSn = nf?.numeroPedidoLoja;
+    const xmlLink = nf?.xml;
+    if (!orderSn || !xmlLink) throw new Error('NF autorizada, mas sem numeroPedidoLoja ou link de XML');
+
+    etapa = 'baixar-xml';
+    const xmlResp = await axios.get(xmlLink, { responseType: 'arraybuffer', timeout: 20000 });
+
+    etapa = 'enviar-shopee';
+    const dataApp = loadData();
+    const sp = dataApp.shopee || {};
+    if (!sp.access_token) throw new Error('Shopee não conectada — configure em Configurações → Shopee');
+    const accessToken = await getShopeeToken(dataApp);
+    const pathUp   = '/api/v2/order/upload_invoice_doc';
+    const paramsUp = shopeeParams(pathUp, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
+    const FormDataNode = require('form-data');
+    const form = new FormDataNode();
+    form.append('order_sn', orderSn);
+    form.append('file_type', '4');
+    form.append('file', Buffer.from(xmlResp.data), { filename: 'nfe.xml', contentType: 'text/xml' });
+    const rUp = await axios.post(`${SHOPEE_BASE}/order/upload_invoice_doc`, form, { params: paramsUp, headers: form.getHeaders(), timeout: 30000 });
+    if (rUp.data.error) throw new Error(`Shopee recusou a NF: ${rUp.data.message || rUp.data.error}`);
+
+    addLog(`[bling] shopee-super pedido ${req.params.pedidoId}: NF ${nfId} autorizada e enviada pra Shopee (pedido ${orderSn})`, 'ok');
+    return res.json({ ok: true, nfId, orderSn });
   } catch (err) {
     const detail = blingErrDetail(err);
     addLog(`[bling] shopee-super [${etapa}] pedido ${req.params.pedidoId}: ${detail}`, 'warn');
@@ -5637,6 +5673,38 @@ app.get('/api/debug/shopee-gerar-etiqueta', async (req, res) => {
       content_type: contentType,
       entradas_zip: entradas,
     });
+  } catch (err) {
+    res.json({ error: err.message, detalhe: err.response?.data });
+  }
+});
+
+// TEMP: testa impulsionar produto (product.boost_item / get_boosted_list). Remover depois.
+app.get('/api/debug/shopee-boost-status', async (req, res) => {
+  const data = loadData();
+  const sp   = data.shopee || {};
+  try {
+    const accessToken = await getShopeeToken(data);
+    const path   = '/api/v2/product/get_boosted_list';
+    const params = shopeeParams(path, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
+    const r = await axios.get(`${SHOPEE_BASE}/product/get_boosted_list`, { params, timeout: 10000 });
+    res.json(r.data);
+  } catch (err) {
+    res.json({ error: err.message, detalhe: err.response?.data });
+  }
+});
+
+app.post('/api/debug/shopee-boost-item', async (req, res) => {
+  const { item_id } = req.body;
+  if (!item_id) return res.json({ error: 'item_id obrigatório' });
+  const data = loadData();
+  const sp   = data.shopee || {};
+  try {
+    const accessToken = await getShopeeToken(data);
+    const path   = '/api/v2/product/boost_item';
+    const params = shopeeParams(path, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
+    const r = await axios.post(`${SHOPEE_BASE}/product/boost_item`,
+      { item_id_list: [Number(item_id)] }, { params, timeout: 15000 });
+    res.json(r.data);
   } catch (err) {
     res.json({ error: err.message, detalhe: err.response?.data });
   }

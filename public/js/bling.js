@@ -95,9 +95,11 @@ async function blingCarregarPedidos() {
         : p.temEtiqueta
           ? `<span style="background:#16a34a;color:#fff;padding:2px 7px;border-radius:4px;font-size:11px;white-space:nowrap" title="Emitir NF libera a etiqueta de envio">Emitir NF → Etiqueta</span>`
           : `<span style="color:#9ca3af;font-size:11px">Aguardando ML</span>`;
-      const btnSuper = (!isShopee && p.temEtiqueta)
-        ? `<button class="btn-sm btn-super" data-bling-super-id="${p.id}" onclick="blingSuperEnvio('${p.id}', this, '${p.conta}')" style="background:#7c3aed;color:#fff;margin-left:4px" title="Gerar NF e enviar em um clique">⚡ Super</button>`
-        : '';
+      const btnSuper = isShopee
+        ? `<button class="btn-sm btn-super" data-bling-super-id="${p.id}" onclick="blingShopeeSuper('${p.id}', this, '${p.conta}')" style="background:#f97316;color:#fff;margin-left:4px" title="Gerar NF, autorizar SEFAZ e enviar pra Shopee em um clique">⚡ Super</button>`
+        : p.temEtiqueta
+          ? `<button class="btn-sm btn-super" data-bling-super-id="${p.id}" onclick="blingSuperEnvio('${p.id}', this, '${p.conta}')" style="background:#7c3aed;color:#fff;margin-left:4px" title="Gerar NF e enviar em um clique">⚡ Super</button>`
+          : '';
       const blingEditUrl = `https://www.bling.com.br/vendas.php#edit/${p.id}`;
       const pendencias = p.pendencias || [];
       const btnPendencia = pendencias.length > 0
@@ -251,33 +253,35 @@ async function blingSuperEnvio(pedidoId, btn, conta) {
   }
 }
 
-async function blingShopeeSuper(pedidoId, btn, conta, lojaId) {
+async function blingShopeeSuper(pedidoId, btn, conta) {
   conta = conta || '1';
   btn.disabled    = true;
-  btn.textContent = 'Gerando NF...';
+  btn.textContent = '⚡ Gerando NF...';
+  // Etapas internas (gerar, SEFAZ, aguardar autorização, enviar pra Shopee) rodam
+  // todas no servidor — atualiza o texto do botão pra dar noção de progresso.
+  const timers = [
+    setTimeout(() => { if (!btn.disabled) return; btn.textContent = '⚡ Transmitindo SEFAZ...'; }, 3000),
+    setTimeout(() => { if (!btn.disabled) return; btn.textContent = '⚡ Aguardando autorização...'; }, 8000),
+    setTimeout(() => { if (!btn.disabled) return; btn.textContent = '⚡ Enviando pra Shopee...'; }, 20000),
+  ];
   let res;
   try {
-    res = await fetch(`/api/bling/shopee-super/${pedidoId}?conta=${conta}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ lojaId }),
-    }).then(r => r.json());
+    res = await fetch(`/api/bling/shopee-super/${pedidoId}?conta=${conta}`, { method: 'POST' }).then(r => r.json());
   } catch (err) {
+    timers.forEach(clearTimeout);
     btn.disabled    = false;
-    btn.textContent = '⚡ Shopee Super';
+    btn.textContent = '⚡ Super';
     alert('Erro de rede: ' + err.message);
     return;
   }
+  timers.forEach(clearTimeout);
   if (res.ok) {
-    btn.textContent      = '✅ NF transmitida';
+    btn.textContent      = '✅ NF enviada pra Shopee';
     btn.style.background = '#16a34a';
-    const urlNF = `https://www.bling.com.br/nfe.php#edit/${res.nfId}`;
-    const ir = confirm('NF gerada e transmitida para SEFAZ!\n\nFalta só 1 passo manual no Bling:\n"Enviar dados para loja virtual → Shopee"\n\nAbrir a NF no Bling agora?');
-    if (ir) window.open(urlNF, '_blank');
     setTimeout(() => blingCarregarPedidos(), 1500);
   } else {
     btn.disabled    = false;
-    btn.textContent = '⚡ Shopee Super';
+    btn.textContent = '⚡ Super';
     alert('Erro no Shopee Super\nEtapa: ' + (res.etapa || '?') + '\n\n' + (res.erro || 'Sem detalhe'));
   }
 }
