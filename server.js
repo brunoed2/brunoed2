@@ -5610,6 +5610,30 @@ app.get('/api/lucro/vendas-shopee', async (req, res) => {
   }
 });
 
+// TEMP: checa se get_item_base_info devolve total de vendas por item. Remover depois.
+app.get('/api/debug/shopee-item-info', async (req, res) => {
+  const data = loadData();
+  const sp   = data.shopee || {};
+  try {
+    const accessToken = await getShopeeToken(data);
+    const pathList   = '/api/v2/product/get_item_list';
+    const paramsList = shopeeParams(pathList, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
+    paramsList.offset = 0;
+    paramsList.page_size = 100;
+    paramsList.item_status = 'NORMAL';
+    const rList = await axios.get(`${SHOPEE_BASE}/product/get_item_list`, { params: paramsList, timeout: 10000 });
+    const ids = (rList.data.response?.item || []).map(i => i.item_id);
+
+    const path   = '/api/v2/product/get_item_base_info';
+    const params = shopeeParams(path, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
+    params.item_id_list = ids.join(',');
+    const r = await axios.get(`${SHOPEE_BASE}/product/get_item_base_info`, { params, timeout: 10000 });
+    res.json(r.data);
+  } catch (err) {
+    res.json({ error: err.message, detalhe: err.response?.data });
+  }
+});
+
 // TEMP: checa o tracking_number e status logistico atual do pedido. Remover depois.
 app.get('/api/debug/shopee-tracking', async (req, res) => {
   const orderSn = req.query.order_sn;
