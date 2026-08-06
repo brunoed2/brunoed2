@@ -5517,6 +5517,25 @@ app.get('/api/lucro/vendas-shopee', async (req, res) => {
   }
 });
 
+// TEMP: consulta status/detalhe de um pedido específico da Shopee. Remover depois.
+app.get('/api/debug/shopee-order-status', async (req, res) => {
+  const orderSn = req.query.order_sn;
+  if (!orderSn) return res.json({ error: 'order_sn obrigatório' });
+  const data = loadData();
+  const sp   = data.shopee || {};
+  try {
+    const accessToken = await getShopeeToken(data);
+    const path   = '/api/v2/order/get_order_detail';
+    const params = shopeeParams(path, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
+    params.order_sn_list = orderSn;
+    params.response_optional_fields = 'order_status,invoice_data';
+    const r = await axios.get(`${SHOPEE_BASE}/order/get_order_detail`, { params, timeout: 10000 });
+    res.json(r.data);
+  } catch (err) {
+    res.json({ error: err.message, detalhe: err.response?.data });
+  }
+});
+
 // TEMP: testa envio real da NF (PDF do Bling) pro upload_invoice_doc da Shopee. Remover depois.
 app.post('/api/debug/shopee-testar-upload-nf', async (req, res) => {
   const { order_sn, link_pdf, modo } = req.body;
