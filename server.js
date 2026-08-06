@@ -109,6 +109,13 @@ function addLog(msg, tipo = 'info') {
 // ── Middleware ────────────────────────────────────────────────
 app.set('trust proxy', 1);
 app.use(express.json({ limit: '5mb' }));
+// HTML nunca em cache — sem isso, o navegador às vezes segura uma versão antiga do
+// HTML (com referências a JS/CSS antigas) mesmo depois de um deploy novo, e nem chega
+// a rebuscar o arquivo pra notar que mudou. JS/CSS/imagens continuam com cache normal.
+app.use((req, res, next) => {
+  if (req.path.endsWith('.html') || req.path === '/') res.setHeader('Cache-Control', 'no-cache');
+  next();
+});
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ── Helpers de persistência ───────────────────────────────────
