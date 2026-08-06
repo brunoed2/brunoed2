@@ -841,7 +841,10 @@ async function carregarVendas() {
   skuFiltroVendas       = null;
 
   try {
-    const data = await apiFetch(`/api/ml/vendas-etiquetas?conta=${window.CONTA_ATIVA}`);
+    const [data, dataShopee] = await Promise.all([
+      apiFetch(`/api/ml/vendas-etiquetas?conta=${window.CONTA_ATIVA}`),
+      apiFetch('/api/shopee/vendas-etiquetas').catch(() => ({ vendas: [] })),
+    ]);
     if (contaGen !== gen) return;
     loading.style.display = 'none';
 
@@ -851,7 +854,7 @@ async function carregarVendas() {
       return;
     }
 
-    const todasVendas = data.vendas || [];
+    const todasVendas = [...(data.vendas || []), ...(dataShopee.vendas || [])];
     if (!todasVendas.length) { atualizarBotaoSelecionadas(); return; }
 
     todasVendas.forEach(v => {
@@ -872,6 +875,9 @@ async function carregarVendas() {
 
       const flagClass = v.atendida ? 'btn-flag btn-flag-ativo' : 'btn-flag';
       const flagTitle = v.atendida ? 'Remover flag' : 'Marcar como atendido';
+      const hrefEtiqueta = v.canal === 'shopee'
+        ? `/api/shopee/etiqueta/${v.shipmentId}`
+        : `/api/ml/etiqueta/${v.shipmentId}?conta=${v.conta}`;
 
       tr.innerHTML = `
         <td><input type="checkbox" class="check-venda" data-shipment-id="${v.shipmentId}" data-conta="${v.conta}" onchange="atualizarBotaoSelecionadas()"></td>
@@ -882,7 +888,7 @@ async function carregarVendas() {
         <td class="td-sku">${item0.sku || '—'}</td>
         <td class="td-titulo" title="${item0.titulo || ''}${item0.variacao ? ` (${item0.variacao})` : ''}">${item0.titulo || '—'}${item0.variacao ? `<br><span class="venda-variacao">${item0.variacao}</span>` : ''}</td>
         <td><span class="badge-deposito ${bStatus}">${v.statusLabel}</span></td>
-        <td><a class="btn-etiqueta" href="/api/ml/etiqueta/${v.shipmentId}?conta=${v.conta}" target="_blank">${v.acaoLabel}</a></td>
+        <td><a class="btn-etiqueta" href="${hrefEtiqueta}" target="_blank">${v.acaoLabel}</a></td>
         <td><button class="${flagClass}" data-sid="${v.shipmentId}" title="${flagTitle}" onclick="toggleFlag('${v.shipmentId}', this)">✔</button></td>
       `;
       tbody.appendChild(tr);

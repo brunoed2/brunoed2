@@ -5710,6 +5710,160 @@ async function buscarVendasShopeeComCustos(data, dateFrom, dateTo) {
   }).filter(Boolean);
 }
 
+// ── Shopee: pedidos com NF já enviada, pendentes de etiqueta ────
+
+app.get('/api/shopee/vendas-etiquetas', async (req, res) => {
+  const data = loadData();
+  const sp   = data.shopee || {};
+  if (!sp.access_token) return res.json({ vendas: [] });
+  try {
+    const accessToken = await getShopeeToken(data);
+
+    let orderSns = [];
+    for (const status of ['READY_TO_SHIP', 'PROCESSED']) {
+      const path   = '/api/v2/order/get_order_list';
+      const params = shopeeParams(path, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
+      params.order_status     = status;
+      params.page_size        = 50;
+      params.cursor           = '';
+      params.time_range_field = 'create_time';
+      params.time_from        = Math.floor(Date.now() / 1000) - 15 * 24 * 60 * 60;
+      params.time_to          = Math.floor(Date.now() / 1000);
+      const r = await axios.get(`${SHOPEE_BASE}/order/get_order_list`, { params, timeout: 15000 });
+      if (r.data.error) continue;
+      orderSns = orderSns.concat((r.data.response?.order_list || []).map(o => o.order_sn));
+    }
+    orderSns = [...new Set(orderSns)];
+    if (!orderSns.length) return res.json({ vendas: [] });
+
+    const detalhesPorSn = {};
+    for (let i = 0; i < orderSns.length; i += 50) {
+      const lote    = orderSns.slice(i, i + 50);
+      const pathD   = '/api/v2/order/get_order_detail';
+      const paramsD = shopeeParams(pathD, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
+      paramsD.order_sn_list = lote.join(',');
+      paramsD.response_optional_fields = 'buyer_username,item_list,order_status,invoice_data';
+      const rd = await axios.get(`${SHOPEE_BASE}/order/get_order_detail`, { params: paramsD, timeout: 15000 });
+      (rd.data.response?.order_list || []).forEach(o => { detalhesPorSn[o.order_sn] = o; });
+    }
+
+    const STATUS_LABEL = { READY_TO_SHIP: 'Pronto p/ envio', PROCESSED: 'Processado' };
+    const vendas = orderSns
+      .map(sn => detalhesPorSn[sn])
+      .filter(o => o && o.invoice_data?.status === 'valid') // só pedidos com NF já aceita pela Shopee
+      .map(o => ({
+        shipmentId: o.order_sn,
+        orderId:    o.order_sn,
+        comprador:  o.buyer_username || '—',
+        conta:      null,
+        canal:      'shopee',
+        status:     o.order_status,
+        statusLabel: STATUS_LABEL[o.order_status] || o.order_status,
+        acaoLabel:  'Baixar',
+        atendida:   false,
+        itensLista: (o.item_list || []).map(i => ({
+          sku:        i.item_sku || i.model_sku || '',
+          titulo:     i.item_name || '',
+          variacao:   (i.model_name && i.model_name !== i.item_name) ? i.model_name : '',
+          quantidade: i.model_quantity_purchased || 1,
+          thumbnail:  i.image_info?.image_url || '',
+          permalink:  '',
+        })),
+      }));
+    res.json({ vendas });
+  } catch (err) {
+    res.json({ error: err.message });
+  }
+});
+
+// Gera a etiqueta de transporte da Shopee (tracking → doc type → create → download → ZPL→PDF)
+async function shopeeGerarEtiquetaPdf(orderSn) {
+  const data = loadData();
+  const sp   = data.shopee || {};
+  if (!sp.access_token) throw new Error('Shopee não conectada');
+  const accessToken = await getShopeeToken(data);
+
+  const pathT   = '/api/v2/logistics/get_tracking_number';
+  const paramsT = shopeeParams(pathT, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
+  paramsT.order_sn = orderSn;
+  const rT = await axios.get(`${SHOPEE_BASE}/logistics/get_tracking_number`, { params: paramsT, timeout: 10000 });
+  const trackingNumber = rT.data.response?.tracking_number;
+  if (!trackingNumber) throw new Error(rT.data.message || 'Sem tracking_number — o pedido já foi despachado (\"Organizar Envio\") na Shopee?');
+
+  const itemPedido = { order_sn: orderSn, tracking_number: trackingNumber };
+
+  const path0   = '/api/v2/logistics/get_shipping_document_parameter';
+  const params0 = shopeeParams(path0, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
+  const r0 = await axios.post(`${SHOPEE_BASE}/logistics/get_shipping_document_parameter`, { order_list: [itemPedido] }, { params: params0, timeout: 15000 });
+  const infoDoc = r0.data.response?.result_list?.[0];
+  if (infoDoc?.fail_error) throw new Error(infoDoc.fail_message || infoDoc.fail_error);
+  const tipoDoc = infoDoc?.suggest_shipping_document_type;
+
+  const path1   = '/api/v2/logistics/create_shipping_document';
+  const params1 = shopeeParams(path1, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
+  const r1 = await axios.post(`${SHOPEE_BASE}/logistics/create_shipping_document`,
+    { order_list: [{ ...itemPedido, shipping_document_type: tipoDoc }] }, { params: params1, timeout: 15000 });
+  if (r1.data.error) throw new Error(r1.data.message || r1.data.error);
+  const falhou = r1.data.response?.result_list?.find(r => r.fail_error);
+  if (falhou) throw new Error(falhou.fail_message || falhou.fail_error);
+
+  await new Promise(r => setTimeout(r, 2000));
+
+  const path2   = '/api/v2/logistics/download_shipping_document';
+  const params2 = shopeeParams(path2, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
+  const r2 = await axios.post(`${SHOPEE_BASE}/logistics/download_shipping_document`,
+    { order_list: [{ ...itemPedido, shipping_document_type: tipoDoc }] }, { params: params2, timeout: 15000, responseType: 'arraybuffer' });
+
+  const contentType = r2.headers['content-type'] || '';
+  if (contentType.includes('json')) {
+    const err = JSON.parse(Buffer.from(r2.data).toString('utf8'));
+    throw new Error(err.message || err.error || 'Erro ao baixar etiqueta');
+  }
+
+  // Extrai o .txt (ZPL) de dentro do ZIP retornado pela Shopee (leitor manual, sem lib externa)
+  const buf = Buffer.from(r2.data);
+  let zplTexto = null;
+  let offset = 0;
+  while (offset + 4 <= buf.length && buf.readUInt32LE(offset) === 0x04034b50) {
+    const metodo      = buf.readUInt16LE(offset + 8);
+    const tamComp     = buf.readUInt32LE(offset + 18);
+    const tamNome     = buf.readUInt16LE(offset + 26);
+    const tamExtra    = buf.readUInt16LE(offset + 28);
+    const nomeInicio  = offset + 30;
+    const nome        = buf.slice(nomeInicio, nomeInicio + tamNome).toString('utf8');
+    const dadosInicio = nomeInicio + tamNome + tamExtra;
+    const dadosComp   = buf.slice(dadosInicio, dadosInicio + tamComp);
+    const conteudo    = metodo === 8 ? zlib.inflateRawSync(dadosComp) : dadosComp;
+    if (/\.(txt|zpl)$/i.test(nome)) zplTexto = conteudo.toString('utf8');
+    offset = dadosInicio + tamComp;
+  }
+  if (!zplTexto) throw new Error('Não encontrei o arquivo de etiqueta dentro do ZIP retornado pela Shopee');
+
+  const { PDFDocument } = require('pdf-lib');
+  const labels = zplSplitLabels(zplTexto);
+  if (!labels.length) throw new Error('A etiqueta ZPL da Shopee não teve nenhum bloco reconhecido');
+  const pdfBuffers = await convertLabelsWithConcurrency(labels, '3.94x5.91', 4);
+  const merged = await PDFDocument.create();
+  for (const b of pdfBuffers) {
+    const doc   = await PDFDocument.load(b);
+    const pages = await merged.copyPages(doc, doc.getPageIndices());
+    pages.forEach(p => merged.addPage(p));
+  }
+  return Buffer.from(await merged.save());
+}
+
+app.get('/api/shopee/etiqueta/:order_sn', async (req, res) => {
+  try {
+    const pdf = await shopeeGerarEtiquetaPdf(req.params.order_sn);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'inline');
+    res.send(pdf);
+  } catch (err) {
+    addLog(`[shopee] etiqueta ${req.params.order_sn}: ${err.message}`, 'warn');
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/lucro/vendas-shopee', async (req, res) => {
   const data = loadData();
   const sp   = data.shopee || {};
