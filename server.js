@@ -5540,7 +5540,21 @@ app.get('/api/debug/shopee-etiqueta', async (req, res) => {
 
     await new Promise(r => setTimeout(r, 500));
 
-    // 2) create_shipping_document
+    // 2) ship_order — confirma o despacho via dropoff (sem info extra exigida)
+    if (req.query.ship === '1') {
+      try {
+        const pathS   = '/api/v2/logistics/ship_order';
+        const paramsS = shopeeParams(pathS, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
+        const rS = await axios.post(`${SHOPEE_BASE}/logistics/ship_order`,
+          { order_sn: orderSn, dropoff: {} }, { params: paramsS, timeout: 15000 });
+        resultados.push({ etapa: 'ship_order', data: rS.data });
+      } catch (err) {
+        resultados.push({ etapa: 'ship_order', erro: err.response?.data || err.message });
+      }
+      await new Promise(r => setTimeout(r, 500));
+    }
+
+    // 3) create_shipping_document
     try {
       const path2   = '/api/v2/logistics/create_shipping_document';
       const params2 = shopeeParams(path2, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
