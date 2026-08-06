@@ -5517,6 +5517,34 @@ app.get('/api/lucro/vendas-shopee', async (req, res) => {
   }
 });
 
+// TEMP: sonda endpoint(s) candidatos pra ENVIAR invoice_data estruturado (não arquivo). Remover depois.
+app.post('/api/debug/shopee-probe-set-invoice', async (req, res) => {
+  const { order_sn } = req.body;
+  if (!order_sn) return res.json({ error: 'order_sn obrigatório' });
+  const data = loadData();
+  const sp   = data.shopee || {};
+  const invoice_data = req.body.invoice_data || {};
+  const candidatos = ['set_invoice_data', 'upload_invoice_data', 'submit_invoice_data'];
+  const resultados = [];
+  try {
+    const accessToken = await getShopeeToken(data);
+    for (const nome of candidatos) {
+      await new Promise(r => setTimeout(r, 300));
+      const path = `/api/v2/order/${nome}`;
+      try {
+        const params = shopeeParams(path, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
+        const r = await axios.post(`${SHOPEE_BASE}/order/${nome}`, { order_sn, invoice_data }, { params, timeout: 10000 });
+        resultados.push({ endpoint: nome, status: 200, data: r.data });
+      } catch (err) {
+        resultados.push({ endpoint: nome, status: err.response?.status, data: err.response?.data || err.message });
+      }
+    }
+    res.json(resultados);
+  } catch (err) {
+    res.json({ error: err.message });
+  }
+});
+
 // TEMP: consulta status/detalhe de um pedido específico da Shopee. Remover depois.
 app.get('/api/debug/shopee-order-status', async (req, res) => {
   const orderSn = req.query.order_sn;
