@@ -5604,12 +5604,38 @@ app.get('/api/debug/shopee-gerar-etiqueta', async (req, res) => {
     if (contentType.includes('json')) {
       return res.json({ etapa: 'download_shipping_document', data: JSON.parse(Buffer.from(r2.data).toString('utf8')) });
     }
+
+    // Leitor mínimo de ZIP (só local file headers), sem depender de lib externa
+    const buf = Buffer.from(r2.data);
+    const entradas = [];
+    let offset = 0;
+    while (offset + 4 <= buf.length && buf.readUInt32LE(offset) === 0x04034b50) {
+      const metodo       = buf.readUInt16LE(offset + 8);
+      const tamComp      = buf.readUInt32LE(offset + 18);
+      const tamDescomp   = buf.readUInt32LE(offset + 22);
+      const tamNome      = buf.readUInt16LE(offset + 26);
+      const tamExtra     = buf.readUInt16LE(offset + 28);
+      const nomeInicio   = offset + 30;
+      const nome         = buf.slice(nomeInicio, nomeInicio + tamNome).toString('utf8');
+      const dadosInicio  = nomeInicio + tamNome + tamExtra;
+      const dadosComp    = buf.slice(dadosInicio, dadosInicio + tamComp);
+      let conteudo;
+      try {
+        conteudo = metodo === 8 ? zlib.inflateRawSync(dadosComp) : dadosComp;
+      } catch (e) { conteudo = Buffer.from(`[erro ao descomprimir: ${e.message}]`); }
+      entradas.push({
+        nome, metodo, tamComp, tamDescomp,
+        preview_texto: conteudo.slice(0, 800).toString('utf8'),
+      });
+      offset = dadosInicio + tamComp;
+    }
+
     res.json({
       etapa: 'download_shipping_document',
       ok: true,
       bytes: r2.data.length,
       content_type: contentType,
-      primeiros_30_bytes_ascii: Buffer.from(r2.data).slice(0, 30).toString('ascii'),
+      entradas_zip: entradas,
     });
   } catch (err) {
     res.json({ error: err.message, detalhe: err.response?.data });
