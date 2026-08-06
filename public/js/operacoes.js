@@ -364,11 +364,14 @@ async function carregarVendas() {
       const hrefEtiqueta = v.canal === 'shopee'
         ? `/api/shopee/etiqueta/${v.shipmentId}`
         : `/api/ml/etiqueta/${v.shipmentId}?conta=${v.conta}`;
+      const badgeShopee = v.canal === 'shopee'
+        ? `<span style="background:#f97316;color:#fff;padding:1px 6px;border-radius:4px;font-size:10px;margin-left:5px;white-space:nowrap;vertical-align:middle">Shopee</span>`
+        : '';
 
       tr.innerHTML = `
         <td><input type="checkbox" class="check-venda" data-shipment-id="${v.shipmentId}" data-conta="${v.conta}" onchange="atualizarBotaoSelecionadas()"></td>
         <td class="td-thumb">${imgHtml0}</td>
-        <td class="td-order-id">#${v.orderId}</td>
+        <td class="td-order-id">#${v.orderId}${badgeShopee}</td>
         <td>${v.comprador}</td>
         <td class="col-num venda-qtd">${item0.quantidade ?? ''}</td>
         <td class="td-sku">${item0.sku || '—'}</td>
