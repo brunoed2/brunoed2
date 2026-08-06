@@ -5559,15 +5559,27 @@ app.get('/api/debug/shopee-gerar-etiqueta', async (req, res) => {
   const sp   = data.shopee || {};
   try {
     const accessToken = await getShopeeToken(data);
-    const itemPedido = packageNumber ? { order_sn: orderSn, package_number: packageNumber } : { order_sn: orderSn };
 
-    // 0) get_shipping_document_parameter — descobre o tipo de documento aceito/sugerido
+    // 0) get_tracking_number — obrigatório no create_shipping_document, exceto pra canais
+    // que permitem imprimir antes de organizar o envio (não é o nosso caso)
+    const pathT   = '/api/v2/logistics/get_tracking_number';
+    const paramsT = shopeeParams(pathT, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
+    paramsT.order_sn = orderSn;
+    const rT = await axios.get(`${SHOPEE_BASE}/logistics/get_tracking_number`, { params: paramsT, timeout: 10000 });
+    const trackingNumber = rT.data.response?.tracking_number;
+    if (!trackingNumber) return res.json({ etapa: 'get_tracking_number', data: rT.data });
+
+    const itemPedido = packageNumber
+      ? { order_sn: orderSn, package_number: packageNumber, tracking_number: trackingNumber }
+      : { order_sn: orderSn, tracking_number: trackingNumber };
+
+    // 1) get_shipping_document_parameter — descobre o tipo de documento aceito/sugerido
     const path0   = '/api/v2/logistics/get_shipping_document_parameter';
     const params0 = shopeeParams(path0, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
     const r0 = await axios.post(`${SHOPEE_BASE}/logistics/get_shipping_document_parameter`,
       { order_list: [itemPedido] }, { params: params0, timeout: 15000 });
     const infoDoc = r0.data.response?.result_list?.[0];
-    if (infoDoc?.fail_error) return res.json({ etapa: 'get_shipping_document_parameter', data: r0.data });
+    if (infoDoc?.fail_error) return res.json({ etapa: 'get_shipping_document_parameter', tracking_number: trackingNumber, data: r0.data });
     const tipoDoc = infoDoc?.suggest_shipping_document_type;
 
     await new Promise(r => setTimeout(r, 500));
@@ -5577,9 +5589,9 @@ app.get('/api/debug/shopee-gerar-etiqueta', async (req, res) => {
     const r1 = await axios.post(`${SHOPEE_BASE}/logistics/create_shipping_document`,
       { order_list: [{ ...itemPedido, shipping_document_type: tipoDoc }] }, { params: params1, timeout: 15000 });
 
-    if (r1.data.error) return res.json({ etapa: 'create_shipping_document', get_shipping_document_parameter: r0.data, data: r1.data });
+    if (r1.data.error) return res.json({ etapa: 'create_shipping_document', tracking_number: trackingNumber, get_shipping_document_parameter: r0.data, data: r1.data });
     const falhou = r1.data.response?.result_list?.some(r => r.fail_error);
-    if (falhou) return res.json({ etapa: 'create_shipping_document', get_shipping_document_parameter: r0.data, data: r1.data });
+    if (falhou) return res.json({ etapa: 'create_shipping_document', tracking_number: trackingNumber, get_shipping_document_parameter: r0.data, data: r1.data });
 
     await new Promise(r => setTimeout(r, 2000));
 
