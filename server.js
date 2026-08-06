@@ -1624,6 +1624,25 @@ async function fetchBlingPedidosPendentes(conta) {
   }));
 }
 
+// Página de diagnóstico: logs do impulso automático Shopee em tempo real
+app.get('/api/shopee/log-impulso', (req, res) => {
+  const logs = logBuffer.filter(e => e.msg && e.msg.includes('[shopee]'));
+  const linhas = logs.map(e => {
+    const cor = e.tipo === 'warn' ? '#f59e0b' : e.tipo === 'erro' ? '#ef4444' : '#34d399';
+    const hora = new Date(e.ts).toLocaleString('pt-BR');
+    return `<div style="color:${cor};font-family:monospace;font-size:13px;padding:2px 0">[${hora}] ${e.msg}</div>`;
+  }).join('') || '<div style="color:#6b7280;font-family:monospace">Nenhum log ainda.</div>';
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Log Impulso Shopee</title>
+  <meta http-equiv="refresh" content="10">
+  <style>body{background:#111;color:#e5e7eb;padding:20px;margin:0}h2{color:#fff;margin-bottom:16px}</style>
+  </head><body>
+  <h2>Log Impulso Shopee <small style="font-size:13px;color:#9ca3af">(atualiza a cada 10s)</small></h2>
+  ${linhas}
+  <p style="color:#6b7280;font-size:11px;margin-top:16px">Total: ${logs.length} entradas — últimas ${logBuffer.length} linhas do servidor em memória (reinicia a cada deploy)</p>
+  </body></html>`);
+});
+
 // Página de diagnóstico: logs de etiqueta ML em tempo real
 app.get('/api/bling/log-etiqueta', (req, res) => {
   const logs = logBuffer.filter(e => e.msg && e.msg.includes('[bling-etq]'));
