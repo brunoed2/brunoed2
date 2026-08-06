@@ -5776,6 +5776,44 @@ app.get('/api/shopee/vendas-etiquetas', async (req, res) => {
   }
 });
 
+// Lê um ZIP pelo diretório central (final do arquivo) em vez dos local file headers —
+// necessário porque a Shopee gera o ZIP em modo streaming (bit 3 do flag setado), que
+// deixa os tamanhos zerados no header local; só o diretório central tem o valor real.
+function lerZipViaDiretorioCentral(buf) {
+  // Acha o End Of Central Directory (EOCD) procurando a assinatura de trás pra frente
+  let eocd = -1;
+  for (let i = buf.length - 22; i >= Math.max(0, buf.length - 65557); i--) {
+    if (buf.readUInt32LE(i) === 0x06054b50) { eocd = i; break; }
+  }
+  if (eocd === -1) throw new Error('ZIP inválido: EOCD não encontrado');
+
+  const totalEntradas = buf.readUInt16LE(eocd + 10);
+  let offset = buf.readUInt32LE(eocd + 16); // offset do diretório central
+
+  const entradas = [];
+  for (let i = 0; i < totalEntradas; i++) {
+    if (buf.readUInt32LE(offset) !== 0x02014b50) break; // assinatura de central directory entry
+    const metodo        = buf.readUInt16LE(offset + 10);
+    const tamCompCD      = buf.readUInt32LE(offset + 20);
+    const tamNome        = buf.readUInt16LE(offset + 28);
+    const tamExtraCD     = buf.readUInt16LE(offset + 30);
+    const tamComentario  = buf.readUInt16LE(offset + 32);
+    const offsetLocal    = buf.readUInt32LE(offset + 42);
+    const nome           = buf.slice(offset + 46, offset + 46 + tamNome).toString('utf8');
+
+    // No header local, filename/extra podem ter tamanho diferente do central — lê de lá
+    const tamNomeLocal  = buf.readUInt16LE(offsetLocal + 26);
+    const tamExtraLocal = buf.readUInt16LE(offsetLocal + 28);
+    const dadosInicio   = offsetLocal + 30 + tamNomeLocal + tamExtraLocal;
+    const dadosComp     = buf.slice(dadosInicio, dadosInicio + tamCompCD);
+    const conteudo      = metodo === 8 ? zlib.inflateRawSync(dadosComp) : dadosComp;
+
+    entradas.push({ nome, conteudo });
+    offset += 46 + tamNome + tamExtraCD + tamComentario;
+  }
+  return entradas;
+}
+
 // Gera a etiqueta de transporte da Shopee (tracking → doc type → create → download → ZPL→PDF)
 async function shopeeGerarEtiquetaPdf(orderSn) {
   const data = loadData();
@@ -5820,24 +5858,12 @@ async function shopeeGerarEtiquetaPdf(orderSn) {
     throw new Error(err.message || err.error || 'Erro ao baixar etiqueta');
   }
 
-  // Extrai o .txt (ZPL) de dentro do ZIP retornado pela Shopee (leitor manual, sem lib externa)
+  // Extrai o .txt (ZPL) de dentro do ZIP retornado pela Shopee, via diretório central
   const buf = Buffer.from(r2.data);
-  let zplTexto = null;
-  let offset = 0;
-  while (offset + 4 <= buf.length && buf.readUInt32LE(offset) === 0x04034b50) {
-    const metodo      = buf.readUInt16LE(offset + 8);
-    const tamComp     = buf.readUInt32LE(offset + 18);
-    const tamNome     = buf.readUInt16LE(offset + 26);
-    const tamExtra    = buf.readUInt16LE(offset + 28);
-    const nomeInicio  = offset + 30;
-    const nome        = buf.slice(nomeInicio, nomeInicio + tamNome).toString('utf8');
-    const dadosInicio = nomeInicio + tamNome + tamExtra;
-    const dadosComp   = buf.slice(dadosInicio, dadosInicio + tamComp);
-    const conteudo    = metodo === 8 ? zlib.inflateRawSync(dadosComp) : dadosComp;
-    if (/\.(txt|zpl)$/i.test(nome)) zplTexto = conteudo.toString('utf8');
-    offset = dadosInicio + tamComp;
-  }
-  if (!zplTexto) throw new Error('Não encontrei o arquivo de etiqueta dentro do ZIP retornado pela Shopee');
+  const entradas = lerZipViaDiretorioCentral(buf);
+  const entradaZpl = entradas.find(e => /\.(txt|zpl)$/i.test(e.nome));
+  if (!entradaZpl) throw new Error('Não encontrei o arquivo de etiqueta dentro do ZIP retornado pela Shopee');
+  const zplTexto = entradaZpl.conteudo.toString('utf8');
 
   const { PDFDocument } = require('pdf-lib');
   const labels = zplSplitLabels(zplTexto);
