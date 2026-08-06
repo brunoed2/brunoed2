@@ -5351,8 +5351,19 @@ async function shopeeImpulsionarAutomatico() {
       return;
     }
 
+    // Nomes só pra deixar a notificação legível — só busca se realmente vai tentar impulsionar
+    const nomePorId = {};
+    try {
+      const pathInfo   = '/api/v2/product/get_item_base_info';
+      const paramsInfo = shopeeParams(pathInfo, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
+      paramsInfo.item_id_list = elegiveis.join(',');
+      const rInfo = await axios.get(`${SHOPEE_BASE}/product/get_item_base_info`, { params: paramsInfo, timeout: 10000 });
+      (rInfo.data.response?.item_list || []).forEach(i => { nomePorId[i.item_id] = i.item_name; });
+    } catch {}
+
     let ultimoBoostadoIdx = null;
     for (const itemId of elegiveis) {
+      const nome = nomePorId[itemId] || `item ${itemId}`;
       try {
         const pathB   = '/api/v2/product/boost_item';
         const paramsB = shopeeParams(pathB, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
@@ -5363,12 +5374,15 @@ async function shopeeImpulsionarAutomatico() {
             break;
           }
           addLog(`[shopee] impulso item ${itemId}: ${rB.data.message || rB.data.error}`, 'warn');
+          notificar(`⚠️ <b>Falha ao impulsionar</b>\n\n${nome}\nErro: ${rB.data.message || rB.data.error}`, 'shopee_boost').catch(() => {});
         } else {
           addLog(`[shopee] item ${itemId} impulsionado automaticamente`, 'ok');
           ultimoBoostadoIdx = ordem.indexOf(itemId);
+          notificar(`🚀 <b>Impulsionado automaticamente</b>\n\n${nome}`, 'shopee_boost').catch(() => {});
         }
       } catch (err) {
         addLog(`[shopee] impulso item ${itemId} erro: ${err.message}`, 'warn');
+        notificar(`⚠️ <b>Falha ao impulsionar</b>\n\n${nome}\nErro: ${err.message}`, 'shopee_boost').catch(() => {});
       }
       await new Promise(r => setTimeout(r, 500));
     }
@@ -5869,6 +5883,7 @@ const NOTIF_CATEGORIAS = {
   nf_travada:       '⚠️ NF travada (recusada pelo ML)',
   auto_super:       '⚡ Pedido pronto pra NF',
   contas_pagar:     '📅 Contas a pagar vencendo',
+  shopee_boost:     '🚀 Impulso automático Shopee',
 };
 
 // Inscrições de push — carregadas do disco, persistem entre restarts
