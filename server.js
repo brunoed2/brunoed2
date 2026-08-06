@@ -5517,6 +5517,32 @@ app.get('/api/lucro/vendas-shopee', async (req, res) => {
   }
 });
 
+// TEMP: testa upload_invoice_doc com o XML da NF e file_type=4 (codigo correto pra XML). Remover depois.
+app.post('/api/debug/shopee-testar-upload-nf', async (req, res) => {
+  const { order_sn, link_xml, file_type } = req.body;
+  if (!order_sn || !link_xml) return res.json({ error: 'order_sn e link_xml obrigatórios' });
+  const data = loadData();
+  const sp   = data.shopee || {};
+  try {
+    const xmlResp = await axios.get(link_xml, { responseType: 'arraybuffer', timeout: 20000 });
+    addLog(`[debug] XML baixado do Bling: ${xmlResp.data.length} bytes`, 'info');
+
+    const accessToken = await getShopeeToken(data);
+    const path   = '/api/v2/order/upload_invoice_doc';
+    const params = shopeeParams(path, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
+
+    const FormDataNode = require('form-data');
+    const form = new FormDataNode();
+    form.append('order_sn', order_sn);
+    form.append('file_type', file_type || '4');
+    form.append('file', Buffer.from(xmlResp.data), { filename: 'nfe.xml', contentType: 'text/xml' });
+    const r = await axios.post(`${SHOPEE_BASE}/order/upload_invoice_doc`, form, { params, headers: form.getHeaders(), timeout: 30000 });
+    res.json({ bytes: xmlResp.data.length, resultado: r.data });
+  } catch (err) {
+    res.json({ error: err.message, detalhe: err.response?.data });
+  }
+});
+
 // ── Telegram: notificação de novos pedidos ────────────────────
 
 const TELEGRAM_TOKEN   = process.env.TELEGRAM_TOKEN;
