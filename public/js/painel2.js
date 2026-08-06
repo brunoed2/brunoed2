@@ -843,8 +843,16 @@ async function carregarVendas() {
   try {
     const [data, dataShopee] = await Promise.all([
       apiFetch(`/api/ml/vendas-etiquetas?conta=${window.CONTA_ATIVA}`),
-      apiFetch('/api/shopee/vendas-etiquetas').catch(() => ({ vendas: [] })),
+      apiFetch('/api/shopee/vendas-etiquetas').catch(err => ({ vendas: [], erroDebug: String(err) })),
     ]);
+    console.log('[debug vendas] ML:', data);
+    console.log('[debug vendas] Shopee:', dataShopee);
+    const debugEl = document.getElementById('vendas-debug-canal');
+    if (debugEl) {
+      debugEl.textContent = `[debug] ML: ${(data.vendas || []).length} pedido(s) | Shopee: ${(dataShopee.vendas || []).length} pedido(s)`
+        + (dataShopee.error ? ` — erro Shopee: ${dataShopee.error}` : '')
+        + (dataShopee.erroDebug ? ` — exceção: ${dataShopee.erroDebug}` : '');
+    }
     if (contaGen !== gen) return;
     loading.style.display = 'none';
 
