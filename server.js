@@ -5533,10 +5533,13 @@ app.post('/api/debug/shopee-testar-upload-nf', async (req, res) => {
 
     let r;
     if (modo === 'multipart') {
+      const ehXml = /xml/i.test(link_pdf);
+      const nomeArq = req.body.filename || (ehXml ? 'nfe.xml' : 'nfe.pdf');
+      const ctype   = req.body.content_type || (ehXml ? 'text/xml' : 'application/pdf');
       const form = new FormData();
       form.append('order_sn', order_sn);
-      form.append('file_type', req.body.file_type || 'pdf');
-      form.append('file', new Blob([pdfResp.data], { type: 'application/pdf' }), 'nfe.pdf');
+      form.append('file_type', req.body.file_type || '1');
+      form.append('file', new Blob([pdfResp.data], { type: ctype }), nomeArq);
       r = await axios.post(`${SHOPEE_BASE}/order/upload_invoice_doc`, form, { params, timeout: 30000 });
     } else {
       const b64 = Buffer.from(pdfResp.data).toString('base64');
