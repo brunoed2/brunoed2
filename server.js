@@ -5561,21 +5561,32 @@ app.get('/api/debug/shopee-gerar-etiqueta', async (req, res) => {
     const accessToken = await getShopeeToken(data);
     const itemPedido = packageNumber ? { order_sn: orderSn, package_number: packageNumber } : { order_sn: orderSn };
 
+    // 0) get_shipping_document_parameter — descobre o tipo de documento aceito/sugerido
+    const path0   = '/api/v2/logistics/get_shipping_document_parameter';
+    const params0 = shopeeParams(path0, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
+    const r0 = await axios.post(`${SHOPEE_BASE}/logistics/get_shipping_document_parameter`,
+      { order_list: [itemPedido] }, { params: params0, timeout: 15000 });
+    const infoDoc = r0.data.response?.result_list?.[0];
+    if (infoDoc?.fail_error) return res.json({ etapa: 'get_shipping_document_parameter', data: r0.data });
+    const tipoDoc = infoDoc?.suggest_shipping_document_type;
+
+    await new Promise(r => setTimeout(r, 500));
+
     const path1   = '/api/v2/logistics/create_shipping_document';
     const params1 = shopeeParams(path1, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
     const r1 = await axios.post(`${SHOPEE_BASE}/logistics/create_shipping_document`,
-      { order_list: [itemPedido] }, { params: params1, timeout: 15000 });
+      { order_list: [{ ...itemPedido, shipping_document_type: tipoDoc }] }, { params: params1, timeout: 15000 });
 
-    if (r1.data.error) return res.json({ etapa: 'create_shipping_document', data: r1.data });
+    if (r1.data.error) return res.json({ etapa: 'create_shipping_document', get_shipping_document_parameter: r0.data, data: r1.data });
     const falhou = r1.data.response?.result_list?.some(r => r.fail_error);
-    if (falhou) return res.json({ etapa: 'create_shipping_document', data: r1.data });
+    if (falhou) return res.json({ etapa: 'create_shipping_document', get_shipping_document_parameter: r0.data, data: r1.data });
 
     await new Promise(r => setTimeout(r, 2000));
 
     const path2   = '/api/v2/logistics/download_shipping_document';
     const params2 = shopeeParams(path2, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
     const r2 = await axios.post(`${SHOPEE_BASE}/logistics/download_shipping_document`,
-      { order_list: [itemPedido] }, { params: params2, timeout: 15000, responseType: 'arraybuffer' });
+      { order_list: [{ ...itemPedido, shipping_document_type: tipoDoc }] }, { params: params2, timeout: 15000, responseType: 'arraybuffer' });
 
     const contentType = r2.headers['content-type'] || '';
     if (contentType.includes('json')) {
