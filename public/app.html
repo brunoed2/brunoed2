@@ -1041,6 +1041,19 @@
               <code id="shopee-callback-url"></code>
             </p>
           </div>
+
+          <div class="card">
+            <h2>🚀 Impulso automático de produtos</h2>
+            <p class="card-desc">A cada 15 min, o sistema impulsiona automaticamente quem estiver livre de cooldown, seguindo esta ordem de prioridade (fila circular — quem for impulsionado passa pro fim da fila).</p>
+            <div id="shopee-boost-loading" class="loading" style="display:none">Carregando produtos...</div>
+            <div id="shopee-boost-erro" class="estoque-erro" style="display:none"></div>
+            <div id="shopee-boost-lista"></div>
+            <div class="btn-row" style="margin-top:12px">
+              <button type="button" class="btn-primary" onclick="shopeeBoostSalvarOrdem()">💾 Salvar ordem</button>
+              <button type="button" class="btn-secondary" onclick="shopeeBoostCarregar()">↻ Atualizar</button>
+            </div>
+            <div class="msg" id="shopee-boost-msg"></div>
+          </div>
         </div>
 
         <!-- Sub-aba: Usuários -->
@@ -1856,6 +1869,6 @@
     </div>
   </div>
 
-  <div id="version-badge">v746</div>
+  <div id="version-badge">v747</div>
 </body>
 </html>

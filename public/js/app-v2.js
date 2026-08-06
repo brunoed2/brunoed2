@@ -115,6 +115,7 @@ function abrirSubConfig(sub) {
   if (sub === 'shopee') {
     if (typeof shopeeCarregarConfig  === 'function') shopeeCarregarConfig();
     if (typeof shopeeVerificarStatus === 'function') shopeeVerificarStatus();
+    if (typeof shopeeBoostCarregar   === 'function') shopeeBoostCarregar();
   }
   if (sub === 'usuarios') usuariosCarregar();
   if (sub === 'acessos') acessosCarregar();

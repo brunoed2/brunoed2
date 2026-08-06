@@ -5299,10 +5299,24 @@ setInterval(async () => {
 
 // ── Impulso automático de produtos (product/boost_item) ─────────
 // A Shopee libera um número limitado de "slots" de impulso simultâneos por loja
-// (nesta loja, 5) e cada produto impulsionado fica ~4h em cooldown depois. A cada
-// checagem: pega todos os produtos ativos, vê quais não estão em cooldown, e tenta
-// impulsionar até a Shopee recusar por "reached shop's bump slot limit" (para aí,
-// sem gastar chamada à toa nos itens restantes).
+// (varia — descobrimos na prática, a API recusa com "reached shop's bump slot limit"
+// quando lota) e cada produto impulsionado fica ~4h em cooldown depois.
+//
+// Fila circular: o usuário define uma ordem de prioridade (data.shopee_boost_ordem)
+// e guardamos um cursor (data.shopee_boost_cursor) apontando o próximo da vez. A cada
+// checagem, giramos a lista a partir do cursor, pulamos quem ainda tá em cooldown, e
+// tentamos impulsionar até a Shopee recusar por limite de slots. O cursor avança pro
+// item seguinte ao último que conseguimos impulsionar — assim, quando os slots abrem
+// de novo (4h depois), quem ficou de fora da vez anterior entra primeiro.
+
+function shopeeBoostOrdemAtual(data, itensAtivos) {
+  let ordem = Array.isArray(data.shopee_boost_ordem) ? data.shopee_boost_ordem.slice() : [];
+  ordem = ordem.filter(id => itensAtivos.includes(id)); // tira produtos que saíram do ar
+  const faltando = itensAtivos.filter(id => !ordem.includes(id));
+  ordem = ordem.concat(faltando); // produtos novos entram no fim da fila
+  return ordem;
+}
+
 async function shopeeImpulsionarAutomatico() {
   const data = loadData();
   const sp = data.shopee || {};
@@ -5324,9 +5338,20 @@ async function shopeeImpulsionarAutomatico() {
     const rBoost = await axios.get(`${SHOPEE_BASE}/product/get_boosted_list`, { params: paramsBoost, timeout: 10000 });
     const emCooldown = new Set((rBoost.data.response?.item_list || []).map(i => i.item_id));
 
-    const elegiveis = todosItens.filter(id => !emCooldown.has(id));
-    if (!elegiveis.length) return;
+    const ordem  = shopeeBoostOrdemAtual(data, todosItens);
+    const cursor = Number.isInteger(data.shopee_boost_cursor) ? data.shopee_boost_cursor % ordem.length : 0;
+    const rotacionada = [...ordem.slice(cursor), ...ordem.slice(0, cursor)];
+    const elegiveis = rotacionada.filter(id => !emCooldown.has(id));
+    if (!elegiveis.length) {
+      // Mesmo sem nada elegível agora, salva a ordem sincronizada (novos produtos incluídos)
+      if (JSON.stringify(ordem) !== JSON.stringify(data.shopee_boost_ordem || [])) {
+        data.shopee_boost_ordem = ordem;
+        saveData(data);
+      }
+      return;
+    }
 
+    let ultimoBoostadoIdx = null;
     for (const itemId of elegiveis) {
       try {
         const pathB   = '/api/v2/product/boost_item';
@@ -5340,12 +5365,22 @@ async function shopeeImpulsionarAutomatico() {
           addLog(`[shopee] impulso item ${itemId}: ${rB.data.message || rB.data.error}`, 'warn');
         } else {
           addLog(`[shopee] item ${itemId} impulsionado automaticamente`, 'ok');
+          ultimoBoostadoIdx = ordem.indexOf(itemId);
         }
       } catch (err) {
         addLog(`[shopee] impulso item ${itemId} erro: ${err.message}`, 'warn');
       }
       await new Promise(r => setTimeout(r, 500));
     }
+
+    await withDataLock(() => {
+      const dataFresca = loadData();
+      dataFresca.shopee_boost_ordem = ordem;
+      if (ultimoBoostadoIdx !== null) {
+        dataFresca.shopee_boost_cursor = (ultimoBoostadoIdx + 1) % ordem.length;
+      }
+      saveData(dataFresca);
+    });
   } catch (err) {
     addLog(`[shopee] impulso automático erro: ${err.message}`, 'erro');
   }
@@ -5353,6 +5388,70 @@ async function shopeeImpulsionarAutomatico() {
 
 setInterval(shopeeImpulsionarAutomatico, 15 * 60 * 1000);
 shopeeImpulsionarAutomatico().catch(() => {});
+
+// Lista os produtos ativos na ordem de prioridade de impulso atual, com nome pra exibir na tela
+app.get('/api/shopee/boost-config', async (req, res) => {
+  const data = loadData();
+  const sp   = data.shopee || {};
+  if (!sp.access_token) return res.json({ error: 'Shopee não conectada' });
+  try {
+    const accessToken = await getShopeeToken(data);
+
+    const pathList   = '/api/v2/product/get_item_list';
+    const paramsList = shopeeParams(pathList, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
+    paramsList.offset = 0;
+    paramsList.page_size = 100;
+    paramsList.item_status = 'NORMAL';
+    const rList = await axios.get(`${SHOPEE_BASE}/product/get_item_list`, { params: paramsList, timeout: 10000 });
+    const todosItens = (rList.data.response?.item || []).map(i => i.item_id);
+    if (!todosItens.length) return res.json({ itens: [] });
+
+    const ordem = shopeeBoostOrdemAtual(data, todosItens);
+    if (JSON.stringify(ordem) !== JSON.stringify(data.shopee_boost_ordem || [])) {
+      data.shopee_boost_ordem = ordem;
+      saveData(data);
+    }
+
+    const pathInfo   = '/api/v2/product/get_item_base_info';
+    const paramsInfo = shopeeParams(pathInfo, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
+    paramsInfo.item_id_list = ordem.join(',');
+    const rInfo = await axios.get(`${SHOPEE_BASE}/product/get_item_base_info`, { params: paramsInfo, timeout: 10000 });
+    const nomePorId = {};
+    (rInfo.data.response?.item_list || []).forEach(i => { nomePorId[i.item_id] = i.item_name; });
+
+    const pathBoost   = '/api/v2/product/get_boosted_list';
+    const paramsBoost = shopeeParams(pathBoost, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
+    const rBoost = await axios.get(`${SHOPEE_BASE}/product/get_boosted_list`, { params: paramsBoost, timeout: 10000 });
+    const cooldownPorId = {};
+    (rBoost.data.response?.item_list || []).forEach(i => { cooldownPorId[i.item_id] = i.cool_down_second; });
+
+    const itens = ordem.map(id => ({
+      item_id: id,
+      nome: nomePorId[id] || `Item ${id}`,
+      cooldown_segundos: cooldownPorId[id] ?? null,
+    }));
+
+    res.json({ itens, cursor: (Number.isInteger(data.shopee_boost_cursor) ? data.shopee_boost_cursor : 0) % itens.length });
+  } catch (err) {
+    res.json({ error: err.message, detalhe: err.response?.data });
+  }
+});
+
+app.post('/api/shopee/boost-config', async (req, res) => {
+  const { ordem } = req.body;
+  if (!Array.isArray(ordem) || !ordem.length) return res.status(400).json({ error: 'ordem (array de item_id) obrigatória' });
+  try {
+    await withDataLock(() => {
+      const data = loadData();
+      data.shopee_boost_ordem  = ordem.map(Number);
+      data.shopee_boost_cursor = 0;
+      saveData(data);
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 app.get('/api/shopee/status', async (req, res) => {
   const data = loadData();
@@ -5607,30 +5706,6 @@ app.get('/api/lucro/vendas-shopee', async (req, res) => {
   } catch (err) {
     addLog(`Lucro Shopee: erro ao buscar vendas — ${err.message}`, 'erro');
     res.json({ error: `Erro ao buscar vendas: ${err.message}` });
-  }
-});
-
-// TEMP: checa se get_item_base_info devolve total de vendas por item. Remover depois.
-app.get('/api/debug/shopee-item-info', async (req, res) => {
-  const data = loadData();
-  const sp   = data.shopee || {};
-  try {
-    const accessToken = await getShopeeToken(data);
-    const pathList   = '/api/v2/product/get_item_list';
-    const paramsList = shopeeParams(pathList, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
-    paramsList.offset = 0;
-    paramsList.page_size = 100;
-    paramsList.item_status = 'NORMAL';
-    const rList = await axios.get(`${SHOPEE_BASE}/product/get_item_list`, { params: paramsList, timeout: 10000 });
-    const ids = (rList.data.response?.item || []).map(i => i.item_id);
-
-    const path   = '/api/v2/product/get_item_base_info';
-    const params = shopeeParams(path, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
-    params.item_id_list = ids.join(',');
-    const r = await axios.get(`${SHOPEE_BASE}/product/get_item_base_info`, { params, timeout: 10000 });
-    res.json(r.data);
-  } catch (err) {
-    res.json({ error: err.message, detalhe: err.response?.data });
   }
 });
 
