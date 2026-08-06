@@ -5517,6 +5517,39 @@ app.get('/api/lucro/vendas-shopee', async (req, res) => {
   }
 });
 
+// TEMP: checa o tracking_number e status logistico atual do pedido. Remover depois.
+app.get('/api/debug/shopee-tracking', async (req, res) => {
+  const orderSn = req.query.order_sn;
+  if (!orderSn) return res.json({ error: 'order_sn obrigatório' });
+  const data = loadData();
+  const sp   = data.shopee || {};
+  const resultados = {};
+  try {
+    const accessToken = await getShopeeToken(data);
+
+    try {
+      const path1   = '/api/v2/logistics/get_tracking_number';
+      const params1 = shopeeParams(path1, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
+      params1.order_sn = orderSn;
+      const r1 = await axios.get(`${SHOPEE_BASE}/logistics/get_tracking_number`, { params: params1, timeout: 10000 });
+      resultados.get_tracking_number = r1.data;
+    } catch (err) { resultados.get_tracking_number = { erro: err.response?.data || err.message }; }
+
+    try {
+      const path2   = '/api/v2/order/get_order_detail';
+      const params2 = shopeeParams(path2, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
+      params2.order_sn_list = orderSn;
+      params2.response_optional_fields = 'order_status,package_list,shipping_carrier';
+      const r2 = await axios.get(`${SHOPEE_BASE}/order/get_order_detail`, { params: params2, timeout: 10000 });
+      resultados.order_detail = r2.data;
+    } catch (err) { resultados.order_detail = { erro: err.response?.data || err.message }; }
+
+    res.json(resultados);
+  } catch (err) {
+    res.json({ error: err.message });
+  }
+});
+
 // TEMP: gera e baixa a etiqueta de transporte (create + download shipping document). Remover depois.
 app.get('/api/debug/shopee-gerar-etiqueta', async (req, res) => {
   const orderSn = req.query.order_sn;
