@@ -5519,22 +5519,29 @@ app.get('/api/lucro/vendas-shopee', async (req, res) => {
 
 // TEMP: testa envio real da NF (PDF do Bling) pro upload_invoice_doc da Shopee. Remover depois.
 app.post('/api/debug/shopee-testar-upload-nf', async (req, res) => {
-  const { order_sn, link_pdf } = req.body;
+  const { order_sn, link_pdf, modo } = req.body;
   if (!order_sn || !link_pdf) return res.json({ error: 'order_sn e link_pdf obrigatórios' });
   const data = loadData();
   const sp   = data.shopee || {};
   try {
     const pdfResp = await axios.get(link_pdf, { responseType: 'arraybuffer', timeout: 20000 });
-    const b64     = Buffer.from(pdfResp.data).toString('base64');
-    addLog(`[debug] PDF baixado do Bling: ${pdfResp.data.length} bytes`, 'info');
+    addLog(`[debug] arquivo baixado do Bling: ${pdfResp.data.length} bytes`, 'info');
 
     const accessToken = await getShopeeToken(data);
     const path   = '/api/v2/order/upload_invoice_doc';
     const params = shopeeParams(path, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
-    const r = await axios.post(`${SHOPEE_BASE}/order/upload_invoice_doc`,
-      { order_sn, file: b64 },
-      { params, timeout: 30000 });
-    res.json({ pdf_bytes: pdfResp.data.length, resultado: r.data });
+
+    let r;
+    if (modo === 'multipart') {
+      const form = new FormData();
+      form.append('order_sn', order_sn);
+      form.append('file', new Blob([pdfResp.data], { type: 'application/pdf' }), 'nfe.pdf');
+      r = await axios.post(`${SHOPEE_BASE}/order/upload_invoice_doc`, form, { params, timeout: 30000 });
+    } else {
+      const b64 = Buffer.from(pdfResp.data).toString('base64');
+      r = await axios.post(`${SHOPEE_BASE}/order/upload_invoice_doc`, { order_sn, file: b64 }, { params, timeout: 30000 });
+    }
+    res.json({ bytes: pdfResp.data.length, resultado: r.data });
   } catch (err) {
     res.json({ error: err.message, detalhe: err.response?.data });
   }
