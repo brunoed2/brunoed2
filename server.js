@@ -5517,25 +5517,6 @@ app.get('/api/lucro/vendas-shopee', async (req, res) => {
   }
 });
 
-// TEMP: verifica se o link do Bling devolve PDF de verdade (magic bytes) ou uma pagina HTML. Remover depois.
-app.get('/api/debug/checar-pdf-bling', async (req, res) => {
-  const link = req.query.link;
-  if (!link) return res.json({ error: 'link obrigatório' });
-  try {
-    const r = await axios.get(link, { responseType: 'arraybuffer', timeout: 20000 });
-    const buf = Buffer.from(r.data);
-    res.json({
-      bytes: buf.length,
-      content_type_header: r.headers['content-type'],
-      primeiros_20_bytes_ascii: buf.slice(0, 20).toString('ascii'),
-      primeiros_20_bytes_hex: buf.slice(0, 20).toString('hex'),
-      eh_pdf_valido: buf.slice(0, 5).toString('ascii') === '%PDF-',
-    });
-  } catch (err) {
-    res.json({ error: err.message, detalhe: err.response?.data });
-  }
-});
-
 // ── Telegram: notificação de novos pedidos ────────────────────
 
 const TELEGRAM_TOKEN   = process.env.TELEGRAM_TOKEN;
