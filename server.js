@@ -5517,6 +5517,46 @@ app.get('/api/lucro/vendas-shopee', async (req, res) => {
   }
 });
 
+// TEMP: testa geracao/download da etiqueta de transporte agora que a NF foi aceita. Remover depois.
+app.get('/api/debug/shopee-etiqueta', async (req, res) => {
+  const orderSn = req.query.order_sn;
+  if (!orderSn) return res.json({ error: 'order_sn obrigatório' });
+  const data = loadData();
+  const sp   = data.shopee || {};
+  const resultados = [];
+  try {
+    const accessToken = await getShopeeToken(data);
+
+    // 1) get_shipping_parameter
+    try {
+      const path1   = '/api/v2/logistics/get_shipping_parameter';
+      const params1 = shopeeParams(path1, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
+      params1.order_sn = orderSn;
+      const r1 = await axios.get(`${SHOPEE_BASE}/logistics/get_shipping_parameter`, { params: params1, timeout: 10000 });
+      resultados.push({ etapa: 'get_shipping_parameter', data: r1.data });
+    } catch (err) {
+      resultados.push({ etapa: 'get_shipping_parameter', erro: err.response?.data || err.message });
+    }
+
+    await new Promise(r => setTimeout(r, 500));
+
+    // 2) create_shipping_document
+    try {
+      const path2   = '/api/v2/logistics/create_shipping_document';
+      const params2 = shopeeParams(path2, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
+      const r2 = await axios.post(`${SHOPEE_BASE}/logistics/create_shipping_document`,
+        { order_list: [{ order_sn: orderSn }] }, { params: params2, timeout: 15000 });
+      resultados.push({ etapa: 'create_shipping_document', data: r2.data });
+    } catch (err) {
+      resultados.push({ etapa: 'create_shipping_document', erro: err.response?.data || err.message });
+    }
+
+    res.json(resultados);
+  } catch (err) {
+    res.json({ error: err.message });
+  }
+});
+
 // TEMP: testa upload_invoice_doc com o XML da NF e file_type=4 (codigo correto pra XML). Remover depois.
 app.post('/api/debug/shopee-testar-upload-nf', async (req, res) => {
   const { order_sn, link_xml, file_type } = req.body;
