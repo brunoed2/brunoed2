@@ -5297,6 +5297,63 @@ setInterval(async () => {
   } catch {}
 }, 3 * 60 * 60 * 1000);
 
+// ── Impulso automático de produtos (product/boost_item) ─────────
+// A Shopee libera um número limitado de "slots" de impulso simultâneos por loja
+// (nesta loja, 5) e cada produto impulsionado fica ~4h em cooldown depois. A cada
+// checagem: pega todos os produtos ativos, vê quais não estão em cooldown, e tenta
+// impulsionar até a Shopee recusar por "reached shop's bump slot limit" (para aí,
+// sem gastar chamada à toa nos itens restantes).
+async function shopeeImpulsionarAutomatico() {
+  const data = loadData();
+  const sp = data.shopee || {};
+  if (!sp.access_token) return;
+  try {
+    const accessToken = await getShopeeToken(data);
+
+    const pathList   = '/api/v2/product/get_item_list';
+    const paramsList = shopeeParams(pathList, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
+    paramsList.offset = 0;
+    paramsList.page_size = 100;
+    paramsList.item_status = 'NORMAL';
+    const rList = await axios.get(`${SHOPEE_BASE}/product/get_item_list`, { params: paramsList, timeout: 10000 });
+    const todosItens = (rList.data.response?.item || []).map(i => i.item_id);
+    if (!todosItens.length) return;
+
+    const pathBoost   = '/api/v2/product/get_boosted_list';
+    const paramsBoost = shopeeParams(pathBoost, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
+    const rBoost = await axios.get(`${SHOPEE_BASE}/product/get_boosted_list`, { params: paramsBoost, timeout: 10000 });
+    const emCooldown = new Set((rBoost.data.response?.item_list || []).map(i => i.item_id));
+
+    const elegiveis = todosItens.filter(id => !emCooldown.has(id));
+    if (!elegiveis.length) return;
+
+    for (const itemId of elegiveis) {
+      try {
+        const pathB   = '/api/v2/product/boost_item';
+        const paramsB = shopeeParams(pathB, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
+        const rB = await axios.post(`${SHOPEE_BASE}/product/boost_item`, { item_id_list: [itemId] }, { params: paramsB, timeout: 15000 });
+        if (rB.data.error) {
+          if (/slot limit/i.test(rB.data.message || '')) {
+            addLog('[shopee] impulso: slots cheios, parando por agora', 'info');
+            break;
+          }
+          addLog(`[shopee] impulso item ${itemId}: ${rB.data.message || rB.data.error}`, 'warn');
+        } else {
+          addLog(`[shopee] item ${itemId} impulsionado automaticamente`, 'ok');
+        }
+      } catch (err) {
+        addLog(`[shopee] impulso item ${itemId} erro: ${err.message}`, 'warn');
+      }
+      await new Promise(r => setTimeout(r, 500));
+    }
+  } catch (err) {
+    addLog(`[shopee] impulso automático erro: ${err.message}`, 'erro');
+  }
+}
+
+setInterval(shopeeImpulsionarAutomatico, 15 * 60 * 1000);
+shopeeImpulsionarAutomatico().catch(() => {});
+
 app.get('/api/shopee/status', async (req, res) => {
   const data = loadData();
   const sp   = data.shopee || {};
@@ -5673,56 +5730,6 @@ app.get('/api/debug/shopee-gerar-etiqueta', async (req, res) => {
       content_type: contentType,
       entradas_zip: entradas,
     });
-  } catch (err) {
-    res.json({ error: err.message, detalhe: err.response?.data });
-  }
-});
-
-// TEMP: lista os itens ativos da loja. Remover depois.
-app.get('/api/debug/shopee-item-list', async (req, res) => {
-  const data = loadData();
-  const sp   = data.shopee || {};
-  try {
-    const accessToken = await getShopeeToken(data);
-    const path   = '/api/v2/product/get_item_list';
-    const params = shopeeParams(path, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
-    params.offset = 0;
-    params.page_size = 100;
-    params.item_status = 'NORMAL';
-    const r = await axios.get(`${SHOPEE_BASE}/product/get_item_list`, { params, timeout: 10000 });
-    res.json(r.data);
-  } catch (err) {
-    res.json({ error: err.message, detalhe: err.response?.data });
-  }
-});
-
-// TEMP: testa impulsionar produto (product.boost_item / get_boosted_list). Remover depois.
-app.get('/api/debug/shopee-boost-status', async (req, res) => {
-  const data = loadData();
-  const sp   = data.shopee || {};
-  try {
-    const accessToken = await getShopeeToken(data);
-    const path   = '/api/v2/product/get_boosted_list';
-    const params = shopeeParams(path, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
-    const r = await axios.get(`${SHOPEE_BASE}/product/get_boosted_list`, { params, timeout: 10000 });
-    res.json(r.data);
-  } catch (err) {
-    res.json({ error: err.message, detalhe: err.response?.data });
-  }
-});
-
-app.post('/api/debug/shopee-boost-item', async (req, res) => {
-  const { item_id } = req.body;
-  if (!item_id) return res.json({ error: 'item_id obrigatório' });
-  const data = loadData();
-  const sp   = data.shopee || {};
-  try {
-    const accessToken = await getShopeeToken(data);
-    const path   = '/api/v2/product/boost_item';
-    const params = shopeeParams(path, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
-    const r = await axios.post(`${SHOPEE_BASE}/product/boost_item`,
-      { item_id_list: [Number(item_id)] }, { params, timeout: 15000 });
-    res.json(r.data);
   } catch (err) {
     res.json({ error: err.message, detalhe: err.response?.data });
   }
