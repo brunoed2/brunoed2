@@ -5535,6 +5535,7 @@ app.post('/api/debug/shopee-testar-upload-nf', async (req, res) => {
     if (modo === 'multipart') {
       const form = new FormData();
       form.append('order_sn', order_sn);
+      form.append('file_type', req.body.file_type || 'pdf');
       form.append('file', new Blob([pdfResp.data], { type: 'application/pdf' }), 'nfe.pdf');
       r = await axios.post(`${SHOPEE_BASE}/order/upload_invoice_doc`, form, { params, timeout: 30000 });
     } else {
