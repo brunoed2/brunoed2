@@ -5543,6 +5543,25 @@ app.post('/api/debug/shopee-testar-upload-nf', async (req, res) => {
   }
 });
 
+// TEMP: consulta status/invoice_data de um pedido especifico. Remover depois.
+app.get('/api/debug/shopee-order-status', async (req, res) => {
+  const orderSn = req.query.order_sn;
+  if (!orderSn) return res.json({ error: 'order_sn obrigatório' });
+  const data = loadData();
+  const sp   = data.shopee || {};
+  try {
+    const accessToken = await getShopeeToken(data);
+    const path   = '/api/v2/order/get_order_detail';
+    const params = shopeeParams(path, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
+    params.order_sn_list = orderSn;
+    params.response_optional_fields = 'order_status,invoice_data';
+    const r = await axios.get(`${SHOPEE_BASE}/order/get_order_detail`, { params, timeout: 10000 });
+    res.json(r.data);
+  } catch (err) {
+    res.json({ error: err.message, detalhe: err.response?.data });
+  }
+});
+
 // ── Telegram: notificação de novos pedidos ────────────────────
 
 const TELEGRAM_TOKEN   = process.env.TELEGRAM_TOKEN;
