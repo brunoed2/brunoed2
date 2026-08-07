@@ -5886,10 +5886,18 @@ app.post('/api/lucro/taxa-imposto-mes-shopee', (req, res) => {
   res.json({ ok: true });
 });
 
+// A Shopee permite variações com preços diferentes pro mesmo item_id (ex: "1 unidade" x
+// "kit 2 unidades") — o custo é indexado por item_id+model_id, não só item_id, senão duas
+// variações do mesmo anúncio compartilhavam o mesmo custo por engano.
+function shopeeCustoChave(itemId, modelId) {
+  return modelId ? `${itemId}_${modelId}` : String(itemId);
+}
+
 app.post('/api/lucro/custo-shopee', async (req, res) => {
-  const { item_id, custo, desde, conta } = req.body;
+  const { item_id, model_id, custo, desde, conta } = req.body;
   const num = String(conta || '1');
   if (!item_id) return res.status(400).json({ error: 'item_id obrigatório' });
+  const chave = shopeeCustoChave(item_id, model_id);
   const dataVigencia = /^\d{4}-\d{2}-\d{2}$/.test(desde || '') ? desde : lucroHojeISO();
   try {
     const resultado = await withDataLock(() => {
@@ -5898,22 +5906,22 @@ app.post('/api/lucro/custo-shopee', async (req, res) => {
       ls.custos = ls.custos || {};
       ls.custos_historico = ls.custos_historico || {};
 
-      if (!ls.custos_historico[item_id] && ls.custos[item_id]) {
-        ls.custos_historico[item_id] = [{ desde: '1970-01-01', valor: ls.custos[item_id] }];
+      if (!ls.custos_historico[chave] && ls.custos[chave]) {
+        ls.custos_historico[chave] = [{ desde: '1970-01-01', valor: ls.custos[chave] }];
       }
-      ls.custos_historico[item_id] = ls.custos_historico[item_id] || [];
+      ls.custos_historico[chave] = ls.custos_historico[chave] || [];
 
       const valor = parseFloat(custo) || 0;
-      const hist  = ls.custos_historico[item_id];
+      const hist  = ls.custos_historico[chave];
       const idx   = hist.findIndex(h => h.desde === dataVigencia);
       if (idx >= 0) hist[idx].valor = valor;
       else hist.push({ desde: dataVigencia, valor });
       hist.sort((a, b) => a.desde.localeCompare(b.desde));
 
-      ls.custos[item_id] = custoVigenteNaData(hist, lucroHojeISO());
+      ls.custos[chave] = custoVigenteNaData(hist, lucroHojeISO());
 
       saveData(data);
-      return { custos_historico: hist, custo_atual: ls.custos[item_id] };
+      return { custos_historico: hist, custo_atual: ls.custos[chave] };
     });
     res.json({ ok: true, ...resultado });
   } catch (err) {
@@ -5922,25 +5930,26 @@ app.post('/api/lucro/custo-shopee', async (req, res) => {
 });
 
 app.post('/api/lucro/custo-remover-shopee', async (req, res) => {
-  const { item_id, desde, conta } = req.body;
+  const { item_id, model_id, desde, conta } = req.body;
   const num = String(conta || '1');
   if (!item_id || !desde) return res.status(400).json({ error: 'item_id e desde obrigatórios' });
+  const chave = shopeeCustoChave(item_id, model_id);
   try {
     const resultado = await withDataLock(() => {
       const data = loadData();
       const ls = lucroShopeeConta(data, num);
-      if (!ls.custos_historico || !ls.custos_historico[item_id]) return { custos_historico: [], custo_atual: 0 };
+      if (!ls.custos_historico || !ls.custos_historico[chave]) return { custos_historico: [], custo_atual: 0 };
 
-      ls.custos_historico[item_id] = ls.custos_historico[item_id].filter(h => h.desde !== desde);
-      if (ls.custos_historico[item_id].length === 0) {
-        delete ls.custos_historico[item_id];
+      ls.custos_historico[chave] = ls.custos_historico[chave].filter(h => h.desde !== desde);
+      if (ls.custos_historico[chave].length === 0) {
+        delete ls.custos_historico[chave];
         ls.custos = ls.custos || {};
-        ls.custos[item_id] = 0;
+        ls.custos[chave] = 0;
       } else {
-        ls.custos[item_id] = custoVigenteNaData(ls.custos_historico[item_id], lucroHojeISO());
+        ls.custos[chave] = custoVigenteNaData(ls.custos_historico[chave], lucroHojeISO());
       }
       saveData(data);
-      return { custos_historico: ls.custos_historico[item_id] || [], custo_atual: ls.custos[item_id] };
+      return { custos_historico: ls.custos_historico[chave] || [], custo_atual: ls.custos[chave] };
     });
     res.json({ ok: true, ...resultado });
   } catch (err) {
@@ -6024,7 +6033,9 @@ async function buscarVendasShopeeComCustos(data, conta, dateFrom, dateTo) {
     const income  = escrowPorSn[sn];
     const itens = (det.item_list || []).map(i => ({
       itemId:     i.item_id,
+      modelId:    i.model_id || 0,
       titulo:     i.item_name || '',
+      variacao:   (i.model_name && i.model_name !== i.item_name) ? i.model_name : '',
       quantidade: i.model_quantity_purchased || 1,
       precoUnit:  i.model_discounted_price ?? i.model_original_price ?? 0,
     }));

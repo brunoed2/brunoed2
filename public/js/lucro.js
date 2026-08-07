@@ -140,9 +140,18 @@ async function lucroShopeeCarregarConfig() {
   } catch {}
 }
 
+// A Shopee permite variações com preços diferentes pro mesmo item_id (ex: "1 unidade" x
+// "kit 2 unidades") — o custo precisa ser por item_id+model_id, não só por item_id, senão
+// duas variações do mesmo anúncio compartilham o mesmo custo por engano.
+function lucroShopeeChave(itemId, modelId) {
+  return modelId ? `${itemId}_${modelId}` : String(itemId || '');
+}
+
 async function lucroShopeeSalvarCusto(input, btn) {
-  const itemId = input.dataset.itemId;
-  const custo  = parseFloat(input.value.replace(',', '.')) || 0;
+  const itemId  = input.dataset.itemId;
+  const modelId = input.dataset.modelId || '';
+  const chave   = lucroShopeeChave(itemId, modelId);
+  const custo   = parseFloat(input.value.replace(',', '.')) || 0;
   if (!itemId) return;
   const desde = input.dataset.vdata || lucroHoje();
   if (btn) { btn.disabled = true; btn.textContent = '…'; }
@@ -150,19 +159,19 @@ async function lucroShopeeSalvarCusto(input, btn) {
     const r = await fetch('/api/lucro/custo-shopee', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ item_id: itemId, custo, desde, conta: lucroContaAtual() }),
+      body:    JSON.stringify({ item_id: itemId, model_id: modelId, custo, desde, conta: lucroContaAtual() }),
     }).then(r => r.json());
     lucroShopeeConfig.custos_historico = lucroShopeeConfig.custos_historico || {};
-    if (r.custos_historico) lucroShopeeConfig.custos_historico[itemId] = r.custos_historico;
-    lucroShopeeConfig.custos[itemId] = r.custo_atual ?? custo;
+    if (r.custos_historico) lucroShopeeConfig.custos_historico[chave] = r.custos_historico;
+    lucroShopeeConfig.custos[chave] = r.custo_atual ?? custo;
     lucroRecalcularERenderizar();
     const custoAtual = r.custo_atual ?? custo;
-    document.querySelectorAll(`.lucro-shopee-custo-input[data-item-id="${itemId}"]`).forEach(el => {
+    document.querySelectorAll(`.lucro-shopee-custo-input[data-chave="${chave}"]`).forEach(el => {
       el.value = custoAtual || '';
     });
     const targets = btn && btn.isConnected
       ? [btn]
-      : [...document.querySelectorAll(`.lucro-shopee-ok-btn[data-item-id="${itemId}"]`)];
+      : [...document.querySelectorAll(`.lucro-shopee-ok-btn[data-chave="${chave}"]`)];
     targets.forEach(b => {
       b.disabled = false;
       b.textContent = '✓';
@@ -179,9 +188,15 @@ async function lucroShopeeSalvarCusto(input, btn) {
   }
 }
 
-function lucroShopeeCustoNaData(itemId, dataVendaMs) {
-  const hist = (lucroShopeeConfig.custos_historico || {})[itemId];
-  if (!hist || !hist.length) return (lucroShopeeConfig.custos || {})[itemId] || 0;
+function lucroShopeeCustoNaData(itemId, modelId, dataVendaMs) {
+  const chave = lucroShopeeChave(itemId, modelId);
+  // fallback pro custo antigo (salvo só por item_id, de antes da separação por variação)
+  const hist = (lucroShopeeConfig.custos_historico || {})[chave]
+            || (lucroShopeeConfig.custos_historico || {})[itemId];
+  if (!hist || !hist.length) {
+    const custos = lucroShopeeConfig.custos || {};
+    return custos[chave] ?? custos[itemId] ?? 0;
+  }
   const dataISO = new Date(dataVendaMs).toISOString().slice(0, 10);
   let valor = 0;
   for (const h of hist) {
@@ -195,7 +210,7 @@ function lucroShopeeCalcular(raw) {
   return raw.map(v => {
     const mes     = new Date(v.data).toISOString().slice(0, 7);
     const taxa    = mes in taxa_imposto_por_mes ? taxa_imposto_por_mes[mes] : taxa_imposto;
-    const custo   = v.itens.reduce((s, i) => s + lucroShopeeCustoNaData(i.itemId, v.data) * i.quantidade, 0);
+    const custo   = v.itens.reduce((s, i) => s + lucroShopeeCustoNaData(i.itemId, i.modelId, v.data) * i.quantidade, 0);
     const frete   = v.freteReal ?? 0;
     const imposto = v.receita * (taxa / 100);
     const lucro   = v.receita - v.taxaShopee - frete - custo - imposto;
@@ -428,7 +443,8 @@ function lucroShopeeRenderizarTabela(vendas) {
     const item0    = v.itens[0] || {};
     const multi    = v.itens.length > 1;
     const qtdTotal = v.itens.reduce((s, i) => s + i.quantidade, 0);
-    const chave0   = item0.itemId || '';
+    const chave0   = lucroShopeeChave(item0.itemId, item0.modelId);
+    const titulo0  = `${item0.titulo || '—'}${item0.variacao ? `<br><span style="color:#94a3b8;font-size:11px">${item0.variacao}</span>` : ''}`;
     const dataVdata = new Date(v.data).toISOString().slice(0, 10);
 
     if (v.cancelado) {
@@ -437,8 +453,8 @@ function lucroShopeeRenderizarTabela(vendas) {
       tr.innerHTML = `
         <td class="lucro-td-data">${new Date(v.data).toLocaleDateString('pt-BR')}</td>
         <td class="lucro-td-pedido" onclick="lucroCopiarPedido(this, '${v.orderId}')" title="Clique para copiar">${v.orderId || '—'}</td>
-        <td class="td-titulo">${item0.titulo || '—'}${multi ? `<span class="lucro-multi"> +${v.itens.length - 1}</span>` : ''}</td>
-        <td class="lucro-td-mlb">${chave0 || '—'}</td>
+        <td class="td-titulo">${titulo0}${multi ? `<span class="lucro-multi"> +${v.itens.length - 1}</span>` : ''}</td>
+        <td class="lucro-td-mlb">${item0.itemId || '—'}</td>
         <td class="col-num">${qtdTotal}</td>
         <td class="col-num" colspan="7">CANCELADO/DEVOLVIDO — não entra no total</td>
       `;
@@ -446,26 +462,26 @@ function lucroShopeeRenderizarTabela(vendas) {
       return;
     }
 
-    const custoSalvo = lucroShopeeCustoNaData(chave0, v.data) || 0;
+    const custoSalvo = lucroShopeeCustoNaData(item0.itemId, item0.modelId, v.data) || 0;
     const margemCls  = v.margem >= 10 ? 'lucro-val-pos' : v.margem < 0 ? 'lucro-val-neg' : '';
 
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td class="lucro-td-data">${new Date(v.data).toLocaleDateString('pt-BR')}</td>
       <td class="lucro-td-pedido" onclick="lucroCopiarPedido(this, '${v.orderId}')" title="Clique para copiar">${v.orderId || '—'}</td>
-      <td class="td-titulo">${item0.titulo || '—'}${multi ? `<span class="lucro-multi"> +${v.itens.length - 1}</span>` : ''}</td>
-      <td class="lucro-td-mlb">${chave0 || '—'}</td>
+      <td class="td-titulo">${titulo0}${multi ? `<span class="lucro-multi"> +${v.itens.length - 1}</span>` : ''}</td>
+      <td class="lucro-td-mlb">${item0.itemId || '—'}</td>
       <td class="col-num">${qtdTotal}</td>
       <td class="col-num">${lucroFmt(v.receita)}</td>
       <td class="col-num lucro-neg-leve">${fmtCusto(v.taxaShopee)}</td>
       <td class="col-num lucro-neg-leve">${fmtCusto(v.frete)}</td>
       <td class="col-num">
-        ${chave0
+        ${item0.itemId
           ? `${custoSalvo > 0 ? `<span class="lucro-custo-total">${fmtCusto(custoSalvo * qtdTotal)}</span>` : ''}
-             <input type="number" class="lucro-shopee-custo-input" data-item-id="${chave0}" data-vdata="${dataVdata}"
+             <input type="number" class="lucro-shopee-custo-input" data-item-id="${item0.itemId}" data-model-id="${item0.modelId || ''}" data-chave="${chave0}" data-vdata="${dataVdata}"
               value="${custoSalvo || ''}" placeholder="unit."
               step="0.01" min="0">
-             <button class="lucro-shopee-ok-btn lucro-ok-btn" data-item-id="${chave0}"
+             <button class="lucro-shopee-ok-btn lucro-ok-btn" data-chave="${chave0}"
               onclick="lucroShopeeSalvarCusto(this.previousElementSibling, this)">OK</button>`
           : '—'}
       </td>
@@ -477,25 +493,26 @@ function lucroShopeeRenderizarTabela(vendas) {
 
     for (let i = 1; i < v.itens.length; i++) {
       const item    = v.itens[i];
-      const chaveI  = item.itemId || '';
-      const cSalvo2 = lucroShopeeCustoNaData(chaveI, v.data) || 0;
+      const chaveI  = lucroShopeeChave(item.itemId, item.modelId);
+      const tituloI = `${item.titulo || item.itemId}${item.variacao ? `<br><span style="color:#94a3b8;font-size:11px">${item.variacao}</span>` : ''}`;
+      const cSalvo2 = lucroShopeeCustoNaData(item.itemId, item.modelId, v.data) || 0;
       const trSub   = document.createElement('tr');
       trSub.classList.add('lucro-sub-item');
       trSub.innerHTML = `
         <td></td>
         <td></td>
-        <td class="td-titulo" style="color:#94a3b8;font-size:12px">↳ ${item.titulo || chaveI}</td>
-        <td class="lucro-td-mlb">${chaveI || '—'}</td>
+        <td class="td-titulo" style="color:#94a3b8;font-size:12px">↳ ${tituloI}</td>
+        <td class="lucro-td-mlb">${item.itemId || '—'}</td>
         <td class="col-num">${item.quantidade}</td>
         <td class="col-num" style="color:#94a3b8">${lucroFmt(item.precoUnit * item.quantidade)}</td>
         <td></td><td></td>
         <td class="col-num">
-          ${chaveI
+          ${item.itemId
             ? `${cSalvo2 > 0 ? `<span class="lucro-custo-total">${lucroFmt(cSalvo2 * item.quantidade)}</span>` : ''}
-               <input type="number" class="lucro-shopee-custo-input" data-item-id="${chaveI}" data-vdata="${dataVdata}"
+               <input type="number" class="lucro-shopee-custo-input" data-item-id="${item.itemId}" data-model-id="${item.modelId || ''}" data-chave="${chaveI}" data-vdata="${dataVdata}"
                 value="${cSalvo2 || ''}" placeholder="unit."
                 step="0.01" min="0">
-               <button class="lucro-shopee-ok-btn lucro-ok-btn" data-item-id="${chaveI}"
+               <button class="lucro-shopee-ok-btn lucro-ok-btn" data-chave="${chaveI}"
                 onclick="lucroShopeeSalvarCusto(this.previousElementSibling, this)">OK</button>`
             : ''}
         </td>
