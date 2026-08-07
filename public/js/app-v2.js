@@ -554,7 +554,10 @@ async function transferirEstoque(mlb) {
   if (!confirm(`Transferir estoque ${valor} para o anúncio ${mlb}?`)) return;
   try {
     const conta = app2ContaAtual();
-    const response = await apiFetch(`/api/ml/estoque/${mlb}?conta=${conta}`, {
+    const url = (item?.deposito === 'fulfillment' && item.userProductId)
+      ? `/api/ml/estoque-proprio/${item.userProductId}?conta=${conta}`
+      : `/api/ml/estoque/${mlb}?conta=${conta}`;
+    const response = await apiFetch(url, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ quantidade: parseInt(valor, 10) })
@@ -697,9 +700,12 @@ function renderizarTabela() {
       ? `<td class="col-num" style="white-space:nowrap"><input type="number" class="estoque-local-input" data-sku="${skuKey}" value="${estoqueLocalValor}" placeholder="—" min="0" style="width:58px;text-align:center"> <button class="btn-hist-estoque" data-sku="${skuKey}" title="Histórico de alterações">📋</button></td>`
       : `<td class="col-num"></td>`;
 
-    const transferirCell = (isFull || temVariacoes)
-      ? `<td class="col-num"></td>`
-      : `<td class="col-num"><button class="btn-transferir" data-mlb="${item.mlb}" onclick="transferirEstoque('${item.mlb}')" title="Transferir estoque local para ML">→</button></td>`;
+    // Itens Full só podem receber transferência se tivermos o user_product_id
+    // (necessário para atualizar o estoque próprio via /user-products/.../stock)
+    const podeTransferir = (!isFull && !temVariacoes) || (isFull && !!item.userProductId);
+    const transferirCell = podeTransferir
+      ? `<td class="col-num"><button class="btn-transferir" data-mlb="${item.mlb}" onclick="transferirEstoque('${item.mlb}')" title="Transferir estoque local para ML">→</button></td>`
+      : `<td class="col-num"></td>`;
 
     let estoqueForaFullCell;
     if (temVariacoes) {

@@ -2477,6 +2477,7 @@ app.get('/api/ml/estoque', async (req, res) => {
           pausadoDesde:  status === 'paused' ? (pauseDates[mlb] || agora) : null,
           deposito:      logisticType,
           depositoLabel: DEPOSITO_LABEL[logisticType] || logisticType,
+          userProductId: r.body.user_product_id || null,
           variacoes:        (r.body.variations || []).map(v => ({
             id:     v.id,
             nome:   (v.attribute_combinations || []).map(a => a.value_name).join(' / ') || `Var. ${v.id}`,
@@ -5276,6 +5277,66 @@ app.put('/api/ml/estoque/:mlb', async (req, res) => {
     const mlErr = err.response?.data;
     console.error(`Erro ao atualizar estoque (conta=${num}):`, mlErr || err.message);
     const msg = mlErr?.message || mlErr?.error || mlErr?.cause?.[0]?.message || 'Erro ao atualizar no Mercado Livre';
+    res.status(400).json({ error: msg, detalhe: JSON.stringify(mlErr), conta: num, ml_user_id: c.user_id || null });
+  }
+});
+
+// Atualiza o estoque próprio (fora do Full) de um anúncio em convivência Full+Próprio.
+// Diferente do /api/ml/estoque/:mlb (que edita available_quantity), aqui o estoque
+// vive em /user-products/{id}/stock, localização não-meli_facility (ex: seller_warehouse).
+// A API exige o header x-version com a versão atual da entidade; em caso de 409
+// (versão desatualizada) refazemos o GET e tentamos de novo uma vez.
+app.put('/api/ml/estoque-proprio/:userProductId', async (req, res) => {
+  const data = loadData();
+  const num  = String(req.query.conta || data.conta_ativa || '1');
+  const c    = data.contas[num];
+  if (!c || !c.access_token) return res.status(401).json({ error: `Não conectado (conta: ${num})` });
+
+  const { quantidade } = req.body;
+  if (typeof quantidade !== 'number' || !Number.isInteger(quantidade) || quantidade < 0) {
+    return res.status(400).json({ error: 'Quantidade inválida' });
+  }
+
+  const userProductId = req.params.userProductId;
+  const authHeaders    = { Authorization: `Bearer ${c.access_token}` };
+
+  async function buscarStock() {
+    const resp = await axios.get(`https://api.mercadolibre.com/user-products/${userProductId}/stock`, {
+      headers: authHeaders,
+      timeout: 10000,
+    });
+    return { locations: resp.data.locations || [], version: resp.headers['x-version'] };
+  }
+
+  async function aplicar(tipoLocal, version) {
+    return axios.put(
+      `https://api.mercadolibre.com/user-products/${userProductId}/stock/type/${tipoLocal}`,
+      { quantity: quantidade },
+      { headers: { ...authHeaders, 'Content-Type': 'application/json', 'x-version': version }, timeout: 10000 }
+    );
+  }
+
+  try {
+    let { locations, version } = await buscarStock();
+    const localProprio = locations.find(l => l.type !== 'meli_facility');
+    const tipoLocal     = localProprio?.type || 'seller_warehouse';
+
+    try {
+      await aplicar(tipoLocal, version);
+    } catch (err) {
+      if (err.response?.status === 409) {
+        ({ locations, version } = await buscarStock());
+        await aplicar(tipoLocal, version);
+      } else {
+        throw err;
+      }
+    }
+
+    res.json({ ok: true, conta: num, ml_user_id: c.user_id || null });
+  } catch (err) {
+    const mlErr = err.response?.data;
+    console.error(`Erro ao atualizar estoque próprio (conta=${num}):`, mlErr || err.message);
+    const msg = mlErr?.message || mlErr?.error || 'Erro ao atualizar estoque próprio no Mercado Livre';
     res.status(400).json({ error: msg, detalhe: JSON.stringify(mlErr), conta: num, ml_user_id: c.user_id || null });
   }
 });
