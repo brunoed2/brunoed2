@@ -668,7 +668,8 @@ function renderizarTabela() {
   if (skuFiltro)    itens = itens.filter(i => String(i.sku).toLowerCase().includes(skuFiltro));
   if (tituloFiltro) itens = itens.filter(i => String(i.titulo).toLowerCase().includes(tituloFiltro));
   if (filtros.deposito === 'proprio') {
-    itens = itens.filter(i => i.deposito === 'self_service' || i.deposito === 'xd_drop_off');
+    // Inclui itens fulfillment que também têm estoque próprio (convivência Full + próprio)
+    itens = itens.filter(i => i.deposito === 'self_service' || i.deposito === 'xd_drop_off' || (i.estoqueProprio || 0) > 0);
   } else if (filtros.deposito !== 'todos') {
     itens = itens.filter(i => i.deposito === filtros.deposito);
   }
@@ -680,11 +681,13 @@ function renderizarTabela() {
   tbody.innerHTML = '';
 
   itens.forEach(item => {
-    const bDeposito    = BADGE_DEPOSITO[item.deposito] || 'badge-outro';
-    const bStatus      = BADGE_STATUS[item.status]     || 'badge-outro';
-    const duracao      = calcularDuracao(item.estoque, item.vendas30d);
-    const diasPausado  = calcularDiasPausado(item.status, item.pausadoDesde);
-    const temVariacoes = isProprio(item.deposito) && item.variacoes && item.variacoes.length > 0;
+    const bDeposito     = BADGE_DEPOSITO[item.deposito] || 'badge-outro';
+    const bStatus       = BADGE_STATUS[item.status]     || 'badge-outro';
+    const estoqueFull   = item.estoqueFull    ?? (item.deposito === 'fulfillment' ? item.estoque : 0);
+    const estoqueProprio = item.estoqueProprio ?? (item.deposito === 'fulfillment' ? 0 : item.estoque);
+    const duracao       = calcularDuracao(estoqueFull + estoqueProprio, item.vendas30d);
+    const diasPausado   = calcularDiasPausado(item.status, item.pausadoDesde);
+    const temVariacoes  = isProprio(item.deposito) && item.variacoes && item.variacoes.length > 0;
 
     const isFull  = item.deposito === 'fulfillment';
     const skuKey  = (item.sku && item.sku !== '—') ? String(item.sku) : `_mlb_${item.mlb}`;
@@ -699,22 +702,20 @@ function renderizarTabela() {
       : `<td class="col-num"><button class="btn-transferir" data-mlb="${item.mlb}" onclick="transferirEstoque('${item.mlb}')" title="Transferir estoque local para ML">→</button></td>`;
 
     let estoqueForaFullCell;
-    if (isFull) {
-      estoqueForaFullCell = `<td class="col-num"></td>`;
-    } else if (temVariacoes) {
+    if (temVariacoes) {
       const aberto = expandedMLBs.has(item.mlb);
       estoqueForaFullCell = `<td class="col-num"><div class="estoque-edit-wrap"><span id="estoque-total-${item.mlb}" class="${item.estoque === 0 ? 'estoque-zero' : ''}">${item.estoque}</span><button id="btn-expandir-${item.mlb}" class="btn-expandir-var" onclick="toggleVariacoes('${item.mlb}')">${aberto ? '▲' : '▼'}</button></div></td>`;
     } else {
       const localDef = skuKey && estoqueLocal[skuKey] !== undefined;
-      const diverge  = localDef && item.estoque !== estoqueLocal[skuKey];
+      const diverge  = localDef && estoqueProprio !== estoqueLocal[skuKey];
       const avisoDiv = diverge ? ` <span title="Diverge do Estoque Local" style="color:#f59e0b;font-weight:bold;cursor:default">!</span>` : '';
-      estoqueForaFullCell = `<td class="col-num ${item.estoque === 0 ? 'estoque-zero' : ''}">${item.estoque}${avisoDiv}</td>`;
+      estoqueForaFullCell = `<td class="col-num ${estoqueProprio === 0 ? 'estoque-zero' : ''}">${estoqueProprio}${avisoDiv}</td>`;
     }
 
     let estoqueFullCell;
     if (isFull) {
-      estoqueFullCell = `<td class="col-num ${item.estoque === 0 ? 'estoque-zero' : ''}">
-        ${item.estoque}
+      estoqueFullCell = `<td class="col-num ${estoqueFull === 0 ? 'estoque-zero' : ''}">
+        ${estoqueFull}
         <button class="btn-sm" onclick="sairFull('${item.mlb}')" style="font-size:10px;margin-left:5px;background:#f59e0b;color:#fff;padding:1px 6px" title="Abrir painel do ML para sair do Full">Sair Full</button>
       </td>`;
     } else {

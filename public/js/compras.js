@@ -121,7 +121,7 @@ async function carregarPrevisao() {
       const chave  = temSku ? item.sku : `_mlb_${item.mlb}`;
       if (!porSku[chave]) porSku[chave] = { sku: temSku ? item.sku : '', titulo: item.titulo, permalink: item.permalink || null, full: 0, proprio: 0, vendas30d: 0 };
       if (item.deposito === 'fulfillment') {
-        porSku[chave].full += item.estoque || 0;
+        porSku[chave].full += item.estoqueFull ?? item.estoque ?? 0;
       }
       porSku[chave].vendas30d += vendas30d[item.mlb] || 0;
     }

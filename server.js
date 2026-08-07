@@ -2408,7 +2408,7 @@ app.get('/api/ml/estoque', async (req, res) => {
       const resp  = await axios.get('https://api.mercadolibre.com/items', {
         params: {
           ids:        chunk.join(','),
-          attributes: 'id,title,permalink,seller_custom_field,available_quantity,variations,shipping,attributes,status,sub_status,price,last_updated,catalog_product_id',
+          attributes: 'id,title,permalink,seller_custom_field,available_quantity,variations,shipping,attributes,status,sub_status,price,last_updated,catalog_product_id,user_product_id',
         },
         headers: { Authorization: `Bearer ${c.access_token}` },
         timeout: 15000,
@@ -2485,6 +2485,49 @@ app.get('/api/ml/estoque', async (req, res) => {
           catalogProductId: r.body.catalog_product_id || null,
         };
       });
+
+    // Estoque Full "híbrido": hoje um anúncio fulfillment pode ter estoque
+    // simultâneo em meli_facility (Full) e no depósito do próprio vendedor
+    // (seller_warehouse/selling_address). O available_quantity do /items
+    // clássico só reflete a parte Full nesse caso, então para os anúncios
+    // fulfillment buscamos o detalhamento real em /user-products/{id}/stock.
+    const userProductIdPorMlb = new Map(
+      detalhes.filter(r => r.code === 200).map(r => [r.body.id, r.body.user_product_id])
+    );
+    const stockPorUserProduct = new Map();
+    const idsParaStock = [...new Set(
+      items
+        .filter(i => i.deposito === 'fulfillment' && userProductIdPorMlb.get(i.mlb))
+        .map(i => userProductIdPorMlb.get(i.mlb))
+    )];
+    const STOCK_CHUNK = 8;
+    for (let i = 0; i < idsParaStock.length; i += STOCK_CHUNK) {
+      const chunk = idsParaStock.slice(i, i + STOCK_CHUNK);
+      const resultados = await Promise.allSettled(chunk.map(userProductId =>
+        axios.get(`https://api.mercadolibre.com/user-products/${userProductId}/stock`, {
+          headers: { Authorization: `Bearer ${c.access_token}` },
+          timeout: 10000,
+        })
+      ));
+      resultados.forEach((r, idx) => {
+        if (r.status === 'fulfilled') stockPorUserProduct.set(chunk[idx], r.value.data);
+      });
+    }
+    for (const item of items) {
+      const stock = stockPorUserProduct.get(userProductIdPorMlb.get(item.mlb));
+      if (stock?.locations) {
+        let full = 0, proprio = 0;
+        for (const loc of stock.locations) {
+          if (loc.type === 'meli_facility') full += loc.quantity || 0;
+          else proprio += loc.quantity || 0;
+        }
+        item.estoqueFull    = full;
+        item.estoqueProprio = proprio;
+      } else {
+        item.estoqueFull    = item.deposito === 'fulfillment' ? item.estoque : 0;
+        item.estoqueProprio = item.deposito === 'fulfillment' ? 0 : item.estoque;
+      }
+    }
 
     if (pauseChanged || catalogChanged) {
       c.pause_dates    = pauseDates;
@@ -2590,24 +2633,6 @@ app.get('/api/ml/item/:mlb', async (req, res) => {
     const detail = err.response?.data?.message || err.response?.data || err.message;
     console.error(`Erro ao buscar item ${mlb}:`, detail);
     res.json({ error: detail || 'Erro ao buscar anúncio no Mercado Livre.' });
-  }
-});
-
-// DEBUG TEMPORÁRIO — investigação do estoque híbrido Full+Flex, remover depois de confirmar o formato
-app.get('/api/ml/debug-user-product-stock/:userProductId', async (req, res) => {
-  const data = loadData();
-  const num  = req.query.conta || data.conta_ativa;
-  const c    = data.contas[num] || {};
-  if (!c.access_token) return res.json({ error: 'Não conectado' });
-
-  try {
-    const resp = await axios.get(`https://api.mercadolibre.com/user-products/${req.params.userProductId}/stock`, {
-      headers: { Authorization: `Bearer ${c.access_token}` },
-      timeout: 10000,
-    });
-    res.json(resp.data);
-  } catch (err) {
-    res.json({ error: err.response?.data || err.message });
   }
 });
 
