@@ -2136,20 +2136,21 @@ async function blingEnviarNFHelper(nfId, conta) {
   throw lastErr;
 }
 
-async function blingAguardarAutorizacaoNF(nfId, token, maxMs = 60000) {
+async function blingAguardarAutorizacaoNF(nfId, token, maxMs = 120000) {
   const inicio = Date.now();
+  let nf = null;
   while (Date.now() - inicio < maxMs) {
     const r = await axios.get(`https://api.bling.com.br/Api/v3/nfe/${nfId}`, {
       headers: { Authorization: `Bearer ${token}` }, timeout: 10000,
     }).catch(() => null);
-    const sit = r?.data?.data?.situacao;
+    nf = r?.data?.data;
+    const sit = nf?.situacao;
     addLog(`[bling] aguardando NF ${nfId}: id=${sit?.id} valor="${sit?.valor}"`, 'info');
-    if (/autorizada/i.test(sit?.valor || '')) return;
+    if (/autorizada/i.test(sit?.valor || '')) return nf;
     if (/denegad|cancelad|rejeitad/i.test(sit?.valor || '')) throw new Error(`NF ${nfId} rejeitada: ${sit?.valor}`);
     await new Promise(r => setTimeout(r, 5000));
   }
-  // Timeout sem confirmar — tenta enviar para loja mesmo assim; Bling retornará erro se NF não estiver autorizada
-  addLog(`[bling] NF ${nfId} não confirmada em ${maxMs / 1000}s — tentando enviar para loja mesmo assim`, 'warn');
+  throw new Error(`NF ${nfId} não autorizada a tempo (situação atual: ${nf?.situacao?.valor || 'desconhecida'})`);
 }
 
 
@@ -2200,16 +2201,8 @@ app.post('/api/bling/shopee-super/:pedidoId', async (req, res) => {
 
     etapa = 'aguardar-autorizacao';
     const token = await getBlingToken(conta);
-    await blingAguardarAutorizacaoNF(nfId, token);
+    const nf = await blingAguardarAutorizacaoNF(nfId, token);
 
-    etapa = 'buscar-nf-autorizada';
-    const det = await axios.get(`https://api.bling.com.br/Api/v3/nfe/${nfId}`, {
-      headers: { Authorization: `Bearer ${token}` }, timeout: 10000,
-    });
-    const nf = det.data?.data;
-    if (!/autorizada/i.test(nf?.situacao?.valor || '')) {
-      throw new Error(`NF não autorizada a tempo (situação atual: ${nf?.situacao?.valor || 'desconhecida'})`);
-    }
     const orderSn = nf?.numeroPedidoLoja;
     const xmlLink = nf?.xml;
     if (!orderSn || !xmlLink) throw new Error('NF autorizada, mas sem numeroPedidoLoja ou link de XML');
