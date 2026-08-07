@@ -101,14 +101,27 @@ async function scannerBuscarPedido(qrData) {
     const resp  = await fetch(`/api/ml/pedido-por-shipment/${encodeURIComponent(sid)}`);
     const pedido = await resp.json();
 
-    if (!resp.ok || !pedido.encontrado) {
-      status.textContent = `Pedido não encontrado para o código: ${sid}`;
+    if (resp.ok && pedido.encontrado) {
+      status.textContent = '';
+      scannerMostrarResultado(pedido, sid);
+      return;
+    }
+
+    // Não achou no ML — tenta como tracking Shopee (QR das etiquetas Shopee traz o código
+    // dos Correios, ex: BR267135109340H, não um shipment ID numérico do ML)
+    const trackingBruto = qrData.trim();
+    status.textContent = `Buscando pedido Shopee ${trackingBruto}...`;
+    const respShopee  = await fetch(`/api/shopee/pedido-por-tracking/${encodeURIComponent(trackingBruto)}`);
+    const pedidoShopee = await respShopee.json();
+
+    if (!respShopee.ok || !pedidoShopee.encontrado) {
+      status.textContent = `Pedido não encontrado para o código: ${trackingBruto}`;
       scannerMostrarBtnOutro();
       return;
     }
 
     status.textContent = '';
-    scannerMostrarResultado(pedido, sid);
+    scannerMostrarResultado(pedidoShopee, pedidoShopee.shipmentId);
   } catch (err) {
     status.textContent = 'Erro ao buscar pedido: ' + err.message;
     scannerMostrarBtnOutro();

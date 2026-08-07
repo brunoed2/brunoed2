@@ -5108,6 +5108,81 @@ app.get('/api/ml/pedido-por-shipment/:id', async (req, res) => {
   res.status(404).json({ encontrado: false, erro: 'Shipment não encontrado em nenhuma conta' });
 });
 
+// Busca pedido Shopee pelo código de rastreio (usado pelo scanner de QR code —
+// as etiquetas Shopee não têm o order_sn no QR, só o tracking_number/código dos Correios)
+app.get('/api/shopee/pedido-por-tracking/:tracking', async (req, res) => {
+  const data     = loadData();
+  const tracking = String(req.params.tracking).trim().toUpperCase();
+
+  for (const num of ['1', '2']) {
+    const sp = shopeeConta(data, num);
+    if (!sp.access_token) continue;
+    try {
+      const accessToken = await getShopeeToken(data, num);
+
+      let orderSns = [];
+      for (const status of ['READY_TO_SHIP', 'PROCESSED']) {
+        const path   = '/api/v2/order/get_order_list';
+        const params = shopeeParams(path, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
+        params.order_status     = status;
+        params.page_size        = 50;
+        params.cursor           = '';
+        params.time_range_field = 'create_time';
+        params.time_from        = Math.floor(Date.now() / 1000) - 15 * 24 * 60 * 60;
+        params.time_to          = Math.floor(Date.now() / 1000);
+        const r = await axios.get(`${SHOPEE_BASE}/order/get_order_list`, { params, timeout: 15000 });
+        if (r.data.error) continue;
+        orderSns = orderSns.concat((r.data.response?.order_list || []).map(o => o.order_sn));
+      }
+      orderSns = [...new Set(orderSns)];
+      if (!orderSns.length) continue;
+
+      const pathT = '/api/v2/logistics/get_tracking_number';
+      let orderSnEncontrado = null;
+      for (let i = 0; i < orderSns.length && !orderSnEncontrado; i += 10) {
+        const lote = orderSns.slice(i, i + 10);
+        const resultados = await Promise.all(lote.map(async sn => {
+          try {
+            const paramsT = shopeeParams(pathT, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
+            paramsT.order_sn = sn;
+            const rT = await axios.get(`${SHOPEE_BASE}/logistics/get_tracking_number`, { params: paramsT, timeout: 8000 });
+            const tn = rT.data.response?.tracking_number;
+            return tn && tn.toUpperCase() === tracking ? sn : null;
+          } catch { return null; }
+        }));
+        orderSnEncontrado = resultados.find(Boolean) || null;
+      }
+      if (!orderSnEncontrado) continue;
+
+      const pathD   = '/api/v2/order/get_order_detail';
+      const paramsD = shopeeParams(pathD, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
+      paramsD.order_sn_list = orderSnEncontrado;
+      paramsD.response_optional_fields = 'buyer_username,item_list,order_status';
+      const rd = await axios.get(`${SHOPEE_BASE}/order/get_order_detail`, { params: paramsD, timeout: 15000 });
+      const o  = rd.data.response?.order_list?.[0];
+      if (!o) continue;
+
+      const itensLista = (o.item_list || []).map(i => ({
+        sku:        i.item_sku || i.model_sku || '',
+        titulo:     i.item_name || '',
+        variacao:   (i.model_name && i.model_name !== i.item_name) ? i.model_name : '',
+        quantidade: i.model_quantity_purchased || 1,
+        thumbnail:  i.image_info?.image_url || '',
+        permalink:  '',
+      }));
+      return res.json({
+        encontrado: true, fonte: 'shopee', conta: num,
+        shipmentId: o.order_sn, comprador: o.buyer_username || '—',
+        status: o.order_status, atendida: false, itensLista,
+      });
+    } catch (err) {
+      addLog(`[shopee] pedido-por-tracking conta ${num}: ${err.message}`, 'warn');
+    }
+  }
+
+  res.status(404).json({ encontrado: false, erro: 'Tracking não encontrado em nenhuma conta Shopee' });
+});
+
 app.put('/api/ml/estoque/:mlb', async (req, res) => {
   const data = loadData();
   const num  = String(req.query.conta || data.conta_ativa || '1');
