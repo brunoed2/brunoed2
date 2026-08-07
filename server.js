@@ -2139,18 +2139,27 @@ async function blingEnviarNFHelper(nfId, conta) {
 async function blingAguardarAutorizacaoNF(nfId, token, maxMs = 120000) {
   const inicio = Date.now();
   let nf = null;
+  let ultimoErro = null;
   while (Date.now() - inicio < maxMs) {
     const r = await axios.get(`https://api.bling.com.br/Api/v3/nfe/${nfId}`, {
       headers: { Authorization: `Bearer ${token}` }, timeout: 10000,
-    }).catch(() => null);
-    nf = r?.data?.data;
-    const sit = nf?.situacao;
-    addLog(`[bling] aguardando NF ${nfId}: id=${sit?.id} valor="${sit?.valor}"`, 'info');
-    if (/autorizada/i.test(sit?.valor || '')) return nf;
-    if (/denegad|cancelad|rejeitad/i.test(sit?.valor || '')) throw new Error(`NF ${nfId} rejeitada: ${sit?.valor}`);
+    }).catch(err => { ultimoErro = err; return null; });
+    if (!r) {
+      addLog(`[bling] aguardando NF ${nfId}: consulta falhou — ${ultimoErro?.response?.status || ''} ${JSON.stringify(ultimoErro?.response?.data) || ultimoErro?.message}`.slice(0, 300), 'warn');
+    } else {
+      ultimoErro = null;
+      nf = r.data?.data;
+      const sit = nf?.situacao;
+      addLog(`[bling] aguardando NF ${nfId}: id=${sit?.id} valor="${sit?.valor}"`, 'info');
+      if (/autorizada/i.test(sit?.valor || '')) return nf;
+      if (/denegad|cancelad|rejeitad/i.test(sit?.valor || '')) throw new Error(`NF ${nfId} rejeitada: ${sit?.valor}`);
+    }
     await new Promise(r => setTimeout(r, 5000));
   }
-  throw new Error(`NF ${nfId} não autorizada a tempo (situação atual: ${nf?.situacao?.valor || 'desconhecida'})`);
+  const motivo = ultimoErro
+    ? `consultas falhando (${ultimoErro?.response?.status || ultimoErro?.message})`
+    : (nf?.situacao?.valor || 'desconhecida');
+  throw new Error(`NF ${nfId} não autorizada a tempo (situação atual: ${motivo})`);
 }
 
 
