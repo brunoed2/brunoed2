@@ -5308,25 +5308,34 @@ app.put('/api/ml/estoque-proprio/:userProductId', async (req, res) => {
     return { locations: resp.data.locations || [], version: resp.headers['x-version'] };
   }
 
-  async function aplicar(tipoLocal, version) {
+  // O corpo do PUT precisa ecoar os campos que identificam a própria localização
+  // (store_id/network_node_id para seller_warehouse; nada disso para selling_address),
+  // só trocando a quantidade — mandar só { quantity } dá "locations cannot be null or empty".
+  async function aplicar(localProprio, version) {
+    const location = { quantity: quantidade };
+    if (localProprio.store_id)        location.store_id        = localProprio.store_id;
+    if (localProprio.network_node_id) location.network_node_id = localProprio.network_node_id;
     return axios.put(
-      `https://api.mercadolibre.com/user-products/${userProductId}/stock/type/${tipoLocal}`,
-      { quantity: quantidade },
+      `https://api.mercadolibre.com/user-products/${userProductId}/stock/type/${localProprio.type}`,
+      { locations: [location] },
       { headers: { ...authHeaders, 'Content-Type': 'application/json', 'x-version': version }, timeout: 10000 }
     );
   }
 
   try {
     let { locations, version } = await buscarStock();
-    const localProprio = locations.find(l => l.type !== 'meli_facility');
-    const tipoLocal     = localProprio?.type || 'seller_warehouse';
+    let localProprio = locations.find(l => l.type !== 'meli_facility');
+    if (!localProprio) {
+      return res.status(400).json({ error: 'Este anúncio não tem uma localização de estoque próprio configurada no Mercado Livre ainda.' });
+    }
 
     try {
-      await aplicar(tipoLocal, version);
+      await aplicar(localProprio, version);
     } catch (err) {
       if (err.response?.status === 409) {
         ({ locations, version } = await buscarStock());
-        await aplicar(tipoLocal, version);
+        localProprio = locations.find(l => l.type !== 'meli_facility') || localProprio;
+        await aplicar(localProprio, version);
       } else {
         throw err;
       }
