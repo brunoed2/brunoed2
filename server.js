@@ -6174,8 +6174,10 @@ async function shopeeOrganizarEnvio(orderSn, sp, accessToken) {
     const slot = addr.time_slot_list?.[0];
     if (slot?.pickup_time_id) body.pickup.pickup_time_id = slot.pickup_time_id;
   } else if (info.dropoff) {
+    // branch_list pode vir null quando a loja não precisa escolher um ponto de entrega
+    // específico (info_needed.dropoff vazio) — nesse caso só selecionar o método já basta.
     const branch = info.dropoff.branch_list?.[0];
-    if (branch?.branch_id) body.dropoff = { branch_id: branch.branch_id };
+    body.dropoff = branch?.branch_id ? { branch_id: branch.branch_id } : {};
   } else {
     body.non_integrated = {};
   }
