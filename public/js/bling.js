@@ -106,7 +106,7 @@ async function blingCarregarPedidos() {
         ? `<a href="${blingEditUrl}" target="_blank" rel="noopener" class="btn-sm" style="background:#f59e0b;color:#fff;margin-left:4px;text-decoration:none;display:inline-block" title="Pendências: ${escapeHtml(pendencias.join(' | '))}">⚠ Pendências</a>`
         : `<a href="${blingEditUrl}" target="_blank" rel="noopener" style="color:#64748b;margin-left:6px;font-size:13px;text-decoration:none" title="Editar pedido no Bling">✎</a>`;
       tr.innerHTML = `
-        <td><input type="checkbox" class="bling-check-pedido" data-id="${p.id}" data-conta="${p.conta}" data-tem-etiqueta="${p.temEtiqueta}" onchange="blingAtualizarBotaoLote()"></td>
+        <td><input type="checkbox" class="bling-check-pedido" data-id="${p.id}" data-conta="${p.conta}" data-tem-etiqueta="${p.temEtiqueta}" data-canal="${isShopee ? 'shopee' : 'ml'}" onchange="blingAtualizarBotaoLote()"></td>
         <td>${contaBadge}</td>
         <td>${escapeHtml(p.numero || String(p.id))}</td>
         <td>${escapeHtml(p.comprador || '—')}</td>
@@ -134,6 +134,8 @@ function blingToggleAll(chk) {
 function blingAtualizarBotaoLote() {
   const todos        = [...document.querySelectorAll('.bling-check-pedido:checked')];
   const comEtiqueta  = todos.filter(c => c.dataset.temEtiqueta === 'true');
+  // Shopee só tem API conectada na conta 1 — bulk não mexe em pedidos Shopee da conta 2
+  const shopeeConta1 = todos.filter(c => c.dataset.canal === 'shopee' && c.dataset.conta === '1');
 
   const btnEmitir = document.getElementById('btn-emitir-selecionadas');
   if (btnEmitir) {
@@ -145,6 +147,12 @@ function blingAtualizarBotaoLote() {
   if (btnSuper) {
     btnSuper.style.display = comEtiqueta.length > 0 ? '' : 'none';
     btnSuper.textContent   = `⚡ Super selecionadas (${comEtiqueta.length})`;
+  }
+
+  const btnShopeeSuper = document.getElementById('btn-shopee-super-selecionadas');
+  if (btnShopeeSuper) {
+    btnShopeeSuper.style.display = shopeeConta1.length > 0 ? '' : 'none';
+    btnShopeeSuper.textContent   = `⚡ Super Shopee selecionadas (${shopeeConta1.length})`;
   }
 }
 
@@ -220,6 +228,39 @@ async function blingSuperSelecionadas() {
   if (checkAll) checkAll.checked = false;
   setTimeout(() => blingCarregarPedidos(), 1500);
   blingMostrarResultadoLote('Super selecionadas', itens);
+}
+
+async function blingShopeeSuperSelecionadas() {
+  const checks = [...document.querySelectorAll('.bling-check-pedido:checked')]
+    .filter(c => c.dataset.canal === 'shopee' && c.dataset.conta === '1');
+  if (checks.length === 0) return;
+  const btn = document.getElementById('btn-shopee-super-selecionadas');
+  btn.disabled = true;
+  const itens = [];
+  for (const chk of checks) {
+    const id    = chk.dataset.id;
+    const conta = chk.dataset.conta || '1';
+    const label = chk.closest('tr')?.children[2]?.textContent?.trim() || id;
+    const btnSuper = document.querySelector(`button[data-bling-super-id="${id}"]`);
+    btn.textContent = `⚡ Super Shopee ${itens.length + 1}/${checks.length}...`;
+    if (btnSuper) { btnSuper.disabled = true; btnSuper.textContent = '⚡ Gerando...'; }
+
+    const res = await fetch(`/api/bling/shopee-super/${id}?conta=${conta}`, { method: 'POST' }).then(r => r.json()).catch(() => ({ ok: false }));
+    if (res.ok) {
+      itens.push({ label, ok: true });
+      chk.checked = false;
+      if (btnSuper) { btnSuper.textContent = '✅ Enviada'; btnSuper.style.background = '#16a34a'; }
+    } else {
+      itens.push({ label, ok: false, msg: `[${res.etapa || '?'}] ${res.erro || 'erro desconhecido'}` });
+      if (btnSuper) { btnSuper.disabled = false; btnSuper.textContent = '⚡ Super'; }
+    }
+  }
+  btn.disabled = false;
+  blingAtualizarBotaoLote();
+  const checkAll = document.getElementById('bling-check-all');
+  if (checkAll) checkAll.checked = false;
+  setTimeout(() => blingCarregarPedidos(), 1500);
+  blingMostrarResultadoLote('Super Shopee selecionadas', itens);
 }
 
 async function blingSuperEnvio(pedidoId, btn, conta) {
