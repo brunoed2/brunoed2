@@ -2593,6 +2593,24 @@ app.get('/api/ml/item/:mlb', async (req, res) => {
   }
 });
 
+// DEBUG TEMPORÁRIO — investigação do estoque híbrido Full+Flex, remover depois de confirmar o formato
+app.get('/api/ml/debug-user-product-stock/:userProductId', async (req, res) => {
+  const data = loadData();
+  const num  = req.query.conta || data.conta_ativa;
+  const c    = data.contas[num] || {};
+  if (!c.access_token) return res.json({ error: 'Não conectado' });
+
+  try {
+    const resp = await axios.get(`https://api.mercadolibre.com/user-products/${req.params.userProductId}/stock`, {
+      headers: { Authorization: `Bearer ${c.access_token}` },
+      timeout: 10000,
+    });
+    res.json(resp.data);
+  } catch (err) {
+    res.json({ error: err.response?.data || err.message });
+  }
+});
+
 app.get('/api/ml/vendas30dias', async (req, res) => {
   const data = loadData();
   const num  = req.query.conta || data.conta_ativa;
