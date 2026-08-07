@@ -387,10 +387,10 @@ async function carregarVendas() {
       const badgeShopee = v.canal === 'shopee'
         ? `<span style="background:#f97316;color:#fff;padding:1px 6px;border-radius:4px;font-size:10px;margin-left:5px;white-space:nowrap;vertical-align:middle">Shopee</span>`
         : '';
-      const precisaEnviarNf = v.canal === 'shopee' && v.invoiceValida === false;
-      const btnEtiquetaHtml = precisaEnviarNf
-        ? `<button class="btn-etiqueta" style="background:#f97316" onclick="operacoesEnviarNfShopee('${v.shipmentId}', '${v.conta}', this)">Enviar NF</button>`
-        : `<a class="btn-etiqueta" href="${hrefEtiqueta}" target="_blank">${v.acaoLabel}</a>`;
+      const btnEnviarNfHtml = v.canal === 'shopee'
+        ? `<button class="btn-etiqueta" style="background:#f97316;margin-right:4px" onclick="operacoesEnviarNfShopee('${v.shipmentId}', '${v.conta}', this)">Enviar NF</button>`
+        : '';
+      const btnEtiquetaHtml = `${btnEnviarNfHtml}<a class="btn-etiqueta" href="${hrefEtiqueta}" target="_blank">${v.acaoLabel}</a>`;
 
       tr.innerHTML = `
         <td><input type="checkbox" class="check-venda" data-shipment-id="${v.shipmentId}" data-conta="${v.conta}" onchange="atualizarBotaoSelecionadas()"></td>
