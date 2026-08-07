@@ -5906,6 +5906,35 @@ function lerZipViaDiretorioCentral(buf) {
   return entradas;
 }
 
+// Organiza o envio (arrange shipment) de um pedido Shopee que ainda não tem tracking_number —
+// pré-requisito pra gerar etiqueta. Usa a config de pickup/dropoff sugerida pela própria Shopee.
+async function shopeeOrganizarEnvio(orderSn, sp, accessToken) {
+  const pathP   = '/api/v2/logistics/get_shipping_parameter';
+  const paramsP = shopeeParams(pathP, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
+  paramsP.order_sn = orderSn;
+  const rP = await axios.get(`${SHOPEE_BASE}/logistics/get_shipping_parameter`, { params: paramsP, timeout: 10000 });
+  if (rP.data.error) throw new Error(rP.data.message || rP.data.error);
+  const info = rP.data.response || {};
+
+  const body = { order_sn: orderSn };
+  if (info.pickup) {
+    const addr = info.pickup.address_list?.[0];
+    if (!addr) throw new Error('Organizar envio: nenhum endereço de coleta disponível na Shopee');
+    body.pickup = { address_id: addr.address_id };
+    const slot = addr.time_slot_list?.[0];
+    if (slot?.pickup_time_id) body.pickup.pickup_time_id = slot.pickup_time_id;
+  } else if (info.dropoff) {
+    const branch = info.dropoff.branch_list?.[0];
+    if (branch?.branch_id) body.dropoff = { branch_id: branch.branch_id };
+  }
+
+  const pathS   = '/api/v2/logistics/ship_order';
+  const paramsS = shopeeParams(pathS, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
+  const rS = await axios.post(`${SHOPEE_BASE}/logistics/ship_order`, body, { params: paramsS, timeout: 15000 });
+  if (rS.data.error) throw new Error(rS.data.message || rS.data.error);
+  addLog(`[shopee] ship_order ${orderSn}: envio organizado automaticamente`, 'ok');
+}
+
 // Gera a etiqueta de transporte da Shopee (tracking → doc type → create → download → ZPL→PDF)
 async function shopeeGerarEtiquetaPdf(orderSn, conta) {
   const num  = String(conta || '1');
@@ -5917,9 +5946,17 @@ async function shopeeGerarEtiquetaPdf(orderSn, conta) {
   const pathT   = '/api/v2/logistics/get_tracking_number';
   const paramsT = shopeeParams(pathT, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
   paramsT.order_sn = orderSn;
-  const rT = await axios.get(`${SHOPEE_BASE}/logistics/get_tracking_number`, { params: paramsT, timeout: 10000 });
-  const trackingNumber = rT.data.response?.tracking_number;
-  if (!trackingNumber) throw new Error(rT.data.message || 'Sem tracking_number — o pedido já foi despachado (\"Organizar Envio\") na Shopee?');
+  let rT = await axios.get(`${SHOPEE_BASE}/logistics/get_tracking_number`, { params: paramsT, timeout: 10000 });
+  let trackingNumber = rT.data.response?.tracking_number;
+
+  if (!trackingNumber) {
+    addLog(`[shopee] etiqueta ${orderSn}: sem tracking_number, tentando organizar envio automaticamente`, 'info');
+    await shopeeOrganizarEnvio(orderSn, sp, accessToken);
+    await new Promise(r => setTimeout(r, 1500));
+    rT = await axios.get(`${SHOPEE_BASE}/logistics/get_tracking_number`, { params: paramsT, timeout: 10000 });
+    trackingNumber = rT.data.response?.tracking_number;
+    if (!trackingNumber) throw new Error(rT.data.message || 'Sem tracking_number mesmo após organizar envio automaticamente');
+  }
 
   const itemPedido = { order_sn: orderSn, tracking_number: trackingNumber };
 
