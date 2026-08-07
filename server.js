@@ -2191,6 +2191,73 @@ app.post('/api/bling/enviar-nf/:notaId', async (req, res) => {
   }
 });
 
+// Baixa o XML de uma NF já autorizada e sobe pra Shopee (upload_invoice_doc, file_type=4=XML).
+// Reusado pelo Shopee Super (fluxo completo) e pelo reenvio manual de NF já autorizada.
+async function shopeeEnviarNotaHelper(nf, conta) {
+  const orderSn = nf?.numeroPedidoLoja;
+  const xmlLink = nf?.xml;
+  if (!orderSn || !xmlLink) throw new Error('NF autorizada, mas sem numeroPedidoLoja ou link de XML');
+
+  const xmlResp = await axios.get(xmlLink, { responseType: 'arraybuffer', timeout: 20000 });
+
+  const dataApp = loadData();
+  const sp = shopeeConta(dataApp, conta);
+  if (!sp.access_token) throw new Error(`Shopee (conta ${conta}) não conectada — configure em Configurações → Shopee`);
+  const accessToken = await getShopeeToken(dataApp, conta);
+  const pathUp   = '/api/v2/order/upload_invoice_doc';
+  const paramsUp = shopeeParams(pathUp, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
+  const FormDataNode = require('form-data');
+  const form = new FormDataNode();
+  form.append('order_sn', orderSn);
+  form.append('file_type', '4');
+  form.append('file', Buffer.from(xmlResp.data), { filename: 'nfe.xml', contentType: 'text/xml' });
+  const rUp = await axios.post(`${SHOPEE_BASE}/order/upload_invoice_doc`, form, { params: paramsUp, headers: form.getHeaders(), timeout: 30000 });
+  if (rUp.data.error) throw new Error(`Shopee recusou a NF: ${rUp.data.message || rUp.data.error}`);
+  return orderSn;
+}
+
+// Procura, entre as NFs autorizadas mais recentes do Bling, a que está vinculada a um
+// order_sn específico da Shopee (numeroPedidoLoja só vem no detalhe, não na listagem —
+// por isso busca sequencial, mais recente primeiro, parando assim que encontrar).
+async function blingBuscarNfPorOrderSn(conta, orderSn, maxPaginas = 4) {
+  const token = await getBlingToken(conta);
+  for (let pagina = 1; pagina <= maxPaginas; pagina++) {
+    const resp = await axios.get('https://api.bling.com.br/Api/v3/nfe', {
+      headers: { Authorization: `Bearer ${token}` },
+      params: { pagina, limite: 50, situacao: 5 },
+      timeout: 15000,
+    });
+    const lista = resp.data?.data || [];
+    if (!lista.length) break;
+    for (const nfResumo of lista) {
+      const det = await axios.get(`https://api.bling.com.br/Api/v3/nfe/${nfResumo.id}`, {
+        headers: { Authorization: `Bearer ${token}` }, timeout: 10000,
+      }).then(r => r.data?.data || null).catch(() => null);
+      if (det?.numeroPedidoLoja === orderSn) return det;
+      await new Promise(r => setTimeout(r, 300));
+    }
+  }
+  return null;
+}
+
+// Reenvia pra Shopee a NF de um pedido cuja nota já foi autorizada no Bling mas não chegou
+// a ser enviada (ex: Shopee Super travou numa etapa anterior, mas a NF em si saiu certinha).
+app.post('/api/shopee/enviar-nf-autorizada/:orderSn', async (req, res) => {
+  const conta   = String(req.query.conta || '1');
+  const orderSn = req.params.orderSn;
+  try {
+    addLog(`[shopee] enviar-nf-autorizada ${orderSn} conta ${conta}: buscando NF autorizada no Bling`, 'info');
+    const nf = await blingBuscarNfPorOrderSn(conta, orderSn);
+    if (!nf) return res.json({ ok: false, erro: `Nenhuma NF autorizada encontrada no Bling pra o pedido ${orderSn}` });
+    await shopeeEnviarNotaHelper(nf, conta);
+    addLog(`[shopee] enviar-nf-autorizada ${orderSn}: enviada com sucesso (NF ${nf.id})`, 'ok');
+    return res.json({ ok: true, nfId: nf.id });
+  } catch (err) {
+    addLog(`[shopee] enviar-nf-autorizada ${orderSn}: ${err.message}`, 'warn');
+    return res.json({ ok: false, erro: err.message });
+  }
+});
+
 // ── Bling: Shopee Super — gera NF + SEFAZ + aguarda autorização + envia XML pra Shopee ──
 
 app.post('/api/bling/shopee-super/:pedidoId', async (req, res) => {
@@ -2212,27 +2279,8 @@ app.post('/api/bling/shopee-super/:pedidoId', async (req, res) => {
     const token = await getBlingToken(conta);
     const nf = await blingAguardarAutorizacaoNF(nfId, token);
 
-    const orderSn = nf?.numeroPedidoLoja;
-    const xmlLink = nf?.xml;
-    if (!orderSn || !xmlLink) throw new Error('NF autorizada, mas sem numeroPedidoLoja ou link de XML');
-
-    etapa = 'baixar-xml';
-    const xmlResp = await axios.get(xmlLink, { responseType: 'arraybuffer', timeout: 20000 });
-
     etapa = 'enviar-shopee';
-    const dataApp = loadData();
-    const sp = shopeeConta(dataApp, conta);
-    if (!sp.access_token) throw new Error(`Shopee (conta ${conta}) não conectada — configure em Configurações → Shopee`);
-    const accessToken = await getShopeeToken(dataApp, conta);
-    const pathUp   = '/api/v2/order/upload_invoice_doc';
-    const paramsUp = shopeeParams(pathUp, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
-    const FormDataNode = require('form-data');
-    const form = new FormDataNode();
-    form.append('order_sn', orderSn);
-    form.append('file_type', '4');
-    form.append('file', Buffer.from(xmlResp.data), { filename: 'nfe.xml', contentType: 'text/xml' });
-    const rUp = await axios.post(`${SHOPEE_BASE}/order/upload_invoice_doc`, form, { params: paramsUp, headers: form.getHeaders(), timeout: 30000 });
-    if (rUp.data.error) throw new Error(`Shopee recusou a NF: ${rUp.data.message || rUp.data.error}`);
+    const orderSn = await shopeeEnviarNotaHelper(nf, conta);
 
     addLog(`[bling] shopee-super pedido ${req.params.pedidoId}: NF ${nfId} autorizada e enviada pra Shopee (pedido ${orderSn})`, 'ok');
     return res.json({ ok: true, nfId, orderSn });
@@ -6039,26 +6087,30 @@ app.get('/api/shopee/vendas-etiquetas', async (req, res) => {
     const STATUS_LABEL = { READY_TO_SHIP: 'Pronto p/ envio', PROCESSED: 'Processado' };
     const vendas = orderSns
       .map(sn => detalhesPorSn[sn])
-      .filter(o => o && o.invoice_data?.status === 'valid') // só pedidos com NF já aceita pela Shopee
-      .map(o => ({
-        shipmentId: o.order_sn,
-        orderId:    o.order_sn,
-        comprador:  o.buyer_username || '—',
-        conta:      num,
-        canal:      'shopee',
-        status:     o.order_status,
-        statusLabel: STATUS_LABEL[o.order_status] || o.order_status,
-        acaoLabel:  'Baixar',
-        atendida:   false,
-        itensLista: (o.item_list || []).map(i => ({
-          sku:        i.item_sku || i.model_sku || '',
-          titulo:     i.item_name || '',
-          variacao:   (i.model_name && i.model_name !== i.item_name) ? i.model_name : '',
-          quantidade: i.model_quantity_purchased || 1,
-          thumbnail:  i.image_info?.image_url || '',
-          permalink:  '',
-        })),
-      }));
+      .filter(Boolean)
+      .map(o => {
+        const invoiceValida = o.invoice_data?.status === 'valid';
+        return {
+          shipmentId: o.order_sn,
+          orderId:    o.order_sn,
+          comprador:  o.buyer_username || '—',
+          conta:      num,
+          canal:      'shopee',
+          status:     o.order_status,
+          statusLabel: STATUS_LABEL[o.order_status] || o.order_status,
+          acaoLabel:  invoiceValida ? 'Baixar' : 'Enviar NF',
+          invoiceValida,
+          atendida:   false,
+          itensLista: (o.item_list || []).map(i => ({
+            sku:        i.item_sku || i.model_sku || '',
+            titulo:     i.item_name || '',
+            variacao:   (i.model_name && i.model_name !== i.item_name) ? i.model_name : '',
+            quantidade: i.model_quantity_purchased || 1,
+            thumbnail:  i.image_info?.image_url || '',
+            permalink:  '',
+          })),
+        };
+      });
     res.json({ vendas });
   } catch (err) {
     res.json({ error: err.message });

@@ -310,6 +310,26 @@ function filtrarPorSku(tipo, sku) {
   }
 }
 
+async function operacoesEnviarNfShopee(orderSn, conta, btn) {
+  btn.disabled    = true;
+  btn.textContent = 'Enviando...';
+  try {
+    const res = await apiFetch(`/api/shopee/enviar-nf-autorizada/${orderSn}?conta=${conta}`, { method: 'POST' });
+    if (res.ok) {
+      btn.textContent = 'NF enviada!';
+      setTimeout(() => carregarVendas(), 1200);
+    } else {
+      btn.disabled    = false;
+      btn.textContent = 'Enviar NF';
+      alert('Erro ao enviar NF pra Shopee:\n' + (res.erro || 'Sem detalhe'));
+    }
+  } catch (err) {
+    btn.disabled    = false;
+    btn.textContent = 'Enviar NF';
+    alert('Erro de rede: ' + err.message);
+  }
+}
+
 async function carregarVendas() {
   const gen     = contaGen;
   const loading = document.getElementById('vendas-loading');
@@ -367,6 +387,10 @@ async function carregarVendas() {
       const badgeShopee = v.canal === 'shopee'
         ? `<span style="background:#f97316;color:#fff;padding:1px 6px;border-radius:4px;font-size:10px;margin-left:5px;white-space:nowrap;vertical-align:middle">Shopee</span>`
         : '';
+      const precisaEnviarNf = v.canal === 'shopee' && v.invoiceValida === false;
+      const btnEtiquetaHtml = precisaEnviarNf
+        ? `<button class="btn-etiqueta" style="background:#f97316" onclick="operacoesEnviarNfShopee('${v.shipmentId}', '${v.conta}', this)">Enviar NF</button>`
+        : `<a class="btn-etiqueta" href="${hrefEtiqueta}" target="_blank">${v.acaoLabel}</a>`;
 
       tr.innerHTML = `
         <td><input type="checkbox" class="check-venda" data-shipment-id="${v.shipmentId}" data-conta="${v.conta}" onchange="atualizarBotaoSelecionadas()"></td>
@@ -377,7 +401,7 @@ async function carregarVendas() {
         <td class="td-sku">${item0.sku || '—'}</td>
         <td class="td-titulo" title="${item0.titulo || ''}${item0.variacao ? ` (${item0.variacao})` : ''}">${item0.titulo || '—'}${item0.variacao ? `<br><span class="venda-variacao">${item0.variacao}</span>` : ''}</td>
         <td><span class="badge-deposito ${bStatus}">${v.statusLabel}</span></td>
-        <td><a class="btn-etiqueta" href="${hrefEtiqueta}" target="_blank">${v.acaoLabel}</a></td>
+        <td>${btnEtiquetaHtml}</td>
         <td><button class="${flagClass}" data-sid="${v.shipmentId}" title="${flagTitle}" onclick="toggleFlag('${v.shipmentId}', this)">✔</button></td>
       `;
       tbody.appendChild(tr);
