@@ -6,7 +6,7 @@ let lucroConfig       = { taxa_imposto: 0, taxa_imposto_por_mes: {}, frete_medio
 let lucroVendasRaw    = []; // dados brutos da API (sem custos/imposto aplicados)
 let lucroCarregado    = false; // evita recarregar ao trocar de aba sem trocar conta
 
-// Shopee — bloco separado do ML, mesmo período de data, sem conceito de "conta 1/2"
+// Shopee — bloco separado do ML, mesmo período de data e mesma conta ativa (lucroContaAtual())
 let lucroShopeeConfig    = { taxa_imposto: 0, taxa_imposto_por_mes: {}, custos: {}, custos_historico: {} };
 let lucroShopeeVendasRaw = [];
 let lucroShopeeCarregado = false;
@@ -134,7 +134,7 @@ async function lucroSalvarCusto(input, btn) {
 
 async function lucroShopeeCarregarConfig() {
   try {
-    const cfg = await fetch('/api/lucro/config-shopee').then(r => r.json());
+    const cfg = await fetch(`/api/lucro/config-shopee?conta=${lucroContaAtual()}`).then(r => r.json());
     lucroShopeeConfig = { taxa_imposto: 0, taxa_imposto_por_mes: {}, custos: {}, custos_historico: {}, ...cfg };
     if (lucroShopeeVendasRaw.length) lucroRecalcularERenderizar();
   } catch {}
@@ -150,7 +150,7 @@ async function lucroShopeeSalvarCusto(input, btn) {
     const r = await fetch('/api/lucro/custo-shopee', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ item_id: itemId, custo, desde }),
+      body:    JSON.stringify({ item_id: itemId, custo, desde, conta: lucroContaAtual() }),
     }).then(r => r.json());
     lucroShopeeConfig.custos_historico = lucroShopeeConfig.custos_historico || {};
     if (r.custos_historico) lucroShopeeConfig.custos_historico[itemId] = r.custos_historico;
@@ -683,7 +683,7 @@ async function lucroShopeeCarregarVendas() {
   try {
     const de  = document.getElementById('lucro-data-de')?.value  || '';
     const ate = document.getElementById('lucro-data-ate')?.value || '';
-    const qs  = new URLSearchParams({ date_from: de, date_to: ate });
+    const qs  = new URLSearchParams({ date_from: de, date_to: ate, conta: lucroContaAtual() });
     const d = await fetch(`/api/lucro/vendas-shopee?${qs}`).then(r => r.json());
     if (loading) loading.style.display = 'none';
     if (d.error) {
@@ -1186,7 +1186,9 @@ document.addEventListener('contaMudou', () => {
   const aba = document.getElementById('tab-lucro');
   if (aba && aba.classList.contains('active')) {
     lucroCarregado = false;
+    lucroShopeeCarregado = false;
     lucroCarregarConfig().then(() => lucroCarregarVendas());
+    lucroShopeeCarregarConfig().then(() => lucroShopeeCarregarVendas());
   }
 });
 

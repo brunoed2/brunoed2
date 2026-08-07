@@ -134,8 +134,7 @@ function blingToggleAll(chk) {
 function blingAtualizarBotaoLote() {
   const todos        = [...document.querySelectorAll('.bling-check-pedido:checked')];
   const comEtiqueta  = todos.filter(c => c.dataset.temEtiqueta === 'true');
-  // Shopee só tem API conectada na conta 1 — bulk não mexe em pedidos Shopee da conta 2
-  const shopeeConta1 = todos.filter(c => c.dataset.canal === 'shopee' && c.dataset.conta === '1');
+  const shopeeSel    = todos.filter(c => c.dataset.canal === 'shopee');
 
   const btnEmitir = document.getElementById('btn-emitir-selecionadas');
   if (btnEmitir) {
@@ -151,8 +150,8 @@ function blingAtualizarBotaoLote() {
 
   const btnShopeeSuper = document.getElementById('btn-shopee-super-selecionadas');
   if (btnShopeeSuper) {
-    btnShopeeSuper.style.display = shopeeConta1.length > 0 ? '' : 'none';
-    btnShopeeSuper.textContent   = `⚡ Super Shopee selecionadas (${shopeeConta1.length})`;
+    btnShopeeSuper.style.display = shopeeSel.length > 0 ? '' : 'none';
+    btnShopeeSuper.textContent   = `⚡ Super Shopee selecionadas (${shopeeSel.length})`;
   }
 }
 
@@ -232,7 +231,7 @@ async function blingSuperSelecionadas() {
 
 async function blingShopeeSuperSelecionadas() {
   const checks = [...document.querySelectorAll('.bling-check-pedido:checked')]
-    .filter(c => c.dataset.canal === 'shopee' && c.dataset.conta === '1');
+    .filter(c => c.dataset.canal === 'shopee');
   if (checks.length === 0) return;
   const btn = document.getElementById('btn-shopee-super-selecionadas');
   btn.disabled = true;

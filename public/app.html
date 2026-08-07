@@ -1005,13 +1005,18 @@
 
         <!-- Sub-aba: Shopee -->
         <div id="subtab-shopee" style="display:none">
+          <div style="display:flex;gap:10px;margin-bottom:20px">
+            <button class="btn-primary" id="shopee-cfg-tab-1" onclick="shopeeAbrirConfigConta('1')" style="flex:1">Conta 1</button>
+            <button class="btn-secondary" id="shopee-cfg-tab-2" onclick="shopeeAbrirConfigConta('2')" style="flex:1">Conta 2</button>
+          </div>
+
           <div class="status-bar" id="shopee-status-bar">
             <span class="dot" id="shopee-status-dot"></span>
             <span id="shopee-status-txt">Verificando conexão...</span>
           </div>
 
           <div class="card">
-            <h2>Credenciais — Shopee Open Platform</h2>
+            <h2 id="shopee-cfg-titulo">Credenciais — Conta 1</h2>
             <p class="card-desc">
               Obtenha Partner ID e Partner Key em
               <a href="https://open.shopee.com/" target="_blank">open.shopee.com</a> (aplicativo aprovado no programa de parceiros).
@@ -1530,17 +1535,17 @@
     </div>
   </div>
 
-  <script src="/js/lucro.js"></script>
-  <script src="/js/app-v2.js?v=3"></script>
-  <script src="/js/operacoes.js?v=3"></script>
-  <script src="/js/shopee.js?v=1"></script>
-  <script src="/js/conexao.js"></script>
+  <script src="/js/lucro.js?v=2"></script>
+  <script src="/js/app-v2.js?v=4"></script>
+  <script src="/js/operacoes.js?v=4"></script>
+  <script src="/js/shopee.js?v=2"></script>
+  <script src="/js/conexao.js?v=2"></script>
   <script src="/js/notificacoes-central.js?v=1"></script>
   <script src="/js/contas-pagar.js?v=1"></script>
   <script src="/js/contas-receber.js?v=1"></script>
   <script src="/js/backup.js?v=1"></script>
   <script src="/js/promocoes.js?v=9"></script>
-  <script src="/js/bling.js?v=2"></script>
+  <script src="/js/bling.js?v=3"></script>
   <script src="/js/fiscal.js?v=1"></script>
   <script src="/js/compras.js?v=1"></script>
   <script src="/js/calculadora.js"></script>
@@ -1870,6 +1875,6 @@
     </div>
   </div>
 
-  <div id="version-badge">v757</div>
+  <div id="version-badge">v758</div>
 </body>
 </html>

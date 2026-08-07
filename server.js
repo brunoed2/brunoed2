@@ -188,7 +188,51 @@ function loadData() {
   raw.pessoal.categorias  = raw.pessoal.categorias  || ['Moradia','Alimentação','Saúde','Transporte','Lazer','Educação','Salário','Freelance','Investimento','Outros'];
   raw.pessoal.recorrentes = raw.pessoal.recorrentes || [];
   raw.pessoal.lancamentos = raw.pessoal.lancamentos || {};
+
+  // Migração Shopee: de loja única (data.shopee) para multi-conta (data.shopee_contas['1'/'2']),
+  // preservando a conexão já existente na conta 1 sem precisar reconectar.
+  if (!raw.shopee_contas) {
+    raw.shopee_contas = { '1': raw.shopee || {}, '2': {} };
+  }
+  raw.shopee_contas['1'] = raw.shopee_contas['1'] || {};
+  raw.shopee_contas['2'] = raw.shopee_contas['2'] || {};
+  if (!raw.lucro_shopee_contas) {
+    raw.lucro_shopee_contas = { '1': raw.lucro_shopee || {}, '2': {} };
+  }
+  raw.lucro_shopee_contas['1'] = raw.lucro_shopee_contas['1'] || {};
+  raw.lucro_shopee_contas['2'] = raw.lucro_shopee_contas['2'] || {};
+  if (!raw.shopee_boost_contas) {
+    raw.shopee_boost_contas = {
+      '1': { ordem: raw.shopee_boost_ordem || [], cursor: raw.shopee_boost_cursor || 0 },
+      '2': { ordem: [], cursor: 0 },
+    };
+  }
+  raw.shopee_boost_contas['1'] = raw.shopee_boost_contas['1'] || { ordem: [], cursor: 0 };
+  raw.shopee_boost_contas['2'] = raw.shopee_boost_contas['2'] || { ordem: [], cursor: 0 };
+
   return raw;
+}
+
+// Retorna (criando se preciso) o sub-objeto de credenciais Shopee da conta indicada
+function shopeeConta(data, num) {
+  num = String(num || '1');
+  data.shopee_contas = data.shopee_contas || { '1': {}, '2': {} };
+  data.shopee_contas[num] = data.shopee_contas[num] || {};
+  return data.shopee_contas[num];
+}
+
+function lucroShopeeConta(data, num) {
+  num = String(num || '1');
+  data.lucro_shopee_contas = data.lucro_shopee_contas || { '1': {}, '2': {} };
+  data.lucro_shopee_contas[num] = data.lucro_shopee_contas[num] || {};
+  return data.lucro_shopee_contas[num];
+}
+
+function shopeeBoostConta(data, num) {
+  num = String(num || '1');
+  data.shopee_boost_contas = data.shopee_boost_contas || { '1': { ordem: [], cursor: 0 }, '2': { ordem: [], cursor: 0 } };
+  data.shopee_boost_contas[num] = data.shopee_boost_contas[num] || { ordem: [], cursor: 0 };
+  return data.shopee_boost_contas[num];
 }
 
 function saveData(data) {
@@ -2003,16 +2047,17 @@ app.post('/api/bling/enviar-marketplace/:nfId', async (req, res) => {
 // O botão "Enviar dados para Loja Virtual" do Bling usa XAJAX interno (requer sessão browser).
 // Replicamos chamando a API pública da Shopee com os dados da NF.
 app.post('/api/shopee/enviar-nf', async (req, res) => {
-  const { orderSn, chaveAcesso, nfNumero } = req.body;
+  const { orderSn, chaveAcesso, nfNumero, conta } = req.body;
+  const num = String(conta || '1');
   if (!orderSn || !chaveAcesso) return res.json({ ok: false, erro: 'orderSn e chaveAcesso obrigatórios' });
 
   const data = loadData();
-  const sp   = data.shopee || {};
+  const sp   = shopeeConta(data, num);
   if (!sp.access_token) return res.json({ ok: false, erro: 'Shopee não conectada — use a opção via Bling situação 6' });
 
   let accessToken;
   try {
-    accessToken = await getShopeeToken(data);
+    accessToken = await getShopeeToken(data, num);
   } catch (err) {
     return res.json({ ok: false, erro: err.message });
   }
@@ -2174,9 +2219,9 @@ app.post('/api/bling/shopee-super/:pedidoId', async (req, res) => {
 
     etapa = 'enviar-shopee';
     const dataApp = loadData();
-    const sp = dataApp.shopee || {};
-    if (!sp.access_token) throw new Error('Shopee não conectada — configure em Configurações → Shopee');
-    const accessToken = await getShopeeToken(dataApp);
+    const sp = shopeeConta(dataApp, conta);
+    if (!sp.access_token) throw new Error(`Shopee (conta ${conta}) não conectada — configure em Configurações → Shopee`);
+    const accessToken = await getShopeeToken(dataApp, conta);
     const pathUp   = '/api/v2/order/upload_invoice_doc';
     const paramsUp = shopeeParams(pathUp, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
     const FormDataNode = require('form-data');
@@ -5174,7 +5219,7 @@ function shopeeParams(path, partnerKey, partnerId, accessToken, shopId) {
 
 app.get('/api/shopee/config', (req, res) => {
   const data = loadData();
-  const sp   = data.shopee || {};
+  const sp   = shopeeConta(data, req.query.conta);
   const key  = sp.partner_key || '';
   res.json({
     partner_id: sp.partner_id || '',
@@ -5186,21 +5231,24 @@ app.get('/api/shopee/config', (req, res) => {
 });
 
 app.post('/api/shopee/config', (req, res) => {
-  const { partner_id, partner_key } = req.body;
+  const { partner_id, partner_key, conta } = req.body;
   const data = loadData();
-  if (!data.shopee) data.shopee = {};
-  if (partner_id  !== undefined) data.shopee.partner_id  = String(partner_id).trim();
-  if (partner_key !== undefined) data.shopee.partner_key = String(partner_key).trim();
+  const sp = shopeeConta(data, conta);
+  if (partner_id  !== undefined) sp.partner_id  = String(partner_id).trim();
+  if (partner_key !== undefined) sp.partner_key = String(partner_key).trim();
   saveData(data);
   res.json({ ok: true });
 });
 
 app.get('/api/shopee/auth', (req, res) => {
+  const num  = String(req.query.conta || '1');
   const data = loadData();
-  const sp   = data.shopee || {};
+  const sp   = shopeeConta(data, num);
   if (!sp.partner_id || !sp.partner_key) return res.redirect('/app.html?tab=configuracoes&shopee_error=sem_credenciais');
   const proto    = req.get('x-forwarded-proto') || req.protocol;
-  const callback = `${proto}://${req.get('host')}/api/shopee/callback`;
+  // A conta vai embutida na própria URL de callback (não no "state") — mais confiável,
+  // já que nada garante que a Shopee ecoa de volta um "state" arbitrário nesse endpoint.
+  const callback = `${proto}://${req.get('host')}/api/shopee/callback?conta=${num}`;
   const timestamp = Math.floor(Date.now() / 1000);
   const path = '/api/v2/shop/auth_partner';
   const sign = shopeeSign(sp.partner_id, path, timestamp, sp.partner_key);
@@ -5212,9 +5260,10 @@ app.get('/api/shopee/auth', (req, res) => {
 
 app.get('/api/shopee/callback', async (req, res) => {
   const { code, shop_id, error } = req.query;
+  const num = String(req.query.conta || '1');
   if (error || !code || !shop_id) return res.redirect('/app.html?tab=configuracoes&shopee_error=auth_cancelado');
   const data = loadData();
-  const sp   = data.shopee || {};
+  const sp   = shopeeConta(data, num);
   if (!sp.partner_id || !sp.partner_key) return res.redirect('/app.html?tab=configuracoes&shopee_error=sem_credenciais');
   try {
     const path      = '/api/v2/auth/token/get';
@@ -5225,20 +5274,21 @@ app.get('/api/shopee/callback', async (req, res) => {
     }, { params: { partner_id: Number(sp.partner_id), timestamp, sign }, timeout: 10000 });
     const { access_token, refresh_token, expire_in } = r.data;
     if (!access_token) throw new Error(JSON.stringify(r.data));
-    data.shopee = { ...sp, shop_id: String(shop_id), access_token, refresh_token, expires_at: Date.now() + ((expire_in || 14400) - 300) * 1000, conexao_alerta_enviado: false };
+    data.shopee_contas[num] = { ...sp, shop_id: String(shop_id), access_token, refresh_token, expires_at: Date.now() + ((expire_in || 14400) - 300) * 1000, conexao_alerta_enviado: false };
     saveData(data);
-    addLog(`Shopee: conectado — shop_id ${shop_id}`, 'ok');
-    res.redirect('/app.html?tab=configuracoes&shopee_ok=1');
+    addLog(`Shopee: conta ${num} conectada — shop_id ${shop_id}`, 'ok');
+    res.redirect(`/app.html?tab=configuracoes&shopee_ok=1&shopee_conta=${num}`);
   } catch (err) {
     const detalhe = JSON.stringify(err.response?.data || err.message);
-    addLog(`Shopee callback erro: ${detalhe}`, 'warn');
+    addLog(`Shopee callback erro (conta ${num}): ${detalhe}`, 'warn');
     res.redirect(`/app.html?tab=configuracoes&shopee_error=${encodeURIComponent(detalhe)}`);
   }
 });
 
 // Renova o access_token da Shopee usando o refresh_token salvo
-async function refreshShopeeToken(data) {
-  const sp = data.shopee || {};
+async function refreshShopeeToken(data, num) {
+  num = String(num || '1');
+  const sp = shopeeConta(data, num);
   if (!sp.partner_id || !sp.partner_key || !sp.refresh_token || !sp.shop_id) {
     throw new Error('Credenciais Shopee insuficientes para refresh');
   }
@@ -5253,56 +5303,60 @@ async function refreshShopeeToken(data) {
       partner_id:    Number(sp.partner_id),
     }, { params: { partner_id: Number(sp.partner_id), timestamp, sign }, timeout: 10000 });
   } catch (err) {
-    avisarShopeeConexaoCaida(data);
+    avisarShopeeConexaoCaida(data, num);
     throw err;
   }
   const { access_token, refresh_token, expire_in, error: apiErr } = r.data;
   if (!access_token || apiErr) {
-    avisarShopeeConexaoCaida(data);
+    avisarShopeeConexaoCaida(data, num);
     throw new Error(JSON.stringify(r.data));
   }
-  data.shopee.access_token  = access_token;
-  data.shopee.refresh_token = refresh_token;
-  data.shopee.expires_at    = Date.now() + ((expire_in || 14400) - 300) * 1000;
-  data.shopee.conexao_alerta_enviado = false;
+  sp.access_token  = access_token;
+  sp.refresh_token = refresh_token;
+  sp.expires_at    = Date.now() + ((expire_in || 14400) - 300) * 1000;
+  sp.conexao_alerta_enviado = false;
   saveData(data);
-  addLog('🔄 Token Shopee renovado automaticamente', 'ok');
-  return data.shopee;
+  addLog(`🔄 Token Shopee (conta ${num}) renovado automaticamente`, 'ok');
+  return sp;
 }
 
 // Retorna o access_token válido da Shopee, renovando automaticamente se necessário
-async function getShopeeToken(data) {
-  const sp = data.shopee || {};
+async function getShopeeToken(data, num) {
+  num = String(num || '1');
+  const sp = shopeeConta(data, num);
   if (!sp.access_token) throw new Error('Shopee não conectada');
   const expira = sp.expires_at || 0;
   if (!expira || Date.now() < expira) return sp.access_token;
   if (!sp.refresh_token) {
-    avisarShopeeConexaoCaida(data);
+    avisarShopeeConexaoCaida(data, num);
     throw new Error('Token Shopee expirado e sem refresh_token. Reconecte a loja.');
   }
-  const renovado = await refreshShopeeToken(data);
+  const renovado = await refreshShopeeToken(data, num);
   return renovado.access_token;
 }
 
-function avisarShopeeConexaoCaida(data) {
-  const sp = data.shopee || {};
+function avisarShopeeConexaoCaida(data, num) {
+  num = String(num || '1');
+  const sp = shopeeConta(data, num);
   if (!sp.access_token || sp.conexao_alerta_enviado) return;
-  data.shopee.conexao_alerta_enviado = true;
+  sp.conexao_alerta_enviado = true;
   saveData(data);
-  notificar('🔌 <b>Conexão Shopee perdida</b>\n\nO token da Shopee expirou e não foi possível renovar. Reconecte a loja no painel.', 'conexao').catch(() => {});
+  notificar(`🔌 <b>Conexão Shopee perdida (conta ${num})</b>\n\nO token da Shopee expirou e não foi possível renovar. Reconecte a loja no painel.`, 'conexao').catch(() => {});
 }
 
 // Renova o token Shopee na inicialização, se necessário
 (async () => {
   try {
     const data = loadData();
-    const sp = data.shopee || {};
-    if (sp.refresh_token && Date.now() >= (sp.expires_at || 0)) {
-      try {
-        await refreshShopeeToken(data);
-        console.log('[init] Token Shopee renovado na inicialização.');
-      } catch (e) {
-        console.warn('[init] Falha ao renovar token Shopee:', e.message);
+    for (const num of ['1', '2']) {
+      const sp = shopeeConta(data, num);
+      if (sp.refresh_token && Date.now() >= (sp.expires_at || 0)) {
+        try {
+          await refreshShopeeToken(data, num);
+          console.log(`[init] Token Shopee (conta ${num}) renovado na inicialização.`);
+        } catch (e) {
+          console.warn(`[init] Falha ao renovar token Shopee (conta ${num}):`, e.message);
+        }
       }
     }
   } catch (e) {
@@ -5314,10 +5368,12 @@ function avisarShopeeConexaoCaida(data) {
 setInterval(async () => {
   try {
     const data = loadData();
-    const sp = data.shopee || {};
-    if (sp.refresh_token && Date.now() >= (sp.expires_at || 0)) {
-      try { await refreshShopeeToken(data); } catch (e) {
-        addLog(`❌ Falha ao renovar token Shopee: ${e.message}`, 'erro');
+    for (const num of ['1', '2']) {
+      const sp = shopeeConta(data, num);
+      if (sp.refresh_token && Date.now() >= (sp.expires_at || 0)) {
+        try { await refreshShopeeToken(data, num); } catch (e) {
+          addLog(`❌ Falha ao renovar token Shopee (conta ${num}): ${e.message}`, 'erro');
+        }
       }
     }
   } catch {}
@@ -5328,27 +5384,29 @@ setInterval(async () => {
 // (varia — descobrimos na prática, a API recusa com "reached shop's bump slot limit"
 // quando lota) e cada produto impulsionado fica ~4h em cooldown depois.
 //
-// Fila circular: o usuário define uma ordem de prioridade (data.shopee_boost_ordem)
-// e guardamos um cursor (data.shopee_boost_cursor) apontando o próximo da vez. A cada
+// Fila circular: o usuário define uma ordem de prioridade (data.shopee_boost_contas[num].ordem)
+// e guardamos um cursor (data.shopee_boost_contas[num].cursor) apontando o próximo da vez. A cada
 // checagem, giramos a lista a partir do cursor, pulamos quem ainda tá em cooldown, e
 // tentamos impulsionar até a Shopee recusar por limite de slots. O cursor avança pro
 // item seguinte ao último que conseguimos impulsionar — assim, quando os slots abrem
 // de novo (4h depois), quem ficou de fora da vez anterior entra primeiro.
 
-function shopeeBoostOrdemAtual(data, itensAtivos) {
-  let ordem = Array.isArray(data.shopee_boost_ordem) ? data.shopee_boost_ordem.slice() : [];
+function shopeeBoostOrdemAtual(data, num, itensAtivos) {
+  const bc = shopeeBoostConta(data, num);
+  let ordem = Array.isArray(bc.ordem) ? bc.ordem.slice() : [];
   ordem = ordem.filter(id => itensAtivos.includes(id)); // tira produtos que saíram do ar
   const faltando = itensAtivos.filter(id => !ordem.includes(id));
   ordem = ordem.concat(faltando); // produtos novos entram no fim da fila
   return ordem;
 }
 
-async function shopeeImpulsionarAutomatico() {
+async function shopeeImpulsionarAutomatico(num) {
+  num = String(num || '1');
   const data = loadData();
-  const sp = data.shopee || {};
+  const sp = shopeeConta(data, num);
   if (!sp.access_token) return;
   try {
-    const accessToken = await getShopeeToken(data);
+    const accessToken = await getShopeeToken(data, num);
 
     const pathList   = '/api/v2/product/get_item_list';
     const paramsList = shopeeParams(pathList, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
@@ -5364,14 +5422,15 @@ async function shopeeImpulsionarAutomatico() {
     const rBoost = await axios.get(`${SHOPEE_BASE}/product/get_boosted_list`, { params: paramsBoost, timeout: 10000 });
     const emCooldown = new Set((rBoost.data.response?.item_list || []).map(i => i.item_id));
 
-    const ordem  = shopeeBoostOrdemAtual(data, todosItens);
-    const cursor = Number.isInteger(data.shopee_boost_cursor) ? data.shopee_boost_cursor % ordem.length : 0;
+    const bc     = shopeeBoostConta(data, num);
+    const ordem  = shopeeBoostOrdemAtual(data, num, todosItens);
+    const cursor = Number.isInteger(bc.cursor) ? bc.cursor % ordem.length : 0;
     const rotacionada = [...ordem.slice(cursor), ...ordem.slice(0, cursor)];
     const elegiveis = rotacionada.filter(id => !emCooldown.has(id));
     if (!elegiveis.length) {
       // Mesmo sem nada elegível agora, salva a ordem sincronizada (novos produtos incluídos)
-      if (JSON.stringify(ordem) !== JSON.stringify(data.shopee_boost_ordem || [])) {
-        data.shopee_boost_ordem = ordem;
+      if (JSON.stringify(ordem) !== JSON.stringify(bc.ordem || [])) {
+        bc.ordem = ordem;
         saveData(data);
       }
       return;
@@ -5396,46 +5455,52 @@ async function shopeeImpulsionarAutomatico() {
         const rB = await axios.post(`${SHOPEE_BASE}/product/boost_item`, { item_id_list: [itemId] }, { params: paramsB, timeout: 15000 });
         if (rB.data.error) {
           if (/slot limit/i.test(rB.data.message || '')) {
-            addLog('[shopee] impulso: slots cheios, parando por agora', 'info');
+            addLog(`[shopee] impulso (conta ${num}): slots cheios, parando por agora`, 'info');
             break;
           }
-          addLog(`[shopee] impulso item ${itemId}: ${rB.data.message || rB.data.error}`, 'warn');
-          notificar(`⚠️ <b>Falha ao impulsionar</b>\n\n${nome}\nErro: ${rB.data.message || rB.data.error}`, 'shopee_boost').catch(() => {});
+          addLog(`[shopee] impulso (conta ${num}) item ${itemId}: ${rB.data.message || rB.data.error}`, 'warn');
+          notificar(`⚠️ <b>Falha ao impulsionar (conta ${num})</b>\n\n${nome}\nErro: ${rB.data.message || rB.data.error}`, 'shopee_boost').catch(() => {});
         } else {
-          addLog(`[shopee] item ${itemId} impulsionado automaticamente`, 'ok');
+          addLog(`[shopee] item ${itemId} impulsionado automaticamente (conta ${num})`, 'ok');
           ultimoBoostadoIdx = ordem.indexOf(itemId);
-          notificar(`🚀 <b>Impulsionado automaticamente</b>\n\n${nome}`, 'shopee_boost').catch(() => {});
+          notificar(`🚀 <b>Impulsionado automaticamente (conta ${num})</b>\n\n${nome}`, 'shopee_boost').catch(() => {});
         }
       } catch (err) {
-        addLog(`[shopee] impulso item ${itemId} erro: ${err.message}`, 'warn');
-        notificar(`⚠️ <b>Falha ao impulsionar</b>\n\n${nome}\nErro: ${err.message}`, 'shopee_boost').catch(() => {});
+        addLog(`[shopee] impulso (conta ${num}) item ${itemId} erro: ${err.message}`, 'warn');
+        notificar(`⚠️ <b>Falha ao impulsionar (conta ${num})</b>\n\n${nome}\nErro: ${err.message}`, 'shopee_boost').catch(() => {});
       }
       await new Promise(r => setTimeout(r, 500));
     }
 
     await withDataLock(() => {
       const dataFresca = loadData();
-      dataFresca.shopee_boost_ordem = ordem;
+      const bcFresca = shopeeBoostConta(dataFresca, num);
+      bcFresca.ordem = ordem;
       if (ultimoBoostadoIdx !== null) {
-        dataFresca.shopee_boost_cursor = (ultimoBoostadoIdx + 1) % ordem.length;
+        bcFresca.cursor = (ultimoBoostadoIdx + 1) % ordem.length;
       }
       saveData(dataFresca);
     });
   } catch (err) {
-    addLog(`[shopee] impulso automático erro: ${err.message}`, 'erro');
+    addLog(`[shopee] impulso automático (conta ${num}) erro: ${err.message}`, 'erro');
   }
 }
 
-setInterval(shopeeImpulsionarAutomatico, 15 * 60 * 1000);
-shopeeImpulsionarAutomatico().catch(() => {});
+setInterval(() => {
+  shopeeImpulsionarAutomatico('1').catch(() => {});
+  shopeeImpulsionarAutomatico('2').catch(() => {});
+}, 15 * 60 * 1000);
+shopeeImpulsionarAutomatico('1').catch(() => {});
+shopeeImpulsionarAutomatico('2').catch(() => {});
 
 // Lista os produtos ativos na ordem de prioridade de impulso atual, com nome pra exibir na tela
 app.get('/api/shopee/boost-config', async (req, res) => {
+  const num  = String(req.query.conta || '1');
   const data = loadData();
-  const sp   = data.shopee || {};
+  const sp   = shopeeConta(data, num);
   if (!sp.access_token) return res.json({ error: 'Shopee não conectada' });
   try {
-    const accessToken = await getShopeeToken(data);
+    const accessToken = await getShopeeToken(data, num);
 
     const pathList   = '/api/v2/product/get_item_list';
     const paramsList = shopeeParams(pathList, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
@@ -5446,9 +5511,10 @@ app.get('/api/shopee/boost-config', async (req, res) => {
     const todosItens = (rList.data.response?.item || []).map(i => i.item_id);
     if (!todosItens.length) return res.json({ itens: [] });
 
-    const ordem = shopeeBoostOrdemAtual(data, todosItens);
-    if (JSON.stringify(ordem) !== JSON.stringify(data.shopee_boost_ordem || [])) {
-      data.shopee_boost_ordem = ordem;
+    const bc    = shopeeBoostConta(data, num);
+    const ordem = shopeeBoostOrdemAtual(data, num, todosItens);
+    if (JSON.stringify(ordem) !== JSON.stringify(bc.ordem || [])) {
+      bc.ordem = ordem;
       saveData(data);
     }
 
@@ -5471,20 +5537,22 @@ app.get('/api/shopee/boost-config', async (req, res) => {
       cooldown_segundos: cooldownPorId[id] ?? null,
     }));
 
-    res.json({ itens, cursor: (Number.isInteger(data.shopee_boost_cursor) ? data.shopee_boost_cursor : 0) % itens.length });
+    res.json({ itens, cursor: (Number.isInteger(bc.cursor) ? bc.cursor : 0) % (itens.length || 1) });
   } catch (err) {
     res.json({ error: err.message, detalhe: err.response?.data });
   }
 });
 
 app.post('/api/shopee/boost-config', async (req, res) => {
-  const { ordem } = req.body;
+  const { ordem, conta } = req.body;
+  const num = String(conta || '1');
   if (!Array.isArray(ordem) || !ordem.length) return res.status(400).json({ error: 'ordem (array de item_id) obrigatória' });
   try {
     await withDataLock(() => {
       const data = loadData();
-      data.shopee_boost_ordem  = ordem.map(Number);
-      data.shopee_boost_cursor = 0;
+      const bc = shopeeBoostConta(data, num);
+      bc.ordem  = ordem.map(Number);
+      bc.cursor = 0;
       saveData(data);
     });
     res.json({ ok: true });
@@ -5494,11 +5562,12 @@ app.post('/api/shopee/boost-config', async (req, res) => {
 });
 
 app.get('/api/shopee/status', async (req, res) => {
+  const num  = String(req.query.conta || '1');
   const data = loadData();
-  const sp   = data.shopee || {};
+  const sp   = shopeeConta(data, num);
   if (!sp.access_token) return res.json({ connected: false });
   try {
-    const accessToken = await getShopeeToken(data);
+    const accessToken = await getShopeeToken(data, num);
     const path      = '/api/v2/shop/get_shop_info';
     const params    = shopeeParams(path, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
     const r = await axios.get(`${SHOPEE_BASE}/shop/get_shop_info`, { params, timeout: 8000 });
@@ -5510,11 +5579,12 @@ app.get('/api/shopee/status', async (req, res) => {
 });
 
 app.get('/api/shopee/orders', async (req, res) => {
+  const num  = String(req.query.conta || '1');
   const data = loadData();
-  const sp   = data.shopee || {};
+  const sp   = shopeeConta(data, num);
   if (!sp.access_token) return res.json({ error: 'Shopee não conectada' });
   try {
-    const accessToken = await getShopeeToken(data);
+    const accessToken = await getShopeeToken(data, num);
     const path   = '/api/v2/order/get_order_list';
     const params = shopeeParams(path, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
     const agora  = Math.floor(Date.now() / 1000);
@@ -5549,7 +5619,7 @@ app.get('/api/shopee/orders', async (req, res) => {
 
 app.get('/api/lucro/config-shopee', (req, res) => {
   const data = loadData();
-  const ls   = data.lucro_shopee || {};
+  const ls   = lucroShopeeConta(data, req.query.conta);
   res.json({
     taxa_imposto:         ls.taxa_imposto ?? 0,
     taxa_imposto_por_mes: ls.taxa_imposto_por_mes || {},
@@ -5559,34 +5629,34 @@ app.get('/api/lucro/config-shopee', (req, res) => {
 });
 
 app.post('/api/lucro/config-shopee', (req, res) => {
-  const { taxa_imposto } = req.body;
+  const { taxa_imposto, conta } = req.body;
   const data = loadData();
-  data.lucro_shopee = data.lucro_shopee || {};
-  if (taxa_imposto !== undefined) data.lucro_shopee.taxa_imposto = parseFloat(taxa_imposto) || 0;
+  const ls = lucroShopeeConta(data, conta);
+  if (taxa_imposto !== undefined) ls.taxa_imposto = parseFloat(taxa_imposto) || 0;
   saveData(data);
   res.json({ ok: true });
 });
 
 app.post('/api/lucro/taxa-imposto-mes-shopee', (req, res) => {
-  const { mes, taxa } = req.body;
+  const { mes, taxa, conta } = req.body;
   if (!mes || !/^\d{4}-\d{2}$/.test(mes)) return res.status(400).json({ error: 'mes inválido' });
   const data = loadData();
-  data.lucro_shopee = data.lucro_shopee || {};
-  data.lucro_shopee.taxa_imposto_por_mes = data.lucro_shopee.taxa_imposto_por_mes || {};
-  data.lucro_shopee.taxa_imposto_por_mes[mes] = parseFloat(taxa) || 0;
+  const ls = lucroShopeeConta(data, conta);
+  ls.taxa_imposto_por_mes = ls.taxa_imposto_por_mes || {};
+  ls.taxa_imposto_por_mes[mes] = parseFloat(taxa) || 0;
   saveData(data);
   res.json({ ok: true });
 });
 
 app.post('/api/lucro/custo-shopee', async (req, res) => {
-  const { item_id, custo, desde } = req.body;
+  const { item_id, custo, desde, conta } = req.body;
+  const num = String(conta || '1');
   if (!item_id) return res.status(400).json({ error: 'item_id obrigatório' });
   const dataVigencia = /^\d{4}-\d{2}-\d{2}$/.test(desde || '') ? desde : lucroHojeISO();
   try {
     const resultado = await withDataLock(() => {
       const data = loadData();
-      data.lucro_shopee = data.lucro_shopee || {};
-      const ls = data.lucro_shopee;
+      const ls = lucroShopeeConta(data, num);
       ls.custos = ls.custos || {};
       ls.custos_historico = ls.custos_historico || {};
 
@@ -5614,13 +5684,14 @@ app.post('/api/lucro/custo-shopee', async (req, res) => {
 });
 
 app.post('/api/lucro/custo-remover-shopee', async (req, res) => {
-  const { item_id, desde } = req.body;
+  const { item_id, desde, conta } = req.body;
+  const num = String(conta || '1');
   if (!item_id || !desde) return res.status(400).json({ error: 'item_id e desde obrigatórios' });
   try {
     const resultado = await withDataLock(() => {
       const data = loadData();
-      const ls = data.lucro_shopee;
-      if (!ls || !ls.custos_historico || !ls.custos_historico[item_id]) return { custos_historico: [], custo_atual: 0 };
+      const ls = lucroShopeeConta(data, num);
+      if (!ls.custos_historico || !ls.custos_historico[item_id]) return { custos_historico: [], custo_atual: 0 };
 
       ls.custos_historico[item_id] = ls.custos_historico[item_id].filter(h => h.desde !== desde);
       if (ls.custos_historico[item_id].length === 0) {
@@ -5642,9 +5713,10 @@ app.post('/api/lucro/custo-remover-shopee', async (req, res) => {
 // Status Shopee que representam devolução/cancelamento — excluídos do total de lucro
 const SHOPEE_STATUS_CANCELADO = ['CANCELLED', 'TO_RETURN', 'IN_CANCEL'];
 
-async function buscarVendasShopeeComCustos(data, dateFrom, dateTo) {
-  const sp = data.shopee || {};
-  const accessToken = await getShopeeToken(data);
+async function buscarVendasShopeeComCustos(data, conta, dateFrom, dateTo) {
+  const num = String(conta || '1');
+  const sp = shopeeConta(data, num);
+  const accessToken = await getShopeeToken(data, num);
 
   const fromTs = dateFrom ? Math.floor(new Date(dateFrom + 'T00:00:00-03:00').getTime() / 1000)
                           : Math.floor(Date.now() / 1000) - 15 * 24 * 60 * 60;
@@ -5739,11 +5811,12 @@ async function buscarVendasShopeeComCustos(data, dateFrom, dateTo) {
 // ── Shopee: pedidos com NF já enviada, pendentes de etiqueta ────
 
 app.get('/api/shopee/vendas-etiquetas', async (req, res) => {
+  const num  = String(req.query.conta || '1');
   const data = loadData();
-  const sp   = data.shopee || {};
+  const sp   = shopeeConta(data, num);
   if (!sp.access_token) return res.json({ vendas: [] });
   try {
-    const accessToken = await getShopeeToken(data);
+    const accessToken = await getShopeeToken(data, num);
 
     let orderSns = [];
     for (const status of ['READY_TO_SHIP', 'PROCESSED']) {
@@ -5781,7 +5854,7 @@ app.get('/api/shopee/vendas-etiquetas', async (req, res) => {
         shipmentId: o.order_sn,
         orderId:    o.order_sn,
         comprador:  o.buyer_username || '—',
-        conta:      null,
+        conta:      num,
         canal:      'shopee',
         status:     o.order_status,
         statusLabel: STATUS_LABEL[o.order_status] || o.order_status,
@@ -5841,11 +5914,12 @@ function lerZipViaDiretorioCentral(buf) {
 }
 
 // Gera a etiqueta de transporte da Shopee (tracking → doc type → create → download → ZPL→PDF)
-async function shopeeGerarEtiquetaPdf(orderSn) {
+async function shopeeGerarEtiquetaPdf(orderSn, conta) {
+  const num  = String(conta || '1');
   const data = loadData();
-  const sp   = data.shopee || {};
+  const sp   = shopeeConta(data, num);
   if (!sp.access_token) throw new Error('Shopee não conectada');
-  const accessToken = await getShopeeToken(data);
+  const accessToken = await getShopeeToken(data, num);
 
   const pathT   = '/api/v2/logistics/get_tracking_number';
   const paramsT = shopeeParams(pathT, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
@@ -5906,7 +5980,7 @@ async function shopeeGerarEtiquetaPdf(orderSn) {
 
 app.get('/api/shopee/etiqueta/:order_sn', async (req, res) => {
   try {
-    const pdf = await shopeeGerarEtiquetaPdf(req.params.order_sn);
+    const pdf = await shopeeGerarEtiquetaPdf(req.params.order_sn, req.query.conta);
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', 'inline');
     res.send(pdf);
@@ -5917,140 +5991,16 @@ app.get('/api/shopee/etiqueta/:order_sn', async (req, res) => {
 });
 
 app.get('/api/lucro/vendas-shopee', async (req, res) => {
+  const num  = String(req.query.conta || '1');
   const data = loadData();
-  const sp   = data.shopee || {};
+  const sp   = shopeeConta(data, num);
   if (!sp.access_token) return res.json({ error: 'Shopee não conectada' });
   try {
-    const vendas = await buscarVendasShopeeComCustos(data, req.query.date_from, req.query.date_to);
+    const vendas = await buscarVendasShopeeComCustos(data, num, req.query.date_from, req.query.date_to);
     res.json({ vendas });
   } catch (err) {
     addLog(`Lucro Shopee: erro ao buscar vendas — ${err.message}`, 'erro');
     res.json({ error: `Erro ao buscar vendas: ${err.message}` });
-  }
-});
-
-// TEMP: checa o tracking_number e status logistico atual do pedido. Remover depois.
-app.get('/api/debug/shopee-tracking', async (req, res) => {
-  const orderSn = req.query.order_sn;
-  if (!orderSn) return res.json({ error: 'order_sn obrigatório' });
-  const data = loadData();
-  const sp   = data.shopee || {};
-  const resultados = {};
-  try {
-    const accessToken = await getShopeeToken(data);
-
-    try {
-      const path1   = '/api/v2/logistics/get_tracking_number';
-      const params1 = shopeeParams(path1, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
-      params1.order_sn = orderSn;
-      const r1 = await axios.get(`${SHOPEE_BASE}/logistics/get_tracking_number`, { params: params1, timeout: 10000 });
-      resultados.get_tracking_number = r1.data;
-    } catch (err) { resultados.get_tracking_number = { erro: err.response?.data || err.message }; }
-
-    try {
-      const path2   = '/api/v2/order/get_order_detail';
-      const params2 = shopeeParams(path2, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
-      params2.order_sn_list = orderSn;
-      params2.response_optional_fields = 'order_status,package_list,shipping_carrier';
-      const r2 = await axios.get(`${SHOPEE_BASE}/order/get_order_detail`, { params: params2, timeout: 10000 });
-      resultados.order_detail = r2.data;
-    } catch (err) { resultados.order_detail = { erro: err.response?.data || err.message }; }
-
-    res.json(resultados);
-  } catch (err) {
-    res.json({ error: err.message });
-  }
-});
-
-// TEMP: gera e baixa a etiqueta de transporte (create + download shipping document). Remover depois.
-app.get('/api/debug/shopee-gerar-etiqueta', async (req, res) => {
-  const orderSn = req.query.order_sn;
-  const packageNumber = req.query.package_number;
-  if (!orderSn) return res.json({ error: 'order_sn obrigatório' });
-  const data = loadData();
-  const sp   = data.shopee || {};
-  try {
-    const accessToken = await getShopeeToken(data);
-
-    // 0) get_tracking_number — obrigatório no create_shipping_document, exceto pra canais
-    // que permitem imprimir antes de organizar o envio (não é o nosso caso)
-    const pathT   = '/api/v2/logistics/get_tracking_number';
-    const paramsT = shopeeParams(pathT, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
-    paramsT.order_sn = orderSn;
-    const rT = await axios.get(`${SHOPEE_BASE}/logistics/get_tracking_number`, { params: paramsT, timeout: 10000 });
-    const trackingNumber = rT.data.response?.tracking_number;
-    if (!trackingNumber) return res.json({ etapa: 'get_tracking_number', data: rT.data });
-
-    const itemPedido = packageNumber
-      ? { order_sn: orderSn, package_number: packageNumber, tracking_number: trackingNumber }
-      : { order_sn: orderSn, tracking_number: trackingNumber };
-
-    // 1) get_shipping_document_parameter — descobre o tipo de documento aceito/sugerido
-    const path0   = '/api/v2/logistics/get_shipping_document_parameter';
-    const params0 = shopeeParams(path0, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
-    const r0 = await axios.post(`${SHOPEE_BASE}/logistics/get_shipping_document_parameter`,
-      { order_list: [itemPedido] }, { params: params0, timeout: 15000 });
-    const infoDoc = r0.data.response?.result_list?.[0];
-    if (infoDoc?.fail_error) return res.json({ etapa: 'get_shipping_document_parameter', tracking_number: trackingNumber, data: r0.data });
-    const tipoDoc = infoDoc?.suggest_shipping_document_type;
-
-    await new Promise(r => setTimeout(r, 500));
-
-    const path1   = '/api/v2/logistics/create_shipping_document';
-    const params1 = shopeeParams(path1, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
-    const r1 = await axios.post(`${SHOPEE_BASE}/logistics/create_shipping_document`,
-      { order_list: [{ ...itemPedido, shipping_document_type: tipoDoc }] }, { params: params1, timeout: 15000 });
-
-    if (r1.data.error) return res.json({ etapa: 'create_shipping_document', tracking_number: trackingNumber, get_shipping_document_parameter: r0.data, data: r1.data });
-    const falhou = r1.data.response?.result_list?.some(r => r.fail_error);
-    if (falhou) return res.json({ etapa: 'create_shipping_document', tracking_number: trackingNumber, get_shipping_document_parameter: r0.data, data: r1.data });
-
-    await new Promise(r => setTimeout(r, 2000));
-
-    const path2   = '/api/v2/logistics/download_shipping_document';
-    const params2 = shopeeParams(path2, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
-    const r2 = await axios.post(`${SHOPEE_BASE}/logistics/download_shipping_document`,
-      { order_list: [{ ...itemPedido, shipping_document_type: tipoDoc }] }, { params: params2, timeout: 15000, responseType: 'arraybuffer' });
-
-    const contentType = r2.headers['content-type'] || '';
-    if (contentType.includes('json')) {
-      return res.json({ etapa: 'download_shipping_document', data: JSON.parse(Buffer.from(r2.data).toString('utf8')) });
-    }
-
-    // Leitor mínimo de ZIP (só local file headers), sem depender de lib externa
-    const buf = Buffer.from(r2.data);
-    const entradas = [];
-    let offset = 0;
-    while (offset + 4 <= buf.length && buf.readUInt32LE(offset) === 0x04034b50) {
-      const metodo       = buf.readUInt16LE(offset + 8);
-      const tamComp      = buf.readUInt32LE(offset + 18);
-      const tamDescomp   = buf.readUInt32LE(offset + 22);
-      const tamNome      = buf.readUInt16LE(offset + 26);
-      const tamExtra     = buf.readUInt16LE(offset + 28);
-      const nomeInicio   = offset + 30;
-      const nome         = buf.slice(nomeInicio, nomeInicio + tamNome).toString('utf8');
-      const dadosInicio  = nomeInicio + tamNome + tamExtra;
-      const dadosComp    = buf.slice(dadosInicio, dadosInicio + tamComp);
-      let conteudo;
-      try {
-        conteudo = metodo === 8 ? zlib.inflateRawSync(dadosComp) : dadosComp;
-      } catch (e) { conteudo = Buffer.from(`[erro ao descomprimir: ${e.message}]`); }
-      entradas.push({
-        nome, metodo, tamComp, tamDescomp,
-        preview_texto: conteudo.slice(0, 800).toString('utf8'),
-      });
-      offset = dadosInicio + tamComp;
-    }
-
-    res.json({
-      etapa: 'download_shipping_document',
-      ok: true,
-      bytes: r2.data.length,
-      content_type: contentType,
-      entradas_zip: entradas,
-    });
-  } catch (err) {
-    res.json({ error: err.message, detalhe: err.response?.data });
   }
 });
 

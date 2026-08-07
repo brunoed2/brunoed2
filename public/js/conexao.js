@@ -36,9 +36,11 @@ document.getElementById('cx-callback-url').textContent = `${location.origin}/api
   }
 
   // Shopee
+  const shopeeContaRetorno = params.get('shopee_conta') || '1';
   if (params.get('shopee_ok')) {
+    if (typeof shopeeAbrirConfigConta === 'function') shopeeAbrirConfigConta(shopeeContaRetorno);
     if (typeof abrirSubConfig === 'function') abrirSubConfig('shopee');
-    setTimeout(() => shopeeMostrarMsg('✅ Shopee conectada com sucesso!', 'ok'), 0);
+    setTimeout(() => shopeeMostrarMsg(`✅ Shopee conta ${shopeeContaRetorno} conectada com sucesso!`, 'ok'), 0);
   }
   if (params.get('shopee_error')) {
     if (typeof abrirSubConfig === 'function') abrirSubConfig('shopee');

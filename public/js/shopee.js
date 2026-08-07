@@ -1,11 +1,28 @@
 // ── Shopee ────────────────────────────────────────────────────
 
+let shopeeCfgContaAtual = '1';
+
+function shopeeAbrirConfigConta(num) {
+  shopeeCfgContaAtual = num;
+  const tab1 = document.getElementById('shopee-cfg-tab-1');
+  const tab2 = document.getElementById('shopee-cfg-tab-2');
+  if (tab1) tab1.className = num === '1' ? 'btn-primary' : 'btn-secondary';
+  if (tab2) tab2.className = num === '2' ? 'btn-primary' : 'btn-secondary';
+  const titulo = document.getElementById('shopee-cfg-titulo');
+  if (titulo) titulo.textContent = `Credenciais — Conta ${num}`;
+  const cbUrl = document.getElementById('shopee-callback-url');
+  if (cbUrl) cbUrl.textContent = `${location.origin}/api/shopee/callback?conta=${num}`;
+  shopeeCarregarConfig();
+  shopeeVerificarStatus();
+  shopeeBoostCarregar();
+}
+
 async function shopeeVerificarStatus() {
   const dot = document.getElementById('shopee-status-dot');
   const txt = document.getElementById('shopee-status-txt');
   if (!dot || !txt) return;
   try {
-    const d = await fetch('/api/shopee/status').then(r => r.json());
+    const d = await fetch(`/api/shopee/status?conta=${shopeeCfgContaAtual}`).then(r => r.json());
     if (d.connected) {
       dot.className = 'dot dot-ok';
       txt.textContent = `Conectado — ${d.shop_name} (ID: ${d.shop_id})`;
@@ -21,9 +38,11 @@ async function shopeeVerificarStatus() {
 
 async function shopeeCarregarConfig() {
   try {
-    const d = await fetch('/api/shopee/config').then(r => r.json());
-    const elId = document.getElementById('shopee-partner-id');
-    if (elId && d.partner_id) elId.value = d.partner_id;
+    const d = await fetch(`/api/shopee/config?conta=${shopeeCfgContaAtual}`).then(r => r.json());
+    const elId  = document.getElementById('shopee-partner-id');
+    const elKey = document.getElementById('shopee-partner-key');
+    if (elId)  elId.value  = d.partner_id || '';
+    if (elKey) elKey.value = '';
   } catch {}
 }
 
@@ -31,6 +50,7 @@ async function shopeeSalvarEConectar() {
   const partnerId  = document.getElementById('shopee-partner-id').value.trim();
   const partnerKey = document.getElementById('shopee-partner-key').value.trim();
   const msg        = document.getElementById('shopee-msg');
+  const conta      = shopeeCfgContaAtual;
 
   if (!partnerId || !partnerKey) {
     msg.textContent  = 'Preencha Partner ID e Partner Key.';
@@ -47,11 +67,11 @@ async function shopeeSalvarEConectar() {
     await fetch('/api/shopee/config', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ partner_id: partnerId, partner_key: partnerKey }),
+      body:    JSON.stringify({ partner_id: partnerId, partner_key: partnerKey, conta }),
     });
     msg.textContent = 'Credenciais salvas. Redirecionando para autorização...';
     msg.className   = 'msg ok';
-    setTimeout(() => { location.href = '/api/shopee/auth'; }, 1000);
+    setTimeout(() => { location.href = `/api/shopee/auth?conta=${conta}`; }, 1000);
   } catch {
     msg.textContent = 'Erro ao salvar.';
     msg.className   = 'msg erro';
@@ -79,7 +99,7 @@ async function shopeeBoostCarregar() {
   if (lista)   lista.innerHTML       = '';
 
   try {
-    const d = await fetch('/api/shopee/boost-config').then(r => r.json());
+    const d = await fetch(`/api/shopee/boost-config?conta=${shopeeCfgContaAtual}`).then(r => r.json());
     if (loading) loading.style.display = 'none';
     if (d.error) {
       if (erroEl) { erroEl.textContent = d.error; erroEl.style.display = 'block'; }
@@ -127,7 +147,7 @@ async function shopeeBoostSalvarOrdem() {
     await fetch('/api/shopee/boost-config', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ ordem: shopeeBoostItens.map(i => i.item_id) }),
+      body:    JSON.stringify({ ordem: shopeeBoostItens.map(i => i.item_id), conta: shopeeCfgContaAtual }),
     });
     if (msg) { msg.textContent = 'Ordem salva!'; msg.className = 'msg ok'; }
   } catch {

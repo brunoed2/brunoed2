@@ -113,9 +113,7 @@ function abrirSubConfig(sub) {
   document.getElementById('subtab-backup').style.display   = sub === 'backup'   ? '' : 'none';
   if (sub === 'ml') carregarConfig(contaConfigurando);
   if (sub === 'shopee') {
-    if (typeof shopeeCarregarConfig  === 'function') shopeeCarregarConfig();
-    if (typeof shopeeVerificarStatus === 'function') shopeeVerificarStatus();
-    if (typeof shopeeBoostCarregar   === 'function') shopeeBoostCarregar();
+    if (typeof shopeeAbrirConfigConta === 'function') shopeeAbrirConfigConta(typeof shopeeCfgContaAtual !== 'undefined' ? shopeeCfgContaAtual : '1');
   }
   if (sub === 'usuarios') usuariosCarregar();
   if (sub === 'acessos') acessosCarregar();
@@ -240,9 +238,6 @@ async function atualizarStatus() {
 
 const elCallbackUrl = document.getElementById('callback-url');
 if (elCallbackUrl) elCallbackUrl.textContent = `${location.origin}/api/ml/callback`;
-
-const elShopeeCallbackUrl = document.getElementById('shopee-callback-url');
-if (elShopeeCallbackUrl) elShopeeCallbackUrl.textContent = `${location.origin}/api/shopee/callback`;
 
 function abrirConfigConta(num) {
   contaConfigurando = num;

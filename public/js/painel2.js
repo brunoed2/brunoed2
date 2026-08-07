@@ -843,7 +843,7 @@ async function carregarVendas() {
   try {
     const [data, dataShopee] = await Promise.all([
       apiFetch(`/api/ml/vendas-etiquetas?conta=${window.CONTA_ATIVA}`),
-      apiFetch('/api/shopee/vendas-etiquetas').catch(err => ({ vendas: [], erroDebug: String(err) })),
+      apiFetch(`/api/shopee/vendas-etiquetas?conta=${window.CONTA_ATIVA}`).catch(err => ({ vendas: [], erroDebug: String(err) })),
     ]);
     console.log('[debug vendas] ML:', data);
     console.log('[debug vendas] Shopee:', dataShopee);
@@ -884,7 +884,7 @@ async function carregarVendas() {
       const flagClass = v.atendida ? 'btn-flag btn-flag-ativo' : 'btn-flag';
       const flagTitle = v.atendida ? 'Remover flag' : 'Marcar como atendido';
       const hrefEtiqueta = v.canal === 'shopee'
-        ? `/api/shopee/etiqueta/${v.shipmentId}`
+        ? `/api/shopee/etiqueta/${v.shipmentId}?conta=${v.conta}`
         : `/api/ml/etiqueta/${v.shipmentId}?conta=${v.conta}`;
 
       tr.innerHTML = `
