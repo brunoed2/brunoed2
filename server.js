@@ -5915,6 +5915,7 @@ async function shopeeOrganizarEnvio(orderSn, sp, accessToken) {
   const rP = await axios.get(`${SHOPEE_BASE}/logistics/get_shipping_parameter`, { params: paramsP, timeout: 10000 });
   if (rP.data.error) throw new Error(rP.data.message || rP.data.error);
   const info = rP.data.response || {};
+  addLog(`[shopee] get_shipping_parameter ${orderSn}: ${JSON.stringify(info).slice(0, 500)}`, 'info');
 
   const body = { order_sn: orderSn };
   if (info.pickup) {
@@ -5926,8 +5927,11 @@ async function shopeeOrganizarEnvio(orderSn, sp, accessToken) {
   } else if (info.dropoff) {
     const branch = info.dropoff.branch_list?.[0];
     if (branch?.branch_id) body.dropoff = { branch_id: branch.branch_id };
+  } else {
+    body.non_integrated = {};
   }
 
+  addLog(`[shopee] ship_order ${orderSn}: enviando body=${JSON.stringify(body)}`, 'info');
   const pathS   = '/api/v2/logistics/ship_order';
   const paramsS = shopeeParams(pathS, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
   const rS = await axios.post(`${SHOPEE_BASE}/logistics/ship_order`, body, { params: paramsS, timeout: 15000 });
