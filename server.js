@@ -6207,9 +6207,11 @@ async function shopeeGerarEtiquetaPdf(orderSn, conta) {
   if (!trackingNumber) {
     addLog(`[shopee] etiqueta ${orderSn}: sem tracking_number, tentando organizar envio automaticamente`, 'info');
     await shopeeOrganizarEnvio(orderSn, sp, accessToken);
-    await new Promise(r => setTimeout(r, 1500));
-    rT = await axios.get(`${SHOPEE_BASE}/logistics/get_tracking_number`, { params: paramsT, timeout: 10000 });
-    trackingNumber = rT.data.response?.tracking_number;
+    for (let tentativa = 0; tentativa < 4 && !trackingNumber; tentativa++) {
+      await new Promise(r => setTimeout(r, 2000));
+      rT = await axios.get(`${SHOPEE_BASE}/logistics/get_tracking_number`, { params: paramsT, timeout: 10000 });
+      trackingNumber = rT.data.response?.tracking_number;
+    }
     if (!trackingNumber) throw new Error(rT.data.message || 'Sem tracking_number mesmo após organizar envio automaticamente');
   }
 
