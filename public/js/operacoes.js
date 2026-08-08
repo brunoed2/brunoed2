@@ -310,26 +310,6 @@ function filtrarPorSku(tipo, sku) {
   }
 }
 
-async function operacoesEnviarNfShopee(orderSn, conta, btn) {
-  btn.disabled    = true;
-  btn.textContent = 'Enviando...';
-  try {
-    const res = await apiFetch(`/api/shopee/enviar-nf-autorizada/${orderSn}?conta=${conta}`, { method: 'POST' });
-    if (res.ok) {
-      btn.textContent = 'NF enviada!';
-      setTimeout(() => carregarVendas(), 1200);
-    } else {
-      btn.disabled    = false;
-      btn.textContent = 'Enviar NF';
-      alert('Erro ao enviar NF pra Shopee:\n' + (res.erro || 'Sem detalhe'));
-    }
-  } catch (err) {
-    btn.disabled    = false;
-    btn.textContent = 'Enviar NF';
-    alert('Erro de rede: ' + err.message);
-  }
-}
-
 async function carregarVendas() {
   const gen     = contaGen;
   const loading = document.getElementById('vendas-loading');
@@ -387,10 +367,7 @@ async function carregarVendas() {
       const badgeShopee = v.canal === 'shopee'
         ? `<span style="background:#f97316;color:#fff;padding:1px 6px;border-radius:4px;font-size:10px;margin-left:5px;white-space:nowrap;vertical-align:middle">Shopee</span>`
         : '';
-      const btnEnviarNfHtml = v.canal === 'shopee'
-        ? `<button class="btn-etiqueta" style="background:#f97316;margin-right:4px" onclick="operacoesEnviarNfShopee('${v.shipmentId}', '${v.conta}', this)">Enviar NF</button>`
-        : '';
-      const btnEtiquetaHtml = `${btnEnviarNfHtml}<a class="btn-etiqueta" href="${hrefEtiqueta}" target="_blank">${v.acaoLabel}</a>`;
+      const btnEtiquetaHtml = `<a class="btn-etiqueta" href="${hrefEtiqueta}" target="_blank">${v.acaoLabel}</a>`;
 
       tr.innerHTML = `
         <td><input type="checkbox" class="check-venda" data-shipment-id="${v.shipmentId}" data-conta="${v.conta}" onchange="atualizarBotaoSelecionadas()"></td>
