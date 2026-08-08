@@ -2149,34 +2149,18 @@ async function blingAguardarAutorizacaoNF(nfId, token, maxMs = 120000) {
     } else {
       ultimoErro = null;
       nf = r.data?.data;
-      const sit = nf?.situacao;
-      addLog(`[bling] aguardando NF ${nfId}: id=${sit?.id} valor="${sit?.valor}"`, 'info');
-      if (/autorizada/i.test(sit?.valor || '')) return nf;
-      if (/denegad|cancelad|rejeitad/i.test(sit?.valor || '')) throw new Error(`NF ${nfId} rejeitada: ${sit?.valor}`);
+      // situacao é um código numérico puro (não um objeto {id,valor}) — 5 = Autorizada,
+      // confirmado via /api/debug/bling-nf numa NF real já autorizada.
+      addLog(`[bling] aguardando NF ${nfId}: situacao=${nf?.situacao}`, 'info');
+      if (nf?.situacao === 5) return nf;
     }
     await new Promise(r => setTimeout(r, 5000));
   }
   const motivo = ultimoErro
     ? `consultas falhando (${ultimoErro?.response?.status || ultimoErro?.message})`
-    : (nf?.situacao?.valor || 'desconhecida');
-  throw new Error(`NF ${nfId} não autorizada a tempo (situação atual: ${motivo})`);
+    : `situacao=${nf?.situacao ?? 'desconhecida'}`;
+  throw new Error(`NF ${nfId} não autorizada a tempo (${motivo})`);
 }
-
-// TEMP — dump cru da resposta do Bling pra uma NF, pra depurar o formato real do campo
-// situacao (o polling de aguardar-autorizacao vive relatando "desconhecida" mesmo pra
-// NFs já autorizadas há tempo — suspeita de que o parsing de situacao.valor esteja errado).
-app.get('/api/debug/bling-nf/:nfId', async (req, res) => {
-  try {
-    const conta = req.query.conta || '1';
-    const token = await getBlingToken(conta);
-    const r = await axios.get(`https://api.bling.com.br/Api/v3/nfe/${req.params.nfId}`, {
-      headers: { Authorization: `Bearer ${token}` }, timeout: 10000,
-    });
-    res.json(r.data);
-  } catch (err) {
-    res.status(500).json({ error: err.message, detail: err.response?.data });
-  }
-});
 
 // ── Bling: emitir NF para pedido ML ──────────────────────────
 
