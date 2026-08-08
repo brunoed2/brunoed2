@@ -6164,7 +6164,7 @@ app.get('/api/shopee/vendas-etiquetas', async (req, res) => {
           canal:      'shopee',
           status:     o.order_status,
           statusLabel: STATUS_LABEL[o.order_status] || o.order_status,
-          acaoLabel:  invoiceValida ? 'Baixar' : 'Enviar NF',
+          acaoLabel:  'Baixar',
           invoiceValida,
           atendida:   false,
           itensLista: (o.item_list || []).map(i => ({
