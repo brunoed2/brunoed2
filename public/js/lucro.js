@@ -44,6 +44,42 @@ function lucroCopiarPedido(el, orderId) {
   });
 }
 
+function lucroBtnPagamento(orderId) {
+  if (!orderId) return '';
+  return ` <button class="lucro-btn-pagamento" onclick="event.stopPropagation();lucroMostrarPagamento('${orderId}')" title="Ver forma de pagamento" style="border:none;background:none;cursor:pointer;font-size:13px;padding:0 2px">💳</button>`;
+}
+
+async function lucroMostrarPagamento(orderId) {
+  const modal = document.getElementById('modal-pagamento');
+  const corpo = document.getElementById('modal-pagamento-corpo');
+  corpo.innerHTML = 'Carregando...';
+  modal.style.display = 'flex';
+  try {
+    const resp = await fetch(`/api/ml/pagamento-pedido/${orderId}?conta=${lucroContaAtual()}`).then(r => r.json());
+    if (resp.error) { corpo.innerHTML = `Erro: ${resp.error}`; return; }
+    if (!resp.principal) { corpo.innerHTML = 'Nenhum pagamento encontrado para este pedido.'; return; }
+    const p = resp.principal;
+    const STATUS_LABEL = { approved: 'Aprovado', cancelled: 'Cancelado', rejected: 'Rejeitado', refunded: 'Reembolsado', in_process: 'Em análise' };
+    const linhas = [
+      ['Pedido',   `#${orderId}`],
+      ['Forma',    p.metodo && p.metodo !== p.tipo ? `${p.tipo} (${p.metodo})` : p.tipo],
+      ['Parcelas', p.parcelas > 1 ? `${p.parcelas}x${p.valorParcela ? ' de ' + lucroFmt(p.valorParcela) : ''}` : 'À vista'],
+      ['Valor',    p.valorTotal != null ? lucroFmt(p.valorTotal) : '—'],
+      ['Status',   STATUS_LABEL[p.status] || p.status],
+    ];
+    corpo.innerHTML = linhas.map(([label, valor]) =>
+      `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #1e293b">
+        <span style="color:#94a3b8">${label}</span><strong>${valor}</strong>
+      </div>`
+    ).join('');
+    if (resp.todos.length > 1) {
+      corpo.innerHTML += `<div style="margin-top:8px;font-size:11px;color:#64748b">Pedido teve ${resp.todos.length} tentativas de pagamento — mostrando a aprovada${resp.principal.status !== 'approved' ? ' (ou a primeira, nenhuma aprovada)' : ''}.</div>`;
+    }
+  } catch (e) {
+    corpo.innerHTML = 'Erro ao conectar com o servidor.';
+  }
+}
+
 function lucroFmtPct(v) {
   return (v >= 0 ? '+' : '') + v.toFixed(1) + '%';
 }
@@ -348,7 +384,7 @@ function lucroRenderizarTabela(vendas) {
       tr.classList.add('lucro-linha-cancelada');
       tr.innerHTML = `
         <td class="lucro-td-data">${new Date(v.data).toLocaleDateString('pt-BR')}</td>
-        <td class="lucro-td-pedido" onclick="lucroCopiarPedido(this, '${v.orderId}')" title="Clique para copiar">${v.orderId || '—'}</td>
+        <td class="lucro-td-pedido" onclick="lucroCopiarPedido(this, '${v.orderId}')" title="Clique para copiar">${v.orderId || '—'}${lucroBtnPagamento(v.orderId)}</td>
         <td class="td-titulo">${item0.titulo || '—'}${multi ? `<span class="lucro-multi"> +${v.itens.length - 1}</span>` : ''}</td>
         <td class="lucro-td-mlb">${chave0 || '—'}</td>
         <td class="col-num">${qtdTotal}</td>
@@ -365,7 +401,7 @@ function lucroRenderizarTabela(vendas) {
     const fmtCusto = (val) => val > 0 ? lucroFmt(val) : '—';
     tr.innerHTML = `
       <td class="lucro-td-data">${new Date(v.data).toLocaleDateString('pt-BR')}</td>
-      <td class="lucro-td-pedido" onclick="lucroCopiarPedido(this, '${v.orderId}')" title="Clique para copiar">${v.orderId || '—'}</td>
+      <td class="lucro-td-pedido" onclick="lucroCopiarPedido(this, '${v.orderId}')" title="Clique para copiar">${v.orderId || '—'}${lucroBtnPagamento(v.orderId)}</td>
       <td class="td-titulo">${item0.titulo || '—'}${multi ? `<span class="lucro-multi"> +${v.itens.length - 1}</span>` : ''}</td>
       <td class="lucro-td-mlb">${chave0 || '—'}</td>
       <td class="col-num">${qtdTotal}</td>

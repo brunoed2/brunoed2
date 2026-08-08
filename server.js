@@ -2162,6 +2162,21 @@ async function blingAguardarAutorizacaoNF(nfId, token, maxMs = 120000) {
   throw new Error(`NF ${nfId} não autorizada a tempo (situação atual: ${motivo})`);
 }
 
+// TEMP — dump cru da resposta do Bling pra uma NF, pra depurar o formato real do campo
+// situacao (o polling de aguardar-autorizacao vive relatando "desconhecida" mesmo pra
+// NFs já autorizadas há tempo — suspeita de que o parsing de situacao.valor esteja errado).
+app.get('/api/debug/bling-nf/:nfId', async (req, res) => {
+  try {
+    const conta = req.query.conta || '1';
+    const token = await getBlingToken(conta);
+    const r = await axios.get(`https://api.bling.com.br/Api/v3/nfe/${req.params.nfId}`, {
+      headers: { Authorization: `Bearer ${token}` }, timeout: 10000,
+    });
+    res.json(r.data);
+  } catch (err) {
+    res.status(500).json({ error: err.message, detail: err.response?.data });
+  }
+});
 
 // ── Bling: emitir NF para pedido ML ──────────────────────────
 
@@ -2691,6 +2706,62 @@ app.get('/api/ml/item/:mlb', async (req, res) => {
     const detail = err.response?.data?.message || err.response?.data || err.message;
     console.error(`Erro ao buscar item ${mlb}:`, detail);
     res.json({ error: detail || 'Erro ao buscar anúncio no Mercado Livre.' });
+  }
+});
+
+const PAYMENT_TYPE_LABEL = {
+  credit_card:    'Cartão de crédito',
+  debit_card:     'Cartão de débito',
+  ticket:         'Boleto',
+  bank_transfer:  'Pix',
+  account_money:  'Saldo em conta (Mercado Pago)',
+  digital_wallet: 'Carteira digital',
+  prepaid_card:   'Cartão pré-pago',
+};
+
+const PAYMENT_METHOD_LABEL = {
+  pix:           'Pix',
+  account_money: 'Saldo Mercado Pago',
+  visa:          'Visa',
+  master:        'Mastercard',
+  elo:           'Elo',
+  amex:          'American Express',
+  hipercard:     'Hipercard',
+  diners:        'Diners',
+  cabal:         'Cabal',
+  bolbradesco:   'Boleto Bradesco',
+};
+
+app.get('/api/ml/pagamento-pedido/:orderId', async (req, res) => {
+  const data = loadData();
+  const num  = req.query.conta || data.conta_ativa;
+  const c    = data.contas[num] || {};
+  if (!c.access_token) return res.json({ error: 'Não conectado' });
+
+  try {
+    const resp = await axios.get(`https://api.mercadolibre.com/orders/${req.params.orderId}`, {
+      headers: { Authorization: `Bearer ${c.access_token}` },
+      timeout: 10000,
+    });
+    const pagamentos = resp.data.payments || [];
+    if (!pagamentos.length) return res.json({ pagamentos: [] });
+
+    const montar = (p) => ({
+      tipo:          PAYMENT_TYPE_LABEL[p.payment_type] || p.payment_type || '—',
+      metodo:        PAYMENT_METHOD_LABEL[p.payment_method_id] || p.payment_method_id || null,
+      parcelas:      p.installments || 1,
+      valorParcela:  p.installment_amount ?? null,
+      valorTotal:    p.transaction_amount ?? null,
+      status:        p.status,
+      statusDetail:  p.status_detail || null,
+      dataAprovado:  p.date_approved || null,
+    });
+
+    const principal = pagamentos.find(p => p.status === 'approved') || pagamentos[0];
+    res.json({ principal: montar(principal), todos: pagamentos.map(montar) });
+  } catch (err) {
+    const detail = err.response?.data?.message || err.message;
+    res.json({ error: detail || 'Erro ao buscar pagamento do pedido.' });
   }
 });
 
