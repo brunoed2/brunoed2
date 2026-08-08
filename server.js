@@ -6025,9 +6025,11 @@ async function buscarVendasShopeeComCustos(data, conta, dateFrom, dateTo) {
   const toTs   = dateTo   ? Math.floor(new Date(dateTo   + 'T23:59:59-03:00').getTime() / 1000)
                           : Math.floor(Date.now() / 1000);
 
-  // Shopee exige um order_status por chamada — busca os status relevantes separadamente
+  // Shopee exige um order_status por chamada — busca os status relevantes separadamente.
+  // Inclui READY_TO_SHIP/PROCESSED (pago, ainda sem NF/despacho) pra contar a venda assim
+  // que autorizada, igual o bloco do ML (que já entra com order.status=paid).
   let orderSns = [];
-  for (const status of ['SHIPPED', 'COMPLETED', 'CANCELLED']) {
+  for (const status of ['READY_TO_SHIP', 'PROCESSED', 'SHIPPED', 'COMPLETED', 'CANCELLED']) {
     let cursor = '';
     let more   = true;
     while (more) {
