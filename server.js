@@ -6155,30 +6155,26 @@ app.get('/api/shopee/vendas-etiquetas', async (req, res) => {
     const STATUS_LABEL = { READY_TO_SHIP: 'Pronto p/ envio', PROCESSED: 'Processado' };
     const vendas = orderSns
       .map(sn => detalhesPorSn[sn])
-      .filter(Boolean)
-      .map(o => {
-        const invoiceValida = o.invoice_data?.status === 'valid';
-        return {
-          shipmentId: o.order_sn,
-          orderId:    o.order_sn,
-          comprador:  o.buyer_username || '—',
-          conta:      num,
-          canal:      'shopee',
-          status:     o.order_status,
-          statusLabel: STATUS_LABEL[o.order_status] || o.order_status,
-          acaoLabel:  'Baixar',
-          invoiceValida,
-          atendida:   false,
-          itensLista: (o.item_list || []).map(i => ({
-            sku:        i.item_sku || i.model_sku || '',
-            titulo:     i.item_name || '',
-            variacao:   (i.model_name && i.model_name !== i.item_name) ? i.model_name : '',
-            quantidade: i.model_quantity_purchased || 1,
-            thumbnail:  i.image_info?.image_url || '',
-            permalink:  '',
-          })),
-        };
-      });
+      .filter(o => o && o.invoice_data?.status === 'valid') // só pedidos com NF já aceita pela Shopee — mesmo critério do ML (que só mostra quando a etiqueta está de fato pronta pra baixar)
+      .map(o => ({
+        shipmentId: o.order_sn,
+        orderId:    o.order_sn,
+        comprador:  o.buyer_username || '—',
+        conta:      num,
+        canal:      'shopee',
+        status:     o.order_status,
+        statusLabel: STATUS_LABEL[o.order_status] || o.order_status,
+        acaoLabel:  'Baixar',
+        atendida:   false,
+        itensLista: (o.item_list || []).map(i => ({
+          sku:        i.item_sku || i.model_sku || '',
+          titulo:     i.item_name || '',
+          variacao:   (i.model_name && i.model_name !== i.item_name) ? i.model_name : '',
+          quantidade: i.model_quantity_purchased || 1,
+          thumbnail:  i.image_info?.image_url || '',
+          permalink:  '',
+        })),
+      }));
     res.json({ vendas });
   } catch (err) {
     res.json({ error: err.message });
