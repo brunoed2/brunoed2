@@ -6345,6 +6345,32 @@ app.get('/api/shopee/etiqueta/:order_sn', async (req, res) => {
   }
 });
 
+// Baixar etiquetas Shopee em lote (mesmo padrão do "Baixar selecionadas" do ML) — gera
+// cada etiqueta individualmente (reaproveitando shopeeGerarEtiquetaPdf, já validado) e
+// junta tudo num PDF só.
+app.get('/api/shopee/etiquetas', async (req, res) => {
+  const conta = req.query.conta || '1';
+  const ids = (req.query.ids || '').split(',').map(s => s.trim()).filter(Boolean);
+  if (!ids.length) return res.status(400).json({ error: 'Nenhum ID informado' });
+  try {
+    const { PDFDocument } = require('pdf-lib');
+    const merged = await PDFDocument.create();
+    for (const orderSn of ids) {
+      const pdfBuf = await shopeeGerarEtiquetaPdf(orderSn, conta);
+      const doc    = await PDFDocument.load(pdfBuf);
+      const pages  = await merged.copyPages(doc, doc.getPageIndices());
+      pages.forEach(p => merged.addPage(p));
+    }
+    const bytes = await merged.save();
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'inline; filename="etiquetas-shopee.pdf"');
+    res.send(Buffer.from(bytes));
+  } catch (err) {
+    addLog(`[shopee] etiquetas em lote: ${err.message}`, 'warn');
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/lucro/vendas-shopee', async (req, res) => {
   const num  = String(req.query.conta || '1');
   const data = loadData();

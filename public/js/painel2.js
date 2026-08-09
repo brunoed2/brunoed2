@@ -638,12 +638,23 @@ function toggleTodasVendas(master) {
 function atualizarBotaoSelecionadas() {
   const checks      = [...document.querySelectorAll('.check-venda:checked')];
   const selecionadas = checks.length;
-  const btnBaixar   = document.getElementById('btn-baixar-selecionadas');
+  const btnBaixarMl     = document.getElementById('btn-baixar-ml');
+  const btnBaixarShopee = document.getElementById('btn-baixar-shopee');
   const btnAtendido = document.getElementById('btn-marcar-atendido');
 
-  if (btnBaixar) {
-    btnBaixar.style.display = selecionadas > 0 ? '' : 'none';
-    btnBaixar.textContent   = `⬇ Baixar ${selecionadas} etiqueta${selecionadas !== 1 ? 's' : ''}`;
+  // ML e Shopee baixam etiqueta por endpoints diferentes — separa os botões pra não
+  // misturar as duas no mesmo PDF (limitação física de impressão/separação do usuário).
+  if (btnBaixarMl || btnBaixarShopee) {
+    const qtdMl     = checks.filter(cb => cb.dataset.canal !== 'shopee').length;
+    const qtdShopee = checks.filter(cb => cb.dataset.canal === 'shopee').length;
+    if (btnBaixarMl) {
+      btnBaixarMl.style.display = qtdMl > 0 ? '' : 'none';
+      btnBaixarMl.textContent   = `⬇ Baixar ${qtdMl} ML`;
+    }
+    if (btnBaixarShopee) {
+      btnBaixarShopee.style.display = qtdShopee > 0 ? '' : 'none';
+      btnBaixarShopee.textContent   = `⬇ Baixar ${qtdShopee} Shopee`;
+    }
   }
   if (btnAtendido) {
     if (selecionadas === 0) {
@@ -719,8 +730,10 @@ async function marcarAtendidoSelecionadas() {
   }
 }
 
-function baixarSelecionadas() {
-  const checks = document.querySelectorAll('.check-venda:checked');
+function baixarSelecionadas(canal) {
+  const checks = [...document.querySelectorAll('.check-venda:checked')].filter(cb =>
+    canal === 'shopee' ? cb.dataset.canal === 'shopee' : cb.dataset.canal !== 'shopee'
+  );
   if (!checks.length) return;
 
   // Agrupa por conta para montar as URLs corretas
@@ -731,8 +744,9 @@ function baixarSelecionadas() {
     porConta[conta].push(cb.dataset.shipmentId);
   });
 
+  const base = canal === 'shopee' ? '/api/shopee/etiquetas' : '/api/ml/etiquetas';
   for (const [conta, ids] of Object.entries(porConta)) {
-    window.open(`/api/ml/etiquetas?ids=${ids.join(',')}&conta=${conta}`, '_blank');
+    window.open(`${base}?ids=${ids.join(',')}&conta=${conta}`, '_blank');
   }
 }
 
@@ -896,7 +910,7 @@ async function carregarVendas() {
       const btnEtiquetaHtml = `<a class="btn-etiqueta" href="${hrefEtiqueta}" target="_blank">${v.acaoLabel}</a>`;
 
       tr.innerHTML = `
-        <td><input type="checkbox" class="check-venda" data-shipment-id="${v.shipmentId}" data-conta="${v.conta}" onchange="atualizarBotaoSelecionadas()"></td>
+        <td><input type="checkbox" class="check-venda" data-shipment-id="${v.shipmentId}" data-conta="${v.conta}" data-canal="${v.canal || 'ml'}" onchange="atualizarBotaoSelecionadas()"></td>
         <td class="td-thumb">${imgHtml0}</td>
         <td class="td-order-id">#${v.orderId}</td>
         <td>${v.comprador}</td>

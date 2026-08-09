@@ -127,7 +127,8 @@
             <span id="vendas-total"></span>
             <div style="display:flex;gap:8px;align-items:center">
               <button class="btn-secondary" id="btn-filtro-atendidos" onclick="toggleFiltroAtendidos()">Atendidos</button>
-              <button class="btn-primary" id="btn-baixar-selecionadas" onclick="baixarSelecionadas()" style="display:none">⬇ Baixar selecionadas</button>
+              <button class="btn-primary" id="btn-baixar-ml" onclick="baixarSelecionadas('ml')" style="display:none">⬇ Baixar ML</button>
+              <button class="btn-primary" id="btn-baixar-shopee" onclick="baixarSelecionadas('shopee')" style="display:none;background:#f97316">⬇ Baixar Shopee</button>
               <button class="btn-primary" id="btn-marcar-atendido" onclick="marcarAtendidoSelecionadas()" style="display:none;background:#16a34a">✔ Marcar atendido</button>
               <button class="btn-secondary" onclick="carregarVendas()" id="btn-atualizar-vendas">↻ Atualizar</button>
             </div>
@@ -274,7 +275,7 @@
     </main>
   </div>
 
-  <script src="/js/painel2.js?v=179"></script>
+  <script src="/js/painel2.js?v=180"></script>
   <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
   <script src="/js/etiquetas.js"></script>
   <!-- Modal histórico de estoque -->
@@ -301,6 +302,6 @@
     </div>
   </div>
 
-  <div id="version-badge">v778</div>
+  <div id="version-badge">v779</div>
 </body>
 </html>
