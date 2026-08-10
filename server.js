@@ -5300,6 +5300,40 @@ app.get('/api/ml/pedido-por-shipment/:id', async (req, res) => {
   res.status(404).json({ encontrado: false, erro: 'Shipment não encontrado em nenhuma conta' });
 });
 
+// TEMP — mostra o tracking_number e order_status crus que a Shopee retorna pra um
+// order_sn específico, pra comparar com o que o QR da etiqueta realmente mostra.
+app.get('/api/debug/shopee-order/:orderSn', async (req, res) => {
+  const orderSn = req.params.orderSn;
+  const resultado = {};
+  for (const num of ['1', '2']) {
+    const data = loadData();
+    const sp = shopeeConta(data, num);
+    if (!sp.access_token) { resultado[num] = { conectado: false }; continue; }
+    try {
+      const accessToken = await getShopeeToken(data, num);
+      const pathT = '/api/v2/logistics/get_tracking_number';
+      const paramsT = shopeeParams(pathT, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
+      paramsT.order_sn = orderSn;
+      const rT = await axios.get(`${SHOPEE_BASE}/logistics/get_tracking_number`, { params: paramsT, timeout: 10000 });
+
+      const pathD = '/api/v2/order/get_order_detail';
+      const paramsD = shopeeParams(pathD, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
+      paramsD.order_sn_list = orderSn;
+      paramsD.response_optional_fields = 'order_status';
+      const rD = await axios.get(`${SHOPEE_BASE}/order/get_order_detail`, { params: paramsD, timeout: 10000 });
+
+      resultado[num] = {
+        conectado: true,
+        tracking_number_response: rT.data,
+        order_detail_response: rD.data,
+      };
+    } catch (err) {
+      resultado[num] = { conectado: true, erro: err.message, detalhe: err.response?.data };
+    }
+  }
+  res.json(resultado);
+});
+
 // Busca pedido Shopee pelo código de rastreio (usado pelo scanner de QR code —
 // as etiquetas Shopee não têm o order_sn no QR, só o tracking_number/código dos Correios)
 app.get('/api/shopee/pedido-por-tracking/:tracking', async (req, res) => {
