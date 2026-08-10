@@ -5312,8 +5312,10 @@ app.get('/api/shopee/pedido-por-tracking/:tracking', async (req, res) => {
     try {
       const accessToken = await getShopeeToken(data, num);
 
+      // Inclui SHIPPED — assim que "organizar envio" roda, o pedido já pode avançar pra
+      // despachado, e o scanner costuma ser usado bem nesse momento (separando/despachando).
       let orderSns = [];
-      for (const status of ['READY_TO_SHIP', 'PROCESSED']) {
+      for (const status of ['READY_TO_SHIP', 'PROCESSED', 'SHIPPED']) {
         const path   = '/api/v2/order/get_order_list';
         const params = shopeeParams(path, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
         params.order_status     = status;
