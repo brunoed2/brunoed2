@@ -125,12 +125,17 @@ async function blingCarregarPedidos() {
       const data_str = p.data ? new Date(p.data).toLocaleDateString('pt-BR') : '—';
       const contaCor = p.conta === '1' ? '#2563eb' : '#7c3aed';
       const contaBadge = `<span style="background:${contaCor};color:#fff;padding:1px 7px;border-radius:4px;font-size:11px">C${p.conta}</span>`;
-      const etqBadge = isShopee
+      const shopeeNaoLiberado = isShopee && p.shopeeLiberado === false;
+      const etqBadge = shopeeNaoLiberado
+        ? `<span style="background:#94a3b8;color:#fff;padding:2px 7px;border-radius:4px;font-size:11px;white-space:nowrap" title="Shopee: pedido ainda em processamento, aguardando liberação">Shopee: aguardando</span>`
+        : isShopee
         ? `<span style="background:#f97316;color:#fff;padding:2px 7px;border-radius:4px;font-size:11px;white-space:nowrap">Shopee</span>`
         : p.temEtiqueta
           ? `<span style="background:#16a34a;color:#fff;padding:2px 7px;border-radius:4px;font-size:11px;white-space:nowrap" title="Emitir NF libera a etiqueta de envio">Emitir NF → Etiqueta</span>`
           : `<span style="color:#9ca3af;font-size:11px">Aguardando ML</span>`;
-      const btnSuper = isShopee
+      const btnSuper = shopeeNaoLiberado
+        ? `<button class="btn-sm btn-super" disabled style="background:#cbd5e1;color:#64748b;margin-left:4px;cursor:not-allowed" title="Shopee ainda não liberou este pedido pra NF/etiqueta">⚡ Super</button>`
+        : isShopee
         ? `<button class="btn-sm btn-super" data-bling-super-id="${p.id}" onclick="blingShopeeSuper('${p.id}', this, '${p.conta}')" style="background:#f97316;color:#fff;margin-left:4px" title="Gerar NF, autorizar SEFAZ e enviar pra Shopee em um clique">⚡ Super</button>`
         : p.temEtiqueta
           ? `<button class="btn-sm btn-super" data-bling-super-id="${p.id}" onclick="blingSuperEnvio('${p.id}', this, '${p.conta}')" style="background:#7c3aed;color:#fff;margin-left:4px" title="Gerar NF e enviar em um clique">⚡ Super</button>`
@@ -141,7 +146,7 @@ async function blingCarregarPedidos() {
         ? `<a href="${blingEditUrl}" target="_blank" rel="noopener" class="btn-sm" style="background:#f59e0b;color:#fff;margin-left:4px;text-decoration:none;display:inline-block" title="Pendências: ${escapeHtml(pendencias.join(' | '))}">⚠ Pendências</a>`
         : `<a href="${blingEditUrl}" target="_blank" rel="noopener" style="color:#64748b;margin-left:6px;font-size:13px;text-decoration:none" title="Editar pedido no Bling">✎</a>`;
       tr.innerHTML = `
-        <td><input type="checkbox" class="bling-check-pedido" data-id="${p.id}" data-conta="${p.conta}" data-tem-etiqueta="${p.temEtiqueta}" data-canal="${isShopee ? 'shopee' : 'ml'}" onchange="blingAtualizarBotaoLote()"></td>
+        <td><input type="checkbox" class="bling-check-pedido" data-id="${p.id}" data-conta="${p.conta}" data-tem-etiqueta="${p.temEtiqueta}" data-canal="${isShopee ? 'shopee' : 'ml'}" data-shopee-liberado="${shopeeNaoLiberado ? '0' : '1'}" onchange="blingAtualizarBotaoLote()"></td>
         <td>${contaBadge}</td>
         <td>${escapeHtml(p.numero || String(p.id))}</td>
         <td>${escapeHtml(p.comprador || '—')}</td>
@@ -170,7 +175,7 @@ function blingToggleAll(chk) {
 function blingAtualizarBotaoLote() {
   const todos        = [...document.querySelectorAll('.bling-check-pedido:checked')];
   const comEtiqueta  = todos.filter(c => c.dataset.temEtiqueta === 'true');
-  const shopeeSel    = todos.filter(c => c.dataset.canal === 'shopee');
+  const shopeeSel    = todos.filter(c => c.dataset.canal === 'shopee' && c.dataset.shopeeLiberado !== '0');
 
   const btnEmitir = document.getElementById('btn-emitir-selecionadas');
   if (btnEmitir) {
@@ -267,7 +272,7 @@ async function blingSuperSelecionadas() {
 
 async function blingShopeeSuperSelecionadas() {
   const checks = [...document.querySelectorAll('.bling-check-pedido:checked')]
-    .filter(c => c.dataset.canal === 'shopee');
+    .filter(c => c.dataset.canal === 'shopee' && c.dataset.shopeeLiberado !== '0');
   if (checks.length === 0) return;
   const btn = document.getElementById('btn-shopee-super-selecionadas');
   btn.disabled = true;

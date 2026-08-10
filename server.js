@@ -1650,22 +1650,58 @@ async function fetchBlingPedidosPendentes(conta) {
 
   blingPedidosCache[conta] = { count: idsComEtiqueta.size, ts: Date.now() };
 
-  return itensDetalhados.map(p => ({
-    id:               p.id,
-    numero:           p.numero || '—',
-    comprador:        p.contato?.nome || '—',
-    valor_total:      p.totalProdutos || 0,
-    data:             p.data,
-    situacao:         p.situacao?.valor || 'Em aberto',
-    numeroPedidoLoja: p.numeroLoja || null,
-    dataPrevista:     p.dataPrevista || null,
-    produtos:         p.produtos || [],
-    canal:            p.canal || null,
-    lojaId:           p.lojaId || null,
-    temEtiqueta:      p.isShopee ? false : (mlTokens.length > 0 ? idsComEtiqueta.has(p.id) : true),
-    pendencias:       p.pendencias || [],
-    conta,
-  }));
+  // Verifica na Shopee se o pedido já foi liberado pra NF/etiqueta — pedidos recém-pagos
+  // por certos métodos ficam um tempo em "Em processamento" na Shopee antes de aceitar
+  // invoice/organizar envio (mensagem real vista: "emissão de etiqueta estará disponível
+  // a partir de [data]"). Sem essa checagem o botão Super aparece habilitado e falha com
+  // "Upload invoice failed. This order cannot accept invoices yet."
+  const shopeeStatusPorOrderSn = {};
+  const shopeePendentes = itensDetalhados.filter(p => p.isShopee && p.numeroLoja);
+  if (shopeePendentes.length) {
+    try {
+      const dataApp = loadData();
+      const sp = shopeeConta(dataApp, conta);
+      if (sp.access_token) {
+        const accessToken = await getShopeeToken(dataApp, conta);
+        const orderSns = [...new Set(shopeePendentes.map(p => p.numeroLoja))];
+        for (let i = 0; i < orderSns.length; i += 50) {
+          const lote    = orderSns.slice(i, i + 50);
+          const pathD   = '/api/v2/order/get_order_detail';
+          const paramsD = shopeeParams(pathD, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
+          paramsD.order_sn_list = lote.join(',');
+          paramsD.response_optional_fields = 'order_status';
+          const rd = await axios.get(`${SHOPEE_BASE}/order/get_order_detail`, { params: paramsD, timeout: 15000 });
+          (rd.data.response?.order_list || []).forEach(o => { shopeeStatusPorOrderSn[o.order_sn] = o.order_status; });
+        }
+      }
+    } catch (err) {
+      addLog(`[bling] conta ${conta}: falha ao checar status Shopee dos pedidos pendentes — ${err.message}`, 'warn');
+    }
+  }
+  const SHOPEE_STATUS_LIBERADO = new Set(['READY_TO_SHIP', 'PROCESSED', 'SHIPPED', 'COMPLETED']);
+
+  return itensDetalhados.map(p => {
+    const shopeeStatus = p.isShopee ? (shopeeStatusPorOrderSn[p.numeroLoja] || null) : null;
+    return {
+      id:               p.id,
+      numero:           p.numero || '—',
+      comprador:        p.contato?.nome || '—',
+      valor_total:      p.totalProdutos || 0,
+      data:             p.data,
+      situacao:         p.situacao?.valor || 'Em aberto',
+      numeroPedidoLoja: p.numeroLoja || null,
+      dataPrevista:     p.dataPrevista || null,
+      produtos:         p.produtos || [],
+      canal:            p.canal || null,
+      lojaId:           p.lojaId || null,
+      temEtiqueta:      p.isShopee ? false : (mlTokens.length > 0 ? idsComEtiqueta.has(p.id) : true),
+      pendencias:       p.pendencias || [],
+      // null = não conseguimos checar (falha de API) — não bloqueia, pra não travar por instabilidade
+      shopeeLiberado:   shopeeStatus === null ? true : SHOPEE_STATUS_LIBERADO.has(shopeeStatus),
+      shopeeStatus,
+      conta,
+    };
+  });
 }
 
 // Página de diagnóstico: logs do impulso automático Shopee em tempo real
