@@ -6334,16 +6334,24 @@ async function shopeeGerarEtiquetaPdf(orderSn, conta) {
 
   await new Promise(r => setTimeout(r, 2000));
 
+  // A Shopee gera o documento de forma assíncrona — create_shipping_document responde OK
+  // antes do arquivo estar pronto de fato. Sob carga (ex: baixando várias etiquetas em
+  // lote), 2s às vezes não é suficiente e o download retorna "is still processing" — tenta
+  // de novo com espera crescente antes de desistir.
   const path2   = '/api/v2/logistics/download_shipping_document';
-  const params2 = shopeeParams(path2, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
-  const r2 = await axios.post(`${SHOPEE_BASE}/logistics/download_shipping_document`,
-    { order_list: [{ ...itemPedido, shipping_document_type: tipoDoc }] }, { params: params2, timeout: 15000, responseType: 'arraybuffer' });
-
-  const contentType = r2.headers['content-type'] || '';
-  if (contentType.includes('json')) {
-    const err = JSON.parse(Buffer.from(r2.data).toString('utf8'));
-    throw new Error(err.message || err.error || 'Erro ao baixar etiqueta');
+  let r2, contentType, errJson;
+  for (let tentativa = 0; tentativa < 5; tentativa++) {
+    const params2 = shopeeParams(path2, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
+    r2 = await axios.post(`${SHOPEE_BASE}/logistics/download_shipping_document`,
+      { order_list: [{ ...itemPedido, shipping_document_type: tipoDoc }] }, { params: params2, timeout: 15000, responseType: 'arraybuffer' });
+    contentType = r2.headers['content-type'] || '';
+    if (!contentType.includes('json')) { errJson = null; break; }
+    errJson = JSON.parse(Buffer.from(r2.data).toString('utf8'));
+    if (!/still processing|processing, please download later/i.test(errJson.message || errJson.error || '')) break;
+    addLog(`[shopee] etiqueta ${orderSn}: documento ainda processando, tentativa ${tentativa + 1}/5`, 'info');
+    await new Promise(r => setTimeout(r, 3000));
   }
+  if (errJson) throw new Error(errJson.message || errJson.error || 'Erro ao baixar etiqueta');
 
   // Extrai o .txt (ZPL) de dentro do ZIP retornado pela Shopee, via diretório central
   const buf = Buffer.from(r2.data);
