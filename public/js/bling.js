@@ -4,6 +4,39 @@
 // ============================================================
 
 let blingSubAtual = 'pedidos';
+let blingFiltroCanal      = 'todos';
+let blingFiltroPendencia  = 'todos';
+
+function blingFiltrar(btn) {
+  const filtro = btn.dataset.blingFiltro;
+  const valor  = btn.dataset.valor;
+  if (filtro === 'canal')      blingFiltroCanal     = valor;
+  if (filtro === 'pendencia')  blingFiltroPendencia = valor;
+  document.querySelectorAll(`[data-bling-filtro="${filtro}"]`).forEach(b => b.classList.toggle('active', b === btn));
+  blingAplicarFiltros();
+}
+
+function blingAplicarFiltros() {
+  const tbody = document.getElementById('tabela-bling-pedidos-body');
+  if (!tbody) return;
+  let visiveis = 0;
+  for (const tr of tbody.querySelectorAll('tr')) {
+    const canalOk = blingFiltroCanal === 'todos' || tr.dataset.canal === blingFiltroCanal;
+    const pendOk  = blingFiltroPendencia === 'todos'
+      || (blingFiltroPendencia === 'com' && tr.dataset.pendencia === '1')
+      || (blingFiltroPendencia === 'sem' && tr.dataset.pendencia === '0');
+    const visivel = canalOk && pendOk;
+    tr.style.display = visivel ? '' : 'none';
+    if (visivel) visiveis++;
+  }
+  const total = document.getElementById('bling-pedidos-total');
+  const totalGeral = tbody.querySelectorAll('tr').length;
+  if (total) {
+    total.textContent = (blingFiltroCanal !== 'todos' || blingFiltroPendencia !== 'todos')
+      ? `${visiveis} de ${totalGeral} pedido${totalGeral !== 1 ? 's' : ''}`
+      : `${totalGeral} pedido${totalGeral !== 1 ? 's' : ''} sem nota fiscal`;
+  }
+}
 
 function blingMostrarResultadoLote(titulo, itens) {
   const modal    = document.getElementById('modal-bling-resultado');
@@ -84,6 +117,8 @@ async function blingCarregarPedidos() {
     for (const p of pedidos) {
       const tr = document.createElement('tr');
       const isShopee = /shopee/i.test(p.canal || '');
+      tr.dataset.canal     = isShopee ? 'shopee' : 'ml';
+      tr.dataset.pendencia = (p.pendencias || []).length > 0 ? '1' : '0';
       if (p.temEtiqueta && !isShopee) tr.style.background = 'rgba(34,197,94,0.07)';
       if (isShopee) tr.style.background = 'rgba(249,115,22,0.06)';
       const valor    = (p.valor_total || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -119,6 +154,7 @@ async function blingCarregarPedidos() {
     }
     tabela.style.display = '';
     blingAtualizarBotaoLote();
+    blingAplicarFiltros();
   } catch (err) {
     loading.style.display = 'none';
     erro.textContent      = 'Erro ao carregar pedidos: ' + err.message;

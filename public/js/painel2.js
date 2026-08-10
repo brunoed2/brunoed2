@@ -753,12 +753,19 @@ function baixarSelecionadas(canal) {
 let filtroAtendidos  = false;
 let skuFiltroVendas  = null;
 let skuFiltroFuturos = null;
+let filtroCanalVendas = 'todos';
 
 function toggleFiltroAtendidos() {
   filtroAtendidos = !filtroAtendidos;
   const btn = document.getElementById('btn-filtro-atendidos');
   btn.classList.toggle('btn-primary', filtroAtendidos);
   btn.classList.toggle('btn-secondary', !filtroAtendidos);
+  aplicarFiltroAtendidos();
+}
+
+function filtrarCanalVendas(btn) {
+  filtroCanalVendas = btn.dataset.valor;
+  document.querySelectorAll('[data-filtro-canal-vendas]').forEach(b => b.classList.toggle('active', b === btn));
   aplicarFiltroAtendidos();
 }
 
@@ -769,7 +776,8 @@ function aplicarFiltroAtendidos() {
     if (tr.classList.contains('venda-sub-item')) continue;
     const atendida = tr.classList.contains('venda-atendida');
     const skuMatch = !skuFiltroVendas || (tr.dataset.skus || '').split(' ').includes(skuFiltroVendas);
-    const visivel  = (!filtroAtendidos || atendida) && skuMatch;
+    const canalMatch = filtroCanalVendas === 'todos' || tr.dataset.canal === filtroCanalVendas;
+    const visivel  = (!filtroAtendidos || atendida) && skuMatch && canalMatch;
     tr.style.display = visivel ? '' : 'none';
     let next = tr.nextElementSibling;
     while (next && next.classList.contains('venda-sub-item')) {
@@ -894,7 +902,8 @@ async function carregarVendas() {
       const multi   = itens.length > 1;
 
       const tr = document.createElement('tr');
-      tr.dataset.skus = [...new Set(itens.map(i => i.sku).filter(Boolean))].join(' ');
+      tr.dataset.skus  = [...new Set(itens.map(i => i.sku).filter(Boolean))].join(' ');
+      tr.dataset.canal = v.canal === 'shopee' ? 'shopee' : 'ml';
       if (multi)      tr.classList.add('venda-multi-header');
       if (v.atendida) tr.classList.add('venda-atendida');
 
