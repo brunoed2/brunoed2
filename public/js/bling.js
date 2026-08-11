@@ -149,6 +149,7 @@ async function blingCarregarPedidos() {
         <td><input type="checkbox" class="bling-check-pedido" data-id="${p.id}" data-conta="${p.conta}" data-tem-etiqueta="${p.temEtiqueta}" data-canal="${isShopee ? 'shopee' : 'ml'}" data-shopee-liberado="${shopeeNaoLiberado ? '0' : '1'}" onchange="blingAtualizarBotaoLote()"></td>
         <td>${contaBadge}</td>
         <td>${escapeHtml(p.numero || String(p.id))}</td>
+        <td>${escapeHtml(p.numeroPedidoLoja || '—')}</td>
         <td>${escapeHtml(p.comprador || '—')}</td>
         <td class="col-num">${valor}</td>
         <td>${data_str}</td>
