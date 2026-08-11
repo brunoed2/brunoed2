@@ -6400,15 +6400,36 @@ app.get('/api/shopee/etiquetas', async (req, res) => {
   try {
     const { PDFDocument } = require('pdf-lib');
     const merged = await PDFDocument.create();
+    const falhas = [];
+    // Um pedido com erro (ex: instabilidade momentânea na Shopee/conversão) não pode
+    // derrubar o lote inteiro — tenta 2x por pedido e segue pros próximos, juntando só
+    // as que deram certo.
     for (const orderSn of ids) {
-      const pdfBuf = await shopeeGerarEtiquetaPdf(orderSn, conta);
-      const doc    = await PDFDocument.load(pdfBuf);
-      const pages  = await merged.copyPages(doc, doc.getPageIndices());
+      let pdfBuf = null, ultimoErro = null;
+      for (let tentativa = 0; tentativa < 2 && !pdfBuf; tentativa++) {
+        if (tentativa > 0) await new Promise(r => setTimeout(r, 2000));
+        try {
+          pdfBuf = await shopeeGerarEtiquetaPdf(orderSn, conta);
+        } catch (err) {
+          ultimoErro = err;
+        }
+      }
+      if (!pdfBuf) {
+        addLog(`[shopee] etiquetas em lote — ${orderSn} falhou: ${ultimoErro?.message}`, 'warn');
+        falhas.push(orderSn);
+        continue;
+      }
+      const doc   = await PDFDocument.load(pdfBuf);
+      const pages = await merged.copyPages(doc, doc.getPageIndices());
       pages.forEach(p => merged.addPage(p));
+    }
+    if (merged.getPageCount() === 0) {
+      return res.status(500).json({ error: 'Nenhuma etiqueta pôde ser gerada', falhas });
     }
     const bytes = await merged.save();
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', 'inline; filename="etiquetas-shopee.pdf"');
+    if (falhas.length) res.setHeader('X-Etiquetas-Falhas', falhas.join(','));
     res.send(Buffer.from(bytes));
   } catch (err) {
     addLog(`[shopee] etiquetas em lote: ${err.message}`, 'warn');
