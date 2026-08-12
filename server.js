@@ -272,6 +272,22 @@ function loadAcessosLog() {
 function saveAcessosLog(log) {
   fs.writeFileSync(ACESSOS_FILE, JSON.stringify(log, null, 2));
 }
+function resumirUserAgent(ua) {
+  if (!ua) return '—';
+  let os = 'Desconhecido';
+  if (/iPhone|iPad/.test(ua))       os = 'iOS';
+  else if (/Android/.test(ua))      os = 'Android';
+  else if (/Windows/.test(ua))      os = 'Windows';
+  else if (/Mac OS X/.test(ua))     os = 'Mac';
+  else if (/Linux/.test(ua))        os = 'Linux';
+  let nav = 'Navegador';
+  if (/Edg\//.test(ua))                                 nav = 'Edge';
+  else if (/Chrome\//.test(ua) && !/Edg\//.test(ua))    nav = 'Chrome';
+  else if (/Firefox\//.test(ua))                        nav = 'Firefox';
+  else if (/Safari\//.test(ua) && !/Chrome\//.test(ua)) nav = 'Safari';
+  return `${nav} · ${os}`;
+}
+
 function registrarAcesso({ nome, senha, painel, ip, userAgent }) {
   const log = loadAcessosLog();
   log.push({ data: new Date().toISOString(), nome, senha: String(senha), painel, ip, userAgent: userAgent || '' });
@@ -621,6 +637,11 @@ app.post('/api/login', (req, res) => {
     return res.status(403).json({ error: 'desativado', painel: usuario.painel });
   }
   registrarAcesso({ nome: usuario.nome, senha, painel: usuario.painel, ip: req.ip, userAgent: req.headers['user-agent'] });
+  const agoraLogin = new Date().toLocaleString('pt-BR');
+  notificar(
+    `🔓 <b>Login no painel</b>\n\n${usuario.nome}\nPainel: ${usuario.painel || '—'}\nIP: ${req.ip}\nDispositivo: ${resumirUserAgent(req.headers['user-agent'])}\n${agoraLogin}`,
+    'login'
+  ).catch(() => {});
   const sessionVersion = loadSessao().version || 0;
   if (usuario.painel === 'fornecedor') {
     return res.json({ ok: true, nome: usuario.nome, abas: [], painel: 'fornecedor', sessionVersion });
@@ -6477,6 +6498,7 @@ if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
 
 // Categorias de notificação — controlam quais usuários recebem qual tipo de push
 const NOTIF_CATEGORIAS = {
+  login:            '🔓 Login no painel',
   pedido:           '🛍️ Novos pedidos',
   estoque_baixo:    '📦 Estoque baixo',
   conexao:          '🔌 Conexão caída (ML/Bling)',
