@@ -6597,14 +6597,18 @@ async function enviarWhatsApp(phone, apikey, texto) {
   }
 }
 
+// Categorias que não devem ir pro WhatsApp (CallMeBot manda pra um número fixo,
+// não respeita preferência por usuário como o push) — continuam indo por Telegram/push.
+const WHATSAPP_CATEGORIAS_EXCLUIDAS = new Set(['shopee_boost']);
+
 // Notificações de contas a pagar e anúncios pausados
 async function notificar(texto, categoria) {
   registrarNotificacaoHistorico(texto, categoria);
-  await Promise.allSettled([
-    enviarTelegram(texto),
-    enviarWhatsApp(CALLMEBOT_PHONE, CALLMEBOT_APIKEY, texto),
-    enviarPush(texto, categoria),
-  ]);
+  const tarefas = [enviarTelegram(texto), enviarPush(texto, categoria)];
+  if (!WHATSAPP_CATEGORIAS_EXCLUIDAS.has(categoria)) {
+    tarefas.push(enviarWhatsApp(CALLMEBOT_PHONE, CALLMEBOT_APIKEY, texto));
+  }
+  await Promise.allSettled(tarefas);
 }
 
 // Notificações de pedidos novos — Telegram + CallMeBot
