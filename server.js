@@ -6509,6 +6509,7 @@ const NOTIF_CATEGORIAS = {
   auto_super:       '⚡ Pedido pronto pra NF',
   contas_pagar:     '📅 Contas a pagar vencendo',
   shopee_boost:     '🚀 Impulso automático Shopee',
+  prazo_despacho:   '⏰ Faltam 30min pro despacho',
 };
 
 // Inscrições de push — carregadas do disco, persistem entre restarts
@@ -6647,6 +6648,19 @@ function salvarShipmentsNotificados(set) {
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
 }
 const shipmentsNotificados = carregarShipmentsNotificados();
+
+// Mantém os prazos de despacho já avisados (evita repetir o aviso a cada ciclo
+// dentro da mesma janela de 30min) — chave = `${conta}:${prazoISO}`
+function carregarPrazosDespachoNotificados() {
+  const data = loadData();
+  return new Set(Array.isArray(data.prazosDespachoNotificados) ? data.prazosDespachoNotificados : []);
+}
+function salvarPrazosDespachoNotificados(set) {
+  const data = loadData();
+  data.prazosDespachoNotificados = Array.from(set).slice(-100);
+  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+}
+const prazosDespachoNotificados = carregarPrazosDespachoNotificados();
 
 let _notificarTodosTimeout = null;
 
@@ -6797,6 +6811,79 @@ async function verificarNovosShipmentsTelegram() {
       }
     } catch (err) {
       addLog(`Telegram monitor conta ${num}: ${err.message}`, 'warn');
+    }
+  }
+}
+
+// ── Polling em background: avisa 30min antes do horário-limite de despacho ──
+// Usa o mesmo prazo (estimated_schedule_limit/buffering/handling) já exibido
+// na tela de histórico de envios — só notifica pelo push do site (categoria
+// prazo_despacho), sem Telegram/WhatsApp.
+async function verificarPrazoDespachoPush() {
+  if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) return;
+  const data = loadData();
+  const LABEL_STATUSES    = new Set(['handling', 'ready_to_ship']);
+  const LABEL_SUBSTATUSES = new Set(['ready_to_print', 'printed']);
+  const agora = Date.now();
+
+  for (const num of ['1', '2']) {
+    const c = data.contas[num];
+    if (!c || !c.access_token) continue;
+    try {
+      const resp = await axios.get('https://api.mercadolibre.com/orders/search', {
+        params: { seller: c.user_id, 'order.status': 'paid', sort: 'date_desc', limit: 50 },
+        headers: { Authorization: `Bearer ${c.access_token}` },
+        timeout: 15000,
+      });
+      const orders = resp.data.results || [];
+      let menorPrazo = null;
+      let pendentes  = 0;
+
+      for (const order of orders) {
+        if (!order.shipping?.id) continue;
+        try {
+          const sr = await axios.get(`https://api.mercadolibre.com/shipments/${order.shipping.id}`, {
+            headers: { Authorization: `Bearer ${c.access_token}` }, timeout: 8000,
+          });
+          const shipment = sr.data;
+          const isFull = (shipment.logistic_type || '').includes('fulfillment');
+          if (isFull) continue;
+          if (!LABEL_STATUSES.has(shipment.status) || !LABEL_SUBSTATUSES.has(shipment.substatus)) continue;
+
+          const scheduleLimit = shipment.shipping_option?.estimated_schedule_limit?.date;
+          const bufferingDate = shipment.shipping_option?.buffering?.date;
+          const handlingHoras = shipment.shipping_option?.estimated_delivery_time?.handling ?? 24;
+          const criado = new Date(shipment.date_created);
+          const prazo = scheduleLimit || bufferingDate
+            ? new Date(scheduleLimit || bufferingDate)
+            : handlingHoras > 0 ? new Date(criado.getTime() + handlingHoras * 3600_000) : null;
+          if (!prazo || isNaN(prazo.getTime())) continue;
+
+          pendentes++;
+          if (!menorPrazo || prazo < menorPrazo) menorPrazo = prazo;
+        } catch (err) {
+          addLog(`[prazo-despacho] Erro ao checar shipment ${order.shipping.id}: ${err.message}`, 'warn');
+        }
+      }
+
+      if (!menorPrazo || !pendentes) continue;
+
+      const faltamMin = (menorPrazo.getTime() - agora) / 60000;
+      const chave = `${num}:${menorPrazo.toISOString()}`;
+      if (faltamMin > 0 && faltamMin <= 30 && !prazosDespachoNotificados.has(chave)) {
+        prazosDespachoNotificados.add(chave);
+        salvarPrazosDespachoNotificados(prazosDespachoNotificados);
+
+        const conta = c.nickname || c.nome || `Conta ${num}`;
+        const hora  = menorPrazo.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' });
+        const texto = `⏰ Faltam ${Math.round(faltamMin)} min para o horário de despacho (${hora}) — ${conta}\n` +
+          `${pendentes} pedido(s) com etiqueta pronta aguardando envio.`;
+        registrarNotificacaoHistorico(texto, 'prazo_despacho');
+        await enviarPush(texto, 'prazo_despacho');
+        addLog(`[prazo-despacho] Aviso enviado — conta ${num}, prazo ${hora}, ${pendentes} pedido(s)`, 'ok');
+      }
+    } catch (err) {
+      addLog(`[prazo-despacho] Erro conta ${num}: ${err.message}`, 'warn');
     }
   }
 }
@@ -9051,6 +9138,13 @@ app.listen(PORT, () => {
       verificarNovosShipmentsTelegram().catch(() => {});
       setInterval(() => verificarNovosShipmentsTelegram().catch(() => {}), 60_000);
     }, 10_000);
+  }
+  // Prazo de despacho: avisa 30min antes do horário-limite de envio (só push do site)
+  if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
+    setTimeout(() => {
+      verificarPrazoDespachoPush().catch(() => {});
+      setInterval(() => verificarPrazoDespachoPush().catch(() => {}), 5 * 60_000);
+    }, 45_000);
   }
   // Anúncios pausados: roda se tiver WhatsApp principal ou Telegram
   if ((CALLMEBOT_PHONE && CALLMEBOT_APIKEY) || (TELEGRAM_TOKEN && TELEGRAM_CHAT_ID)) {
