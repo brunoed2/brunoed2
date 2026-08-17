@@ -6077,6 +6077,20 @@ app.post('/api/lucro/custo-remover-shopee', async (req, res) => {
 // Status Shopee que representam devolução/cancelamento — excluídos do total de lucro
 const SHOPEE_STATUS_CANCELADO = ['CANCELLED', 'TO_RETURN', 'IN_CANCEL'];
 
+// A Shopee limita get_order_list a no máximo 15 dias por chamada (time_from..time_to).
+// Períodos maiores (ex: mês inteiro) precisam ser quebrados em várias janelas.
+function shopeeQuebrarFaixaTempo(fromTs, toTs, maxDias = 15) {
+  const maxSpan = maxDias * 24 * 60 * 60 - 1;
+  const faixas = [];
+  let inicio = fromTs;
+  while (inicio <= toTs) {
+    const fim = Math.min(inicio + maxSpan, toTs);
+    faixas.push([inicio, fim]);
+    inicio = fim + 1;
+  }
+  return faixas;
+}
+
 async function buscarVendasShopeeComCustos(data, conta, dateFrom, dateTo) {
   const num = String(conta || '1');
   const sp = shopeeConta(data, num);
@@ -6090,26 +6104,30 @@ async function buscarVendasShopeeComCustos(data, conta, dateFrom, dateTo) {
   // Shopee exige um order_status por chamada — busca os status relevantes separadamente.
   // Inclui READY_TO_SHIP/PROCESSED (pago, ainda sem NF/despacho) pra contar a venda assim
   // que autorizada, igual o bloco do ML (que já entra com order.status=paid).
+  // E o intervalo é quebrado em janelas de até 15 dias (limite da API da Shopee).
   let orderSns = [];
+  const faixasTempo = shopeeQuebrarFaixaTempo(fromTs, toTs);
   for (const status of ['READY_TO_SHIP', 'PROCESSED', 'SHIPPED', 'COMPLETED', 'CANCELLED']) {
-    let cursor = '';
-    let more   = true;
-    while (more) {
-      const path   = '/api/v2/order/get_order_list';
-      const params = shopeeParams(path, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
-      params.order_status     = status;
-      params.page_size        = 100;
-      params.cursor           = cursor;
-      params.time_range_field = 'create_time';
-      params.time_from        = fromTs;
-      params.time_to          = toTs;
-      const r = await axios.get(`${SHOPEE_BASE}/order/get_order_list`, { params, timeout: 15000 });
-      if (r.data.error) break;
-      const list = r.data.response?.order_list || [];
-      orderSns = orderSns.concat(list.map(o => o.order_sn));
-      more   = !!r.data.response?.more;
-      cursor = r.data.response?.next_cursor || '';
-      if (!more || !cursor) break;
+    for (const [tFrom, tTo] of faixasTempo) {
+      let cursor = '';
+      let more   = true;
+      while (more) {
+        const path   = '/api/v2/order/get_order_list';
+        const params = shopeeParams(path, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
+        params.order_status     = status;
+        params.page_size        = 100;
+        params.cursor           = cursor;
+        params.time_range_field = 'create_time';
+        params.time_from        = tFrom;
+        params.time_to          = tTo;
+        const r = await axios.get(`${SHOPEE_BASE}/order/get_order_list`, { params, timeout: 15000 });
+        if (r.data.error) break;
+        const list = r.data.response?.order_list || [];
+        orderSns = orderSns.concat(list.map(o => o.order_sn));
+        more   = !!r.data.response?.more;
+        cursor = r.data.response?.next_cursor || '';
+        if (!more || !cursor) break;
+      }
     }
   }
   orderSns = [...new Set(orderSns)];
