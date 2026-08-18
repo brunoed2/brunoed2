@@ -6893,11 +6893,46 @@ async function contarPendentesDespacho(token, userId) {
   }
 }
 
+// Varre os pedidos com etiqueta pronta (independente de já terem sido "vistos"
+// pelo job de novo pedido) e devolve o prazo do primeiro que encontrar — usado
+// como reserva quando o dia ainda não teve o prazo capturado por outra via
+// (ex: todas as etiquetas já estavam prontas de antes do servidor começar a
+// olhar pra elas hoje, então o hook do polling de pedidos nunca disparou).
+async function descobrirPrazoDespachoHoje(token, userId) {
+  const LABEL_STATUSES    = new Set(['handling', 'ready_to_ship']);
+  const LABEL_SUBSTATUSES = new Set(['ready_to_print', 'printed']);
+  try {
+    const resp = await axios.get('https://api.mercadolibre.com/orders/search', {
+      params: { seller: userId, 'order.status': 'paid', sort: 'date_desc', limit: 50 },
+      headers: { Authorization: `Bearer ${token}` },
+      timeout: 15000,
+    });
+    for (const order of resp.data.results || []) {
+      if (!order.shipping?.id) continue;
+      try {
+        const sr = await axios.get(`https://api.mercadolibre.com/shipments/${order.shipping.id}`, {
+          headers: { Authorization: `Bearer ${token}` }, timeout: 8000,
+        });
+        const shipment = sr.data;
+        const isFull = (shipment.logistic_type || '').includes('fulfillment');
+        if (isFull) continue;
+        if (!LABEL_STATUSES.has(shipment.status) || !LABEL_SUBSTATUSES.has(shipment.substatus)) continue;
+        const prazo = calcularPrazoShipment(shipment);
+        if (prazo) return prazo;
+      } catch {}
+    }
+  } catch (err) {
+    addLog(`[prazo-despacho] Erro na descoberta de fallback: ${err.message}`, 'warn');
+  }
+  return null;
+}
+
 // ── Polling em background: avisa 30min antes do horário-limite de despacho ──
-// O prazo já foi capturado 1x hoje por capturarPrazoDespachoSeNecessario()
-// (chamado do polling de novos pedidos, reaproveitando o shipment já buscado
-// lá) — aqui é só comparar com o relógio, sem custo de API na maioria dos
-// ciclos. Só notifica pelo push do site (categoria prazo_despacho).
+// O prazo normalmente já foi capturado por capturarPrazoDespachoSeNecessario()
+// (via polling de novos pedidos). Se ainda não tiver sido (ex: as etiquetas de
+// hoje já estavam prontas antes de qualquer ciclo notar a transição), tenta
+// descobrir aqui mesmo — no máximo 1x a cada 5min, pra não martelar a API.
+// Só notifica pelo push do site (categoria prazo_despacho).
 async function verificarPrazoDespachoPush() {
   if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) return;
   const data  = loadData();
@@ -6909,8 +6944,23 @@ async function verificarPrazoDespachoPush() {
     const c = data.contas[num];
     if (!c || !c.access_token) continue;
 
-    const entry = cache[num];
-    if (!entry || entry.dia !== hoje || !entry.prazoISO || entry.notificado) continue;
+    let entry = cache[num];
+    if (!entry || entry.dia !== hoje) entry = { dia: hoje, prazoISO: null, notificado: false, ultimaTentativa: 0 };
+
+    if (!entry.prazoISO) {
+      if (agora - (entry.ultimaTentativa || 0) < 5 * 60_000) continue; // já tentou recente, aguarda
+      entry.ultimaTentativa = agora;
+      const prazo = await descobrirPrazoDespachoHoje(c.access_token, c.user_id);
+      if (prazo) {
+        entry.prazoISO = prazo.toISOString();
+        addLog(`[prazo-despacho] Prazo do dia descoberto (fallback) — conta ${num}: ${prazo.toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`, 'info');
+      }
+      cache[num] = entry;
+      salvarPrazoDespachoCache(cache);
+      if (!entry.prazoISO) continue;
+    }
+
+    if (entry.notificado) continue;
 
     const prazo     = new Date(entry.prazoISO);
     const faltamMin = (prazo.getTime() - agora) / 60000;
