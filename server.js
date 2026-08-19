@@ -6577,22 +6577,36 @@ function usuarioRecebeCategoria(usuario, categoria) {
   return usuario.notificacoes.includes(categoria);
 }
 
+// Retorna quantos pushes foram efetivamente enviados com sucesso — os chamadores
+// que precisam confirmar entrega (ex: prazo de despacho, antes de marcar como
+// "já avisei hoje") usam esse retorno em vez de assumir que deu certo.
 async function enviarPush(texto, categoria) {
-  if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) return;
+  if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
+    addLog(`Push [${categoria || '-'}]: não enviado — VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY não configurados no Railway`, 'warn');
+    return 0;
+  }
   const subs = carregarPushSubscriptions();
-  if (!subs.length) return;
+  if (!subs.length) {
+    addLog(`Push [${categoria || '-'}]: não enviado — nenhuma inscrição de push registrada`, 'warn');
+    return 0;
+  }
   const usuarios = loadData().usuarios || {};
   const alvo = subs.filter(sub => usuarioRecebeCategoria(sub.senha && usuarios[sub.senha], categoria));
-  if (!alvo.length) return;
+  if (!alvo.length) {
+    addLog(`Push [${categoria || '-'}]: não enviado — ${subs.length} inscrição(ões), mas nenhuma com essa categoria habilitada`, 'warn');
+    return 0;
+  }
 
   const titulo = 'Painel';
   const corpo  = texto.replace(/<[^>]+>/g, '');
   const payload = JSON.stringify({ title: titulo, body: corpo });
 
   const expirados = [];
+  let enviados = 0;
   await Promise.allSettled(alvo.map(async (sub) => {
     try {
       await webpush.sendNotification(sub, payload);
+      enviados++;
     } catch (err) {
       // 404/410 = inscrição inválida/expirada — remove
       if (err.statusCode === 404 || err.statusCode === 410) expirados.push(sub.endpoint);
@@ -6600,6 +6614,7 @@ async function enviarPush(texto, categoria) {
     }
   }));
   if (expirados.length) salvarPushSubscriptions(subs.filter(s => !expirados.includes(s.endpoint)));
+  return enviados;
 }
 
 async function enviarWhatsApp(phone, apikey, texto) {
@@ -6967,18 +6982,23 @@ async function verificarPrazoDespachoPush() {
     const faltamMin = (prazo.getTime() - agora) / 60000;
     if (faltamMin <= 0 || faltamMin > 30) continue;
 
-    entry.notificado = true;
-    cache[num] = entry;
-    salvarPrazoDespachoCache(cache);
-
     const pendentes = await contarPendentesDespacho(c.access_token, c.user_id);
     const conta = c.nickname || c.nome || `Conta ${num}`;
     const hora  = prazo.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' });
     const texto = `⏰ Faltam ${Math.round(faltamMin)} min para o horário de despacho (${hora}) — ${conta}\n` +
       (pendentes ? `${pendentes} pedido(s) com etiqueta pronta aguardando envio.` : 'Confira os pedidos com etiqueta pronta.');
+    // Registra no histórico (sino do app) mesmo que o push falhe — dá pra ver que a
+    // lógica rodou mesmo sem o push chegar no celular.
     registrarNotificacaoHistorico(texto, 'prazo_despacho');
-    await enviarPush(texto, 'prazo_despacho');
-    addLog(`[prazo-despacho] Aviso enviado — conta ${num}, prazo ${hora}`, 'ok');
+    const enviados = await enviarPush(texto, 'prazo_despacho');
+    if (enviados > 0) {
+      entry.notificado = true;
+      cache[num] = entry;
+      salvarPrazoDespachoCache(cache);
+      addLog(`[prazo-despacho] Aviso enviado — conta ${num}, prazo ${hora}`, 'ok');
+    } else {
+      addLog(`[prazo-despacho] Prazo ${hora} dentro da janela mas push não saiu (conta ${num}) — tenta de novo no próximo minuto`, 'warn');
+    }
   }
 }
 
