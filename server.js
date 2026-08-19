@@ -4880,6 +4880,19 @@ app.get('/api/ml/debug-billing', async (req, res) => {
 });
 
 // Debug — estrutura real do shipment para diagnóstico do frete
+// Debug — mostra o prazo de despacho capturado hoje pra cada conta
+app.get('/api/ml/debug-prazo-despacho', (req, res) => {
+  const data = loadData();
+  const cache = data.prazoDespacho || {};
+  res.json({
+    hoje_br: hojeSP(),
+    contas: Object.fromEntries(Object.entries(cache).map(([num, entry]) => [num, {
+      ...entry,
+      prazo_hora_br: entry.prazoISO ? horaSP(new Date(entry.prazoISO)) : null,
+    }])),
+  });
+});
+
 app.get('/api/ml/debug-shipment/:sid', async (req, res) => {
   const data = loadData();
   const num  = req.query.conta || data.conta_ativa;
