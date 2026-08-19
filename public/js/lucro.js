@@ -675,11 +675,13 @@ function lucroSetMesAtual() {
 }
 
 function lucroSetPeriodoRapido(dias) {
-  const hoje = lucroHoje();
+  const d = new Date();
+  d.setDate(d.getDate() - dias);
+  const data = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   const ate  = document.getElementById('lucro-data-ate');
   const de   = document.getElementById('lucro-data-de');
-  if (ate) ate.value = hoje;
-  if (de)  de.value  = hoje; // "Hoje" = mesmo dia nos dois
+  if (ate) ate.value = data;
+  if (de)  de.value  = data; // mesmo dia nos dois
   lucroAtualizarAmbos();
 }
 
