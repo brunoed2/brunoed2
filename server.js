@@ -4893,6 +4893,64 @@ app.get('/api/ml/debug-prazo-despacho', (req, res) => {
   });
 });
 
+// Debug — mostra os campos crus de shipping_option dos pedidos com etiqueta
+// pronta (pra investigar por que o prazo calculado bateu estranho) e tenta o
+// endpoint oficial de grade semanal de despacho (schedule/{logistic_type}).
+app.get('/api/ml/debug-prazo-despacho-raw', async (req, res) => {
+  const data = loadData();
+  const num  = req.query.conta || '1';
+  const c    = data.contas[num];
+  if (!c?.access_token) return res.json({ error: 'Conta não conectada' });
+
+  const LABEL_STATUSES    = new Set(['handling', 'ready_to_ship']);
+  const LABEL_SUBSTATUSES = new Set(['ready_to_print', 'printed']);
+  const headers = { Authorization: `Bearer ${c.access_token}` };
+  const candidatos = [];
+
+  try {
+    const resp = await axios.get('https://api.mercadolibre.com/orders/search', {
+      params: { seller: c.user_id, 'order.status': 'paid', sort: 'date_desc', limit: 20 },
+      headers, timeout: 15000,
+    });
+    for (const order of resp.data.results || []) {
+      if (!order.shipping?.id) continue;
+      try {
+        const sr = await axios.get(`https://api.mercadolibre.com/shipments/${order.shipping.id}`, { headers, timeout: 8000 });
+        const s = sr.data;
+        const isFull = (s.logistic_type || '').includes('fulfillment');
+        candidatos.push({
+          order_id:        order.id,
+          shipment_id:     s.id,
+          logistic_type:   s.logistic_type,
+          mode:            s.mode,
+          status:          s.status,
+          substatus:       s.substatus,
+          date_created:    s.date_created,
+          label_pronta:    !isFull && LABEL_STATUSES.has(s.status) && LABEL_SUBSTATUSES.has(s.substatus),
+          shipping_option: s.shipping_option || null,
+        });
+      } catch (e) {
+        candidatos.push({ order_id: order.id, erro: e.message });
+      }
+    }
+  } catch (e) {
+    return res.json({ error: e.message });
+  }
+
+  // Tenta o endpoint de grade semanal de despacho pra alguns logistic_types comuns
+  const schedules = {};
+  for (const lt of ['self_service', 'drop_off', 'xd_drop_off', 'cross_docking', 'fulfillment']) {
+    try {
+      const r = await axios.get(`https://api.mercadolibre.com/users/${c.user_id}/shipping/schedule/${lt}`, { headers, timeout: 8000 });
+      schedules[lt] = r.data;
+    } catch (e) {
+      schedules[lt] = { error: e.response?.status || e.message };
+    }
+  }
+
+  res.json({ candidatos, schedules });
+});
+
 app.get('/api/ml/debug-shipment/:sid', async (req, res) => {
   const data = loadData();
   const num  = req.query.conta || data.conta_ativa;
