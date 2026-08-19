@@ -15,6 +15,10 @@ let gastosVendasRaw   = []; // vendas do mês completo (exclusivo para aba Gasto
 let gastosAuto        = { ads_cost: null }; // detectados automaticamente
 let gastosFixosTravados = new Set(); // nomes dos fixos com cadeado ativo
 
+let lucroSortState  = { campo: null, direcao: 'asc' };
+let lucroFiltroSku  = '';
+let lucroVendasCalc = []; // último cálculo ML, pra reordenar/filtrar sem recarregar
+
 function lucroHoje() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
@@ -336,8 +340,69 @@ function lucroRecalcularERenderizar() {
   totalCombinado.margem = totalCombinado.receita > 0 ? (totalCombinado.lucro / totalCombinado.receita) * 100 : 0;
 
   lucroRenderizarCards(totalCombinado, ativasML.length + ativasShopee.length);
-  if (lucroVendasRaw.length)       lucroRenderizarTabela(vendasML); // inclui canceladas, mostradas em vermelho sem somar
+  if (lucroVendasRaw.length) {
+    lucroVendasCalc = vendasML; // inclui canceladas, mostradas em vermelho sem somar
+    lucroRenderizarTabelaComFiltro();
+  }
   if (lucroShopeeVendasRaw.length) lucroShopeeRenderizarTabela(vendasShopee);
+}
+
+// ── Ordenação e filtro por SKU (tabela ML) ──────────────────────
+
+function lucroValorOrdenacao(v, campo) {
+  const item0 = v.itens[0] || {};
+  switch (campo) {
+    case 'data':    return v.data || '';
+    case 'pedido':  return v.orderId || '';
+    case 'produto': return item0.titulo || '';
+    case 'sku':     return item0.sku || item0.mlb || '';
+    case 'qtd':     return v.itens.reduce((s, i) => s + i.quantidade, 0);
+    case 'receita': return v.receita  || 0;
+    case 'taxaML':  return v.taxaML   || 0;
+    case 'frete':   return v.frete    || 0;
+    case 'custo':   return v.custo    || 0;
+    case 'imposto': return v.imposto  || 0;
+    case 'lucro':   return v.lucro    || 0;
+    case 'margem':  return v.margem   || 0;
+    default:        return '';
+  }
+}
+
+function lucroRenderizarTabelaComFiltro() {
+  let vendas = lucroVendasCalc;
+
+  const termo = lucroFiltroSku.trim().toLowerCase();
+  if (termo) {
+    vendas = vendas.filter(v => v.itens.some(i => (i.sku || i.mlb || '').toLowerCase().includes(termo)));
+  }
+
+  const { campo, direcao } = lucroSortState;
+  if (campo) {
+    const mult = direcao === 'asc' ? 1 : -1;
+    vendas = [...vendas].sort((a, b) => {
+      const va = lucroValorOrdenacao(a, campo);
+      const vb = lucroValorOrdenacao(b, campo);
+      if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * mult;
+      return String(va).localeCompare(String(vb), 'pt-BR', { numeric: true }) * mult;
+    });
+  }
+
+  lucroRenderizarTabela(vendas);
+
+  document.querySelectorAll('#tabela-lucro .sort-icon[data-sort]').forEach(ic => {
+    ic.textContent = ic.dataset.sort === campo ? (direcao === 'asc' ? ' ▲' : ' ▼') : '';
+  });
+}
+
+function lucroOrdenar(campo) {
+  lucroSortState.direcao = lucroSortState.campo === campo && lucroSortState.direcao === 'asc' ? 'desc' : 'asc';
+  lucroSortState.campo   = campo;
+  lucroRenderizarTabelaComFiltro();
+}
+
+function lucroFiltrarSkuInput(valor) {
+  lucroFiltroSku = valor;
+  lucroRenderizarTabelaComFiltro();
 }
 
 function lucroRenderizarCards(t, qtd) {

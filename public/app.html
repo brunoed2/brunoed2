@@ -158,21 +158,22 @@
             <div id="lucro-loading" class="loading" style="display:none">Carregando vendas...</div>
 
             <h2 style="font-size:14px;font-weight:600;margin:4px 0 8px;color:#64748b">🛍️ Mercado Livre</h2>
+            <input type="text" id="lucro-filtro-sku" class="filtro-sku-input" placeholder="Filtrar por SKU..." oninput="lucroFiltrarSkuInput(this.value)" style="margin-bottom:8px">
             <table class="tabela" id="tabela-lucro" style="display:none">
               <thead>
                 <tr>
-                  <th>Data</th>
-                  <th>Pedido</th>
-                  <th>Produto</th>
-                  <th>SKU</th>
-                  <th class="col-num">Qtd</th>
-                  <th class="col-num">Receita</th>
-                  <th class="col-num">Taxa ML</th>
-                  <th class="col-num">Frete</th>
-                  <th class="col-num">Custo</th>
-                  <th class="col-num">Imposto</th>
-                  <th class="col-num">Lucro</th>
-                  <th class="col-num">Margem</th>
+                  <th class="th-sort" onclick="lucroOrdenar('data')">Data <span class="sort-icon" data-sort="data"></span></th>
+                  <th class="th-sort" onclick="lucroOrdenar('pedido')">Pedido <span class="sort-icon" data-sort="pedido"></span></th>
+                  <th class="th-sort" onclick="lucroOrdenar('produto')">Produto <span class="sort-icon" data-sort="produto"></span></th>
+                  <th class="th-sort" onclick="lucroOrdenar('sku')">SKU <span class="sort-icon" data-sort="sku"></span></th>
+                  <th class="th-sort col-num" onclick="lucroOrdenar('qtd')">Qtd <span class="sort-icon" data-sort="qtd"></span></th>
+                  <th class="th-sort col-num" onclick="lucroOrdenar('receita')">Receita <span class="sort-icon" data-sort="receita"></span></th>
+                  <th class="th-sort col-num" onclick="lucroOrdenar('taxaML')">Taxa ML <span class="sort-icon" data-sort="taxaML"></span></th>
+                  <th class="th-sort col-num" onclick="lucroOrdenar('frete')">Frete <span class="sort-icon" data-sort="frete"></span></th>
+                  <th class="th-sort col-num" onclick="lucroOrdenar('custo')">Custo <span class="sort-icon" data-sort="custo"></span></th>
+                  <th class="th-sort col-num" onclick="lucroOrdenar('imposto')">Imposto <span class="sort-icon" data-sort="imposto"></span></th>
+                  <th class="th-sort col-num" onclick="lucroOrdenar('lucro')">Lucro <span class="sort-icon" data-sort="lucro"></span></th>
+                  <th class="th-sort col-num" onclick="lucroOrdenar('margem')">Margem <span class="sort-icon" data-sort="margem"></span></th>
                 </tr>
               </thead>
               <tbody id="tabela-lucro-body"></tbody>
@@ -1908,6 +1909,6 @@
     </div>
   </div>
 
-  <div id="version-badge">v795</div>
+  <div id="version-badge">v796</div>
 </body>
 </html>
