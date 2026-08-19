@@ -6696,8 +6696,20 @@ function salvarPrazoDespachoCache(cache) {
   data.prazoDespacho = cache;
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
 }
+// Brasil = UTC-3 fixo (sem horário de verão desde 2019) — cálculo manual em vez
+// de Intl timeZone porque depende do banco de fusos do ICU do Node, que pode
+// não estar disponível no ambiente do Railway (e se faltar, toLocaleDateString/
+// toLocaleTimeString com `timeZone` lança exceção — como esse job roda dentro
+// de um .catch(() => {}) genérico no setInterval, isso mataria o ciclo inteiro
+// TODO minuto, em silêncio, sem nenhum log — daí o bug de nunca notificar).
+const BR_OFFSET_MS = 3 * 3600_000;
 function hojeSP() {
-  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+  const d = new Date(Date.now() - BR_OFFSET_MS);
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+}
+function horaSP(date) {
+  const d = new Date(date.getTime() - BR_OFFSET_MS);
+  return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
 }
 function calcularPrazoShipment(shipment) {
   const scheduleLimit = shipment.shipping_option?.estimated_schedule_limit?.date;
@@ -6722,7 +6734,7 @@ function capturarPrazoDespachoSeNecessario(num, shipment) {
 
   cache[num] = { dia: hoje, prazoISO: prazo.toISOString(), notificado: false };
   salvarPrazoDespachoCache(cache);
-  addLog(`[prazo-despacho] Prazo do dia capturado — conta ${num}: ${prazo.toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`, 'info');
+  addLog(`[prazo-despacho] Prazo do dia capturado — conta ${num}: ${horaSP(prazo)}`, 'info');
 }
 
 let _notificarTodosTimeout = null;
@@ -6960,6 +6972,7 @@ async function verificarPrazoDespachoPush() {
     const c = data.contas[num];
     if (!c || !c.access_token) continue;
 
+    try {
     let entry = cache[num];
     if (!entry || entry.dia !== hoje) entry = { dia: hoje, prazoISO: null, notificado: false, ultimaTentativa: 0 };
 
@@ -6969,7 +6982,9 @@ async function verificarPrazoDespachoPush() {
       const prazo = await descobrirPrazoDespachoHoje(c.access_token, c.user_id);
       if (prazo) {
         entry.prazoISO = prazo.toISOString();
-        addLog(`[prazo-despacho] Prazo do dia descoberto (fallback) — conta ${num}: ${prazo.toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`, 'info');
+        addLog(`[prazo-despacho] Prazo do dia descoberto (fallback) — conta ${num}: ${horaSP(prazo)}`, 'info');
+      } else {
+        addLog(`[prazo-despacho] Conta ${num}: nenhum pedido com etiqueta pronta encontrado ainda hoje`, 'info');
       }
       cache[num] = entry;
       salvarPrazoDespachoCache(cache);
@@ -6984,7 +6999,7 @@ async function verificarPrazoDespachoPush() {
 
     const pendentes = await contarPendentesDespacho(c.access_token, c.user_id);
     const conta = c.nickname || c.nome || `Conta ${num}`;
-    const hora  = prazo.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' });
+    const hora  = horaSP(prazo);
     const texto = `⏰ Faltam ${Math.round(faltamMin)} min para o horário de despacho (${hora}) — ${conta}\n` +
       (pendentes ? `${pendentes} pedido(s) com etiqueta pronta aguardando envio.` : 'Confira os pedidos com etiqueta pronta.');
     // Registra no histórico (sino do app) mesmo que o push falhe — dá pra ver que a
@@ -6998,6 +7013,9 @@ async function verificarPrazoDespachoPush() {
       addLog(`[prazo-despacho] Aviso enviado — conta ${num}, prazo ${hora}`, 'ok');
     } else {
       addLog(`[prazo-despacho] Prazo ${hora} dentro da janela mas push não saiu (conta ${num}) — tenta de novo no próximo minuto`, 'warn');
+    }
+    } catch (err) {
+      addLog(`[prazo-despacho] Erro inesperado na conta ${num}: ${err.message}`, 'erro');
     }
   }
 }
