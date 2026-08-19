@@ -153,12 +153,12 @@
                 <button class="filtro-btn" onclick="lucroSetMesAtual()">Mês</button>
                 <button class="btn-secondary" onclick="lucroAtualizarAmbos()" id="btn-atualizar-lucro">↻ Atualizar</button>
               </div>
+              <input type="text" id="lucro-filtro-sku" class="filtro-sku-input" placeholder="Filtrar por SKU (ML + Shopee)..." oninput="lucroFiltrarSkuInput(this.value)">
             </div>
 
             <div id="lucro-loading" class="loading" style="display:none">Carregando vendas...</div>
 
             <h2 style="font-size:14px;font-weight:600;margin:4px 0 8px;color:#64748b">🛍️ Mercado Livre</h2>
-            <input type="text" id="lucro-filtro-sku" class="filtro-sku-input" placeholder="Filtrar por SKU..." oninput="lucroFiltrarSkuInput(this.value)" style="margin-bottom:8px">
             <table class="tabela" id="tabela-lucro" style="display:none">
               <thead>
                 <tr>
@@ -191,18 +191,18 @@
             <table class="tabela" id="tabela-lucro-shopee" style="display:none">
               <thead>
                 <tr>
-                  <th>Data</th>
-                  <th>Pedido</th>
-                  <th>Produto</th>
-                  <th>ID Shopee</th>
-                  <th class="col-num">Qtd</th>
-                  <th class="col-num">Receita</th>
-                  <th class="col-num">Comissão</th>
-                  <th class="col-num">Frete</th>
-                  <th class="col-num">Custo</th>
-                  <th class="col-num">Imposto</th>
-                  <th class="col-num">Lucro</th>
-                  <th class="col-num">Margem</th>
+                  <th class="th-sort" onclick="lucroShopeeOrdenar('data')">Data <span class="sort-icon" data-sort="data"></span></th>
+                  <th class="th-sort" onclick="lucroShopeeOrdenar('pedido')">Pedido <span class="sort-icon" data-sort="pedido"></span></th>
+                  <th class="th-sort" onclick="lucroShopeeOrdenar('produto')">Produto <span class="sort-icon" data-sort="produto"></span></th>
+                  <th class="th-sort" onclick="lucroShopeeOrdenar('sku')">SKU / ID Shopee <span class="sort-icon" data-sort="sku"></span></th>
+                  <th class="th-sort col-num" onclick="lucroShopeeOrdenar('qtd')">Qtd <span class="sort-icon" data-sort="qtd"></span></th>
+                  <th class="th-sort col-num" onclick="lucroShopeeOrdenar('receita')">Receita <span class="sort-icon" data-sort="receita"></span></th>
+                  <th class="th-sort col-num" onclick="lucroShopeeOrdenar('taxaShopee')">Comissão <span class="sort-icon" data-sort="taxaShopee"></span></th>
+                  <th class="th-sort col-num" onclick="lucroShopeeOrdenar('frete')">Frete <span class="sort-icon" data-sort="frete"></span></th>
+                  <th class="th-sort col-num" onclick="lucroShopeeOrdenar('custo')">Custo <span class="sort-icon" data-sort="custo"></span></th>
+                  <th class="th-sort col-num" onclick="lucroShopeeOrdenar('imposto')">Imposto <span class="sort-icon" data-sort="imposto"></span></th>
+                  <th class="th-sort col-num" onclick="lucroShopeeOrdenar('lucro')">Lucro <span class="sort-icon" data-sort="lucro"></span></th>
+                  <th class="th-sort col-num" onclick="lucroShopeeOrdenar('margem')">Margem <span class="sort-icon" data-sort="margem"></span></th>
                 </tr>
               </thead>
               <tbody id="tabela-lucro-shopee-body"></tbody>
@@ -1909,6 +1909,6 @@
     </div>
   </div>
 
-  <div id="version-badge">v796</div>
+  <div id="version-badge">v797</div>
 </body>
 </html>

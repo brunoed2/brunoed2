@@ -6171,6 +6171,7 @@ async function buscarVendasShopeeComCustos(data, conta, dateFrom, dateTo) {
     const itens = (det.item_list || []).map(i => ({
       itemId:     i.item_id,
       modelId:    i.model_id || 0,
+      sku:        i.item_sku || i.model_sku || '',
       titulo:     i.item_name || '',
       variacao:   (i.model_name && i.model_name !== i.item_name) ? i.model_name : '',
       quantidade: i.model_quantity_purchased || 1,

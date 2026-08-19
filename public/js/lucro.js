@@ -18,6 +18,8 @@ let gastosFixosTravados = new Set(); // nomes dos fixos com cadeado ativo
 let lucroSortState  = { campo: null, direcao: 'asc' };
 let lucroFiltroSku  = '';
 let lucroVendasCalc = []; // último cálculo ML, pra reordenar/filtrar sem recarregar
+let lucroShopeeSortState  = { campo: null, direcao: 'asc' };
+let lucroShopeeVendasCalc = []; // último cálculo Shopee, pra aplicar o mesmo filtro sem recarregar
 
 function lucroHoje() {
   const d = new Date();
@@ -344,7 +346,10 @@ function lucroRecalcularERenderizar() {
     lucroVendasCalc = vendasML; // inclui canceladas, mostradas em vermelho sem somar
     lucroRenderizarTabelaComFiltro();
   }
-  if (lucroShopeeVendasRaw.length) lucroShopeeRenderizarTabela(vendasShopee);
+  if (lucroShopeeVendasRaw.length) {
+    lucroShopeeVendasCalc = vendasShopee;
+    lucroShopeeRenderizarComFiltro();
+  }
 }
 
 // ── Ordenação e filtro por SKU (tabela ML) ──────────────────────
@@ -403,6 +408,62 @@ function lucroOrdenar(campo) {
 function lucroFiltrarSkuInput(valor) {
   lucroFiltroSku = valor;
   lucroRenderizarTabelaComFiltro();
+  if (lucroShopeeVendasCalc.length) lucroShopeeRenderizarComFiltro();
+}
+
+// ── Ordenação e filtro por SKU (tabela Shopee) ──────────────────
+
+function lucroShopeeValorOrdenacao(v, campo) {
+  const item0 = v.itens[0] || {};
+  switch (campo) {
+    case 'data':      return v.data || '';
+    case 'pedido':    return v.orderId || '';
+    case 'produto':   return item0.titulo || '';
+    case 'sku':       return item0.sku || String(item0.itemId || '');
+    case 'qtd':       return v.itens.reduce((s, i) => s + i.quantidade, 0);
+    case 'receita':   return v.receita    || 0;
+    case 'taxaShopee':return v.taxaShopee || 0;
+    case 'frete':     return v.frete      || 0;
+    case 'custo':     return v.custo      || 0;
+    case 'imposto':   return v.imposto    || 0;
+    case 'lucro':     return v.lucro      || 0;
+    case 'margem':    return v.margem     || 0;
+    default:          return '';
+  }
+}
+
+function lucroShopeeRenderizarComFiltro() {
+  let vendas = lucroShopeeVendasCalc;
+
+  const termo = lucroFiltroSku.trim().toLowerCase();
+  if (termo) {
+    vendas = vendas.filter(v => v.itens.some(i =>
+      (i.sku || '').toLowerCase().includes(termo) || String(i.itemId || '').toLowerCase().includes(termo)
+    ));
+  }
+
+  const { campo, direcao } = lucroShopeeSortState;
+  if (campo) {
+    const mult = direcao === 'asc' ? 1 : -1;
+    vendas = [...vendas].sort((a, b) => {
+      const va = lucroShopeeValorOrdenacao(a, campo);
+      const vb = lucroShopeeValorOrdenacao(b, campo);
+      if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * mult;
+      return String(va).localeCompare(String(vb), 'pt-BR', { numeric: true }) * mult;
+    });
+  }
+
+  lucroShopeeRenderizarTabela(vendas);
+
+  document.querySelectorAll('#tabela-lucro-shopee .sort-icon[data-sort]').forEach(ic => {
+    ic.textContent = ic.dataset.sort === campo ? (direcao === 'asc' ? ' ▲' : ' ▼') : '';
+  });
+}
+
+function lucroShopeeOrdenar(campo) {
+  lucroShopeeSortState.direcao = lucroShopeeSortState.campo === campo && lucroShopeeSortState.direcao === 'asc' ? 'desc' : 'asc';
+  lucroShopeeSortState.campo   = campo;
+  lucroShopeeRenderizarComFiltro();
 }
 
 function lucroRenderizarCards(t, qtd) {
@@ -555,7 +616,7 @@ function lucroShopeeRenderizarTabela(vendas) {
         <td class="lucro-td-data">${new Date(v.data).toLocaleDateString('pt-BR')}</td>
         <td class="lucro-td-pedido" onclick="lucroCopiarPedido(this, '${v.orderId}')" title="Clique para copiar">${v.orderId || '—'}</td>
         <td class="td-titulo">${titulo0}${multi ? `<span class="lucro-multi"> +${v.itens.length - 1}</span>` : ''}</td>
-        <td class="lucro-td-mlb">${item0.itemId || '—'}</td>
+        <td class="lucro-td-mlb">${item0.sku || item0.itemId || '—'}</td>
         <td class="col-num">${qtdTotal}</td>
         <td class="col-num" colspan="7">CANCELADO/DEVOLVIDO — não entra no total</td>
       `;
@@ -571,7 +632,7 @@ function lucroShopeeRenderizarTabela(vendas) {
       <td class="lucro-td-data">${new Date(v.data).toLocaleDateString('pt-BR')}</td>
       <td class="lucro-td-pedido" onclick="lucroCopiarPedido(this, '${v.orderId}')" title="Clique para copiar">${v.orderId || '—'}</td>
       <td class="td-titulo">${titulo0}${multi ? `<span class="lucro-multi"> +${v.itens.length - 1}</span>` : ''}</td>
-      <td class="lucro-td-mlb">${item0.itemId || '—'}</td>
+      <td class="lucro-td-mlb">${item0.sku || item0.itemId || '—'}</td>
       <td class="col-num">${qtdTotal}</td>
       <td class="col-num">${lucroFmt(v.receita)}</td>
       <td class="col-num lucro-neg-leve">${fmtCusto(v.taxaShopee)}</td>
@@ -603,7 +664,7 @@ function lucroShopeeRenderizarTabela(vendas) {
         <td></td>
         <td></td>
         <td class="td-titulo" style="color:#94a3b8;font-size:12px">↳ ${tituloI}</td>
-        <td class="lucro-td-mlb">${item.itemId || '—'}</td>
+        <td class="lucro-td-mlb">${item.sku || item.itemId || '—'}</td>
         <td class="col-num">${item.quantidade}</td>
         <td class="col-num" style="color:#94a3b8">${lucroFmt(item.precoUnit * item.quantidade)}</td>
         <td></td><td></td>
