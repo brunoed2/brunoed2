@@ -6754,9 +6754,8 @@ function salvarShipmentsNotificados(set) {
 }
 const shipmentsNotificados = carregarShipmentsNotificados();
 
-// Prazo de despacho do dia — capturado 1x (no 1º label pronto que o polling
-// de pedidos encontra) e usado só pra saber quando avisar 1x. Como o horário
-// de corte é o mesmo pra todo mundo no dia, não precisa recalcular por pedido.
+// Prazo de despacho do dia — vem da grade oficial de horários (buscarPrazoDespachoHoje),
+// buscado 1x por dia e usado só pra saber quando avisar 1x.
 // Formato: { "1": { dia: "2026-08-17", prazoISO: "...", notificado: false }, "2": {...} }
 function carregarPrazoDespachoCache() {
   const data = loadData();
@@ -6782,30 +6781,47 @@ function horaSP(date) {
   const d = new Date(date.getTime() - BR_OFFSET_MS);
   return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
 }
-function calcularPrazoShipment(shipment) {
-  const scheduleLimit = shipment.shipping_option?.estimated_schedule_limit?.date;
-  const bufferingDate = shipment.shipping_option?.buffering?.date;
-  const handlingHoras = shipment.shipping_option?.estimated_delivery_time?.handling ?? 24;
-  const criado = new Date(shipment.date_created);
-  const prazo = scheduleLimit || bufferingDate
-    ? new Date(scheduleLimit || bufferingDate)
-    : handlingHoras > 0 ? new Date(criado.getTime() + handlingHoras * 3600_000) : null;
-  return prazo && !isNaN(prazo.getTime()) ? prazo : null;
+// Grade oficial de despacho por dia da semana — GET /users/{id}/shipping/schedule/{logistic_type}.
+// Testado em produção (conta real): 'self_service', 'drop_off', 'cross_docking' e
+// 'fulfillment' dão 404 pra essa conta; 'xd_drop_off' devolve a grade real, e bate
+// exatamente com a tela "Meus horários máximos de envios" do painel do vendedor
+// (from = horário de despacho, cutoff = até quando pode vender pra entrar nesse
+// despacho). Tentamos essa lista em ordem até achar uma que funcione.
+const LOGISTIC_TYPES_GRADE = ['xd_drop_off', 'drop_off', 'self_service', 'cross_docking'];
+const DIAS_SEMANA = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+
+// Converte "HH:MM" do dia de hoje (horário de Brasília) num Date real (UTC).
+function horaHojeParaData(hhmm) {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm || '');
+  if (!m) return null;
+  const agoraBR = new Date(Date.now() - BR_OFFSET_MS);
+  const dataUTC = Date.UTC(agoraBR.getUTCFullYear(), agoraBR.getUTCMonth(), agoraBR.getUTCDate(), Number(m[1]), Number(m[2]), 0);
+  return new Date(dataUTC + BR_OFFSET_MS);
 }
-// Chamado a partir do polling de novos pedidos, reaproveitando o shipment já
-// buscado ali — se ainda não temos o prazo de hoje pra essa conta, fixa agora.
-function capturarPrazoDespachoSeNecessario(num, shipment) {
-  const hoje  = hojeSP();
-  const cache = carregarPrazoDespachoCache();
-  const atual = cache[num];
-  if (atual && atual.dia === hoje && atual.prazoISO) return;
 
-  const prazo = calcularPrazoShipment(shipment);
-  if (!prazo) return;
+// A partir da grade semanal devolvida pelo ML, pega o horário de despacho ("from")
+// do dia de hoje (horário de Brasília). Se hoje não tiver expediente, devolve null.
+function prazoDeHojeNaGrade(schedule) {
+  const agoraBR   = new Date(Date.now() - BR_OFFSET_MS);
+  const diaSemana = DIAS_SEMANA[agoraBR.getUTCDay()];
+  const dia = schedule?.[diaSemana];
+  if (!dia || !dia.work || !Array.isArray(dia.detail) || !dia.detail.length) return null;
+  return horaHojeParaData(dia.detail[0].from);
+}
 
-  cache[num] = { dia: hoje, prazoISO: prazo.toISOString(), notificado: false };
-  salvarPrazoDespachoCache(cache);
-  addLog(`[prazo-despacho] Prazo do dia capturado — conta ${num}: ${horaSP(prazo)}`, 'info');
+// Busca a grade de despacho de hoje pra uma conta, testando os logistic_types
+// possíveis até achar um que responda.
+async function buscarPrazoDespachoHoje(token, userId) {
+  for (const lt of LOGISTIC_TYPES_GRADE) {
+    try {
+      const r = await axios.get(`https://api.mercadolibre.com/users/${userId}/shipping/schedule/${lt}`, {
+        headers: { Authorization: `Bearer ${token}` }, timeout: 10000,
+      });
+      const prazo = prazoDeHojeNaGrade(r.data?.schedule);
+      if (prazo) return { prazo, logisticType: lt };
+    } catch {}
+  }
+  return null;
 }
 
 let _notificarTodosTimeout = null;
@@ -6936,8 +6952,6 @@ async function verificarNovosShipmentsTelegram() {
             continue;
           }
 
-          capturarPrazoDespachoSeNecessario(num, shipment);
-
           shipmentsNotificados.add(sid);
           salvarShipmentsNotificados(shipmentsNotificados);
 
@@ -6963,74 +6977,9 @@ async function verificarNovosShipmentsTelegram() {
   }
 }
 
-// Conta pedidos com etiqueta pronta ainda aguardando despacho — só chamado no
-// minuto em que efetivamente vai notificar (1x/dia), não a cada ciclo.
-async function contarPendentesDespacho(token, userId) {
-  const LABEL_STATUSES    = new Set(['handling', 'ready_to_ship']);
-  const LABEL_SUBSTATUSES = new Set(['ready_to_print', 'printed']);
-  try {
-    const resp = await axios.get('https://api.mercadolibre.com/orders/search', {
-      params: { seller: userId, 'order.status': 'paid', sort: 'date_desc', limit: 50 },
-      headers: { Authorization: `Bearer ${token}` },
-      timeout: 15000,
-    });
-    let pendentes = 0;
-    for (const order of resp.data.results || []) {
-      if (!order.shipping?.id) continue;
-      try {
-        const sr = await axios.get(`https://api.mercadolibre.com/shipments/${order.shipping.id}`, {
-          headers: { Authorization: `Bearer ${token}` }, timeout: 8000,
-        });
-        const shipment = sr.data;
-        const isFull = (shipment.logistic_type || '').includes('fulfillment');
-        if (!isFull && LABEL_STATUSES.has(shipment.status) && LABEL_SUBSTATUSES.has(shipment.substatus)) pendentes++;
-      } catch {}
-    }
-    return pendentes;
-  } catch {
-    return null;
-  }
-}
-
-// Varre os pedidos com etiqueta pronta (independente de já terem sido "vistos"
-// pelo job de novo pedido) e devolve o prazo do primeiro que encontrar — usado
-// como reserva quando o dia ainda não teve o prazo capturado por outra via
-// (ex: todas as etiquetas já estavam prontas de antes do servidor começar a
-// olhar pra elas hoje, então o hook do polling de pedidos nunca disparou).
-async function descobrirPrazoDespachoHoje(token, userId) {
-  const LABEL_STATUSES    = new Set(['handling', 'ready_to_ship']);
-  const LABEL_SUBSTATUSES = new Set(['ready_to_print', 'printed']);
-  try {
-    const resp = await axios.get('https://api.mercadolibre.com/orders/search', {
-      params: { seller: userId, 'order.status': 'paid', sort: 'date_desc', limit: 50 },
-      headers: { Authorization: `Bearer ${token}` },
-      timeout: 15000,
-    });
-    for (const order of resp.data.results || []) {
-      if (!order.shipping?.id) continue;
-      try {
-        const sr = await axios.get(`https://api.mercadolibre.com/shipments/${order.shipping.id}`, {
-          headers: { Authorization: `Bearer ${token}` }, timeout: 8000,
-        });
-        const shipment = sr.data;
-        const isFull = (shipment.logistic_type || '').includes('fulfillment');
-        if (isFull) continue;
-        if (!LABEL_STATUSES.has(shipment.status) || !LABEL_SUBSTATUSES.has(shipment.substatus)) continue;
-        const prazo = calcularPrazoShipment(shipment);
-        if (prazo) return prazo;
-      } catch {}
-    }
-  } catch (err) {
-    addLog(`[prazo-despacho] Erro na descoberta de fallback: ${err.message}`, 'warn');
-  }
-  return null;
-}
-
 // ── Polling em background: avisa 30min antes do horário-limite de despacho ──
-// O prazo normalmente já foi capturado por capturarPrazoDespachoSeNecessario()
-// (via polling de novos pedidos). Se ainda não tiver sido (ex: as etiquetas de
-// hoje já estavam prontas antes de qualquer ciclo notar a transição), tenta
-// descobrir aqui mesmo — no máximo 1x a cada 5min, pra não martelar a API.
+// O prazo do dia vem da grade oficial (buscarPrazoDespachoHoje) — é fixo pro
+// dia inteiro, então só precisa buscar 1x e ficar comparando com o relógio.
 // Só notifica pelo push do site (categoria prazo_despacho).
 async function verificarPrazoDespachoPush() {
   if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) return;
@@ -7045,17 +6994,21 @@ async function verificarPrazoDespachoPush() {
 
     try {
     let entry = cache[num];
-    if (!entry || entry.dia !== hoje) entry = { dia: hoje, prazoISO: null, notificado: false, ultimaTentativa: 0 };
+    // entry.metodo !== 'grade' cobre cache antigo (calculado pelo método por
+    // shipment, que se mostrou pouco confiável) — força redescobrir pela grade.
+    if (!entry || entry.dia !== hoje || entry.metodo !== 'grade') {
+      entry = { dia: hoje, prazoISO: null, notificado: false, ultimaTentativa: 0, metodo: 'grade' };
+    }
 
     if (!entry.prazoISO) {
       if (agora - (entry.ultimaTentativa || 0) < 5 * 60_000) continue; // já tentou recente, aguarda
       entry.ultimaTentativa = agora;
-      const prazo = await descobrirPrazoDespachoHoje(c.access_token, c.user_id);
-      if (prazo) {
-        entry.prazoISO = prazo.toISOString();
-        addLog(`[prazo-despacho] Prazo do dia descoberto (fallback) — conta ${num}: ${horaSP(prazo)}`, 'info');
+      const achado = await buscarPrazoDespachoHoje(c.access_token, c.user_id);
+      if (achado) {
+        entry.prazoISO = achado.prazo.toISOString();
+        addLog(`[prazo-despacho] Prazo do dia (grade ${achado.logisticType}) — conta ${num}: ${horaSP(achado.prazo)}`, 'info');
       } else {
-        addLog(`[prazo-despacho] Conta ${num}: nenhum pedido com etiqueta pronta encontrado ainda hoje`, 'info');
+        addLog(`[prazo-despacho] Conta ${num}: sem grade de despacho hoje (sem expediente ou nenhum logistic_type respondeu)`, 'info');
       }
       cache[num] = entry;
       salvarPrazoDespachoCache(cache);
@@ -7068,11 +7021,10 @@ async function verificarPrazoDespachoPush() {
     const faltamMin = (prazo.getTime() - agora) / 60000;
     if (faltamMin <= 0 || faltamMin > 30) continue;
 
-    const pendentes = await contarPendentesDespacho(c.access_token, c.user_id);
     const conta = c.nickname || c.nome || `Conta ${num}`;
     const hora  = horaSP(prazo);
     const texto = `⏰ Faltam ${Math.round(faltamMin)} min para o horário de despacho (${hora}) — ${conta}\n` +
-      (pendentes ? `${pendentes} pedido(s) com etiqueta pronta aguardando envio.` : 'Confira os pedidos com etiqueta pronta.');
+      'Separe os pedidos com etiqueta pronta e leve na agência.';
     // Registra no histórico (sino do app) mesmo que o push falhe — dá pra ver que a
     // lógica rodou mesmo sem o push chegar no celular.
     registrarNotificacaoHistorico(texto, 'prazo_despacho');
@@ -9343,8 +9295,8 @@ app.listen(PORT, () => {
     }, 10_000);
   }
   // Prazo de despacho: avisa 30min antes do horário-limite de envio (só push do site).
-  // Prazo é capturado 1x/dia pelo polling de pedidos — aqui só compara com o relógio,
-  // por isso pode rodar a cada 1min sem custo de API extra.
+  // Prazo vem da grade oficial de despacho, buscada 1x/dia — depois disso só compara
+  // com o relógio, por isso pode rodar a cada 1min sem custo de API extra.
   if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
     setTimeout(() => {
       verificarPrazoDespachoPush().catch(() => {});
