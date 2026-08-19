@@ -21,6 +21,9 @@ let lucroVendasCalc = []; // último cálculo ML, pra reordenar/filtrar sem reca
 let lucroShopeeSortState  = { campo: null, direcao: 'asc' };
 let lucroShopeeVendasCalc = []; // último cálculo Shopee, pra aplicar o mesmo filtro sem recarregar
 
+let lucroAbcMetrica = 'lucro'; // 'lucro' | 'receita' | 'qtd'
+let lucroAbcFiltro  = '';
+
 function lucroHoje() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
@@ -350,6 +353,7 @@ function lucroRecalcularERenderizar() {
     lucroShopeeVendasCalc = vendasShopee;
     lucroShopeeRenderizarComFiltro();
   }
+  lucroAbcRenderizar();
 }
 
 // ── Ordenação e filtro por SKU (tabela ML) ──────────────────────
@@ -464,6 +468,108 @@ function lucroShopeeOrdenar(campo) {
   lucroShopeeSortState.direcao = lucroShopeeSortState.campo === campo && lucroShopeeSortState.direcao === 'asc' ? 'desc' : 'asc';
   lucroShopeeSortState.campo   = campo;
   lucroShopeeRenderizarComFiltro();
+}
+
+// ── Curva ABC (ranking de produtos por qtd/receita/lucro) ───────
+
+// Uma venda com vários itens só tem taxa/frete/imposto no nível do pedido (não por item),
+// então cada item recebe uma fatia proporcional à sua parte na receita do pedido.
+function lucroAbcAcumular(mapa, vendas, canal) {
+  for (const v of vendas) {
+    if (v.cancelado) continue;
+    const taxaCanal = canal === 'ML' ? (v.taxaML || 0) : (v.taxaShopee || 0);
+    const descontos = taxaCanal + (v.frete || 0) + (v.imposto || 0);
+    const receitaPedido = v.itens.reduce((s, i) => s + i.precoUnit * i.quantidade, 0) || v.receita || 0;
+
+    for (const item of v.itens) {
+      const chave     = item.sku || item.mlb || (item.itemId != null ? String(item.itemId) : '') || '—';
+      const itemReceita = item.precoUnit * item.quantidade;
+      const fatia       = receitaPedido > 0 ? itemReceita / receitaPedido : (1 / v.itens.length);
+      const itemCusto   = canal === 'ML'
+        ? lucroCustoNaData(item.sku || item.mlb, v.data) * item.quantidade
+        : lucroShopeeCustoNaData(item.itemId, item.modelId, v.data) * item.quantidade;
+      const itemLucro   = itemReceita - itemCusto - fatia * descontos;
+
+      if (!mapa[chave]) {
+        mapa[chave] = { chave, titulo: item.titulo || chave, canais: new Set(), qtd: 0, receita: 0, lucro: 0 };
+      }
+      const linha = mapa[chave];
+      linha.canais.add(canal);
+      linha.qtd     += item.quantidade;
+      linha.receita += itemReceita;
+      linha.lucro   += itemLucro;
+    }
+  }
+}
+
+function lucroAbcSetMetrica(metrica) {
+  lucroAbcMetrica = metrica;
+  document.querySelectorAll('[data-abc-metrica]').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.abcMetrica === metrica);
+  });
+  lucroAbcRenderizar();
+}
+
+function lucroAbcFiltrarInput(valor) {
+  lucroAbcFiltro = valor;
+  lucroAbcRenderizar();
+}
+
+function lucroAbcRenderizar() {
+  const tbody  = document.getElementById('tabela-lucro-abc-body');
+  const tabela = document.getElementById('tabela-lucro-abc');
+  const vazio  = document.getElementById('lucro-abc-vazio');
+  if (!tbody || !tabela) return;
+
+  const mapa = {};
+  lucroAbcAcumular(mapa, lucroVendasCalc, 'ML');
+  lucroAbcAcumular(mapa, lucroShopeeVendasCalc, 'Shopee');
+
+  let linhas = Object.values(mapa);
+
+  const termo = lucroAbcFiltro.trim().toLowerCase();
+  if (termo) {
+    linhas = linhas.filter(l => l.chave.toLowerCase().includes(termo) || l.titulo.toLowerCase().includes(termo));
+  }
+
+  if (!linhas.length) {
+    tabela.style.display = 'none';
+    if (vazio) vazio.style.display = '';
+    tbody.innerHTML = '';
+    return;
+  }
+  if (vazio) vazio.style.display = 'none';
+
+  linhas.sort((a, b) => b[lucroAbcMetrica] - a[lucroAbcMetrica]);
+
+  const total = linhas.reduce((s, l) => s + l[lucroAbcMetrica], 0);
+  let acumulado = 0;
+
+  tbody.innerHTML = linhas.map(l => {
+    acumulado += l[lucroAbcMetrica];
+    const pctTotal     = total !== 0 ? (l[lucroAbcMetrica] / total) * 100 : 0;
+    const pctAcumulado = total !== 0 ? (acumulado / total) * 100 : 0;
+    const classe = pctAcumulado <= 80 ? 'A' : pctAcumulado <= 95 ? 'B' : 'C';
+    const classeCor = classe === 'A' ? '#4ade80' : classe === 'B' ? '#facc15' : '#94a3b8';
+    const margem = l.receita > 0 ? (l.lucro / l.receita) * 100 : 0;
+    const margemCls = margem >= 10 ? 'lucro-val-pos' : margem < 0 ? 'lucro-val-neg' : '';
+    const canalTxt = [...l.canais].join(' + ');
+
+    return `<tr>
+      <td><strong style="color:${classeCor}">${classe}</strong></td>
+      <td class="td-titulo">${l.titulo}</td>
+      <td class="lucro-td-mlb">${l.chave}</td>
+      <td>${canalTxt}</td>
+      <td class="col-num">${l.qtd}</td>
+      <td class="col-num">${lucroFmt(l.receita)}</td>
+      <td class="col-num ${l.lucro >= 0 ? 'lucro-val-pos' : 'lucro-val-neg'}"><strong>${lucroFmt(l.lucro)}</strong></td>
+      <td class="col-num ${margemCls}">${margem.toFixed(1)}%</td>
+      <td class="col-num">${pctTotal.toFixed(1)}%</td>
+      <td class="col-num">${pctAcumulado.toFixed(1)}%</td>
+    </tr>`;
+  }).join('');
+
+  tabela.style.display = 'table';
 }
 
 function lucroRenderizarCards(t, qtd) {
@@ -886,13 +992,14 @@ function lucroAba(nome) {
   document.querySelectorAll('.lucro-subaba-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.aba === nome);
   });
-  ['vendas', 'custos', 'gastos', 'dre'].forEach(a => {
+  ['vendas', 'custos', 'gastos', 'dre', 'abc'].forEach(a => {
     const el = document.getElementById(`lucro-aba-${a}`);
     if (el) el.style.display = a === nome ? '' : 'none';
   });
   if (nome === 'custos') lucroCustosCarregar();
   if (nome === 'gastos') { gastosInitMes(); gastosAtualizarTudo(); }
   if (nome === 'dre')    dreInit();
+  if (nome === 'abc')    lucroAbcRenderizar();
 }
 
 // ── Gastos mensais ────────────────────────────────────────────

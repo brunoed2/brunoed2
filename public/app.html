@@ -104,6 +104,7 @@
           <button class="lucro-subaba-btn" data-aba="custos" onclick="lucroAba('custos')">Custos por SKU</button>
           <button class="lucro-subaba-btn" data-aba="gastos" onclick="lucroAba('gastos')">Gastos</button>
           <button class="lucro-subaba-btn" data-aba="dre" onclick="lucroAba('dre')">DRE</button>
+          <button class="lucro-subaba-btn" data-aba="abc" onclick="lucroAba('abc')">Curva ABC</button>
         </div>
 
         <!-- Aba: Vendas -->
@@ -363,6 +364,38 @@
                 </tr>
               </thead>
               <tbody id="tabela-dre-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Aba: Curva ABC -->
+        <div id="lucro-aba-abc" class="lucro-aba" style="display:none">
+          <p class="card-desc" style="margin:4px 0 12px">Ranking de produtos (ML + Shopee, mesmo período do filtro em Vendas) por quantidade vendida ou lucro. Classe A = produtos que somam até 80% do total, B = até 95%, C = o resto.</p>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+            <span style="font-size:13px;color:#64748b;font-weight:500">Ordenar por:</span>
+            <button class="filtro-btn active" data-abc-metrica="lucro" onclick="lucroAbcSetMetrica('lucro')">Lucro</button>
+            <button class="filtro-btn" data-abc-metrica="receita" onclick="lucroAbcSetMetrica('receita')">Receita</button>
+            <button class="filtro-btn" data-abc-metrica="qtd" onclick="lucroAbcSetMetrica('qtd')">Quantidade</button>
+            <input type="text" id="lucro-abc-filtro" class="filtro-sku-input" placeholder="Filtrar por SKU ou produto..." oninput="lucroAbcFiltrarInput(this.value)" style="margin-left:8px">
+          </div>
+          <div id="lucro-abc-vazio" style="display:none;color:#94a3b8;padding:20px 0;text-align:center;font-size:14px">Nenhuma venda no período selecionado.</div>
+          <div class="tabela-container">
+            <table class="tabela" id="tabela-lucro-abc" style="display:none">
+              <thead>
+                <tr>
+                  <th>Classe</th>
+                  <th>Produto</th>
+                  <th>SKU</th>
+                  <th>Canal</th>
+                  <th class="col-num">Qtd vendida</th>
+                  <th class="col-num">Receita</th>
+                  <th class="col-num">Lucro</th>
+                  <th class="col-num">Margem</th>
+                  <th class="col-num">% do total</th>
+                  <th class="col-num">% acumulado</th>
+                </tr>
+              </thead>
+              <tbody id="tabela-lucro-abc-body"></tbody>
             </table>
           </div>
         </div>
@@ -1569,7 +1602,7 @@
     </div>
   </div>
 
-  <script src="/js/lucro.js?v=5"></script>
+  <script src="/js/lucro.js?v=6"></script>
   <script src="/js/app-v2.js?v=6"></script>
   <script src="/js/operacoes.js?v=9"></script>
   <script src="/js/shopee.js?v=2"></script>
@@ -1909,6 +1942,6 @@
     </div>
   </div>
 
-  <div id="version-badge">v798</div>
+  <div id="version-badge">v799</div>
 </body>
 </html>
