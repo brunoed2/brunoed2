@@ -2044,6 +2044,29 @@ app.get('/api/bling/nf-raw/:nfId', async (req, res) => {
   }
 });
 
+// Debug: retorna dados brutos do Bling para um pedido de venda por número
+// (usado pra inspecionar campos de endereço/contato quando o Bling aponta
+// pendência que ainda não detectamos no nosso lado, ex: "município inválido")
+app.get('/api/bling/pedido-raw/:numero', async (req, res) => {
+  try {
+    const conta = blingContaReq(req);
+    const token = await getBlingToken(conta);
+    const lista = await axios.get('https://api.bling.com.br/Api/v3/pedidos/vendas', {
+      headers: { Authorization: `Bearer ${token}` },
+      params: { pagina: 1, limite: 100, idSituacao: 6 }, timeout: 15000,
+    });
+    const alvo = (lista.data?.data || []).find(p => String(p.numero) === String(req.params.numero));
+    if (!alvo) return res.json({ erro: `Pedido #${req.params.numero} não encontrado em situação 6 (em aberto)` });
+    const det = await axios.get(`https://api.bling.com.br/Api/v3/pedidos/vendas/${alvo.id}`, {
+      headers: { Authorization: `Bearer ${token}` }, timeout: 10000,
+    });
+    return res.json(det.data);
+  } catch (err) {
+    const detail = err.response ? { status: err.response.status, body: err.response.data } : { message: err.message };
+    return res.json({ erro: detail });
+  }
+});
+
 // ── Bling: tentar enviar NF para marketplace (debug) ──────────
 
 app.post('/api/bling/enviar-marketplace/:nfId', async (req, res) => {
