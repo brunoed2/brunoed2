@@ -1590,7 +1590,7 @@ async function checarMunicipioEtiqueta(etiqueta) {
       return `Município inválido: pedido tem "${etiqueta.municipio}" mas o CEP ${etiqueta.cep} é de "${r.data.localidade}"`;
     }
   } catch (e) {
-    // ViaCEP fora do ar — não bloqueia, só deixa de checar esse pedido
+    addLog(`[bling] checarMunicipioEtiqueta: falha ao consultar ViaCEP — ${e.code || e.message}`, 'warn');
   }
   return null;
 }
@@ -2067,6 +2067,17 @@ app.get('/api/bling/nf-raw/:nfId', async (req, res) => {
     return res.json(det.data);
   } catch (err) {
     const detail = err.response ? { status: err.response.status, body: err.response.data } : { message: err.message };
+    return res.json({ erro: detail });
+  }
+});
+
+// Debug: testa conectividade do Railway com o ViaCEP (usado na checagem de município)
+app.get('/api/debug/viacep/:cep', async (req, res) => {
+  try {
+    const r = await axios.get(`https://viacep.com.br/ws/${req.params.cep}/json/`, { timeout: 5000 });
+    return res.json(r.data);
+  } catch (err) {
+    const detail = err.response ? { status: err.response.status, body: err.response.data } : { message: err.message, code: err.code };
     return res.json({ erro: detail });
   }
 });
