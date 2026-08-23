@@ -1583,20 +1583,24 @@ function normalizarTexto(s) {
 // Detecta "município inválido" ANTES do Bling acusar na hora de emitir a NF —
 // visto num caso real (pedido 59662): o Bling recebeu o bairro ("Barra Feliz")
 // no campo de município em vez da cidade ("Santa Bárbara"/MG), aí trava a NF.
-// Usa o CEP (ViaCEP, gratuito/sem auth) como fonte da verdade pra comparar.
+// Usa o CEP (BrasilAPI, gratuito/sem auth) como fonte da verdade pra comparar.
+// OBS: ViaCEP dá EHOSTUNREACH a partir do Railway (bloqueio de IP de datacenter
+// no lado deles, confirmado via /api/debug/rede — não é problema de rede nossa).
 async function checarMunicipioEtiqueta(etiqueta) {
   const cep = etiqueta?.cep?.replace(/\D/g, '');
   if (!cep || cep.length !== 8) return null;
   try {
-    const r = await axios.get(`https://viacep.com.br/ws/${cep}/json/`, { timeout: 5000 });
-    if (!r.data || r.data.erro) return null;
-    const correto = normalizarTexto(r.data.localidade);
+    const r = await axios.get(`https://brasilapi.com.br/api/cep/v1/${cep}`, { timeout: 5000 });
+    if (!r.data?.city) return null;
+    const correto = normalizarTexto(r.data.city);
     const informado = normalizarTexto(etiqueta.municipio);
     if (correto && informado && correto !== informado) {
-      return `Município inválido: pedido tem "${etiqueta.municipio}" mas o CEP ${etiqueta.cep} é de "${r.data.localidade}"`;
+      return `Município inválido: pedido tem "${etiqueta.municipio}" mas o CEP ${etiqueta.cep} é de "${r.data.city}"`;
     }
   } catch (e) {
-    addLog(`[bling] checarMunicipioEtiqueta: falha ao consultar ViaCEP — ${e.code || e.message}`, 'warn');
+    if (e.response?.status !== 404) {
+      addLog(`[bling] checarMunicipioEtiqueta: falha ao consultar CEP — ${e.code || e.message}`, 'warn');
+    }
   }
   return null;
 }
