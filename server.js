@@ -2088,6 +2088,27 @@ app.get('/api/debug/viacep/:cep', async (req, res) => {
   }
 });
 
+// Debug: diagnóstico mais amplo de rede de saída do Railway — resolve DNS do viacep e
+// testa um segundo host (api.github.com) pra saber se é bloqueio geral ou específico
+app.get('/api/debug/rede', async (req, res) => {
+  const out = {};
+  await new Promise(r => dns.lookup('viacep.com.br', { all: true }, (e, a) => { out.dnsLookupViacep = e ? { erro: e.message, code: e.code } : a; r(); }));
+  await new Promise(r => dns.resolve4('viacep.com.br', (e, a) => { out.dnsResolve4Viacep = e ? { erro: e.message, code: e.code } : a; r(); }));
+  try {
+    const r1 = await axios.get('https://api.github.com', { timeout: 5000 });
+    out.github = { ok: true, status: r1.status };
+  } catch (err) {
+    out.github = { ok: false, message: err.message, code: err.code };
+  }
+  try {
+    const r2 = await axios.get('http://viacep.com.br/ws/01001000/json/', { timeout: 5000 });
+    out.viacepHttp = { ok: true, status: r2.status };
+  } catch (err) {
+    out.viacepHttp = { ok: false, message: err.message, code: err.code };
+  }
+  return res.json(out);
+});
+
 // Debug: retorna dados brutos do Bling para um pedido de venda por número
 // (usado pra inspecionar campos de endereço/contato quando o Bling aponta
 // pendência que ainda não detectamos no nosso lado, ex: "município inválido")
