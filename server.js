@@ -1570,6 +1570,31 @@ app.get('/api/bling/status', async (req, res) => {
 // ── Bling: pedidos de venda com situação "Em aberto" ─────────
 // situacao 6 = Em aberto no Bling v3
 
+function normalizarTexto(s) {
+  return (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().trim();
+}
+
+// Detecta "município inválido" ANTES do Bling acusar na hora de emitir a NF —
+// visto num caso real (pedido 59662): o Bling recebeu o bairro ("Barra Feliz")
+// no campo de município em vez da cidade ("Santa Bárbara"/MG), aí trava a NF.
+// Usa o CEP (ViaCEP, gratuito/sem auth) como fonte da verdade pra comparar.
+async function checarMunicipioEtiqueta(etiqueta) {
+  const cep = etiqueta?.cep?.replace(/\D/g, '');
+  if (!cep || cep.length !== 8) return null;
+  try {
+    const r = await axios.get(`https://viacep.com.br/ws/${cep}/json/`, { timeout: 5000 });
+    if (!r.data || r.data.erro) return null;
+    const correto = normalizarTexto(r.data.localidade);
+    const informado = normalizarTexto(etiqueta.municipio);
+    if (correto && informado && correto !== informado) {
+      return `Município inválido: pedido tem "${etiqueta.municipio}" mas o CEP ${etiqueta.cep} é de "${r.data.localidade}"`;
+    }
+  } catch (e) {
+    // ViaCEP fora do ar — não bloqueia, só deixa de checar esse pedido
+  }
+  return null;
+}
+
 async function fetchBlingPedidosPendentes(conta) {
   const token = await getBlingToken(conta);
   const resp = await axios.get('https://api.bling.com.br/Api/v3/pedidos/vendas', {
@@ -1596,7 +1621,7 @@ async function fetchBlingPedidosPendentes(conta) {
     detalhesPorPedido.push(detalhe);
   }
 
-  const itensDetalhados = itens.map((p, idx) => {
+  const itensDetalhados = await Promise.all(itens.map(async (p, idx) => {
     const detalhe = detalhesPorPedido[idx];
     const produtos = (detalhe?.itens || []).map(i => `${i.descricao}${i.quantidade > 1 ? ` (x${i.quantidade})` : ''}`);
     const pendencias = [];
@@ -1606,13 +1631,15 @@ async function fetchBlingPedidosPendentes(conta) {
       if (!detalhe.contato?.numeroDocumento?.trim()) pendencias.push('CPF/CNPJ não informado');
       const itensSemProduto = (detalhe.itens || []).filter(i => !i?.produto?.id);
       if (itensSemProduto.length > 0) pendencias.push(`Produto não cadastrado: ${itensSemProduto.map(i => i.descricao || '?').join(', ')}`);
+      const pendMunicipio = await checarMunicipioEtiqueta(detalhe.transporte?.etiqueta);
+      if (pendMunicipio) pendencias.push(pendMunicipio);
     }
     const numeroLojaVal = detalhe?.numeroLoja || p.numeroLoja || '';
     const isML     = /^\d{10,}$/.test(numeroLojaVal);
     const isShopee = !!numeroLojaVal && !isML;
     const canalNome = isShopee ? 'Shopee' : (isML ? 'Mercado Livre' : '');
     return { ...p, numeroLoja: detalhe?.numeroLoja || p.numeroLoja, produtos, pendencias, canal: canalNome, isShopee, lojaId: detalhe?.loja?.id || null };
-  });
+  }));
 
   // Verifica no ML quais têm shipment ready_to_ship (etiqueta disponível ao emitir NF)
   const mlData = loadData();
