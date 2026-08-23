@@ -2106,6 +2106,12 @@ app.get('/api/debug/rede', async (req, res) => {
   } catch (err) {
     out.viacepHttp = { ok: false, message: err.message, code: err.code };
   }
+  try {
+    const r3 = await axios.get('https://brasilapi.com.br/api/cep/v1/01001000', { timeout: 5000 });
+    out.brasilapi = { ok: true, data: r3.data };
+  } catch (err) {
+    out.brasilapi = { ok: false, message: err.message, code: err.code };
+  }
   return res.json(out);
 });
 
