@@ -4,6 +4,12 @@
 // Suporta duas contas ML com alternância em tempo real
 // ============================================================
 
+const dns      = require('dns');
+// Railway (e outros hosts sem egress IPv6 completo) falha com EHOSTUNREACH em domínios
+// que anunciam AAAA mas não são alcançáveis por IPv6 dali (visto real: viacep.com.br).
+// Forçar IPv4 primeiro no resolver evita isso pra toda chamada axios/http do processo.
+dns.setDefaultResultOrder('ipv4first');
+
 const express  = require('express');
 const axios    = require('axios');
 const fs       = require('fs');
