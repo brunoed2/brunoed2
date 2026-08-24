@@ -140,7 +140,7 @@ function baixarSelecionadas(canal) {
   });
   const base = canal === 'shopee' ? '/api/shopee/etiquetas' : '/api/ml/etiquetas';
   for (const [conta, ids] of Object.entries(porConta)) {
-    window.open(`${base}?ids=${ids.join(',')}&conta=${conta}`, '_blank');
+    compartilharPdf(`${base}?ids=${ids.join(',')}&conta=${conta}`, 'etiquetas.pdf');
   }
 }
 
@@ -390,7 +390,7 @@ async function carregarVendas() {
       const badgeShopee = v.canal === 'shopee'
         ? `<span style="background:#f97316;color:#fff;padding:1px 6px;border-radius:4px;font-size:10px;margin-left:5px;white-space:nowrap;vertical-align:middle">Shopee</span>`
         : '';
-      const btnEtiquetaHtml = `<a class="btn-etiqueta" href="${hrefEtiqueta}" target="_blank">${v.acaoLabel}</a>`;
+      const btnEtiquetaHtml = `<a class="btn-etiqueta" href="${hrefEtiqueta}" target="_blank" onclick="return compartilharPdfClick(event, this.href, 'etiqueta-${v.shipmentId}.pdf')">${v.acaoLabel}</a>`;
 
       tr.innerHTML = `
         <td><input type="checkbox" class="check-venda" data-shipment-id="${v.shipmentId}" data-conta="${v.conta}" data-canal="${v.canal || 'ml'}" onchange="atualizarBotaoSelecionadas()"></td>

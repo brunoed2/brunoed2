@@ -746,7 +746,7 @@ function baixarSelecionadas(canal) {
 
   const base = canal === 'shopee' ? '/api/shopee/etiquetas' : '/api/ml/etiquetas';
   for (const [conta, ids] of Object.entries(porConta)) {
-    window.open(`${base}?ids=${ids.join(',')}&conta=${conta}`, '_blank');
+    compartilharPdf(`${base}?ids=${ids.join(',')}&conta=${conta}`, 'etiquetas.pdf');
   }
 }
 
@@ -916,7 +916,7 @@ async function carregarVendas() {
       const hrefEtiqueta = v.canal === 'shopee'
         ? `/api/shopee/etiqueta/${v.shipmentId}?conta=${v.conta}`
         : `/api/ml/etiqueta/${v.shipmentId}?conta=${v.conta}`;
-      const btnEtiquetaHtml = `<a class="btn-etiqueta" href="${hrefEtiqueta}" target="_blank">${v.acaoLabel}</a>`;
+      const btnEtiquetaHtml = `<a class="btn-etiqueta" href="${hrefEtiqueta}" target="_blank" onclick="return compartilharPdfClick(event, this.href, 'etiqueta-${v.shipmentId}.pdf')">${v.acaoLabel}</a>`;
 
       tr.innerHTML = `
         <td><input type="checkbox" class="check-venda" data-shipment-id="${v.shipmentId}" data-conta="${v.conta}" data-canal="${v.canal || 'ml'}" onchange="atualizarBotaoSelecionadas()"></td>
