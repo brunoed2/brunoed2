@@ -2644,7 +2644,7 @@ app.get('/api/ml/estoque', async (req, res) => {
           if (!pauseDates[mlb]) {
             pauseDates[mlb] = agora;
             pauseChanged = true;
-            // Notifica Telegram quando anúncio é pausado pela primeira vez
+            // Notifica quando anúncio é pausado pela primeira vez
             const titulo = r.body.title || mlb;
             const conta  = (data.contas[num] || {}).nickname || `Conta ${num}`;
             notificar(`⏸ <b>Anúncio pausado — ${conta}</b>\n\n${titulo}\n<code>${mlb}</code>`, 'anuncio_pausado').catch(() => {});
@@ -6660,10 +6660,6 @@ app.get('/api/lucro/vendas-shopee', async (req, res) => {
   }
 });
 
-// ── Telegram: notificação de novos pedidos ────────────────────
-
-const TELEGRAM_TOKEN   = process.env.TELEGRAM_TOKEN;
-const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 const BLING_CLIENT_ID     = process.env.BLING_CLIENT_ID;
 const BLING_CLIENT_SECRET = process.env.BLING_CLIENT_SECRET;
 const BLING_CLIENT_ID_2     = process.env.BLING_CLIENT_ID_2;
@@ -6802,40 +6798,26 @@ async function enviarWhatsApp(phone, apikey, texto) {
 }
 
 // Categorias que não devem ir pro WhatsApp (CallMeBot manda pra um número fixo,
-// não respeita preferência por usuário como o push) — continuam indo por Telegram/push.
+// não respeita preferência por usuário como o push) — continuam indo só pelo push.
 const WHATSAPP_CATEGORIAS_EXCLUIDAS = new Set(['shopee_boost']);
 
 // Notificações de contas a pagar e anúncios pausados
 async function notificar(texto, categoria) {
   registrarNotificacaoHistorico(texto, categoria);
-  const tarefas = [enviarTelegram(texto), enviarPush(texto, categoria)];
+  const tarefas = [enviarPush(texto, categoria)];
   if (!WHATSAPP_CATEGORIAS_EXCLUIDAS.has(categoria)) {
     tarefas.push(enviarWhatsApp(CALLMEBOT_PHONE, CALLMEBOT_APIKEY, texto));
   }
   await Promise.allSettled(tarefas);
 }
 
-// Notificações de pedidos novos — Telegram + CallMeBot
+// Notificações de pedidos novos — WhatsApp + push
 async function notificarPedido(texto, categoria = 'pedido') {
   registrarNotificacaoHistorico(texto, categoria);
   await Promise.allSettled([
-    enviarTelegram(texto),
     enviarWhatsApp(CALLMEBOT_PHONE_PEDIDOS, CALLMEBOT_APIKEY_PEDIDOS, texto),
     enviarPush(texto, categoria),
   ]);
-}
-
-async function enviarTelegram(texto) {
-  if (!TELEGRAM_TOKEN || !TELEGRAM_CHAT_ID) return;
-  try {
-    await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
-      chat_id:    TELEGRAM_CHAT_ID,
-      text:       texto,
-      parse_mode: 'HTML',
-    }, { timeout: 8000 });
-  } catch (err) {
-    addLog(`Telegram: falha ao enviar mensagem — ${err.message}`, 'warn');
-  }
 }
 
 // Mantém os shipmentIds já notificados — carregado do disco, persiste entre restarts
@@ -6971,7 +6953,7 @@ async function verificarTodosPedidosAtendidos() {
 }
 
 // Remove um pedido do controle de notificados (para renotificar quando etiqueta ficar disponível)
-app.delete('/api/telegram/notificado/:orderId', async (req, res) => {
+app.delete('/api/pedidos/notificado/:orderId', async (req, res) => {
   const { orderId } = req.params;
   const data = loadData();
   let shipmentId = null;
@@ -6993,16 +6975,15 @@ app.delete('/api/telegram/notificado/:orderId', async (req, res) => {
 });
 
 // Limpa toda a lista de notificados para reprocessar pedidos pendentes
-app.delete('/api/telegram/notificados/todos', (_req, res) => {
+app.delete('/api/pedidos/notificados/todos', (_req, res) => {
   shipmentsNotificados.clear();
   salvarShipmentsNotificados(shipmentsNotificados);
   res.json({ ok: true, mensagem: 'Lista de notificados limpa — próximo ciclo verifica todos os pedidos' });
 });
 
-async function verificarNovosShipmentsTelegram() {
-  const temTelegram = TELEGRAM_TOKEN && TELEGRAM_CHAT_ID;
+async function verificarNovosShipments() {
   const temWhatsApp = CALLMEBOT_PHONE_PEDIDOS && CALLMEBOT_APIKEY_PEDIDOS;
-  if (!temTelegram && !temWhatsApp) return;
+  if (!temWhatsApp) return;
   const data = loadData();
   // Verifica todas as contas configuradas
   for (const num of ['1', '2']) {
@@ -7070,7 +7051,7 @@ async function verificarNovosShipmentsTelegram() {
         }
       }
     } catch (err) {
-      addLog(`Telegram monitor conta ${num}: ${err.message}`, 'warn');
+      addLog(`Monitor pedidos conta ${num}: ${err.message}`, 'warn');
     }
   }
 }
@@ -7142,8 +7123,8 @@ async function verificarPrazoDespachoPush() {
 }
 
 // ── Polling em background: anúncios pausados ──────────────────
-async function verificarAnunciosPausadosTelegram() {
-  const temCanal = (TELEGRAM_TOKEN && TELEGRAM_CHAT_ID) || (CALLMEBOT_PHONE && CALLMEBOT_APIKEY);
+async function verificarAnunciosPausados() {
+  const temCanal = CALLMEBOT_PHONE && CALLMEBOT_APIKEY;
   if (!temCanal) return;
   const data = loadData();
   for (const num of ['1', '2']) {
@@ -7196,14 +7177,14 @@ async function verificarAnunciosPausadosTelegram() {
         saveData(data);
       }
     } catch (err) {
-      addLog(`Telegram monitor pausados conta ${num}: ${err.message}`, 'warn');
+      addLog(`Monitor pausados conta ${num}: ${err.message}`, 'warn');
     }
   }
 }
 
 // ── Polling em background: NFs autorizadas travadas na sincronização com o ML ──
 async function verificarNotasTravadasML(opts = {}) {
-  const temCanal = (TELEGRAM_TOKEN && TELEGRAM_CHAT_ID) || (CALLMEBOT_PHONE && CALLMEBOT_APIKEY);
+  const temCanal = CALLMEBOT_PHONE && CALLMEBOT_APIKEY;
   if (!temCanal) return { temCanal: false, encontradas: 0, notificadas: 0, contasAtivas: [] };
   const data = loadData();
   if (!data.notas_travadas_notificadas) data.notas_travadas_notificadas = {};
@@ -7425,7 +7406,6 @@ async function verificarEstoqueBaixo() {
 
 // ── Notificação diária: contas a pagar vencendo hoje ──────────
 async function notificarContasVencendoHoje() {
-  if (!TELEGRAM_TOKEN || !TELEGRAM_CHAT_ID) return;
   const hoje = new Date().toISOString().split('T')[0];
   const data = loadData();
   const linhas = [];
@@ -7457,18 +7437,6 @@ setInterval(() => {
 setInterval(() => autoSuperJob().catch(err => addLog(`[auto-super] erro no job: ${err.message}`, 'warn')), 15 * 60 * 1000);
 // Roda 1x na inicialização (após 30s para tokens carregarem)
 setTimeout(() => autoSuperJob().catch(err => addLog(`[auto-super] erro no job inicial: ${err.message}`, 'warn')), 30 * 1000);
-
-app.post('/api/telegram/teste', async (req, res) => {
-  if (!TELEGRAM_TOKEN || !TELEGRAM_CHAT_ID) {
-    return res.json({ ok: false, erro: 'TELEGRAM_TOKEN ou TELEGRAM_CHAT_ID não configurados' });
-  }
-  try {
-    await notificar('🧪 *Teste de notificação*\n\nSeu app está funcionando! Você receberá:\n• 🛍 Novos pedidos para embalar\n• ⏸ Anúncios pausados\n• 📅 Contas a pagar vencendo no dia (às 8h)');
-    res.json({ ok: true });
-  } catch (e) {
-    res.json({ ok: false, erro: e.message });
-  }
-});
 
 app.post('/api/whatsapp/teste-pedidos', async (req, res) => {
   if (!CALLMEBOT_PHONE_PEDIDOS || !CALLMEBOT_APIKEY_PEDIDOS) {
@@ -9368,28 +9336,24 @@ app.listen(PORT, () => {
   // Persiste configurações auto-geradas no boot (ex: HANDDRY MLBs)
   try { saveData(loadData()); } catch {}
   console.log(`Servidor rodando em http://localhost:${PORT}`);
-  // Inicia monitoramento Telegram 10s após subir, depois a cada 60s
   if (CALLMEBOT_PHONE && CALLMEBOT_APIKEY) {
     addLog(`WhatsApp: contas/anúncios → ${CALLMEBOT_PHONE} ✅`, 'ok');
   }
   if (CALLMEBOT_PHONE_PEDIDOS && CALLMEBOT_APIKEY_PEDIDOS) {
     addLog(`WhatsApp: pedidos novos → ${CALLMEBOT_PHONE_PEDIDOS} ✅`, 'ok');
   }
-  if (TELEGRAM_TOKEN && TELEGRAM_CHAT_ID) {
-    addLog('Telegram: ativado ✅', 'ok');
-  }
-  // Estoque baixo: roda se tiver WhatsApp principal ou Telegram
-  if ((CALLMEBOT_PHONE && CALLMEBOT_APIKEY) || (TELEGRAM_TOKEN && TELEGRAM_CHAT_ID)) {
+  // Estoque baixo: roda se tiver WhatsApp principal
+  if (CALLMEBOT_PHONE && CALLMEBOT_APIKEY) {
     setTimeout(() => {
       verificarEstoqueBaixo().catch(() => {});
       setInterval(() => verificarEstoqueBaixo().catch(() => {}), 6 * 60 * 60_000);
     }, 90_000);
   }
-  // Pedidos novos: roda se tiver WhatsApp pedidos ou Telegram
-  if ((CALLMEBOT_PHONE_PEDIDOS && CALLMEBOT_APIKEY_PEDIDOS) || (TELEGRAM_TOKEN && TELEGRAM_CHAT_ID)) {
+  // Pedidos novos: roda se tiver WhatsApp pedidos
+  if (CALLMEBOT_PHONE_PEDIDOS && CALLMEBOT_APIKEY_PEDIDOS) {
     setTimeout(() => {
-      verificarNovosShipmentsTelegram().catch(() => {});
-      setInterval(() => verificarNovosShipmentsTelegram().catch(() => {}), 60_000);
+      verificarNovosShipments().catch(() => {});
+      setInterval(() => verificarNovosShipments().catch(() => {}), 60_000);
     }, 10_000);
   }
   // Prazo de despacho: avisa 30min antes do horário-limite de envio (só push do site).
@@ -9401,11 +9365,11 @@ app.listen(PORT, () => {
       setInterval(() => verificarPrazoDespachoPush().catch(() => {}), 60_000);
     }, 45_000);
   }
-  // Anúncios pausados: roda se tiver WhatsApp principal ou Telegram
-  if ((CALLMEBOT_PHONE && CALLMEBOT_APIKEY) || (TELEGRAM_TOKEN && TELEGRAM_CHAT_ID)) {
+  // Anúncios pausados: roda se tiver WhatsApp principal
+  if (CALLMEBOT_PHONE && CALLMEBOT_APIKEY) {
     setTimeout(() => {
-      verificarAnunciosPausadosTelegram().catch(() => {});
-      setInterval(() => verificarAnunciosPausadosTelegram().catch(() => {}), 5 * 60_000);
+      verificarAnunciosPausados().catch(() => {});
+      setInterval(() => verificarAnunciosPausados().catch(() => {}), 5 * 60_000);
     }, 30_000);
   }
   // Catálogos ML: detecta quando ML cria anúncio de catálogo a partir de um item
@@ -9416,7 +9380,7 @@ app.listen(PORT, () => {
     }, 120_000);
   }
   // Notas travadas no ML: NF autorizada mas o Mercado Livre recusou os dados
-  if ((CALLMEBOT_PHONE && CALLMEBOT_APIKEY) || (TELEGRAM_TOKEN && TELEGRAM_CHAT_ID)) {
+  if (CALLMEBOT_PHONE && CALLMEBOT_APIKEY) {
     setTimeout(() => {
       verificarNotasTravadasML().catch(() => {});
       setInterval(() => verificarNotasTravadasML().catch(() => {}), 2 * 60_000);
