@@ -658,7 +658,7 @@ app.post('/api/login', (req, res) => {
   if (usuario.painel === 'simulador-ml') {
     return res.json({ ok: true, nome: usuario.nome, abas: [], painel: 'simulador-ml', sessionVersion });
   }
-  const APP_TABS = new Set(['ads','lucro','promocoes','contas-pagar','contas-receber','bling','fiscal','compras','calculadora','configuracoes']);
+  const APP_TABS = new Set(['ads','lucro','promocoes','contas-pagar','contas-receber','bling','fiscal','compras','calculadora','configuracoes','scanner','log-anuncio']);
   const painel = (usuario.painel === 'app' || (usuario.abas || []).some(t => APP_TABS.has(t))) ? 'app' : 'painel2';
   res.json({ ok: true, nome: usuario.nome, abas: usuario.abas || [], painel, sessionVersion });
 });
