@@ -236,8 +236,9 @@ function urlBase64ToUint8Array(base64String) {
   return output;
 }
 
-async function cxAtivarPush() {
-  const btn = document.getElementById('btn-push-ativar');
+async function cxAtivarPush(btnId = 'btn-push-ativar') {
+  const btn = document.getElementById(btnId);
+  const labelOriginal = btn ? btn.textContent : '';
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Ativando...'; }
   try {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
@@ -271,7 +272,7 @@ async function cxAtivarPush() {
   } catch (e) {
     alert('⚠️ Erro ao ativar notificações: ' + e.message);
   }
-  if (btn) { btn.disabled = false; btn.textContent = '🔔 Ativar Push'; }
+  if (btn) { btn.disabled = false; btn.textContent = labelOriginal; }
 }
 
 async function cxTestarPush() {
