@@ -8,6 +8,13 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(self.clients.claim());
 });
 
+// Sem esse handler o Chrome no Android não considera o site "instalável" de
+// verdade (fica só um atalho que abre o navegador, não um app separado). Não
+// faz cache nenhum — só repassa pra rede, mesmo comportamento de sempre.
+self.addEventListener('fetch', (event) => {
+  event.respondWith(fetch(event.request));
+});
+
 self.addEventListener('push', (event) => {
   let data = { title: 'Painel', body: 'Você tem uma nova notificação.' };
   try { if (event.data) data = event.data.json(); } catch {}
