@@ -21,6 +21,7 @@ function formatarPrazo(iso) {
 }
 
 const vendaCache = {};
+let vendasReqId  = 0; // invalida chamadas antigas de carregarVendas() se uma nova começar antes dela terminar
 
 const BADGE_VENDA_STATUS = {
   handling:      'badge-pausado',
@@ -400,6 +401,7 @@ function atualizarResumoCanal(vendas) {
 }
 
 async function carregarVendas() {
+  const reqId   = ++vendasReqId;
   const gen     = contaGen;
   const loading = document.getElementById('vendas-loading');
   const erroEl  = document.getElementById('vendas-erro');
@@ -417,6 +419,11 @@ async function carregarVendas() {
 
   try {
     const { vendas: todasVendas, erro } = await buscarTodasVendasEtiqueta();
+    // Se outra chamada a carregarVendas() começou depois desta (ex: duplo clique
+    // na aba, ou o toque no menu ainda em processo do carregamento inicial da
+    // página), essa aqui é obsoleta — não pode mais escrever na tabela, senão as
+    // linhas de uma chamada se somam às da outra (pedidos aparecendo duplicados).
+    if (reqId !== vendasReqId) return;
     if (contaGen !== gen) return;
     loading.style.display = 'none';
 
