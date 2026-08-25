@@ -1557,7 +1557,7 @@ tr.lucro-sub-item td {
   right: 0;
   background: #1a1a2e;
   border-radius: 18px 18px 0 0;
-  transform: translateY(110%);
+  transform: translateY(100vh); /* deslocamento fixo, não relativo à própria altura — com poucos botões visíveis (permissões restritas) o drawer fica baixo e uma % da altura dele não é suficiente pra sumir da tela */
   transition: transform 0.28s ease;
   z-index: 201;
   max-height: 78vh;
