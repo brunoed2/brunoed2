@@ -138,6 +138,11 @@ navBtns.forEach(btn => {
     navBtns.forEach(btn => {
       if (!permitidas.includes(btn.dataset.tab)) btn.style.display = 'none';
     });
+    // Menu mobile (gaveta) é uma lista separada de botões — precisa do mesmo filtro,
+    // senão no celular (onde é isso que aparece, não a sidebar) mostra tudo liberado.
+    drawerBtns.forEach(btn => {
+      if (!permitidas.includes(btn.dataset.tab)) btn.style.display = 'none';
+    });
   }
 
   const params      = new URLSearchParams(location.search);
