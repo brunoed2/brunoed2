@@ -22,6 +22,13 @@
 <body>
 
   <script>
+    // No iPhone (PWA/Safari), voltar pra essa URL pode restaurar do bfcache —
+    // uma foto congelada da página de antes (com o menu do usuário anterior,
+    // sem os scripts rodarem de novo) em vez de recarregar do zero. Força reload
+    // nesse caso pra sempre reaplicar o localStorage/permissões atuais.
+    window.addEventListener('pageshow', function (event) {
+      if (event.persisted) location.reload();
+    });
     if (localStorage.getItem('auth') !== '2') {
       location.href = '/';
     }
@@ -311,6 +318,6 @@
     </div>
   </div>
 
-  <div id="version-badge">v816</div>
+  <div id="version-badge">v817</div>
 </body>
 </html>
