@@ -691,6 +691,16 @@ app.get('/api/usuarios', (req, res) => {
   res.json(lista);
 });
 
+// Permissões do próprio usuário logado — usado pra reaplicar em tempo real
+// quando um admin muda as abas/pausa alguém, sem precisar esperar o próximo
+// login. Só devolve os dados desse usuário (não a lista inteira como /api/usuarios).
+app.get('/api/usuarios/:senha/permissoes', (req, res) => {
+  const data    = loadData();
+  const usuario = (data.usuarios || {})[String(req.params.senha)];
+  if (!usuario) return res.status(404).json({ error: 'Usuário não encontrado' });
+  res.json({ abas: usuario.abas || [], ativo: usuario.ativo !== false });
+});
+
 app.get('/api/notificacoes/categorias', (req, res) => {
   res.json(Object.entries(NOTIF_CATEGORIAS).map(([id, label]) => ({ id, label })));
 });

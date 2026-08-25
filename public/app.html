@@ -1820,7 +1820,7 @@
       });
       const data = await resp.json();
       if (!resp.ok) { msg.textContent = data.error; msg.className = 'msg erro'; return; }
-      msg.textContent = 'Salvo! O usuário precisa fazer login novamente para ver as mudanças.';
+      msg.textContent = 'Salvo! Aplica em até 20s no dispositivo do usuário (sem precisar logar de novo).';
       msg.className = 'msg ok';
       setTimeout(() => { msg.textContent = ''; }, 4000);
     } catch {
@@ -1957,6 +1957,6 @@
     </div>
   </div>
 
-  <div id="version-badge">v822</div>
+  <div id="version-badge">v823</div>
 </body>
 </html>
