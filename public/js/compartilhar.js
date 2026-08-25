@@ -2,9 +2,10 @@
 //
 // No PWA instalado no iPhone (modo "app", não Safari), abrir um PDF direto
 // num link não dá acesso ao botão de compartilhar do Safari — o iOS mostra
-// o PDF num visualizador sem nenhuma barra de ferramentas. A Web Share API
-// resolve isso: baixa o arquivo aqui e chama o menu nativo de compartilhar
-// (AirDrop, WhatsApp, Salvar em Arquivos, Imprimir, etc.) diretamente.
+// o PDF num visualizador sem nenhuma barra de ferramentas. Botão dedicado
+// "Compartilhar" (separado do "Baixar", que continua abrindo normal): baixa
+// o arquivo aqui e chama o menu nativo de compartilhar (AirDrop, WhatsApp,
+// Salvar em Arquivos, Imprimir, etc.) diretamente.
 
 async function compartilharPdf(url, nomeArquivo) {
   try {
@@ -21,15 +22,4 @@ async function compartilharPdf(url, nomeArquivo) {
   }
   // Sem suporte a Web Share (ex: desktop) ou falha no fetch — volta ao comportamento antigo
   window.open(url, '_blank');
-}
-
-// Usado no onclick de links <a href target="_blank"> — intercepta o clique
-// e compartilha via Web Share quando disponível, senão deixa o link abrir normal.
-function compartilharPdfClick(event, url, nomeArquivo) {
-  if (navigator.share) {
-    event.preventDefault();
-    compartilharPdf(url, nomeArquivo);
-    return false;
-  }
-  return true;
 }

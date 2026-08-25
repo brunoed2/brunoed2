@@ -640,6 +640,8 @@ function atualizarBotaoSelecionadas() {
   const selecionadas = checks.length;
   const btnBaixarMl     = document.getElementById('btn-baixar-ml');
   const btnBaixarShopee = document.getElementById('btn-baixar-shopee');
+  const btnCompartilharMl     = document.getElementById('btn-compartilhar-ml');
+  const btnCompartilharShopee = document.getElementById('btn-compartilhar-shopee');
   const btnAtendido = document.getElementById('btn-marcar-atendido');
 
   // ML e Shopee baixam etiqueta por endpoints diferentes — separa os botões pra não
@@ -654,6 +656,14 @@ function atualizarBotaoSelecionadas() {
     if (btnBaixarShopee) {
       btnBaixarShopee.style.display = qtdShopee > 0 ? '' : 'none';
       btnBaixarShopee.textContent   = `⬇ Baixar ${qtdShopee} Shopee`;
+    }
+    if (btnCompartilharMl) {
+      btnCompartilharMl.style.display = qtdMl > 0 ? '' : 'none';
+      btnCompartilharMl.textContent   = `🔗 Compartilhar ${qtdMl} ML`;
+    }
+    if (btnCompartilharShopee) {
+      btnCompartilharShopee.style.display = qtdShopee > 0 ? '' : 'none';
+      btnCompartilharShopee.textContent   = `🔗 Compartilhar ${qtdShopee} Shopee`;
     }
   }
   if (btnAtendido) {
@@ -744,6 +754,23 @@ function baixarSelecionadas(canal) {
     porConta[conta].push(cb.dataset.shipmentId);
   });
 
+  const base = canal === 'shopee' ? '/api/shopee/etiquetas' : '/api/ml/etiquetas';
+  for (const [conta, ids] of Object.entries(porConta)) {
+    window.open(`${base}?ids=${ids.join(',')}&conta=${conta}`, '_blank');
+  }
+}
+
+function compartilharSelecionadas(canal) {
+  const checks = [...document.querySelectorAll('.check-venda:checked')].filter(cb =>
+    canal === 'shopee' ? cb.dataset.canal === 'shopee' : cb.dataset.canal !== 'shopee'
+  );
+  if (!checks.length) return;
+  const porConta = {};
+  checks.forEach(cb => {
+    const conta = cb.dataset.conta;
+    if (!porConta[conta]) porConta[conta] = [];
+    porConta[conta].push(cb.dataset.shipmentId);
+  });
   const base = canal === 'shopee' ? '/api/shopee/etiquetas' : '/api/ml/etiquetas';
   for (const [conta, ids] of Object.entries(porConta)) {
     compartilharPdf(`${base}?ids=${ids.join(',')}&conta=${conta}`, 'etiquetas.pdf');
@@ -916,7 +943,8 @@ async function carregarVendas() {
       const hrefEtiqueta = v.canal === 'shopee'
         ? `/api/shopee/etiqueta/${v.shipmentId}?conta=${v.conta}`
         : `/api/ml/etiqueta/${v.shipmentId}?conta=${v.conta}`;
-      const btnEtiquetaHtml = `<a class="btn-etiqueta" href="${hrefEtiqueta}" target="_blank" onclick="return compartilharPdfClick(event, this.href, 'etiqueta-${v.shipmentId}.pdf')">${v.acaoLabel}</a>`;
+      const btnEtiquetaHtml = `<a class="btn-etiqueta" href="${hrefEtiqueta}" target="_blank">${v.acaoLabel}</a>` +
+        `<a class="btn-etiqueta" href="#" onclick="compartilharPdf('${hrefEtiqueta}', 'etiqueta-${v.shipmentId}.pdf'); return false;" title="Compartilhar" style="margin-left:4px">🔗</a>`;
 
       tr.innerHTML = `
         <td><input type="checkbox" class="check-venda" data-shipment-id="${v.shipmentId}" data-conta="${v.conta}" data-canal="${v.canal || 'ml'}" onchange="atualizarBotaoSelecionadas()"></td>
