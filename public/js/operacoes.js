@@ -95,15 +95,26 @@ async function marcarAtendidoSelecionadas() {
   const remover = btn?.dataset.remover === '1';
   if (btn) { btn.disabled = true; btn.textContent = 'Salvando…'; }
 
-  const shipmentIds = checks.map(cb => cb.dataset.shipmentId);
-  const vendasDados = {};
-  if (!remover) shipmentIds.forEach(sid => { if (vendaCache[sid]) vendasDados[sid] = vendaCache[sid]; });
+  // Agrupa por conta — os pedidos selecionados podem ser de conta 1 e conta 2
+  // ao mesmo tempo (lista de vendas junta as duas), e cada conta guarda sua
+  // própria lista de atendidos.
+  const porConta = {};
+  checks.forEach(cb => {
+    const conta = cb.dataset.conta || window.CONTA_ATIVA;
+    if (!porConta[conta]) porConta[conta] = [];
+    porConta[conta].push(cb.dataset.shipmentId);
+  });
 
   try {
-    const r = await apiFetch('/api/vendas/atendidas-batch', {
-      method: remover ? 'DELETE' : 'POST',
-      body: JSON.stringify({ shipmentIds, vendasDados, conta: window.CONTA_ATIVA }),
-    });
+    const resultados = await Promise.all(Object.entries(porConta).map(([conta, shipmentIds]) => {
+      const vendasDados = {};
+      if (!remover) shipmentIds.forEach(sid => { if (vendaCache[sid]) vendasDados[sid] = vendaCache[sid]; });
+      return apiFetch('/api/vendas/atendidas-batch', {
+        method: remover ? 'DELETE' : 'POST',
+        body: JSON.stringify({ shipmentIds, vendasDados, conta }),
+      });
+    }));
+    const r = { ok: resultados.every(res => res.ok) };
     if (r.ok) {
       checks.forEach(cb => {
         const tr = cb.closest('tr');
@@ -376,21 +387,27 @@ async function carregarVendas() {
   skuFiltroVendas       = null;
 
   try {
-    const [data, dataShopee] = await Promise.all([
-      apiFetch(`/api/ml/vendas-etiquetas?conta=${window.CONTA_ATIVA}`),
-      apiFetch(`/api/shopee/vendas-etiquetas?conta=${window.CONTA_ATIVA}`).catch(() => ({ vendas: [] })),
-    ]);
+    // Junta as duas contas na mesma lista — cada resposta já vem com o campo
+    // "conta" em cada venda, então dá pra misturar sem perder de onde veio.
+    const resultados = await Promise.all(['1', '2'].flatMap(num => [
+      apiFetch(`/api/ml/vendas-etiquetas?conta=${num}`).catch(() => ({ vendas: [] })),
+      apiFetch(`/api/shopee/vendas-etiquetas?conta=${num}`).catch(() => ({ vendas: [] })),
+    ]));
     if (contaGen !== gen) return;
     loading.style.display = 'none';
 
-    if (data.error) {
-      erroEl.textContent   = data.error;
-      erroEl.style.display = 'block';
-      return;
-    }
+    const todasVendas = [];
+    resultados.forEach(r => { if (Array.isArray(r.vendas)) todasVendas.push(...r.vendas); });
 
-    const todasVendas = [...(data.vendas || []), ...(dataShopee.vendas || [])];
-    if (!todasVendas.length) { atualizarBotaoSelecionadas(); atualizarResumoSeparar(); return; }
+    if (!todasVendas.length) {
+      const erroReal = resultados.find(r => r.error && r.error !== 'Não conectado');
+      if (erroReal) {
+        erroEl.textContent   = erroReal.error;
+        erroEl.style.display = 'block';
+        return;
+      }
+      atualizarBotaoSelecionadas(); atualizarResumoSeparar(); return;
+    }
 
     todasVendas.forEach(v => {
       vendaCache[String(v.shipmentId)] = v;
@@ -417,13 +434,15 @@ async function carregarVendas() {
       const badgeShopee = v.canal === 'shopee'
         ? `<span style="background:#f97316;color:#fff;padding:1px 6px;border-radius:4px;font-size:10px;margin-left:5px;white-space:nowrap;vertical-align:middle">Shopee</span>`
         : '';
+      const contaCor  = v.conta === '1' ? '#2563eb' : '#7c3aed';
+      const badgeConta = `<span style="background:${contaCor};color:#fff;padding:1px 6px;border-radius:4px;font-size:10px;margin-left:5px;white-space:nowrap;vertical-align:middle">C${v.conta}</span>`;
       const btnEtiquetaHtml = `<a class="btn-etiqueta" href="${hrefEtiqueta}" target="_blank">${v.acaoLabel}</a>` +
         `<a class="btn-etiqueta" href="#" onclick="compartilharPdf('${hrefEtiqueta}', 'etiqueta-${v.shipmentId}.pdf'); return false;" title="Compartilhar" style="margin-left:4px">🔗</a>`;
 
       tr.innerHTML = `
         <td><input type="checkbox" class="check-venda" data-shipment-id="${v.shipmentId}" data-conta="${v.conta}" data-canal="${v.canal || 'ml'}" onchange="atualizarBotaoSelecionadas()"></td>
         <td class="td-thumb">${imgHtml0}</td>
-        <td class="td-order-id">#${v.orderId}${badgeShopee}</td>
+        <td class="td-order-id">#${v.orderId}${badgeConta}${badgeShopee}</td>
         <td>${v.comprador}</td>
         <td class="col-num venda-qtd">${item0.quantidade ?? ''}</td>
         <td class="td-sku">${item0.sku || '—'}</td>
@@ -635,12 +654,13 @@ async function toggleFlag(shipmentId, btn) {
   const tr       = btn.closest('tr');
   const atendida = tr.classList.contains('venda-atendida');
   const sid      = String(shipmentId);
+  const conta    = vendaCache[sid]?.conta || window.CONTA_ATIVA;
   try {
     const vendasDados = {};
     if (!atendida && vendaCache[sid]) vendasDados[sid] = vendaCache[sid];
     await apiFetch('/api/vendas/atendidas-batch', {
       method: atendida ? 'DELETE' : 'POST',
-      body: JSON.stringify({ shipmentIds: [sid], vendasDados, conta: window.CONTA_ATIVA }),
+      body: JSON.stringify({ shipmentIds: [sid], vendasDados, conta }),
     });
     tr.classList.toggle('venda-atendida');
     btn.classList.toggle('btn-flag-ativo');
