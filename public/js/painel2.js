@@ -993,7 +993,7 @@ async function carregarVendas() {
         ? `<span style="background:#f97316;color:#fff;padding:1px 6px;border-radius:4px;font-size:10px;margin-left:5px;white-space:nowrap;vertical-align:middle">Shopee</span>`
         : '';
       const btnEtiquetaHtml = `<a class="btn-etiqueta" href="${hrefEtiqueta}" target="_blank">${v.acaoLabel}</a>` +
-        `<a class="btn-etiqueta" href="#" onclick="compartilharPdf('${hrefEtiqueta}', 'etiqueta-${v.shipmentId}.pdf'); return false;" title="Compartilhar" style="margin-left:4px">🔗</a>`;
+        `<a class="btn-etiqueta" href="#" onclick="compartilharPdf('${hrefEtiqueta}', 'etiqueta-${v.shipmentId}.pdf', this); return false;" title="Compartilhar" style="margin-left:4px;white-space:nowrap">🔗</a>`;
 
       tr.innerHTML = `
         <td><input type="checkbox" class="check-venda" data-shipment-id="${v.shipmentId}" data-conta="${v.conta}" data-canal="${v.canal || 'ml'}" onchange="atualizarBotaoSelecionadas()"></td>
