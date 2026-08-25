@@ -892,6 +892,21 @@ function filtrarPorSku(tipo, sku) {
   }
 }
 
+// Tag no topo da aba Vendas com a contagem por canal — quantos pedidos ainda
+// faltam despachar (não marcados como atendido), separado ML x Shopee.
+function atualizarResumoCanal(vendas) {
+  const tag = document.getElementById('vendas-resumo-canal');
+  if (!tag) return;
+  const pendentes = vendas.filter(v => !v.atendida);
+  if (!pendentes.length) { tag.style.display = 'none'; return; }
+  const ml     = pendentes.filter(v => v.canal !== 'shopee').length;
+  const shopee = pendentes.filter(v => v.canal === 'shopee').length;
+  document.getElementById('resumo-canal-ml').textContent     = ml;
+  document.getElementById('resumo-canal-shopee').textContent = shopee;
+  document.getElementById('resumo-canal-total').textContent  = pendentes.length;
+  tag.style.display = 'flex';
+}
+
 async function carregarVendas() {
   const gen     = contaGen;
   const loading = document.getElementById('vendas-loading');
@@ -937,8 +952,11 @@ async function carregarVendas() {
         erroEl.style.display = 'block';
         return;
       }
+      atualizarResumoCanal(todasVendas);
       atualizarBotaoSelecionadas(); return;
     }
+
+    atualizarResumoCanal(todasVendas);
 
     todasVendas.forEach(v => {
       vendaCache[String(v.shipmentId)] = v;

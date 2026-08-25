@@ -370,6 +370,35 @@ function filtrarPorSku(tipo, sku) {
   }
 }
 
+// Busca as vendas com etiqueta das duas contas (ML + Shopee) já mescladas —
+// cada resposta vem com o campo "conta" em cada venda, então dá pra misturar
+// sem perder de onde veio.
+async function buscarTodasVendasEtiqueta() {
+  const resultados = await Promise.all(['1', '2'].flatMap(num => [
+    apiFetch(`/api/ml/vendas-etiquetas?conta=${num}`).catch(() => ({ vendas: [] })),
+    apiFetch(`/api/shopee/vendas-etiquetas?conta=${num}`).catch(() => ({ vendas: [] })),
+  ]));
+  const vendas = [];
+  resultados.forEach(r => { if (Array.isArray(r.vendas)) vendas.push(...r.vendas); });
+  const erroReal = resultados.find(r => r.error && r.error !== 'Não conectado');
+  return { vendas, erro: erroReal ? erroReal.error : null };
+}
+
+// Tag no topo da aba Vendas com a contagem por canal — quantos pedidos ainda
+// faltam despachar (não marcados como atendido), separado ML x Shopee.
+function atualizarResumoCanal(vendas) {
+  const tag = document.getElementById('vendas-resumo-canal');
+  if (!tag) return;
+  const pendentes = vendas.filter(v => !v.atendida);
+  if (!pendentes.length) { tag.style.display = 'none'; return; }
+  const ml     = pendentes.filter(v => v.canal !== 'shopee').length;
+  const shopee = pendentes.filter(v => v.canal === 'shopee').length;
+  document.getElementById('resumo-canal-ml').textContent     = ml;
+  document.getElementById('resumo-canal-shopee').textContent = shopee;
+  document.getElementById('resumo-canal-total').textContent  = pendentes.length;
+  tag.style.display = 'flex';
+}
+
 async function carregarVendas() {
   const gen     = contaGen;
   const loading = document.getElementById('vendas-loading');
@@ -387,27 +416,21 @@ async function carregarVendas() {
   skuFiltroVendas       = null;
 
   try {
-    // Junta as duas contas na mesma lista — cada resposta já vem com o campo
-    // "conta" em cada venda, então dá pra misturar sem perder de onde veio.
-    const resultados = await Promise.all(['1', '2'].flatMap(num => [
-      apiFetch(`/api/ml/vendas-etiquetas?conta=${num}`).catch(() => ({ vendas: [] })),
-      apiFetch(`/api/shopee/vendas-etiquetas?conta=${num}`).catch(() => ({ vendas: [] })),
-    ]));
+    const { vendas: todasVendas, erro } = await buscarTodasVendasEtiqueta();
     if (contaGen !== gen) return;
     loading.style.display = 'none';
 
-    const todasVendas = [];
-    resultados.forEach(r => { if (Array.isArray(r.vendas)) todasVendas.push(...r.vendas); });
-
     if (!todasVendas.length) {
-      const erroReal = resultados.find(r => r.error && r.error !== 'Não conectado');
-      if (erroReal) {
-        erroEl.textContent   = erroReal.error;
+      if (erro) {
+        erroEl.textContent   = erro;
         erroEl.style.display = 'block';
         return;
       }
+      atualizarResumoCanal(todasVendas);
       atualizarBotaoSelecionadas(); atualizarResumoSeparar(); return;
     }
+
+    atualizarResumoCanal(todasVendas);
 
     todasVendas.forEach(v => {
       vendaCache[String(v.shipmentId)] = v;
