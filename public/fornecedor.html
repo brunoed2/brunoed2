@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>HANDDRY — Painel do Fornecedor</title>
+  <title id="page-title">Painel do Fornecedor</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <style>
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
@@ -264,14 +264,14 @@
 <!-- ── Header ──────────────────────────────────────────────── -->
 <header>
   <div class="h-brand">
-    <div class="h-logo">HD</div>
+    <div class="h-logo" id="h-logo">HD</div>
     <div>
-      <div class="h-name">HANDDRY</div>
+      <div class="h-name" id="h-name">HANDDRY</div>
       <div class="h-sub">Painel do Fornecedor</div>
     </div>
   </div>
   <div class="h-right">
-    <div id="version-badge">v457</div>
+    <div id="version-badge">v458</div>
     <button class="btn-sair" onclick="sair()">Sair</button>
   </div>
 </header>
@@ -337,10 +337,9 @@
   <div id="state-config" class="state-box" style="display:none;">
     <div class="icon">📋</div>
     <h3>Produtos não configurados</h3>
-    <p>Nenhum anúncio HANDDRY foi cadastrado ainda.</p>
+    <p>Nenhum anúncio ou SKU foi cadastrado ainda pra esse fornecedor.</p>
     <ol class="cfg-steps">
-      <li>Vá em <b>Compras → Fornecedores</b> no painel admin e crie o fornecedor <b>HANDDRY</b></li>
-      <li>Acesse esta página com <code>?config=1</code> para cadastrar os IDs dos anúncios</li>
+      <li>Vá em <b>Compras → Fornecedores</b> no painel admin e configure os anúncios/SKUs desse fornecedor</li>
     </ol>
   </div>
 
@@ -391,7 +390,20 @@
   const isFornec = localStorage.getItem('auth') === '3';
   if (!isFornec && !isAdmin) location.href = '/';
 
-  if (isAdmin || new URLSearchParams(location.search).has('config')) {
+  // Cada fornecedor tem seu próprio login (usuarioSenha/usuarioNome) — usa isso
+  // pra saber qual fornecedor mostrar. Acesso direto do admin (sem logar como
+  // fornecedor) continua assumindo HANDDRY, como sempre foi (único caso que
+  // precisa do painel de configurar MLBs manualmente).
+  const fornecedorSenha = isFornec ? (localStorage.getItem('usuarioSenha') || '') : '0505';
+  const fornecedorNome  = isFornec ? (localStorage.getItem('usuarioNome')  || 'Fornecedor') : 'HANDDRY';
+
+  document.getElementById('page-title').textContent = `${fornecedorNome} — Painel do Fornecedor`;
+  document.getElementById('h-name').textContent = fornecedorNome;
+  document.getElementById('h-logo').textContent = fornecedorNome.slice(0, 2).toUpperCase();
+
+  // Painel de config de MLBs só se aplica ao HANDDRY (único rastreado por lista
+  // de anúncios em vez de SKU)
+  if (fornecedorNome.toUpperCase() === 'HANDDRY' && (isAdmin || new URLSearchParams(location.search).has('config'))) {
     document.getElementById('config-panel').style.display = 'block';
   }
 
@@ -439,7 +451,7 @@
     mostrarEstado('loading');
 
     try {
-      const url = `/api/fornecedor/dashboard?de=${de}&ate=${ate}${forcar ? '&force=1' : ''}`;
+      const url = `/api/fornecedor/dashboard?de=${de}&ate=${ate}&senha=${encodeURIComponent(fornecedorSenha)}${forcar ? '&force=1' : ''}`;
       const resp = await fetch(url);
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const dados = await resp.json();

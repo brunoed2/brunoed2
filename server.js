@@ -163,16 +163,26 @@ function loadData() {
   const HANDDRY_MLBS = ['MLB3700346581','MLB3148872272','MLB2807954078','MLB2807930465'];
   const hdEntry = raw.fornecedores_por_conta['1'].find(f => f.nome?.toUpperCase() === 'HANDDRY');
   if (!hdEntry) {
-    raw.fornecedores_por_conta['1'].push({ id: 'handdry', nome: 'HANDDRY', leadTimeDias: 30, skus: [], mlbs: HANDDRY_MLBS });
+    raw.fornecedores_por_conta['1'].push({ id: 'handdry', nome: 'HANDDRY', leadTimeDias: 30, skus: [], mlbs: HANDDRY_MLBS, canais: ['ml'] });
   } else if (!hdEntry.mlbs || hdEntry.mlbs.length === 0) {
     hdEntry.mlbs = HANDDRY_MLBS;
+  }
+  // Fornecedor BRA-INDÚSTRIA — monitora vendas do SKU 406 (ML + Shopee, conta 1),
+  // ao contrário do HANDDRY que é por lista de anúncios (mlbs)
+  if (!raw.fornecedores_por_conta['1'].find(f => f.id === 'bra-industria')) {
+    raw.fornecedores_por_conta['1'].push({ id: 'bra-industria', nome: 'BRA-INDÚSTRIA', leadTimeDias: 30, skus: ['406'], mlbs: [], canais: ['ml', 'shopee'] });
   }
   raw.usuarios = raw.usuarios || {};
   if (!raw.usuarios['1224']) {
     raw.usuarios['1224'] = { nome: 'Operador', abas: ['estoque', 'vendas', 'historico', 'etiquetas'], painel: 'painel2' };
   }
   if (!raw.usuarios['0505']) {
-    raw.usuarios['0505'] = { nome: 'HANDDRY', abas: [], painel: 'fornecedor' };
+    raw.usuarios['0505'] = { nome: 'HANDDRY', abas: [], painel: 'fornecedor', fornecedorId: 'handdry' };
+  } else if (!raw.usuarios['0505'].fornecedorId) {
+    raw.usuarios['0505'].fornecedorId = 'handdry';
+  }
+  if (!raw.usuarios['5884']) {
+    raw.usuarios['5884'] = { nome: 'BRA-INDÚSTRIA', abas: [], painel: 'fornecedor', fornecedorId: 'bra-industria' };
   }
   if (!raw.usuarios['1111']) {
     raw.usuarios['1111'] = { nome: 'Legado', abas: ['vendas', 'scanner'], painel: 'legado' };
@@ -9675,10 +9685,13 @@ app.put('/api/fornecedores/:id', (req, res) => {
   if (idx === -1) return res.status(404).json({ error: 'não encontrado' });
   if (nome) lista[idx].nome = nome.trim();
   if (leadTimeDias != null) lista[idx].leadTimeDias = Number(leadTimeDias);
-  if (skus != null) lista[idx].skus = Array.isArray(skus) ? skus : (skus || '').split(',').map(s => s.trim()).filter(Boolean);
+  if (skus != null) {
+    lista[idx].skus = Array.isArray(skus) ? skus : (skus || '').split(',').map(s => s.trim()).filter(Boolean);
+    if (data.fornecedor_dashboard_cache) delete data.fornecedor_dashboard_cache[lista[idx].id];
+  }
   if (mlbs != null) {
     lista[idx].mlbs = Array.isArray(mlbs) ? mlbs : (mlbs || '').split(',').map(s => s.trim()).filter(Boolean);
-    data.handdry_dashboard_cache = null; // invalida cache ao mudar MLBs
+    if (data.fornecedor_dashboard_cache) delete data.fornecedor_dashboard_cache[lista[idx].id];
   }
   saveData(data);
   res.json({ ok: true, fornecedor: lista[idx] });
@@ -9694,23 +9707,261 @@ app.delete('/api/fornecedores/:id', (req, res) => {
   res.json({ ok: true });
 });
 
-// ── Dashboard do fornecedor HANDDRY (ML-powered, com cache) ──
-app.get('/api/fornecedor/dashboard', async (req, res) => {
-  const data     = loadData();
-  const NOME_FORN = 'HANDDRY';
-
-  // Localiza registro HANDDRY e a conta associada
-  let handdry  = null;
-  let contaNum = null;
+// ── Dashboard do fornecedor (ML/Shopee-powered, com cache) ──
+// Cada fornecedor tem um usuário de login próprio (usuarios['xxxx'].fornecedorId)
+// que aponta pro registro em fornecedores_por_conta. Dois jeitos de rastrear:
+// por lista de anúncios ML (mlbs — caso do HANDDRY) ou por SKU (skus — caso do
+// BRA-INDÚSTRIA), esse último podendo somar ML + Shopee (campo canais).
+function resolverFornecedorPorSenha(data, senha) {
+  const usuario = (data.usuarios || {})[String(senha || '')];
+  if (!usuario || usuario.painel !== 'fornecedor') return null;
   for (const num of Object.keys(data.fornecedores_por_conta || {})) {
-    const lista = data.fornecedores_por_conta[num] || [];
-    const forn  = lista.find(f => f.nome.toUpperCase() === NOME_FORN);
-    if (forn) { handdry = forn; contaNum = num; break; }
+    const forn = (data.fornecedores_por_conta[num] || []).find(f => f.id === usuario.fornecedorId);
+    if (forn) return { fornecedor: forn, contaNum: num };
+  }
+  return null;
+}
+
+async function buscarDashboardFornecedorPorMlb(c, mlbs, de, ate) {
+  const mlbSet        = new Set(mlbs);
+  const vendasDiarias = {};
+  for (const mlb of mlbs) vendasDiarias[mlb] = {};
+
+  let offset = 0;
+  const limit = 50;
+  let paginaTotal = Infinity;
+
+  while (offset < paginaTotal && offset < 5000) {
+    const resp = await axios.get('https://api.mercadolibre.com/orders/search', {
+      params: {
+        seller:                      c.user_id,
+        'order.status':              'paid',
+        'order.date_created.from':   de  + 'T00:00:00.000-03:00',
+        'order.date_created.to':     ate + 'T23:59:59.000-03:00',
+        sort:  'date_asc',
+        limit, offset,
+      },
+      headers: { Authorization: `Bearer ${c.access_token}` },
+      timeout: 15000,
+    });
+
+    const orders = resp.data.results || [];
+    paginaTotal  = resp.data.paging?.total || 0;
+
+    for (const order of orders) {
+      const date = (order.date_created || '').slice(0, 10);
+      for (const oi of (order.order_items || [])) {
+        const mlb = oi.item.id;
+        if (!mlbSet.has(mlb)) continue;
+        vendasDiarias[mlb][date] = (vendasDiarias[mlb][date] || 0) + (oi.quantity || 1);
+      }
+    }
+
+    if (orders.length < limit) break;
+    offset += limit;
   }
 
-  const mlbs = (handdry?.mlbs || []).map(m => String(m).trim()).filter(Boolean);
+  const produtos = [];
+  for (let i = 0; i < mlbs.length; i += 20) {
+    const chunk = mlbs.slice(i, i + 20);
+    try {
+      const r = await axios.get('https://api.mercadolibre.com/items', {
+        params: { ids: chunk.join(','), attributes: 'id,title,available_quantity,thumbnail,status' },
+        headers: { Authorization: `Bearer ${c.access_token}` },
+        timeout: 10000,
+      });
+      for (const entry of (r.data || [])) {
+        if (entry.code !== 200) continue;
+        const b = entry.body;
+        let thumb = b.thumbnail || null;
+        if (thumb) thumb = thumb.replace(/-[A-Z]\.jpg/, '-O.jpg');
+        produtos.push({ mlb: b.id, titulo: b.title || b.id, estoque: b.available_quantity ?? 0, thumbnail: thumb, status: b.status });
+      }
+    } catch {}
+  }
 
-  if (mlbs.length === 0) {
+  return { produtos, vendas_diarias: vendasDiarias, de, ate, lastSync: new Date().toISOString() };
+}
+
+// Versão enxuta da busca de pedidos Shopee num período — só o essencial (sku,
+// quantidade, data) pra contagem de vendas, sem os lookups de escrow/custos que
+// buscarVendasShopeeComCustos faz (desnecessários aqui e mais lentos)
+async function buscarItensShopeePeriodoLeve(data, conta, de, ate) {
+  const num = String(conta || '1');
+  const sp  = shopeeConta(data, num);
+  if (!sp.access_token) return [];
+  const accessToken = await getShopeeToken(data, num);
+
+  const fromTs = Math.floor(new Date(de  + 'T00:00:00-03:00').getTime() / 1000);
+  const toTs   = Math.floor(new Date(ate + 'T23:59:59-03:00').getTime() / 1000);
+
+  let orderSns = [];
+  const faixasTempo = shopeeQuebrarFaixaTempo(fromTs, toTs);
+  for (const status of ['READY_TO_SHIP', 'PROCESSED', 'SHIPPED', 'COMPLETED']) {
+    for (const [tFrom, tTo] of faixasTempo) {
+      let cursor = '';
+      let more   = true;
+      while (more) {
+        const path   = '/api/v2/order/get_order_list';
+        const params = shopeeParams(path, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
+        params.order_status     = status;
+        params.page_size        = 100;
+        params.cursor           = cursor;
+        params.time_range_field = 'create_time';
+        params.time_from        = tFrom;
+        params.time_to          = tTo;
+        const r = await axios.get(`${SHOPEE_BASE}/order/get_order_list`, { params, timeout: 15000 });
+        if (r.data.error) break;
+        const list = r.data.response?.order_list || [];
+        orderSns = orderSns.concat(list.map(o => o.order_sn));
+        more   = !!r.data.response?.more;
+        cursor = r.data.response?.next_cursor || '';
+        if (!more || !cursor) break;
+      }
+    }
+  }
+  orderSns = [...new Set(orderSns)];
+  if (!orderSns.length) return [];
+
+  const resultado = [];
+  for (let i = 0; i < orderSns.length; i += 50) {
+    const lote    = orderSns.slice(i, i + 50);
+    const pathD   = '/api/v2/order/get_order_detail';
+    const paramsD = shopeeParams(pathD, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
+    paramsD.order_sn_list = lote.join(',');
+    paramsD.response_optional_fields = 'item_list,order_status,create_time';
+    const rd = await axios.get(`${SHOPEE_BASE}/order/get_order_detail`, { params: paramsD, timeout: 15000 });
+    for (const o of (rd.data.response?.order_list || [])) {
+      if (SHOPEE_STATUS_CANCELADO.includes(o.order_status)) continue;
+      resultado.push({
+        data:  (o.create_time || 0) * 1000,
+        itens: (o.item_list || []).map(i => ({
+          sku:        i.item_sku || i.model_sku || '',
+          titulo:     i.item_name || '',
+          quantidade: i.model_quantity_purchased || 1,
+        })),
+      });
+    }
+  }
+  return resultado;
+}
+
+async function buscarDashboardFornecedorPorSku(data, contaNum, skusAlvo, canais, de, ate) {
+  const skuSet        = new Set(skusAlvo.map(s => s.toUpperCase()));
+  const vendasDiarias  = {};
+  for (const sku of skusAlvo) vendasDiarias[sku] = {};
+  const produtosInfo = {};
+
+  if (canais.includes('ml')) {
+    const c = (data.contas || {})[contaNum];
+    if (c?.access_token && c?.user_id) {
+      const todasOrdens = [];
+      let offset = 0;
+      const limit = 50;
+      let paginaTotal = Infinity;
+      while (offset < paginaTotal && offset < 5000) {
+        const resp = await axios.get('https://api.mercadolibre.com/orders/search', {
+          params: {
+            seller:                    c.user_id,
+            'order.status':            'paid',
+            'order.date_created.from': de  + 'T00:00:00.000-03:00',
+            'order.date_created.to':   ate + 'T23:59:59.000-03:00',
+            sort: 'date_asc', limit, offset,
+          },
+          headers: { Authorization: `Bearer ${c.access_token}` },
+          timeout: 15000,
+        });
+        const orders = resp.data.results || [];
+        paginaTotal  = resp.data.paging?.total || 0;
+        todasOrdens.push(...orders);
+        if (orders.length < limit) break;
+        offset += limit;
+      }
+
+      const mlbsUnicos = [...new Set(todasOrdens.flatMap(o => (o.order_items || []).map(i => i.item.id)))];
+      const itemInfoMap = {};
+      for (let i = 0; i < mlbsUnicos.length; i += 20) {
+        const chunk = mlbsUnicos.slice(i, i + 20);
+        try {
+          const r = await axios.get('https://api.mercadolibre.com/items', {
+            params: { ids: chunk.join(','), attributes: 'id,title,available_quantity,thumbnail,status,seller_custom_field,attributes,variations' },
+            headers: { Authorization: `Bearer ${c.access_token}` },
+            timeout: 10000,
+          });
+          for (const entry of (r.data || [])) {
+            if (entry.code !== 200) continue;
+            const b = entry.body;
+            itemInfoMap[b.id] = { sku: extrairSku(b), titulo: b.title, thumbnail: b.thumbnail, estoque: b.available_quantity ?? 0 };
+          }
+        } catch {}
+      }
+
+      // Estoque/título — uma vez por MLB (fora do loop de pedidos, senão soma estoque repetido)
+      for (const [mlb, info] of Object.entries(itemInfoMap)) {
+        const skuNorm = String(info.sku).trim().toUpperCase();
+        if (!skuSet.has(skuNorm)) continue;
+        const skuOriginal = skusAlvo.find(s => s.toUpperCase() === skuNorm);
+        if (!produtosInfo[skuOriginal]) {
+          let thumb = info.thumbnail;
+          if (thumb) thumb = thumb.replace(/-[A-Z]\.jpg/, '-O.jpg');
+          produtosInfo[skuOriginal] = { titulo: info.titulo, thumbnail: thumb, estoque: info.estoque };
+        } else {
+          produtosInfo[skuOriginal].estoque += info.estoque;
+        }
+      }
+
+      for (const order of todasOrdens) {
+        const date = (order.date_created || '').slice(0, 10);
+        for (const oi of (order.order_items || [])) {
+          const info = itemInfoMap[oi.item.id];
+          if (!info) continue;
+          const skuNorm = String(info.sku).trim().toUpperCase();
+          if (!skuSet.has(skuNorm)) continue;
+          const skuOriginal = skusAlvo.find(s => s.toUpperCase() === skuNorm);
+          vendasDiarias[skuOriginal][date] = (vendasDiarias[skuOriginal][date] || 0) + (oi.quantity || 1);
+        }
+      }
+    }
+  }
+
+  if (canais.includes('shopee')) {
+    const itensShopee = await buscarItensShopeePeriodoLeve(data, contaNum, de, ate);
+    for (const pedido of itensShopee) {
+      const date = new Date(pedido.data).toISOString().slice(0, 10);
+      for (const it of pedido.itens) {
+        const skuNorm = String(it.sku).trim().toUpperCase();
+        if (!skuSet.has(skuNorm)) continue;
+        const skuOriginal = skusAlvo.find(s => s.toUpperCase() === skuNorm);
+        vendasDiarias[skuOriginal][date] = (vendasDiarias[skuOriginal][date] || 0) + (it.quantidade || 1);
+        if (!produtosInfo[skuOriginal]) {
+          produtosInfo[skuOriginal] = { titulo: it.titulo, thumbnail: null, estoque: 0 };
+        }
+      }
+    }
+  }
+
+  const produtos = skusAlvo.map(sku => ({
+    mlb:       sku, // front-end só usa esse campo como chave genérica de identificação
+    titulo:    produtosInfo[sku]?.titulo || `SKU ${sku}`,
+    thumbnail: produtosInfo[sku]?.thumbnail || null,
+    estoque:   produtosInfo[sku]?.estoque || 0,
+    status:    'active',
+  }));
+
+  return { produtos, vendas_diarias: vendasDiarias, de, ate, lastSync: new Date().toISOString() };
+}
+
+app.get('/api/fornecedor/dashboard', async (req, res) => {
+  const data = loadData();
+  const resolvido = resolverFornecedorPorSenha(data, req.query.senha);
+  if (!resolvido) return res.json({ error: 'Fornecedor não identificado — faça login novamente' });
+  const { fornecedor, contaNum } = resolvido;
+
+  const mlbs    = (fornecedor.mlbs || []).map(m => String(m).trim()).filter(Boolean);
+  const skusAlvo = (fornecedor.skus || []).map(s => String(s).trim()).filter(Boolean);
+  const canais  = (fornecedor.canais && fornecedor.canais.length) ? fornecedor.canais : ['ml'];
+
+  if (mlbs.length === 0 && skusAlvo.length === 0) {
     return res.json({ produtos: [], vendas_diarias: {}, sem_config: true });
   }
 
@@ -9720,84 +9971,29 @@ app.get('/api/fornecedor/dashboard', async (req, res) => {
   const ate   = req.query.ate || hoje.toISOString().slice(0, 10);
   const force = req.query.force === '1';
 
-  // Serve do cache se ainda válido (1 hora)
-  const cache = data.handdry_dashboard_cache;
+  // Serve do cache se ainda válido (1 hora) — uma entrada de cache por fornecedor
+  data.fornecedor_dashboard_cache = data.fornecedor_dashboard_cache || {};
+  const cache = data.fornecedor_dashboard_cache[fornecedor.id];
   if (!force && cache && cache.de === de && cache.ate === ate && cache.lastSync) {
     const age = Date.now() - new Date(cache.lastSync).getTime();
     if (age < 60 * 60 * 1000) return res.json({ ...cache, cached: true });
   }
 
-  // Credenciais da conta do fornecedor
   const c = (data.contas || {})[contaNum] || contaAtiva(data);
-  if (!c?.access_token) return res.json({ error: 'Conta não conectada ao Mercado Livre' });
-  if (!c?.user_id)      return res.json({ error: 'user_id não encontrado' });
+  if (mlbs.length > 0 && (!c?.access_token || !c?.user_id)) {
+    return res.json({ error: 'Conta não conectada ao Mercado Livre' });
+  }
 
   try {
-    const mlbSet        = new Set(mlbs);
-    const vendasDiarias = {};
-    for (const mlb of mlbs) vendasDiarias[mlb] = {};
+    const resultado = mlbs.length > 0
+      ? await buscarDashboardFornecedorPorMlb(c, mlbs, de, ate)
+      : await buscarDashboardFornecedorPorSku(data, contaNum, skusAlvo, canais, de, ate);
 
-    // Busca pedidos pagos no período, filtrando pelos MLBs do HANDDRY
-    let offset = 0;
-    const limit = 50;
-    let paginaTotal = Infinity;
-
-    while (offset < paginaTotal && offset < 5000) {
-      const resp = await axios.get('https://api.mercadolibre.com/orders/search', {
-        params: {
-          seller:                      c.user_id,
-          'order.status':              'paid',
-          'order.date_created.from':   de  + 'T00:00:00.000-03:00',
-          'order.date_created.to':     ate + 'T23:59:59.000-03:00',
-          sort:  'date_asc',
-          limit, offset,
-        },
-        headers: { Authorization: `Bearer ${c.access_token}` },
-        timeout: 15000,
-      });
-
-      const orders = resp.data.results || [];
-      paginaTotal  = resp.data.paging?.total || 0;
-
-      for (const order of orders) {
-        const date = (order.date_created || '').slice(0, 10);
-        for (const oi of (order.order_items || [])) {
-          const mlb = oi.item.id;
-          if (!mlbSet.has(mlb)) continue;
-          vendasDiarias[mlb][date] = (vendasDiarias[mlb][date] || 0) + (oi.quantity || 1);
-        }
-      }
-
-      if (orders.length < limit) break;
-      offset += limit;
-    }
-
-    // Busca info e estoque real dos itens no ML
-    const produtos = [];
-    for (let i = 0; i < mlbs.length; i += 20) {
-      const chunk = mlbs.slice(i, i + 20);
-      try {
-        const r = await axios.get('https://api.mercadolibre.com/items', {
-          params: { ids: chunk.join(','), attributes: 'id,title,available_quantity,thumbnail,status' },
-          headers: { Authorization: `Bearer ${c.access_token}` },
-          timeout: 10000,
-        });
-        for (const entry of (r.data || [])) {
-          if (entry.code !== 200) continue;
-          const b = entry.body;
-          let thumb = b.thumbnail || null;
-          if (thumb) thumb = thumb.replace(/-[A-Z]\.jpg/, '-O.jpg');
-          produtos.push({ mlb: b.id, titulo: b.title || b.id, estoque: b.available_quantity ?? 0, thumbnail: thumb, status: b.status });
-        }
-      } catch {}
-    }
-
-    const resultado = { produtos, vendas_diarias: vendasDiarias, de, ate, lastSync: new Date().toISOString() };
-    data.handdry_dashboard_cache = resultado;
+    data.fornecedor_dashboard_cache[fornecedor.id] = resultado;
     saveData(data);
     res.json(resultado);
   } catch (err) {
-    addLog(`[Fornecedor] Erro dashboard: ${err.response?.data?.message || err.message}`, 'error');
+    addLog(`[Fornecedor] Erro dashboard (${fornecedor.id}): ${err.response?.data?.message || err.message}`, 'error');
     res.json({ error: 'Erro ao buscar dados: ' + (err.response?.data?.message || err.message) });
   }
 });
@@ -9818,7 +10014,7 @@ app.post('/api/fornecedor/config-mlbs', (req, res) => {
     }
   }
   if (!atualizado) return res.status(404).json({ error: 'Fornecedor HANDDRY não encontrado — cadastre-o primeiro na aba Compras' });
-  data.handdry_dashboard_cache = null;
+  if (data.fornecedor_dashboard_cache) delete data.fornecedor_dashboard_cache['handdry'];
   saveData(data);
   res.json({ ok: true, mlbs: mlbs.filter(Boolean) });
 });
