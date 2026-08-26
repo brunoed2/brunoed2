@@ -3390,8 +3390,16 @@ app.get('/api/ml/pedidos-futuros', async (req, res) => {
       resultado.push(...detalhes);
     }
 
+    // O /orders/search do ML tem index com atraso (eventual consistency) — um pedido
+    // que já foi despachado (ou já virou ready_to_print/printed) entre a busca e agora
+    // ainda pode vir na lista. Reconfirma com o status ATUAL do /shipments/{id} (recém
+    // buscado acima), não com o que a busca retornou.
+    const STATUS_VALIDOS = new Set(['pending', 'ready_to_ship']);
     const filtradas = resultado.filter(({ shipment }) =>
-      shipment && !isFull(shipment) && !SUBSTATUS_JA_ACIONAVEL.has(shipment.substatus)
+      shipment &&
+      STATUS_VALIDOS.has(shipment.status) &&
+      !isFull(shipment) &&
+      !SUBSTATUS_JA_ACIONAVEL.has(shipment.substatus)
     );
 
     // Modo debug: retorna o shipment bruto do primeiro pedido
