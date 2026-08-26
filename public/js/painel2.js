@@ -904,7 +904,6 @@ function atualizarResumoCanal(vendas) {
   const shopee = pendentes.filter(v => v.canal === 'shopee').length;
   document.getElementById('resumo-canal-ml').textContent     = ml;
   document.getElementById('resumo-canal-shopee').textContent = shopee;
-  document.getElementById('resumo-canal-total').textContent  = pendentes.length;
   tag.style.display = 'flex';
 }
 
