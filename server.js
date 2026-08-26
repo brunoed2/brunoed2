@@ -671,7 +671,11 @@ app.post('/api/login', (req, res) => {
     return res.status(403).json({ error: 'desativado', painel: usuario.painel });
   }
   registrarAcesso({ nome: usuario.nome, senha, painel: usuario.painel, ip: req.ip, userAgent: req.headers['user-agent'] });
-  const agoraLogin = new Date().toLocaleString('pt-BR');
+  // new Date().toLocaleString('pt-BR') usa o fuso do servidor (Railway = UTC), não
+  // o de Brasília — sem esse ajuste o horário na notificação vinha 3h adiantado.
+  // Mesmo truque de BR_OFFSET_MS usado em horaSP()/hojeSP(): desloca o timestamp e
+  // formata como se já fosse UTC, pra não depender do fuso do processo.
+  const agoraLogin = new Date(Date.now() - BR_OFFSET_MS).toLocaleString('pt-BR', { timeZone: 'UTC' });
   notificar(
     `🔓 <b>Login no painel</b>\n\n${usuario.nome}\nPainel: ${usuario.painel || '—'}\nIP: ${req.ip}\nDispositivo: ${resumirUserAgent(req.headers['user-agent'])}\n${agoraLogin}`,
     'login'
@@ -1867,7 +1871,7 @@ app.get('/api/shopee/log-impulso', (req, res) => {
   const logs = logBuffer.filter(e => e.msg && e.msg.includes('[shopee]'));
   const linhas = logs.map(e => {
     const cor = e.tipo === 'warn' ? '#f59e0b' : e.tipo === 'erro' ? '#ef4444' : '#34d399';
-    const hora = new Date(e.ts).toLocaleString('pt-BR');
+    const hora = new Date(e.ts - BR_OFFSET_MS).toLocaleString('pt-BR', { timeZone: 'UTC' });
     return `<div style="color:${cor};font-family:monospace;font-size:13px;padding:2px 0">[${hora}] ${e.msg}</div>`;
   }).join('') || '<div style="color:#6b7280;font-family:monospace">Nenhum log ainda.</div>';
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
