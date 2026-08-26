@@ -10027,11 +10027,6 @@ function carregarFornecedorVendasNotificadas() {
   const data = loadData();
   return new Set(Array.isArray(data.fornecedor_vendas_notificadas) ? data.fornecedor_vendas_notificadas : []);
 }
-function salvarFornecedorVendasNotificadas(set) {
-  const data = loadData();
-  data.fornecedor_vendas_notificadas = Array.from(set).slice(-2000);
-  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
-}
 const fornecedorVendasNotificadas = carregarFornecedorVendasNotificadas();
 
 async function verificarVendasFornecedoresPorSku() {
@@ -10044,11 +10039,12 @@ async function verificarVendasFornecedoresPorSku() {
   }
   if (!fornecedoresSku.length) return;
 
+  let algumaMudanca = false;
+
   for (const forn of fornecedoresSku) {
     const skuSet    = new Set(forn.skus.map(s => String(s).trim().toUpperCase()));
     const canais    = (forn.canais && forn.canais.length) ? forn.canais : ['ml'];
     const categoria = `fornecedor_venda_${forn.id}`;
-    let algumaMudanca = false;
 
     if (canais.includes('ml')) {
       const c = (data.contas || {})[forn.contaNum];
@@ -10106,6 +10102,23 @@ async function verificarVendasFornecedoresPorSku() {
           algumaMudanca = true;
           const itensMatch = pedido.itens.filter(it => skuSet.has(String(it.sku).trim().toUpperCase()));
           if (!itensMatch.length) continue;
+
+          // Desconta do estoque local — Shopee aqui não tem Full (confirmado com o
+          // usuário: venda Shopee sempre sai do estoque próprio), então desconta sempre,
+          // diferente do ML que já exclui Full no /api/estoque-local/sync
+          for (const it of itensMatch) {
+            const skuNorm     = String(it.sku).trim().toUpperCase();
+            const skuOriginal = forn.skus.find(s => String(s).trim().toUpperCase() === skuNorm);
+            if (skuOriginal && data.estoque_local[skuOriginal] !== undefined) {
+              const anterior = data.estoque_local[skuOriginal];
+              data.estoque_local[skuOriginal] = Math.max(0, anterior - (it.quantidade || 1));
+              addEstoqueHistorico(data, {
+                sku: skuOriginal, anterior, novo: data.estoque_local[skuOriginal],
+                tipo: 'venda', pedido_id: pedido.orderSn, usuario: 'Automático (Shopee)',
+              });
+            }
+          }
+
           const qtd = itensMatch.reduce((s, i) => s + (i.quantidade || 1), 0);
           const texto = `🛍️ <b>Nova venda — ${forn.nome}</b>\n\nPedido Shopee ${pedido.orderSn}\n${qtd} unidade(s) do seu produto`;
           registrarNotificacaoHistorico(texto, categoria);
@@ -10115,8 +10128,14 @@ async function verificarVendasFornecedoresPorSku() {
         addLog(`[fornecedor-venda] Erro Shopee conta ${forn.contaNum} (${forn.id}): ${err.message}`, 'warn');
       }
     }
+  }
 
-    if (algumaMudanca) salvarFornecedorVendasNotificadas(fornecedorVendasNotificadas);
+  // Salva tudo de uma vez só (estoque_local descontado + set de notificados) — salvar
+  // por fornecedor/pedido usaria loadData() de novo a cada vez e arriscaria clobar a
+  // dedução de estoque com um saveData intermediário defasado
+  if (algumaMudanca) {
+    data.fornecedor_vendas_notificadas = Array.from(fornecedorVendasNotificadas).slice(-2000);
+    saveData(data);
   }
 }
 
