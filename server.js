@@ -9769,7 +9769,11 @@ app.delete('/api/fornecedores/:id', (req, res) => {
 // BRA-INDÚSTRIA), esse último podendo somar ML + Shopee (campo canais).
 function resolverFornecedorPorSenha(data, senha) {
   const usuario = (data.usuarios || {})[String(senha || '')];
-  if (!usuario || usuario.painel !== 'fornecedor') return null;
+  // ativo === false (usuário pausado em Configurações > Usuários) bloqueava só a tela
+  // de login — essa rota nunca passa por /api/login, então um fornecedor desativado
+  // continuava vendo o próprio dashboard normalmente (e o fallback de acesso direto
+  // do admin, que assume HANDDRY, também ignorava a desativação)
+  if (!usuario || usuario.painel !== 'fornecedor' || usuario.ativo === false) return null;
   for (const num of Object.keys(data.fornecedores_por_conta || {})) {
     const forn = (data.fornecedores_por_conta[num] || []).find(f => f.id === usuario.fornecedorId);
     if (forn) return { fornecedor: forn, contaNum: num };
