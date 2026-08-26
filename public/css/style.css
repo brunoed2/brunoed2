@@ -769,8 +769,27 @@ code {
 }
 
 /* Imagem clicável */
-.venda-thumb-link { display: block; line-height: 0; }
+.venda-thumb-link { display: block; line-height: 0; cursor: zoom-in; }
 .venda-thumb-link:hover .venda-thumb { opacity: .82; transform: scale(1.04); transition: opacity .15s, transform .15s; }
+
+/* Overlay de foto ampliada */
+.foto-ampliada-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.75);
+  z-index: 9999;
+  align-items: center;
+  justify-content: center;
+  cursor: zoom-out;
+}
+.foto-ampliada-overlay.aberto { display: flex; }
+.foto-ampliada-overlay img {
+  max-width: min(90vw, 520px);
+  max-height: 90vh;
+  border-radius: 10px;
+  box-shadow: 0 10px 40px rgba(0,0,0,.5);
+}
 
 .venda-sub-indent {
   width: 48px;
