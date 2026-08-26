@@ -776,6 +776,30 @@ app.post('/api/codigos-recebimento', (req, res) => {
   res.json({ ok: true });
 });
 
+// Código é diário — zera sozinho toda virada de dia (meia-noite de Brasília), pra
+// nunca sobrar o código de ontem visível se o admin esquecer de atualizar.
+// Brasília é UTC-3 fixo (sem horário de verão desde 2019), então dá pra calcular
+// a próxima meia-noite sem depender de fuso horário do timezone do processo.
+const OFFSET_BRASILIA_MS = 3 * 60 * 60 * 1000;
+function proximaMeiaNoiteBrasiliaTs() {
+  const localDate = new Date(Date.now() - OFFSET_BRASILIA_MS);
+  localDate.setUTCHours(24, 0, 0, 0); // vira a próxima meia-noite "local"
+  return localDate.getTime() + OFFSET_BRASILIA_MS;
+}
+function agendarLimpezaCodigosRecebimento() {
+  const delay = Math.max(proximaMeiaNoiteBrasiliaTs() - Date.now(), 1000);
+  setTimeout(() => {
+    try {
+      saveCodigosRecebimento(JSON.parse(JSON.stringify(CODIGOS_RECEBIMENTO_PADRAO)));
+      addLog('[codigo-recebimento] limpeza diária executada', 'info');
+    } catch (e) {
+      addLog(`[codigo-recebimento] erro na limpeza diária: ${e.message}`, 'warn');
+    }
+    agendarLimpezaCodigosRecebimento();
+  }, delay);
+}
+agendarLimpezaCodigosRecebimento();
+
 // ── Rotas de configuração ─────────────────────────────────────
 
 app.get('/api/config', (req, res) => {
