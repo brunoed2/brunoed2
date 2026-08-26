@@ -3337,6 +3337,29 @@ app.get('/api/ml/pedidos-futuros', async (req, res) => {
       o.shipping.mode !== 'fulfillment'
     );
 
+    // Orders de pack sem shipping próprio — busca o shipping pelo pack
+    // (mesmo caso tratado em /api/ml/vendas-etiquetas; sem isso, pedido de pack
+    // sem shipping.id direto some da lista mesmo tendo despacho futuro)
+    const semShipmentComPack = todasOrdens.filter(o =>
+      o.pack_id && !(o.shipping && o.shipping.id)
+    );
+    const packsVistos = new Set();
+    for (const o of semShipmentComPack) {
+      const packId = o.pack_id;
+      if (packsVistos.has(packId)) continue;
+      packsVistos.add(packId);
+      try {
+        const rPack = await axios.get(
+          `https://api.mercadolibre.com/packs/${packId}`,
+          { headers: { Authorization: `Bearer ${c.access_token}` }, timeout: 8000 }
+        );
+        if (rPack.data.shipment?.id) {
+          o.shipping = { id: rPack.data.shipment.id };
+          comShipment.push(o);
+        }
+      } catch {}
+    }
+
     // Busca detalhes de shipment em lotes de 10
     const resultado = [];
     for (let i = 0; i < comShipment.length; i += 10) {
@@ -3399,9 +3422,18 @@ app.get('/api/ml/pedidos-futuros', async (req, res) => {
       const bufferingDate = shipment.shipping_option?.buffering?.date;
       const scheduleLimit = shipment.shipping_option?.estimated_schedule_limit?.date;
       const payBefore     = shipment.shipping_option?.estimated_delivery_time?.pay_before;
+      // Pedido "normal" (sem agendamento) não tem buffering/scheduleLimit/payBefore —
+      // nesse caso o despacho real é criado + prazo de handling, não "agora". Sem isso,
+      // todo pedido pendente de NF-e caía sempre no bucket de "hoje", mesmo quando o
+      // prazo de handling empurra o despacho pra amanhã (mesmo cálculo de vendas-etiquetas).
+      const handlingHoras = shipment.shipping_option?.estimated_delivery_time?.handling;
+      const criado        = new Date(shipment.date_created);
+      const prazoHandling = (handlingHoras != null && handlingHoras > 0)
+        ? new Date(criado.getTime() + handlingHoras * 3600_000).toISOString()
+        : null;
       const dataLiberacao = (bufferingDate || scheduleLimit || payBefore)
         ? new Date(bufferingDate || scheduleLimit || payBefore).toISOString()
-        : new Date(shipment.date_created).toISOString();
+        : (prazoHandling || criado.toISOString());
 
       const itensLista = [];
       for (const i of (order.order_items || [])) {
