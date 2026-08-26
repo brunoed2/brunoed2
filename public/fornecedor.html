@@ -276,7 +276,7 @@
     </div>
   </div>
   <div class="h-right">
-    <div id="version-badge">v461</div>
+    <div id="version-badge">v462</div>
     <button class="btn-sair" id="btn-push-ativar" onclick="ativarPushFornecedor()">🔔 Ativar notificações</button>
     <button class="btn-sair" onclick="sair()">Sair</button>
   </div>
@@ -406,6 +406,15 @@
   document.getElementById('page-title').textContent = `${fornecedorNome} — Painel do Fornecedor`;
   document.getElementById('h-name').textContent = fornecedorNome;
   document.getElementById('h-logo').textContent = fornecedorNome.slice(0, 2).toUpperCase();
+
+  // Botão de notificação só faz sentido logado como o fornecedor de verdade — acesso
+  // direto do admin (fornecedorSenha caindo no fallback '0505' do HANDDRY) não pode
+  // se inscrever "sendo" o fornecedor, senão o dispositivo do admin passa a receber
+  // as notificações de venda (ou pior: como o usuário 0505 não tem restrição de
+  // categoria, passaria a receber TODO push do sistema, não só venda)
+  if (!isFornec) {
+    document.getElementById('btn-push-ativar').style.display = 'none';
+  }
 
   // Painel de config de MLBs só se aplica ao HANDDRY (único rastreado por lista
   // de anúncios em vez de SKU)

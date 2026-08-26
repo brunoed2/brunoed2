@@ -177,9 +177,16 @@ function loadData() {
     raw.usuarios['1224'] = { nome: 'Operador', abas: ['estoque', 'vendas', 'historico', 'etiquetas'], painel: 'painel2' };
   }
   if (!raw.usuarios['0505']) {
-    raw.usuarios['0505'] = { nome: 'HANDDRY', abas: [], painel: 'fornecedor', fornecedorId: 'handdry' };
-  } else if (!raw.usuarios['0505'].fornecedorId) {
-    raw.usuarios['0505'].fornecedorId = 'handdry';
+    raw.usuarios['0505'] = { nome: 'HANDDRY', abas: [], painel: 'fornecedor', fornecedorId: 'handdry', notificacoes: ['fornecedor_venda_handdry'] };
+  } else {
+    if (!raw.usuarios['0505'].fornecedorId) raw.usuarios['0505'].fornecedorId = 'handdry';
+    // Sem essa restrição, uma inscrição de push marcada (por engano) com a senha 0505
+    // recebe TODO push do sistema — foi o que expôs o admin a "Pedido pronto pra NF"
+    // ao testar o botão de notificação acessando /fornecedor.html direto (sem estar
+    // logado como fornecedor de verdade). HANDDRY ainda não tem push de venda próprio
+    // (só o BRA-INDÚSTRIA tem, via verificarVendasFornecedoresPorSku), então isso na
+    // prática bloqueia tudo até esse fornecedor ganhar a mesma feature.
+    if (!raw.usuarios['0505'].notificacoes) raw.usuarios['0505'].notificacoes = ['fornecedor_venda_handdry'];
   }
   if (!raw.usuarios['5884']) {
     // notificacoes: só a categoria de venda do próprio SKU — sem isso ele receberia
