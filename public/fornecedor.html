@@ -5,6 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title id="page-title">Painel do Fornecedor</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js'));
+    }
+  </script>
   <style>
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -271,7 +276,8 @@
     </div>
   </div>
   <div class="h-right">
-    <div id="version-badge">v458</div>
+    <div id="version-badge">v459</div>
+    <button class="btn-sair" id="btn-push-ativar" onclick="ativarPushFornecedor()">🔔 Ativar notificações</button>
     <button class="btn-sair" onclick="sair()">Sair</button>
   </div>
 </header>
@@ -757,6 +763,58 @@
     localStorage.removeItem('auth');
     localStorage.removeItem('usuarioNome');
     location.href = '/';
+  }
+
+  // ── Notificações push ──────────────────────────────────────────
+  function urlBase64ToUint8Array(base64String) {
+    const padding  = '='.repeat((4 - base64String.length % 4) % 4);
+    const base64   = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+    const rawData  = atob(base64);
+    const output   = new Uint8Array(rawData.length);
+    for (let i = 0; i < rawData.length; i++) output[i] = rawData.charCodeAt(i);
+    return output;
+  }
+
+  async function ativarPushFornecedor() {
+    const btn = document.getElementById('btn-push-ativar');
+    const labelOriginal = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '⏳ Ativando...';
+    try {
+      if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+        alert('⚠️ Notificações não suportadas aqui. No iPhone, abra pelo ícone do app instalado na Tela de Início (não funciona direto no Safari).');
+        return;
+      }
+      const permissao = await Notification.requestPermission();
+      if (permissao !== 'granted') {
+        alert('⚠️ Permissão de notificação negada.');
+        return;
+      }
+      const { key } = await fetch('/api/push/vapid-public-key').then(r => r.json());
+      if (!key) {
+        alert('⚠️ Servidor ainda não tem as chaves de notificação configuradas.');
+        return;
+      }
+      const reg = await navigator.serviceWorker.ready;
+      let sub = await reg.pushManager.getSubscription();
+      if (!sub) {
+        sub = await reg.pushManager.subscribe({
+          userVisibleOnly:      true,
+          applicationServerKey: urlBase64ToUint8Array(key),
+        });
+      }
+      await fetch('/api/push/subscribe', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ subscription: sub, senha: fornecedorSenha }),
+      });
+      alert('✅ Notificações ativadas! Você vai receber um aviso a cada venda.');
+    } catch (e) {
+      alert('⚠️ Erro ao ativar notificações: ' + e.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = labelOriginal;
+    }
   }
 
   // ── Inicia ───────────────────────────────────────────────────

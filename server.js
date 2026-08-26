@@ -182,7 +182,10 @@ function loadData() {
     raw.usuarios['0505'].fornecedorId = 'handdry';
   }
   if (!raw.usuarios['5884']) {
-    raw.usuarios['5884'] = { nome: 'BRA-INDÚSTRIA', abas: [], painel: 'fornecedor', fornecedorId: 'bra-industria' };
+    // notificacoes: só a categoria de venda do próprio SKU — sem isso ele receberia
+    // TODAS as categorias de push do sistema (login, estoque baixo, NF travada etc.),
+    // já que o padrão de usuarioRecebeCategoria() é "recebe tudo" quando não tem essa lista
+    raw.usuarios['5884'] = { nome: 'BRA-INDÚSTRIA', abas: [], painel: 'fornecedor', fornecedorId: 'bra-industria', notificacoes: ['fornecedor_venda_bra-industria'] };
   }
   if (!raw.usuarios['1111']) {
     raw.usuarios['1111'] = { nome: 'Legado', abas: ['vendas', 'scanner'], painel: 'legado' };
@@ -6938,6 +6941,7 @@ const NOTIF_CATEGORIAS = {
   contas_pagar:     '📅 Contas a pagar vencendo',
   shopee_boost:     '🚀 Impulso automático Shopee',
   prazo_despacho:   '⏰ Faltam 30min pro despacho',
+  'fornecedor_venda_bra-industria': '🛍️ Venda BRA-INDÚSTRIA (SKU 406)',
 };
 
 // Inscrições de push — carregadas do disco, persistem entre restarts
@@ -6989,7 +6993,7 @@ function usuarioRecebeCategoria(usuario, categoria) {
 // Retorna quantos pushes foram efetivamente enviados com sucesso — os chamadores
 // que precisam confirmar entrega (ex: prazo de despacho, antes de marcar como
 // "já avisei hoje") usam esse retorno em vez de assumir que deu certo.
-async function enviarPush(texto, categoria) {
+async function enviarPush(texto, categoria, url) {
   if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
     addLog(`Push [${categoria || '-'}]: não enviado — VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY não configurados no Railway`, 'warn');
     return 0;
@@ -7008,7 +7012,7 @@ async function enviarPush(texto, categoria) {
 
   const titulo = 'Painel';
   const corpo  = texto.replace(/<[^>]+>/g, '');
-  const payload = JSON.stringify({ title: titulo, body: corpo });
+  const payload = JSON.stringify({ title: titulo, body: corpo, url: url || '/app.html' });
 
   const expirados = [];
   let enviados = 0;
@@ -9609,6 +9613,15 @@ app.listen(PORT, () => {
       setInterval(() => verificarPrazoDespachoPush().catch(() => {}), 60_000);
     }, 45_000);
   }
+  // Venda de SKU de fornecedor: avisa o fornecedor (só push, categoria exclusiva
+  // dele) quando vender o SKU rastreado. Intervalo mais espaçado que os outros pois
+  // no canal Shopee busca o dia inteiro de pedidos a cada vez (mais custoso).
+  if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
+    setTimeout(() => {
+      verificarVendasFornecedoresPorSku().catch(() => {});
+      setInterval(() => verificarVendasFornecedoresPorSku().catch(() => {}), 3 * 60_000);
+    }, 50_000);
+  }
   // Anúncios pausados: roda se tiver WhatsApp principal
   if (CALLMEBOT_PHONE && CALLMEBOT_APIKEY) {
     setTimeout(() => {
@@ -9722,7 +9735,41 @@ function resolverFornecedorPorSenha(data, senha) {
   return null;
 }
 
-async function buscarDashboardFornecedorPorMlb(c, mlbs, de, ate) {
+// O estoque real de um anúncio, pro fornecedor, NUNCA é o available_quantity do
+// /items — esse número é frequentemente inflado de propósito (pra o ML continuar
+// impulsionando o anúncio mesmo com pouco estoque de verdade). O estoque real é
+// estoque local (data.estoque_local, preenchido manualmente pelo admin no galpão)
+// + estoque Full de verdade (via /user-products/{id}/stock, locations meli_facility
+// — o mesmo jeito que a aba Estoque já usa pra separar Full de próprio).
+async function buscarEstoqueFullPorMlb(c, itensInfo) {
+  const idsParaStock = [...new Set(
+    itensInfo.filter(i => i.logisticType === 'fulfillment' && i.userProductId).map(i => i.userProductId)
+  )];
+  const stockPorUserProduct = new Map();
+  for (let i = 0; i < idsParaStock.length; i += 8) {
+    const chunk = idsParaStock.slice(i, i + 8);
+    const resultados = await Promise.allSettled(chunk.map(userProductId =>
+      axios.get(`https://api.mercadolibre.com/user-products/${userProductId}/stock`, {
+        headers: { Authorization: `Bearer ${c.access_token}` }, timeout: 10000,
+      })
+    ));
+    resultados.forEach((r, idx) => { if (r.status === 'fulfilled') stockPorUserProduct.set(chunk[idx], r.value.data); });
+  }
+  const fullPorMlb = {};
+  for (const item of itensInfo) {
+    let full = 0;
+    if (item.logisticType === 'fulfillment' && item.userProductId) {
+      const stock = stockPorUserProduct.get(item.userProductId);
+      if (stock?.locations) {
+        for (const loc of stock.locations) if (loc.type === 'meli_facility') full += loc.quantity || 0;
+      }
+    }
+    fullPorMlb[item.mlb] = full;
+  }
+  return fullPorMlb;
+}
+
+async function buscarDashboardFornecedorPorMlb(c, mlbs, de, ate, data) {
   const mlbSet        = new Set(mlbs);
   const vendasDiarias = {};
   for (const mlb of mlbs) vendasDiarias[mlb] = {};
@@ -9761,12 +9808,13 @@ async function buscarDashboardFornecedorPorMlb(c, mlbs, de, ate) {
     offset += limit;
   }
 
-  const produtos = [];
+  const itensInfo = [];
+  const produtosBase = [];
   for (let i = 0; i < mlbs.length; i += 20) {
     const chunk = mlbs.slice(i, i + 20);
     try {
       const r = await axios.get('https://api.mercadolibre.com/items', {
-        params: { ids: chunk.join(','), attributes: 'id,title,available_quantity,thumbnail,status' },
+        params: { ids: chunk.join(','), attributes: 'id,title,thumbnail,status,seller_custom_field,attributes,variations,shipping,user_product_id' },
         headers: { Authorization: `Bearer ${c.access_token}` },
         timeout: 10000,
       });
@@ -9775,10 +9823,19 @@ async function buscarDashboardFornecedorPorMlb(c, mlbs, de, ate) {
         const b = entry.body;
         let thumb = b.thumbnail || null;
         if (thumb) thumb = thumb.replace(/-[A-Z]\.jpg/, '-O.jpg');
-        produtos.push({ mlb: b.id, titulo: b.title || b.id, estoque: b.available_quantity ?? 0, thumbnail: thumb, status: b.status });
+        const sku = extrairSku(b);
+        itensInfo.push({ mlb: b.id, sku, logisticType: b.shipping?.logistic_type || 'self_service', userProductId: b.user_product_id || null });
+        produtosBase.push({ mlb: b.id, titulo: b.title || b.id, thumbnail: thumb, status: b.status, sku });
       }
     } catch {}
   }
+
+  const fullPorMlb = await buscarEstoqueFullPorMlb(c, itensInfo);
+  const estoqueLocal = data.estoque_local || {};
+  const produtos = produtosBase.map(p => ({
+    ...p,
+    estoque: (p.sku && estoqueLocal[p.sku] !== undefined ? estoqueLocal[p.sku] : 0) + (fullPorMlb[p.mlb] || 0),
+  }));
 
   return { produtos, vendas_diarias: vendasDiarias, de, ate, lastSync: new Date().toISOString() };
 }
@@ -9834,8 +9891,9 @@ async function buscarItensShopeePeriodoLeve(data, conta, de, ate) {
     for (const o of (rd.data.response?.order_list || [])) {
       if (SHOPEE_STATUS_CANCELADO.includes(o.order_status)) continue;
       resultado.push({
-        data:  (o.create_time || 0) * 1000,
-        itens: (o.item_list || []).map(i => ({
+        orderSn: o.order_sn,
+        data:    (o.create_time || 0) * 1000,
+        itens:   (o.item_list || []).map(i => ({
           sku:        i.item_sku || i.model_sku || '',
           titulo:     i.item_name || '',
           quantidade: i.model_quantity_purchased || 1,
@@ -9884,29 +9942,39 @@ async function buscarDashboardFornecedorPorSku(data, contaNum, skusAlvo, canais,
         const chunk = mlbsUnicos.slice(i, i + 20);
         try {
           const r = await axios.get('https://api.mercadolibre.com/items', {
-            params: { ids: chunk.join(','), attributes: 'id,title,available_quantity,thumbnail,status,seller_custom_field,attributes,variations' },
+            params: { ids: chunk.join(','), attributes: 'id,title,thumbnail,status,seller_custom_field,attributes,variations,shipping,user_product_id' },
             headers: { Authorization: `Bearer ${c.access_token}` },
             timeout: 10000,
           });
           for (const entry of (r.data || [])) {
             if (entry.code !== 200) continue;
             const b = entry.body;
-            itemInfoMap[b.id] = { sku: extrairSku(b), titulo: b.title, thumbnail: b.thumbnail, estoque: b.available_quantity ?? 0 };
+            itemInfoMap[b.id] = {
+              sku: extrairSku(b), titulo: b.title, thumbnail: b.thumbnail,
+              logisticType: b.shipping?.logistic_type || 'self_service',
+              userProductId: b.user_product_id || null,
+            };
           }
         } catch {}
       }
 
-      // Estoque/título — uma vez por MLB (fora do loop de pedidos, senão soma estoque repetido)
+      // Estoque real = local (manual, uma vez por SKU) + Full de verdade (soma dos MLBs
+      // que batem esse SKU) — nunca o available_quantity do anúncio, que pode estar
+      // inflado de propósito pra o ML continuar impulsionando mesmo com pouco estoque real.
+      const fullPorMlb = await buscarEstoqueFullPorMlb(c, Object.entries(itemInfoMap).map(([mlb, info]) => ({ mlb, ...info })));
+      const estoqueLocal = data.estoque_local || {};
       for (const [mlb, info] of Object.entries(itemInfoMap)) {
         const skuNorm = String(info.sku).trim().toUpperCase();
         if (!skuSet.has(skuNorm)) continue;
         const skuOriginal = skusAlvo.find(s => s.toUpperCase() === skuNorm);
+        const full = fullPorMlb[mlb] || 0;
         if (!produtosInfo[skuOriginal]) {
           let thumb = info.thumbnail;
           if (thumb) thumb = thumb.replace(/-[A-Z]\.jpg/, '-O.jpg');
-          produtosInfo[skuOriginal] = { titulo: info.titulo, thumbnail: thumb, estoque: info.estoque };
+          const local = estoqueLocal[skuOriginal] !== undefined ? estoqueLocal[skuOriginal] : 0;
+          produtosInfo[skuOriginal] = { titulo: info.titulo, thumbnail: thumb, estoque: local + full };
         } else {
-          produtosInfo[skuOriginal].estoque += info.estoque;
+          produtosInfo[skuOriginal].estoque += full; // local já foi somado 1x acima, só soma Full de MLBs adicionais
         }
       }
 
@@ -9934,7 +10002,8 @@ async function buscarDashboardFornecedorPorSku(data, contaNum, skusAlvo, canais,
         const skuOriginal = skusAlvo.find(s => s.toUpperCase() === skuNorm);
         vendasDiarias[skuOriginal][date] = (vendasDiarias[skuOriginal][date] || 0) + (it.quantidade || 1);
         if (!produtosInfo[skuOriginal]) {
-          produtosInfo[skuOriginal] = { titulo: it.titulo, thumbnail: null, estoque: 0 };
+          const local = (data.estoque_local || {})[skuOriginal];
+          produtosInfo[skuOriginal] = { titulo: it.titulo, thumbnail: null, estoque: local !== undefined ? local : 0 };
         }
       }
     }
@@ -9949,6 +10018,106 @@ async function buscarDashboardFornecedorPorSku(data, contaNum, skusAlvo, canais,
   }));
 
   return { produtos, vendas_diarias: vendasDiarias, de, ate, lastSync: new Date().toISOString() };
+}
+
+// ── Push de venda pro fornecedor (rastreio por SKU) ────────────
+// Avisa o fornecedor (categoria fornecedor_venda_<id>, só ele recebe) toda vez que
+// vender algo do SKU dele — ML ou Shopee, conforme os canais configurados.
+function carregarFornecedorVendasNotificadas() {
+  const data = loadData();
+  return new Set(Array.isArray(data.fornecedor_vendas_notificadas) ? data.fornecedor_vendas_notificadas : []);
+}
+function salvarFornecedorVendasNotificadas(set) {
+  const data = loadData();
+  data.fornecedor_vendas_notificadas = Array.from(set).slice(-2000);
+  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+}
+const fornecedorVendasNotificadas = carregarFornecedorVendasNotificadas();
+
+async function verificarVendasFornecedoresPorSku() {
+  const data = loadData();
+  const fornecedoresSku = [];
+  for (const num of Object.keys(data.fornecedores_por_conta || {})) {
+    for (const f of (data.fornecedores_por_conta[num] || [])) {
+      if ((f.skus || []).length > 0) fornecedoresSku.push({ ...f, contaNum: num });
+    }
+  }
+  if (!fornecedoresSku.length) return;
+
+  for (const forn of fornecedoresSku) {
+    const skuSet    = new Set(forn.skus.map(s => String(s).trim().toUpperCase()));
+    const canais    = (forn.canais && forn.canais.length) ? forn.canais : ['ml'];
+    const categoria = `fornecedor_venda_${forn.id}`;
+    let algumaMudanca = false;
+
+    if (canais.includes('ml')) {
+      const c = (data.contas || {})[forn.contaNum];
+      if (c?.access_token && c?.user_id) {
+        try {
+          const resp = await axios.get('https://api.mercadolibre.com/orders/search', {
+            params: { seller: c.user_id, 'order.status': 'paid', sort: 'date_desc', limit: 50 },
+            headers: { Authorization: `Bearer ${c.access_token}` },
+            timeout: 15000,
+          });
+          const orders = resp.data.results || [];
+          const mlbsUnicos = [...new Set(orders.flatMap(o => (o.order_items || []).map(i => i.item.id)))];
+          const skuPorMlb = {};
+          for (let i = 0; i < mlbsUnicos.length; i += 20) {
+            const chunk = mlbsUnicos.slice(i, i + 20);
+            try {
+              const r = await axios.get('https://api.mercadolibre.com/items', {
+                params: { ids: chunk.join(','), attributes: 'id,seller_custom_field,attributes,variations' },
+                headers: { Authorization: `Bearer ${c.access_token}` }, timeout: 10000,
+              });
+              for (const entry of (r.data || [])) {
+                if (entry.code === 200) skuPorMlb[entry.body.id] = extrairSku(entry.body);
+              }
+            } catch {}
+          }
+          for (const order of orders) {
+            const chave = `${categoria}:ml:${order.id}`;
+            if (fornecedorVendasNotificadas.has(chave)) continue;
+            fornecedorVendasNotificadas.add(chave);
+            algumaMudanca = true;
+            const itensMatch = (order.order_items || []).filter(oi => {
+              const sku = skuPorMlb[oi.item.id];
+              return sku && skuSet.has(String(sku).trim().toUpperCase());
+            });
+            if (!itensMatch.length) continue;
+            const qtd = itensMatch.reduce((s, i) => s + (i.quantity || 1), 0);
+            const texto = `🛍️ <b>Nova venda — ${forn.nome}</b>\n\nPedido ML #${order.id}\n${qtd} unidade(s) do seu produto`;
+            registrarNotificacaoHistorico(texto, categoria);
+            await enviarPush(texto, categoria, '/fornecedor.html');
+          }
+        } catch (err) {
+          addLog(`[fornecedor-venda] Erro ML conta ${forn.contaNum} (${forn.id}): ${err.message}`, 'warn');
+        }
+      }
+    }
+
+    if (canais.includes('shopee')) {
+      try {
+        const hoje = hojeSP();
+        const itensShopee = await buscarItensShopeePeriodoLeve(data, forn.contaNum, hoje, hoje);
+        for (const pedido of itensShopee) {
+          const chave = `${categoria}:shopee:${pedido.orderSn}`;
+          if (fornecedorVendasNotificadas.has(chave)) continue;
+          fornecedorVendasNotificadas.add(chave);
+          algumaMudanca = true;
+          const itensMatch = pedido.itens.filter(it => skuSet.has(String(it.sku).trim().toUpperCase()));
+          if (!itensMatch.length) continue;
+          const qtd = itensMatch.reduce((s, i) => s + (i.quantidade || 1), 0);
+          const texto = `🛍️ <b>Nova venda — ${forn.nome}</b>\n\nPedido Shopee ${pedido.orderSn}\n${qtd} unidade(s) do seu produto`;
+          registrarNotificacaoHistorico(texto, categoria);
+          await enviarPush(texto, categoria, '/fornecedor.html');
+        }
+      } catch (err) {
+        addLog(`[fornecedor-venda] Erro Shopee conta ${forn.contaNum} (${forn.id}): ${err.message}`, 'warn');
+      }
+    }
+
+    if (algumaMudanca) salvarFornecedorVendasNotificadas(fornecedorVendasNotificadas);
+  }
 }
 
 app.get('/api/fornecedor/dashboard', async (req, res) => {
@@ -9986,7 +10155,7 @@ app.get('/api/fornecedor/dashboard', async (req, res) => {
 
   try {
     const resultado = mlbs.length > 0
-      ? await buscarDashboardFornecedorPorMlb(c, mlbs, de, ate)
+      ? await buscarDashboardFornecedorPorMlb(c, mlbs, de, ate, data)
       : await buscarDashboardFornecedorPorSku(data, contaNum, skusAlvo, canais, de, ate);
 
     data.fornecedor_dashboard_cache[fornecedor.id] = resultado;
