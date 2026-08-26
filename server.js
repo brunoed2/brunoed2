@@ -5502,16 +5502,25 @@ app.get('/api/ml/pedido-por-shipment/:id', async (req, res) => {
           try {
             const r = await axios.get(`https://api.mercadolibre.com/items/${i.item.id}`, {
               headers: { Authorization: `Bearer ${token}` },
-              params: { attributes: 'thumbnail,seller_custom_field,permalink' },
+              params: { attributes: 'thumbnail,seller_custom_field,permalink,variations' },
               timeout: 5000,
             });
-            return { thumbnail: r.data.thumbnail || null, sku: r.data.seller_custom_field || null, permalink: r.data.permalink || null };
-          } catch { return { thumbnail: null, sku: null, permalink: null }; }
+            const varMap = {};
+            for (const v of (r.data.variations || [])) {
+              varMap[v.id] = (v.attribute_combinations || []).map(a => a.value_name).join(' / ') || null;
+            }
+            return { thumbnail: r.data.thumbnail || null, sku: r.data.seller_custom_field || null, permalink: r.data.permalink || null, variations: varMap };
+          } catch { return { thumbnail: null, sku: null, permalink: null, variations: {} }; }
         }));
         items.forEach((i, idx) => {
           const d = detalhes[idx];
+          // Nem sempre a ordem vem com variation_attributes preenchido — nesse caso resolve
+          // pelo variation_id + lista de variações do item (mesmo fallback usado no sync
+          // principal). Sem isso, duas variações do mesmo anúncio (ex: Azul e Verde) podem
+          // cair com variação vazia e colidir na mesma instrução de despacho.
           const variacaoNome = i.item.variation_attributes?.length
-            ? i.item.variation_attributes.map(a => a.value_name).join(' / ') : null;
+            ? i.item.variation_attributes.map(a => a.value_name).join(' / ')
+            : (i.item.variation_id ? (d.variations[i.item.variation_id] || null) : null);
           itensLista.push({ titulo: i.item.title, variacao: variacaoNome, sku: d.sku || '—', thumbnail: d.thumbnail, permalink: d.permalink, quantidade: i.quantity || 1 });
         });
       } catch {}
