@@ -7064,7 +7064,7 @@ async function enviarWhatsApp(phone, apikey, texto) {
 
 // Categorias que não devem ir pro WhatsApp (CallMeBot manda pra um número fixo,
 // não respeita preferência por usuário como o push) — continuam indo só pelo push.
-const WHATSAPP_CATEGORIAS_EXCLUIDAS = new Set(['shopee_boost']);
+const WHATSAPP_CATEGORIAS_EXCLUIDAS = new Set(['shopee_boost', 'teste_push']);
 
 // Notificações de contas a pagar e anúncios pausados
 async function notificar(texto, categoria) {
@@ -7817,7 +7817,11 @@ app.post('/api/push/teste', async (req, res) => {
     return res.json({ ok: false, erro: 'Nenhum dispositivo inscrito. Ative as notificações no app primeiro.' });
   }
   try {
-    await notificar('🧪 Teste — notificações push ativas!');
+    // categoria própria (teste_push) — sem isso o notificar() manda sem categoria,
+    // e usuarioRecebeCategoria() trata "sem categoria" como "todo mundo recebe",
+    // inclusive fornecedor com lista restrita (ex: o botão de teste do admin
+    // acabava mandando esse ping de teste pro celular do fornecedor também)
+    await notificar('🧪 Teste — notificações push ativas!', 'teste_push');
     res.json({ ok: true });
   } catch (e) {
     res.json({ ok: false, erro: e.message });
