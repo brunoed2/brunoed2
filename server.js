@@ -193,6 +193,12 @@ function loadData() {
     // TODAS as categorias de push do sistema (login, estoque baixo, NF travada etc.),
     // já que o padrão de usuarioRecebeCategoria() é "recebe tudo" quando não tem essa lista
     raw.usuarios['5884'] = { nome: 'BRA-INDÚSTRIA', abas: [], painel: 'fornecedor', fornecedorId: 'bra-industria', notificacoes: ['fornecedor_venda_bra-industria'] };
+  } else if (!raw.usuarios['5884'].notificacoes) {
+    // Usuário 5884 já existia (criado no v848, antes do campo notificacoes existir no
+    // v849) — o bloco acima só roda na criação, então esse back-fill é obrigatório
+    // pra quem já tinha o usuário. Confirmado em produção via /api/push/debug-subscricoes
+    // que a inscrição dele estava "recebe tudo" (foi o que vazou "Pedido pronto pra NF").
+    raw.usuarios['5884'].notificacoes = ['fornecedor_venda_bra-industria'];
   }
   if (!raw.usuarios['1111']) {
     raw.usuarios['1111'] = { nome: 'Legado', abas: ['vendas', 'scanner'], painel: 'legado' };
