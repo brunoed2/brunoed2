@@ -276,7 +276,7 @@
     </div>
   </div>
   <div class="h-right">
-    <div id="version-badge">v460</div>
+    <div id="version-badge">v461</div>
     <button class="btn-sair" id="btn-push-ativar" onclick="ativarPushFornecedor()">🔔 Ativar notificações</button>
     <button class="btn-sair" onclick="sair()">Sair</button>
   </div>
@@ -527,6 +527,19 @@
     const numDias       = _datas.length || 1;
     const mediaDiaria   = totalVendas / numDias;
 
+    // Tempo previsto de estoque — média de venda dos últimos 15 dias (fixo, não
+    // depende do range escolhido no seletor) vs. estoque atual
+    let vendas15 = 0;
+    const fimRef = new Date(ate);
+    for (let i = 0; i < 15; i++) {
+      const d = new Date(fimRef);
+      d.setDate(fimRef.getDate() - i);
+      const dStr = d.toISOString().slice(0, 10);
+      for (const p of produtos) vendas15 += (vendas_diarias[p.mlb] || {})[dStr] || 0;
+    }
+    const media15       = vendas15 / 15;
+    const diasRestantes = media15 > 0 ? totalEstoque / media15 : null;
+
     // ── Cards ────────────────────────────────────────────────
     document.getElementById('cards').innerHTML = `
       <div class="card">
@@ -540,9 +553,9 @@
         <div class="card-sub">unidades em estoque</div>
       </div>
       <div class="card">
-        <div class="card-label">Produtos</div>
-        <div class="card-value">${produtos.length}</div>
-        <div class="card-sub">anúncios ativos</div>
+        <div class="card-label">Tempo previsto de estoque</div>
+        <div class="card-value">${diasRestantes === null ? '—' : `${Math.round(diasRestantes)}d`}</div>
+        <div class="card-sub">${diasRestantes === null ? 'sem vendas nos últimos 15 dias' : `média ${media15.toFixed(1).replace('.', ',')} un/dia (15d)`}</div>
       </div>
       <div class="card">
         <div class="card-label">Média diária</div>
