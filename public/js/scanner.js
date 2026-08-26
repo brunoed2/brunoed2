@@ -177,11 +177,53 @@ function scannerMostrarResultado(pedido, sid) {
         👤 ${pedido.comprador || '—'}
       </div>
       <div style="margin-top:4px">${itensHtml || '<div style="color:#64748b;font-size:14px;padding:12px 0">Nenhum item encontrado.</div>'}</div>
-      <button class="btn-primary" onclick="scannerEscanearOutro()" style="margin-top:16px;width:100%;padding:12px;font-size:15px">
+      <button class="btn-primary" id="btn-scanner-atendido" onclick="scannerToggleAtendido()" style="margin-top:16px;width:100%;padding:12px;font-size:15px;background:${pedido.atendida ? '#dc2626' : '#16a34a'}">
+        ${pedido.atendida ? '✕ Remover atendido' : '✔ Marcar como atendido'}
+      </button>
+      <button class="btn-secondary" onclick="scannerEscanearOutro()" style="margin-top:8px;width:100%;padding:12px;font-size:15px">
         📷 Escanear outro pedido
       </button>
     </div>
   `;
+}
+
+async function scannerToggleAtendido() {
+  const pedido = scannerPedidoAtual;
+  const sid    = scannerSidAtual;
+  if (!pedido) return;
+  const canal = pedido.fonte === 'shopee' ? 'shopee' : 'ml';
+  const btn   = document.getElementById('btn-scanner-atendido');
+  if (btn) { btn.disabled = true; btn.textContent = 'Salvando...'; }
+
+  try {
+    const vendasDados = {};
+    // Normaliza pro mesmo formato que a aba Vendas guarda (vendaCache) — o pedido
+    // que vem daqui pode faltar orderId/statusLabel/acaoLabel dependendo de qual
+    // caminho o backend usou pra achar o pedido (histórico salvo vs. consulta direta).
+    if (!pedido.atendida) {
+      vendasDados[sid] = {
+        shipmentId:  sid,
+        orderId:     pedido.orderId || sid,
+        comprador:   pedido.comprador || '—',
+        conta:       pedido.conta,
+        canal,
+        status:      pedido.status,
+        statusLabel: pedido.statusLabel || pedido.status,
+        acaoLabel:   pedido.acaoLabel || 'Baixar',
+        itensLista:  pedido.itensLista,
+      };
+    }
+    await fetch('/api/vendas/atendidas-batch', {
+      method: pedido.atendida ? 'DELETE' : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ shipmentIds: [sid], vendasDados, conta: pedido.conta, canal }),
+    });
+    pedido.atendida = !pedido.atendida;
+    scannerMostrarResultado(pedido, sid);
+  } catch (err) {
+    alert('Erro ao atualizar: ' + err.message);
+    if (btn) { btn.disabled = false; }
+  }
 }
 
 function scannerMostrarBtnOutro() {

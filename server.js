@@ -3437,12 +3437,20 @@ app.post('/api/vendas/historico/sincronizar', async (req, res) => {
   res.json({ ok: true, atualizados });
 });
 
+// "Atendida" fica guardada na conta ML (data.contas) ou Shopee (data.shopee_contas),
+// conforme req.body.canal — sem isso, pedidos Shopee eram gravados por engano na
+// conta ML (mesmo número de conta, estrutura errada) e a rota que lê vendas Shopee
+// nunca lia esse dado de volta, então o flag nunca "colava" pro operador.
+function contaParaAtendidos(data, num, canal) {
+  return canal === 'shopee' ? shopeeConta(data, num) : data.contas[num];
+}
+
 app.post('/api/vendas/atendida', (req, res) => {
-  const { shipmentId, venda } = req.body;
+  const { shipmentId, venda, canal } = req.body;
   if (!shipmentId) return res.json({ error: 'shipmentId obrigatório' });
   const data = loadData();
   const num  = req.body.conta || data.conta_ativa;
-  const c    = data.contas[num];
+  const c    = contaParaAtendidos(data, num, canal);
   if (!c) return res.json({ error: 'Conta não encontrada' });
   if (!c.atendidas_dados) c.atendidas_dados = [];
   const sid = String(shipmentId);
@@ -3457,11 +3465,11 @@ app.post('/api/vendas/atendida', (req, res) => {
 });
 
 app.delete('/api/vendas/atendida', (req, res) => {
-  const { shipmentId } = req.body;
+  const { shipmentId, canal } = req.body;
   if (!shipmentId) return res.json({ error: 'shipmentId obrigatório' });
   const data = loadData();
   const num  = req.body.conta || data.conta_ativa;
-  const c    = data.contas[num];
+  const c    = contaParaAtendidos(data, num, canal);
   if (!c) return res.json({ error: 'Conta não encontrada' });
   c.atendidas_dados = (c.atendidas_dados || []).filter(v => String(v.shipmentId) !== String(shipmentId));
   saveData(data);
@@ -3470,11 +3478,11 @@ app.delete('/api/vendas/atendida', (req, res) => {
 
 // Marca ou desmarca vários pedidos como atendidos de uma vez e aguarda sync Railway
 app.post('/api/vendas/atendidas-batch', async (req, res) => {
-  const { shipmentIds, vendasDados } = req.body;
+  const { shipmentIds, vendasDados, canal } = req.body;
   if (!Array.isArray(shipmentIds) || !shipmentIds.length) return res.status(400).json({ error: 'shipmentIds obrigatório' });
   const data = loadData();
   const num  = req.body.conta || data.conta_ativa;
-  const c    = data.contas[num];
+  const c    = contaParaAtendidos(data, num, canal);
   if (!c) return res.json({ error: 'Conta não encontrada' });
   if (!c.atendidas_dados) c.atendidas_dados = [];
   const agora = new Date().toISOString();
@@ -3493,11 +3501,11 @@ app.post('/api/vendas/atendidas-batch', async (req, res) => {
 });
 
 app.delete('/api/vendas/atendidas-batch', async (req, res) => {
-  const { shipmentIds } = req.body;
+  const { shipmentIds, canal } = req.body;
   if (!Array.isArray(shipmentIds) || !shipmentIds.length) return res.status(400).json({ error: 'shipmentIds obrigatório' });
   const data = loadData();
   const num  = req.body.conta || data.conta_ativa;
-  const c    = data.contas[num];
+  const c    = contaParaAtendidos(data, num, canal);
   if (!c) return res.json({ error: 'Conta não encontrada' });
   const sids = new Set(shipmentIds.map(String));
   c.atendidas_dados = (c.atendidas_dados || []).filter(v => !sids.has(String(v.shipmentId)));
@@ -5638,10 +5646,11 @@ app.get('/api/shopee/pedido-por-tracking/:tracking', async (req, res) => {
         itemId:     i.item_id || null,
         modelId:    i.model_id || null,
       }));
+      const atendidaEntrySp = (sp.atendidas_dados || []).find(v => String(v.shipmentId) === String(o.order_sn));
       return res.json({
         encontrado: true, fonte: 'shopee', conta: num,
         shipmentId: o.order_sn, comprador: o.buyer_username || '—',
-        status: o.order_status, atendida: false, itensLista: anexarInstrucoesDespacho(itensLista, 'shopee'),
+        status: o.order_status, atendida: !!atendidaEntrySp, itensLista: anexarInstrucoesDespacho(itensLista, 'shopee'),
       });
     } catch (err) {
       addLog(`[shopee] pedido-por-tracking conta ${num}: ${err.message}`, 'warn');
@@ -6483,31 +6492,42 @@ app.get('/api/shopee/vendas-etiquetas', async (req, res) => {
       (rd.data.response?.order_list || []).forEach(o => { detalhesPorSn[o.order_sn] = o; });
     }
 
+    // Flag "atendida" e "etiqueta já baixada" ficam na própria conta Shopee
+    // (data.shopee_contas) — bug antigo: essa rota sempre devolvia atendida:false
+    // e acaoLabel:'Baixar' fixos, então o flag nunca colava e o botão nunca virava
+    // "Baixar novamente" pra pedidos Shopee.
+    const atendidasMap  = new Map((sp.atendidas_dados || []).map(v => [String(v.shipmentId), v]));
+    const baixadasSet   = new Set(sp.etiquetas_baixadas || []);
+
     const STATUS_LABEL = { READY_TO_SHIP: 'Pronto p/ envio', PROCESSED: 'Processado' };
     const vendas = orderSns
       .map(sn => detalhesPorSn[sn])
       .filter(o => o && o.invoice_data?.status === 'valid') // só pedidos com NF já aceita pela Shopee — mesmo critério do ML (que só mostra quando a etiqueta está de fato pronta pra baixar)
-      .map(o => ({
-        shipmentId: o.order_sn,
-        orderId:    o.order_sn,
-        comprador:  o.buyer_username || '—',
-        conta:      num,
-        canal:      'shopee',
-        status:     o.order_status,
-        statusLabel: STATUS_LABEL[o.order_status] || o.order_status,
-        acaoLabel:  'Baixar',
-        atendida:   false,
-        itensLista: anexarInstrucoesDespacho((o.item_list || []).map(i => ({
-          sku:        i.item_sku || i.model_sku || '',
-          titulo:     i.item_name || '',
-          variacao:   (i.model_name && i.model_name !== i.item_name) ? i.model_name : '',
-          quantidade: i.model_quantity_purchased || 1,
-          thumbnail:  i.image_info?.image_url || '',
-          permalink:  '',
-          itemId:     i.item_id || null,
-          modelId:    i.model_id || null,
-        })), 'shopee'),
-      }));
+      .map(o => {
+        const atendidaEntry = atendidasMap.get(String(o.order_sn));
+        return {
+          shipmentId: o.order_sn,
+          orderId:    o.order_sn,
+          comprador:  o.buyer_username || '—',
+          conta:      num,
+          canal:      'shopee',
+          status:     o.order_status,
+          statusLabel: STATUS_LABEL[o.order_status] || o.order_status,
+          acaoLabel:  baixadasSet.has(o.order_sn) ? 'Baixar novamente' : 'Baixar',
+          atendida:   !!atendidaEntry,
+          atendidaEm: atendidaEntry?.atendidaEm || null,
+          itensLista: anexarInstrucoesDespacho((o.item_list || []).map(i => ({
+            sku:        i.item_sku || i.model_sku || '',
+            titulo:     i.item_name || '',
+            variacao:   (i.model_name && i.model_name !== i.item_name) ? i.model_name : '',
+            quantidade: i.model_quantity_purchased || 1,
+            thumbnail:  i.image_info?.image_url || '',
+            permalink:  '',
+            itemId:     i.item_id || null,
+            modelId:    i.model_id || null,
+          })), 'shopee'),
+        };
+      });
     res.json({ vendas });
   } catch (err) {
     res.json({ error: err.message });
@@ -6667,6 +6687,16 @@ async function shopeeGerarEtiquetaPdf(orderSn, conta) {
     const pages = await merged.copyPages(doc, doc.getPageIndices());
     pages.forEach(p => merged.addPage(p));
   }
+
+  // O ML devolve sozinho o substatus "printed" depois que a etiqueta é baixada, e é
+  // isso que vira "Baixar novamente" na aba Vendas — a Shopee não expõe esse dado,
+  // então rastreamos aqui pra manter o mesmo comportamento nos dois canais.
+  sp.etiquetas_baixadas = sp.etiquetas_baixadas || [];
+  if (!sp.etiquetas_baixadas.includes(orderSn)) {
+    sp.etiquetas_baixadas.push(orderSn);
+    saveData(data);
+  }
+
   return Buffer.from(await merged.save());
 }
 

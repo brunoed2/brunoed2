@@ -140,11 +140,14 @@
             <button class="filtro-btn active" data-filtro-canal-vendas data-valor="todos" onclick="filtrarCanalVendas(this)">Todos</button>
             <button class="filtro-btn" data-filtro-canal-vendas data-valor="ml" onclick="filtrarCanalVendas(this)">ML</button>
             <button class="filtro-btn" data-filtro-canal-vendas data-valor="shopee" onclick="filtrarCanalVendas(this)">Shopee</button>
+            <label class="filtro-label" style="margin-left:14px">Status:</label>
+            <button class="filtro-btn active" data-filtro-atendidos data-valor="todos" onclick="filtrarStatusAtendido(this)">Todos</button>
+            <button class="filtro-btn" data-filtro-atendidos data-valor="pendentes" onclick="filtrarStatusAtendido(this)">Pendentes</button>
+            <button class="filtro-btn" data-filtro-atendidos data-valor="atendidos" onclick="filtrarStatusAtendido(this)">Atendidos</button>
           </div>
           <div class="tabela-topo">
             <span id="vendas-total"></span>
             <div style="display:flex;gap:8px;align-items:center">
-              <button class="btn-secondary" id="btn-filtro-atendidos" onclick="toggleFiltroAtendidos()">Atendidos</button>
               <button class="btn-primary" id="btn-baixar-ml" onclick="baixarSelecionadas('ml')" style="display:none">⬇ Baixar ML</button>
               <button class="btn-primary" id="btn-compartilhar-ml" onclick="compartilharSelecionadas('ml')" style="display:none;background:#0ea5e9">🔗 Compartilhar ML</button>
               <button class="btn-primary" id="btn-baixar-shopee" onclick="baixarSelecionadas('shopee')" style="display:none;background:#f97316">⬇ Baixar Shopee</button>
@@ -296,7 +299,7 @@
   </div>
 
   <script src="/js/compartilhar.js?v=1"></script>
-  <script src="/js/painel2.js?v=186"></script>
+  <script src="/js/painel2.js?v=187"></script>
   <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
   <script src="/js/etiquetas.js"></script>
   <!-- Modal histórico de estoque -->
@@ -323,6 +326,6 @@
     </div>
   </div>
 
-  <div id="version-badge">v833</div>
+  <div id="version-badge">v834</div>
 </body>
 </html>

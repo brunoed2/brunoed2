@@ -96,23 +96,26 @@ async function marcarAtendidoSelecionadas() {
   const remover = btn?.dataset.remover === '1';
   if (btn) { btn.disabled = true; btn.textContent = 'Salvando…'; }
 
-  // Agrupa por conta — os pedidos selecionados podem ser de conta 1 e conta 2
-  // ao mesmo tempo (lista de vendas junta as duas), e cada conta guarda sua
-  // própria lista de atendidos.
-  const porConta = {};
+  // Agrupa por conta+canal — os pedidos selecionados podem ser de conta 1 e conta 2,
+  // ML e Shopee, tudo ao mesmo tempo (lista de vendas junta tudo), e cada combinação
+  // guarda sua própria lista de atendidos (ML em data.contas, Shopee em data.shopee_contas
+  // — misturar os dois fazia o flag "atendida" nunca colar nos pedidos Shopee).
+  const porContaCanal = {};
   checks.forEach(cb => {
     const conta = cb.dataset.conta || window.CONTA_ATIVA;
-    if (!porConta[conta]) porConta[conta] = [];
-    porConta[conta].push(cb.dataset.shipmentId);
+    const canal = cb.dataset.canal || 'ml';
+    const chave = `${conta}::${canal}`;
+    if (!porContaCanal[chave]) porContaCanal[chave] = { conta, canal, shipmentIds: [] };
+    porContaCanal[chave].shipmentIds.push(cb.dataset.shipmentId);
   });
 
   try {
-    const resultados = await Promise.all(Object.entries(porConta).map(([conta, shipmentIds]) => {
+    const resultados = await Promise.all(Object.values(porContaCanal).map(({ conta, canal, shipmentIds }) => {
       const vendasDados = {};
       if (!remover) shipmentIds.forEach(sid => { if (vendaCache[sid]) vendasDados[sid] = vendaCache[sid]; });
       return apiFetch('/api/vendas/atendidas-batch', {
         method: remover ? 'DELETE' : 'POST',
-        body: JSON.stringify({ shipmentIds, vendasDados, conta }),
+        body: JSON.stringify({ shipmentIds, vendasDados, conta, canal }),
       });
     }));
     const r = { ok: resultados.every(res => res.ok) };
@@ -183,16 +186,14 @@ function compartilharSelecionadas(canal) {
   }
 }
 
-let filtroAtendidos  = false;
+let filtroStatusAtendido = 'todos'; // 'todos' | 'pendentes' | 'atendidos'
 let skuFiltroVendas  = null;
 let skuFiltroFuturos = null;
 let filtroCanalVendas = 'todos';
 
-function toggleFiltroAtendidos() {
-  filtroAtendidos = !filtroAtendidos;
-  const btn = document.getElementById('btn-filtro-atendidos');
-  btn.classList.toggle('btn-primary', filtroAtendidos);
-  btn.classList.toggle('btn-secondary', !filtroAtendidos);
+function filtrarStatusAtendido(btn) {
+  filtroStatusAtendido = btn.dataset.valor;
+  document.querySelectorAll('[data-filtro-atendidos]').forEach(b => b.classList.toggle('active', b === btn));
   aplicarFiltroAtendidos();
 }
 
@@ -210,7 +211,10 @@ function aplicarFiltroAtendidos() {
     const atendida = tr.classList.contains('venda-atendida');
     const skuMatch = !skuFiltroVendas || (tr.dataset.skus || '').split(' ').includes(skuFiltroVendas);
     const canalMatch = filtroCanalVendas === 'todos' || tr.dataset.canal === filtroCanalVendas;
-    const visivel  = (!filtroAtendidos || atendida) && skuMatch && canalMatch;
+    const statusMatch = filtroStatusAtendido === 'todos'
+      || (filtroStatusAtendido === 'atendidos' && atendida)
+      || (filtroStatusAtendido === 'pendentes' && !atendida);
+    const visivel  = statusMatch && skuMatch && canalMatch;
     tr.style.display = visivel ? '' : 'none';
     let next = tr.nextElementSibling;
     while (next && next.classList.contains('venda-sub-item')) {
@@ -221,8 +225,10 @@ function aplicarFiltroAtendidos() {
   }
   const totalEl = document.getElementById('vendas-total');
   const total   = tbody.querySelectorAll('tr:not(.venda-sub-item)').length;
-  if (filtroAtendidos) {
+  if (filtroStatusAtendido === 'atendidos') {
     totalEl.textContent = `${visiveis} pedido${visiveis !== 1 ? 's' : ''} flagado${visiveis !== 1 ? 's' : ''}`;
+  } else if (filtroStatusAtendido === 'pendentes') {
+    totalEl.textContent = `${visiveis} pedido${visiveis !== 1 ? 's' : ''} pendente${visiveis !== 1 ? 's' : ''}`;
   } else if (skuFiltroVendas) {
     totalEl.textContent = `${visiveis} de ${total} pedido${total !== 1 ? 's' : ''}`;
   } else {
@@ -783,12 +789,13 @@ async function toggleFlag(shipmentId, btn) {
   const atendida = tr.classList.contains('venda-atendida');
   const sid      = String(shipmentId);
   const conta    = vendaCache[sid]?.conta || window.CONTA_ATIVA;
+  const canal    = vendaCache[sid]?.canal || 'ml';
   try {
     const vendasDados = {};
     if (!atendida && vendaCache[sid]) vendasDados[sid] = vendaCache[sid];
     await apiFetch('/api/vendas/atendidas-batch', {
       method: atendida ? 'DELETE' : 'POST',
-      body: JSON.stringify({ shipmentIds: [sid], vendasDados, conta }),
+      body: JSON.stringify({ shipmentIds: [sid], vendasDados, conta, canal }),
     });
     tr.classList.toggle('venda-atendida');
     btn.classList.toggle('btn-flag-ativo');
