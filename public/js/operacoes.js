@@ -654,17 +654,21 @@ async function carregarFuturos() {
   skuFiltroFuturos      = null;
 
   try {
-    const data = await apiFetch(`/api/ml/pedidos-futuros?conta=${window.CONTA_ATIVA}`);
+    // Junta as duas contas — senão os pedidos futuros da conta que não está
+    // ativa no momento somem da lista (mesmo problema que carregarVendas já resolve).
+    const [d1, d2] = await Promise.all(['1', '2'].map(num =>
+      apiFetch(`/api/ml/pedidos-futuros?conta=${num}`).catch(err => ({ error: String(err) }))
+    ));
     if (contaGen !== gen) return;
     loading.style.display = 'none';
 
-    if (data.error) {
-      erroEl.textContent   = data.error;
+    if (d1.error && d2.error) {
+      erroEl.textContent   = d1.error;
       erroEl.style.display = 'block';
       return;
     }
 
-    const pedidos = data.pedidos || [];
+    const pedidos = [...(d1.pedidos || []), ...(d2.pedidos || [])];
     pedidosFuturosCarregado = true;
     totalEl.textContent = `${pedidos.length} pedido${pedidos.length !== 1 ? 's' : ''}`;
 
