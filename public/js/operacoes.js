@@ -3,26 +3,6 @@
 // Usado em app.html (apiFetch e contaGen vêm de app-v2.js)
 // ============================================================
 
-// ── Foto ampliada (clique na miniatura da tabela de Vendas) ────
-// Clique normal amplia a foto; ctrl/cmd/shift/clique-do-meio deixa
-// abrir o permalink do anúncio normalmente (nova aba).
-function ampliarFoto(ev, url) {
-  if (ev && (ev.ctrlKey || ev.metaKey || ev.shiftKey || ev.button === 1)) return true;
-  if (ev) ev.preventDefault();
-  let overlay = document.getElementById('foto-ampliada-overlay');
-  if (!overlay) {
-    overlay = document.createElement('div');
-    overlay.id = 'foto-ampliada-overlay';
-    overlay.className = 'foto-ampliada-overlay';
-    overlay.innerHTML = '<img>';
-    overlay.addEventListener('click', () => overlay.classList.remove('aberto'));
-    document.body.appendChild(overlay);
-  }
-  overlay.querySelector('img').src = url;
-  overlay.classList.add('aberto');
-  return false;
-}
-
 // ── Vendas com etiqueta ───────────────────────────────────────
 
 function formatarPrazo(iso) {

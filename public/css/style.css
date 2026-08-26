@@ -772,7 +772,7 @@ code {
 .venda-thumb-link { display: block; line-height: 0; }
 .venda-thumb-link:hover .venda-thumb { opacity: .82; transform: scale(1.04); transition: opacity .15s, transform .15s; }
 
-/* Overlay de foto ampliada */
+/* Overlay de foto ampliada (usado pelo scanner de etiqueta) */
 .foto-ampliada-overlay {
   display: none;
   position: fixed;
@@ -782,14 +782,68 @@ code {
   align-items: center;
   justify-content: center;
   cursor: zoom-out;
+  padding: 16px;
 }
 .foto-ampliada-overlay.aberto { display: flex; }
-.foto-ampliada-overlay img {
+.foto-ampliada-conteudo {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
   max-width: min(90vw, 520px);
   max-height: 90vh;
+  cursor: default;
+}
+.foto-ampliada-conteudo img {
+  max-width: 100%;
+  max-height: 60vh;
   border-radius: 10px;
   box-shadow: 0 10px 40px rgba(0,0,0,.5);
+  display: block;
+  margin: 0 auto;
+  object-fit: contain;
 }
+.foto-ampliada-instrucao:empty { display: none; }
+.foto-ampliada-instrucao-texto {
+  background: #422006;
+  border: 1px solid #92400e;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 13px;
+  color: #fde68a;
+  white-space: pre-wrap;
+  overflow-y: auto;
+  max-height: 22vh;
+}
+.foto-ampliada-instrucao-editar {
+  align-self: flex-start;
+  background: none;
+  border: 1px dashed #64748b;
+  color: #cbd5e1;
+  font-size: 12px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  margin-top: 6px;
+}
+.foto-ampliada-instrucao textarea {
+  width: 100%;
+  min-height: 70px;
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  color: #f1f5f9;
+  font-size: 13px;
+  font-family: inherit;
+  padding: 8px;
+  resize: vertical;
+  box-sizing: border-box;
+}
+.foto-ampliada-instrucao-botoes {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+.foto-ampliada-instrucao-botoes button { padding: 8px 14px; font-size: 13px; }
 
 .venda-sub-indent {
   width: 48px;

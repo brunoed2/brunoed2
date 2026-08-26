@@ -57,6 +57,7 @@ const DATA_DIR      = detectarDirDados();
 const DATA_FILE     = path.join(DATA_DIR, 'data.json');
 const FISCAL_FILE   = path.join(DATA_DIR, 'fiscal-notas.json');
 const NOTIF_HIST_FILE = path.join(DATA_DIR, 'notificacoes.json');
+const INSTRUCOES_DESPACHO_FILE = path.join(DATA_DIR, 'instrucoes-despacho.json');
 const BLING_FILE    = path.join(DATA_DIR, 'bling-tokens.json');
 const ACESSOS_FILE  = path.join(DATA_DIR, 'acessos-log.json');
 const SESSAO_FILE   = path.join(DATA_DIR, 'sessao.json');
@@ -5427,6 +5428,60 @@ app.get('/api/ml/etiqueta/:shipment_id', async (req, res) => {
   res.status(404).json({ error: 'Não foi possível baixar a etiqueta.', debug });
 });
 
+// ── Instruções de despacho fixadas pelo admin (tela do scanner) ────────────
+// Fica num arquivo próprio (não em data.json) pelo mesmo motivo do
+// notificacoes.json/bling-tokens.json: evitar que um saveData() de outra
+// rotina concorrente apague uma instrução recém-gravada.
+function loadInstrucoesDespacho() {
+  try { return JSON.parse(fs.readFileSync(INSTRUCOES_DESPACHO_FILE, 'utf8')); } catch { return {}; }
+}
+function saveInstrucoesDespacho(map) {
+  fs.writeFileSync(INSTRUCOES_DESPACHO_FILE, JSON.stringify(map, null, 2));
+}
+let _instrucoesWriteChain = Promise.resolve();
+function withInstrucoesLock(fn) {
+  const run = _instrucoesWriteChain.then(fn, fn);
+  _instrucoesWriteChain = run.catch(() => {});
+  return run;
+}
+
+// Chave de identidade do item: anúncio + SKU + variação. Não pode ser só o SKU,
+// pois o backend usa '—' quando o item não tem SKU cadastrado, e isso misturaria
+// produtos diferentes na mesma instrução; e precisa da variação porque o mesmo
+// anúncio pode ter variações com preparo/destino diferentes.
+function chaveInstrucaoDespacho(item, canal) {
+  const anuncio = item.itemId || item.permalink || item.titulo || '';
+  const sku     = (item.sku && item.sku !== '—') ? item.sku : '';
+  return `${canal || 'ml'}::${anuncio}::${sku}::${item.variacao || ''}`;
+}
+
+function anexarInstrucoesDespacho(itensLista, canal) {
+  const map = loadInstrucoesDespacho();
+  return (itensLista || []).map(item => {
+    const chave = chaveInstrucaoDespacho(item, canal);
+    const salva = map[chave];
+    return { ...item, chaveInstrucao: chave, instrucaoDespacho: salva ? salva.texto : null };
+  });
+}
+
+app.post('/api/instrucoes-despacho', async (req, res) => {
+  const { chave, texto, titulo, sku, variacao, senha } = req.body || {};
+  if (senha !== '199412') return res.status(403).json({ error: 'Apenas o administrador pode definir instruções de despacho' });
+  if (!chave) return res.status(400).json({ error: 'chave obrigatória' });
+
+  await withInstrucoesLock(() => {
+    const map = loadInstrucoesDespacho();
+    const txt = String(texto || '').trim();
+    if (!txt) {
+      delete map[chave];
+    } else {
+      map[chave] = { texto: txt, titulo: titulo || '', sku: sku || '', variacao: variacao || '', atualizadoEm: new Date().toISOString() };
+    }
+    saveInstrucoesDespacho(map);
+  });
+  res.json({ ok: true });
+});
+
 // Busca pedido pelo shipment ID (usado pelo scanner de QR code)
 app.get('/api/ml/pedido-por-shipment/:id', async (req, res) => {
   const data = loadData();
@@ -5479,7 +5534,7 @@ app.get('/api/ml/pedido-por-shipment/:id', async (req, res) => {
         if (comprador !== '—') base.comprador = comprador;
       } catch {}
     }
-    return res.json({ encontrado: true, fonte: 'historico', conta: num, ...base });
+    return res.json({ encontrado: true, fonte: 'historico', conta: num, ...base, itensLista: anexarInstrucoesDespacho(base.itensLista, 'ml') });
   }
 
   // 2. Fallback: consulta shipment diretamente na API do ML
@@ -5493,7 +5548,7 @@ app.get('/api/ml/pedido-por-shipment/:id', async (req, res) => {
       const orderIds = shipment.order_ids?.length ? shipment.order_ids : (shipment.order_id ? [shipment.order_id] : []);
       if (!orderIds.length) continue;
       const { itensLista, comprador } = await enriquecerItens(orderIds, c.access_token);
-      return res.json({ encontrado: true, fonte: 'ml-api', conta: num, shipmentId: sid, comprador, status: shipment.status, itensLista });
+      return res.json({ encontrado: true, fonte: 'ml-api', conta: num, shipmentId: sid, comprador, status: shipment.status, itensLista: anexarInstrucoesDespacho(itensLista, 'ml') });
     } catch {}
   }
 
@@ -5566,11 +5621,12 @@ app.get('/api/shopee/pedido-por-tracking/:tracking', async (req, res) => {
         quantidade: i.model_quantity_purchased || 1,
         thumbnail:  i.image_info?.image_url || '',
         permalink:  '',
+        itemId:     i.item_id || null,
       }));
       return res.json({
         encontrado: true, fonte: 'shopee', conta: num,
         shipmentId: o.order_sn, comprador: o.buyer_username || '—',
-        status: o.order_status, atendida: false, itensLista,
+        status: o.order_status, atendida: false, itensLista: anexarInstrucoesDespacho(itensLista, 'shopee'),
       });
     } catch (err) {
       addLog(`[shopee] pedido-por-tracking conta ${num}: ${err.message}`, 'warn');

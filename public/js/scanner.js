@@ -1,13 +1,17 @@
 // ── Scanner de QR Code — separação de pedidos ────────────────
 
-let scannerStream    = null;
-let scannerAnimFrame = null;
-let scannerAtivo     = false;
+let scannerStream          = null;
+let scannerAnimFrame       = null;
+let scannerAtivo           = false;
+let scannerPedidoAtual     = null;
+let scannerSidAtual        = null;
+let scannerInstrucaoEditando = null; // índice do item com o campo de edição aberto
 
 function scannerInit() {
   scannerParar();
   document.getElementById('scanner-resultado').style.display = 'none';
   document.getElementById('scanner-status').textContent      = '';
+  scannerFecharFoto();
 }
 
 function scannerIniciar() {
@@ -129,13 +133,17 @@ async function scannerBuscarPedido(qrData) {
 }
 
 function scannerMostrarResultado(pedido, sid) {
+  scannerPedidoAtual = pedido;
+  scannerSidAtual    = sid;
+
   const resultado = document.getElementById('scanner-resultado');
   const itens     = pedido.itensLista || [];
 
-  const itensHtml = itens.map(i => {
+  const itensHtml = itens.map((i, idx) => {
     const thumb = i.thumbnail ? i.thumbnail.replace(/^http:\/\//, 'https://') : null;
+    const temInstrucao = !!i.instrucaoDespacho;
     const thumbHtml = thumb
-      ? `<img src="${thumb}" onclick="ampliarFoto(null, '${thumb}')" style="width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid #334155;flex-shrink:0;cursor:zoom-in">`
+      ? `<img src="${thumb}" onclick="scannerAmpliarFoto(${idx})" title="${temInstrucao ? 'Tem instrução de despacho — toque pra ver' : 'Toque pra ampliar'}" style="width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid ${temInstrucao ? '#f59e0b' : '#334155'};flex-shrink:0;cursor:zoom-in">`
       : `<div style="width:72px;height:72px;border-radius:8px;background:#0f172a;flex-shrink:0"></div>`;
     return `
       <div style="padding:12px 0;border-bottom:1px solid #1e293b;display:flex;gap:12px;align-items:center">
@@ -181,5 +189,109 @@ function scannerMostrarBtnOutro() {
 function scannerEscanearOutro() {
   document.getElementById('scanner-resultado').style.display = 'none';
   document.getElementById('scanner-status').textContent      = '';
+  scannerFecharFoto();
   scannerIniciar();
+}
+
+// ── Foto ampliada + instrução de despacho ──────────────────────
+// A instrução é fixada por anúncio + SKU + variação (não só SKU — o backend usa
+// '—' quando o produto não tem SKU cadastrado, e isso misturaria produtos
+// diferentes). A chave já vem calculada do backend em item.chaveInstrucao.
+
+function scannerFotoOverlay() {
+  let overlay = document.getElementById('foto-ampliada-overlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'foto-ampliada-overlay';
+    overlay.className = 'foto-ampliada-overlay';
+    overlay.innerHTML = '<div class="foto-ampliada-conteudo"><img><div class="foto-ampliada-instrucao"></div></div>';
+    overlay.addEventListener('click', e => { if (e.target === overlay) scannerFecharFoto(); });
+    document.body.appendChild(overlay);
+  }
+  return overlay;
+}
+
+function scannerFecharFoto() {
+  const overlay = document.getElementById('foto-ampliada-overlay');
+  if (overlay) overlay.classList.remove('aberto');
+  scannerInstrucaoEditando = null;
+}
+
+function scannerAmpliarFoto(idx) {
+  const item = scannerPedidoAtual?.itensLista?.[idx];
+  if (!item) return;
+  const thumb = item.thumbnail ? item.thumbnail.replace(/^http:\/\//, 'https://') : null;
+  if (!thumb) return;
+
+  const overlay = scannerFotoOverlay();
+  overlay.querySelector('img').src = thumb;
+  scannerRenderInstrucao(idx);
+  overlay.classList.add('aberto');
+}
+
+function scannerRenderInstrucao(idx) {
+  const item = scannerPedidoAtual?.itensLista?.[idx];
+  const area = document.querySelector('#foto-ampliada-overlay .foto-ampliada-instrucao');
+  if (!item || !area) return;
+  const isAdmin = localStorage.getItem('usuarioSenha') === '199412';
+
+  if (scannerInstrucaoEditando === idx) {
+    area.innerHTML = `
+      <textarea id="instrucao-txt" placeholder="O que precisa ser feito ao separar esse item...">${item.instrucaoDespacho || ''}</textarea>
+      <div class="foto-ampliada-instrucao-botoes">
+        <button class="btn-primary" onclick="scannerSalvarInstrucao(${idx})">Salvar</button>
+        <button class="btn-secondary" onclick="scannerRenderInstrucao(${idx})">Cancelar</button>
+      </div>
+    `;
+    document.getElementById('instrucao-txt')?.focus();
+    return;
+  }
+
+  if (item.instrucaoDespacho) {
+    area.innerHTML = `
+      <div class="foto-ampliada-instrucao-texto">📌 ${item.instrucaoDespacho}</div>
+      ${isAdmin ? `<button class="foto-ampliada-instrucao-editar" onclick="scannerEditarInstrucao(${idx})">✏️ editar instrução</button>` : ''}
+    `;
+  } else if (isAdmin) {
+    area.innerHTML = `<button class="foto-ampliada-instrucao-editar" onclick="scannerEditarInstrucao(${idx})">+ adicionar instrução de despacho</button>`;
+  } else {
+    area.innerHTML = '';
+  }
+}
+
+function scannerEditarInstrucao(idx) {
+  scannerInstrucaoEditando = idx;
+  scannerRenderInstrucao(idx);
+}
+
+async function scannerSalvarInstrucao(idx) {
+  const item     = scannerPedidoAtual?.itensLista?.[idx];
+  const textarea = document.getElementById('instrucao-txt');
+  if (!item || !textarea) return;
+  const texto = textarea.value.trim();
+
+  try {
+    const resp = await fetch('/api/instrucoes-despacho', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chave:    item.chaveInstrucao,
+        texto,
+        titulo:   item.titulo,
+        sku:      item.sku,
+        variacao: item.variacao,
+        senha:    localStorage.getItem('usuarioSenha') || '',
+      }),
+    });
+    const out = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(out.error || 'Erro ao salvar');
+
+    item.instrucaoDespacho   = texto || null;
+    scannerInstrucaoEditando = null;
+    scannerRenderInstrucao(idx);
+    // Atualiza a borda âmbar do card do item sem fechar o overlay
+    scannerMostrarResultado(scannerPedidoAtual, scannerSidAtual);
+  } catch (err) {
+    alert('Erro ao salvar instrução: ' + err.message);
+  }
 }
