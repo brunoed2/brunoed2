@@ -1166,6 +1166,9 @@ app.post('/api/estoque-local', (req, res) => {
     addEstoqueHistorico(data, { sku: skuKey, anterior, novo: num, tipo: 'manual', usuario: usuario || 'Desconhecido' });
   }
 
+  // Estoque local mudou — invalida o cache do dashboard do fornecedor (senão o
+  // fornecedor continua vendo o número antigo por até 1h)
+  data.fornecedor_dashboard_cache = {};
   saveData(data);
   res.json({ ok: true, estoque_local: data.estoque_local });
 });
@@ -1285,6 +1288,7 @@ app.post('/api/estoque-local/sync', async (req, res) => {
     }
 
     data.estoque_local_last_check[contaNum] = new Date().toISOString();
+    data.fornecedor_dashboard_cache = {}; // estoque local pode ter mudado — invalida cache do fornecedor
     saveData(data);
     res.json({ estoque_local: data.estoque_local });
   } catch (err) {
@@ -10135,6 +10139,7 @@ async function verificarVendasFornecedoresPorSku() {
   // dedução de estoque com um saveData intermediário defasado
   if (algumaMudanca) {
     data.fornecedor_vendas_notificadas = Array.from(fornecedorVendasNotificadas).slice(-2000);
+    data.fornecedor_dashboard_cache = {}; // estoque local pode ter mudado (dedução Shopee) — invalida cache
     saveData(data);
   }
 }
