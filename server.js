@@ -7756,6 +7756,27 @@ app.get('/api/push/vapid-public-key', (req, res) => {
   res.json({ key: VAPID_PUBLIC_KEY || null });
 });
 
+// Debug — lista as inscrições de push com a senha associada e as categorias que
+// receberiam, pra investigar notificação indo pro dispositivo errado
+app.get('/api/push/debug-subscricoes', (req, res) => {
+  const data      = loadData();
+  const usuarios  = data.usuarios || {};
+  const lista     = carregarPushSubscriptions();
+  res.json({
+    total: lista.length,
+    inscricoes: lista.map(s => {
+      const usuario = s.senha ? usuarios[s.senha] : null;
+      return {
+        senha:            s.senha || null,
+        usuarioEncontrado: !!usuario,
+        nomeUsuario:      usuario?.nome || null,
+        notificacoes:     usuario?.notificacoes || 'recebe tudo (sem restrição)',
+        endpointFinal:    s.endpoint ? s.endpoint.slice(-24) : null,
+      };
+    }),
+  });
+});
+
 app.post('/api/push/subscribe', (req, res) => {
   const sub   = req.body?.subscription;
   const senha = req.body?.senha ? String(req.body.senha) : null;
