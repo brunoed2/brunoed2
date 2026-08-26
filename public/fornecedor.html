@@ -262,6 +262,14 @@
 
     .cfg-steps { text-align: left; margin-top: 16px; font-size: 13px; color: var(--text2); line-height: 2; list-style: decimal; padding-left: 20px; }
     .cfg-steps li { margin-bottom: 2px; }
+
+    /* ── Histórico de notificações ──────────────────────────── */
+    .hist-item { display: flex; gap: 14px; padding: 12px 0; border-bottom: 1px solid #f1f5f9; }
+    .hist-item:last-child { border-bottom: none; }
+    .hist-icone { font-size: 18px; flex-shrink: 0; }
+    .hist-texto { font-size: 13px; color: var(--text); line-height: 1.5; white-space: pre-line; }
+    .hist-data  { font-size: 11px; color: var(--text3); margin-top: 3px; }
+    .hist-vazio { font-size: 13px; color: var(--text3); padding: 8px 0; }
   </style>
 </head>
 <body>
@@ -276,7 +284,7 @@
     </div>
   </div>
   <div class="h-right">
-    <div id="version-badge">v462</div>
+    <div id="version-badge">v463</div>
     <button class="btn-sair" id="btn-push-ativar" onclick="ativarPushFornecedor()">🔔 Ativar notificações</button>
     <button class="btn-sair" onclick="sair()">Sair</button>
   </div>
@@ -385,6 +393,14 @@
           <tbody id="tabela-corpo"></tbody>
         </table>
       </div>
+    </div>
+
+    <!-- Histórico de notificações -->
+    <div class="table-card" id="historico-card" style="margin-top:20px;display:none;">
+      <div class="table-header">
+        <div class="table-title">Histórico de notificações</div>
+      </div>
+      <div id="historico-lista" style="padding:8px 24px 20px;"></div>
     </div>
 
   </div>
@@ -797,11 +813,31 @@
     return output;
   }
 
+  function marcarBotaoPushAtivado() {
+    const btn = document.getElementById('btn-push-ativar');
+    btn.textContent = '🔔 Notificações ativadas';
+    btn.disabled = true;
+    btn.style.opacity = '0.7';
+    btn.style.cursor = 'default';
+  }
+
+  // No load, checa se esse dispositivo já tem inscrição — sem isso o botão
+  // fica sempre "Ativar notificações" mesmo depois de já ter ativado
+  async function checarEstadoPush() {
+    if (!isFornec || !('serviceWorker' in navigator) || !('PushManager' in window)) return;
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      if (sub) marcarBotaoPushAtivado();
+    } catch {}
+  }
+
   async function ativarPushFornecedor() {
     const btn = document.getElementById('btn-push-ativar');
     const labelOriginal = btn.textContent;
     btn.disabled = true;
     btn.textContent = '⏳ Ativando...';
+    let sucesso = false;
     try {
       if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
         alert('⚠️ Notificações não suportadas aqui. No iPhone, abra pelo ícone do app instalado na Tela de Início (não funciona direto no Safari).');
@@ -831,16 +867,59 @@
         body:    JSON.stringify({ subscription: sub, senha: fornecedorSenha }),
       });
       alert('✅ Notificações ativadas! Você vai receber um aviso a cada venda.');
+      sucesso = true;
     } catch (e) {
       alert('⚠️ Erro ao ativar notificações: ' + e.message);
     } finally {
-      btn.disabled = false;
-      btn.textContent = labelOriginal;
+      if (sucesso) {
+        marcarBotaoPushAtivado();
+      } else {
+        btn.disabled = false;
+        btn.textContent = labelOriginal;
+      }
+    }
+  }
+
+  // ── Histórico de notificações ─────────────────────────────────
+  function tempoRelativo(ts) {
+    const diffMin = Math.floor((Date.now() - ts) / 60000);
+    if (diffMin < 1)   return 'agora mesmo';
+    if (diffMin < 60)  return `${diffMin} min atrás`;
+    const diffH = Math.floor(diffMin / 60);
+    if (diffH < 24)    return `${diffH}h atrás`;
+    const d = new Date(ts);
+    return d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  }
+
+  async function carregarHistoricoNotificacoes() {
+    if (!isFornec) return;
+    const card = document.getElementById('historico-card');
+    const lista = document.getElementById('historico-lista');
+    card.style.display = 'block';
+    try {
+      const { itens } = await fetch(`/api/notificacoes?senha=${encodeURIComponent(fornecedorSenha)}`).then(r => r.json());
+      if (!itens || !itens.length) {
+        lista.innerHTML = '<div class="hist-vazio">Nenhuma notificação ainda.</div>';
+        return;
+      }
+      lista.innerHTML = itens.slice(0, 30).map(n => `
+        <div class="hist-item">
+          <div class="hist-icone">🛍️</div>
+          <div>
+            <div class="hist-texto">${n.texto}</div>
+            <div class="hist-data">${tempoRelativo(n.ts)}</div>
+          </div>
+        </div>
+      `).join('');
+    } catch {
+      lista.innerHTML = '<div class="hist-vazio">Erro ao carregar histórico.</div>';
     }
   }
 
   // ── Inicia ───────────────────────────────────────────────────
   carregar(false);
+  checarEstadoPush();
+  carregarHistoricoNotificacoes();
 </script>
 </body>
 </html>
