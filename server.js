@@ -3497,7 +3497,10 @@ app.get('/api/ml/pedidos-futuros', async (req, res) => {
     }
 
     pedidos.sort((a, b) => a.dataLiberacao.localeCompare(b.dataLiberacao));
-    res.json({ pedidos });
+    // Instrução é por anúncio+SKU+variação, não por pedido — o admin pode cadastrar
+    // aqui, no pedido ainda futuro, que ela já aparece depois quando o pedido cair
+    // pra aba Vendas (mesma chave usada por anexarInstrucoesDespacho lá).
+    res.json({ pedidos: pedidos.map(p => ({ ...p, itensLista: anexarInstrucoesDespacho(p.itensLista, 'ml') })) });
   } catch (err) {
     console.error('Erro ao buscar pedidos futuros:', err.response?.data || err.message);
     res.json({ error: 'Erro ao buscar pedidos futuros.' });

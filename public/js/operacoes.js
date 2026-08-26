@@ -496,6 +496,7 @@ async function salvarEditorInstrucao() {
     if (!resp.ok) throw new Error(out.error || 'Erro ao salvar');
     fecharEditorInstrucao();
     carregarVendas();
+    if (pedidosFuturosCarregado) carregarFuturos();
   } catch (err) {
     alert('Erro ao salvar instrução: ' + err.message);
   }
@@ -693,8 +694,10 @@ async function carregarFuturos() {
     hoje.setHours(0, 0, 0, 0);
     let dataGrupoAtual = null;
     const resumoPorDia = new Map();
+    const isAdminInstrucao = localStorage.getItem('usuarioSenha') === '199412';
 
     pedidos.forEach(p => {
+      vendaCache[String(p.shipmentId)] = p;
       const itens   = p.itensLista || [];
       const item0   = itens[0] || {};
       const multi   = itens.length > 1;
@@ -745,6 +748,7 @@ async function carregarFuturos() {
       const imgHtml0 = item0.thumbnail
         ? `<a href="${item0.permalink || '#'}" target="_blank" class="venda-thumb-link"><img src="${item0.thumbnail}" class="venda-thumb" loading="lazy"></a>`
         : `<div class="venda-thumb-vazio"></div>`;
+      const instrucaoHtml0 = btnInstrucaoHtml(item0, p.shipmentId, 0, isAdminInstrucao);
 
       tr.innerHTML = `
         <td class="td-thumb">${imgHtml0}</td>
@@ -752,7 +756,7 @@ async function carregarFuturos() {
         <td>${p.comprador}</td>
         <td class="col-num venda-qtd">${item0.quantidade ?? ''}</td>
         <td class="td-sku">${item0.sku || '—'}</td>
-        <td class="td-titulo" title="${item0.titulo || ''}${item0.variacao ? ` (${item0.variacao})` : ''}">${item0.titulo || '—'}${item0.variacao ? `<br><span class="venda-variacao">${item0.variacao}</span>` : ''}</td>
+        <td class="td-titulo" title="${item0.titulo || ''}${item0.variacao ? ` (${item0.variacao})` : ''}">${item0.titulo || '—'}${item0.variacao ? `<br><span class="venda-variacao">${item0.variacao}</span>` : ''}${instrucaoHtml0 ? `<br>${instrucaoHtml0}` : ''}</td>
         <td></td>
       `;
       tbody.appendChild(tr);
@@ -766,12 +770,13 @@ async function carregarFuturos() {
         const imgHtml = item.thumbnail
           ? `<a href="${item.permalink || '#'}" target="_blank" class="venda-thumb-link"><img src="${item.thumbnail}" class="venda-thumb" loading="lazy"></a>`
           : `<div class="venda-thumb-vazio"></div>`;
+        const instrucaoHtmlSub = btnInstrucaoHtml(item, p.shipmentId, i, isAdminInstrucao);
         trSub.innerHTML = `
           <td class="td-thumb">${imgHtml}</td>
           <td colspan="2" class="venda-sub-mais">↳ mesmo pedido</td>
           <td class="col-num venda-qtd">${item.quantidade ?? ''}</td>
           <td class="td-sku">${item.sku || '—'}</td>
-          <td class="td-titulo" title="${item.titulo || ''}${item.variacao ? ` (${item.variacao})` : ''}">${item.titulo || '—'}${item.variacao ? `<span class="venda-variacao"> — ${item.variacao}</span>` : ''}</td>
+          <td class="td-titulo" title="${item.titulo || ''}${item.variacao ? ` (${item.variacao})` : ''}">${item.titulo || '—'}${item.variacao ? `<span class="venda-variacao"> — ${item.variacao}</span>` : ''}${instrucaoHtmlSub ? `<br>${instrucaoHtmlSub}` : ''}</td>
           <td></td>
         `;
         tbody.appendChild(trSub);
