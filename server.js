@@ -1237,6 +1237,10 @@ app.post('/api/estoque-local/sync', async (req, res) => {
     for (const order of orders) {
       // Full: ML envia do próprio estoque, não afeta local
       if (order.shipping?.logistic_type === 'fulfillment') continue;
+      // Já descontado por outro caminho (ex: verificarVendasFornecedoresPorSku, que
+      // desconta na hora pra pedido de SKU rastreado por fornecedor) — não desconta
+      // de novo quando esse pedido cair na janela de tempo dessa sincronização
+      if (data.estoque_local_deducted_orders[String(order.id)]) continue;
 
       const deducted = [];
       for (const oi of (order.order_items || [])) {
@@ -10126,6 +10130,31 @@ async function verificarVendasFornecedoresPorSku() {
               return sku && skuSet.has(String(sku).trim().toUpperCase());
             });
             if (!itensMatch.length) continue;
+
+            // Desconta do estoque local na hora — não esperar o admin abrir a aba
+            // Estoque (que só sincroniza a conta ativa, sob demanda). Full não desconta
+            // (estoque Full é puxado da API, não é físico daqui); usa
+            // estoque_local_deducted_orders como trava compartilhada com
+            // /api/estoque-local/sync pra nunca descontar o mesmo pedido duas vezes.
+            const orderIdStr = String(order.id);
+            if (order.shipping?.logistic_type !== 'fulfillment' && !data.estoque_local_deducted_orders[orderIdStr]) {
+              const deducted = [];
+              for (const oi of itensMatch) {
+                const skuNorm     = String(skuPorMlb[oi.item.id]).trim().toUpperCase();
+                const skuOriginal = forn.skus.find(s => String(s).trim().toUpperCase() === skuNorm);
+                if (!skuOriginal || data.estoque_local[skuOriginal] === undefined) continue;
+                const qty      = oi.quantity || 1;
+                const anterior = data.estoque_local[skuOriginal];
+                data.estoque_local[skuOriginal] = Math.max(0, anterior - qty);
+                addEstoqueHistorico(data, { sku: skuOriginal, anterior, novo: data.estoque_local[skuOriginal], tipo: 'venda', pedido_id: orderIdStr, usuario: 'Automático (ML)' });
+                deducted.push({ sku: skuOriginal, qty });
+              }
+              if (deducted.length > 0) {
+                data.estoque_local_deducted_orders[orderIdStr] = { items: deducted, date: order.date_created };
+                data.fornecedor_dashboard_cache = {}; // estoque local mudou — invalida cache do fornecedor
+              }
+            }
+
             const qtd = itensMatch.reduce((s, i) => s + (i.quantity || 1), 0);
             const texto = `🛍️ <b>Nova venda — ${forn.nome}</b>\n\nPedido ML #${order.id}\n${qtd} unidade(s) do seu produto`;
             registrarNotificacaoHistorico(texto, categoria);
