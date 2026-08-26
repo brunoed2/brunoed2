@@ -751,8 +751,8 @@ app.delete('/api/usuarios/:senha', (req, res) => {
 // dado. Fica num arquivo próprio (mesmo motivo do notificacoes.json/bling-tokens.json)
 // pra não ser sobrescrito por um saveData() concorrente de outra rota.
 const CODIGOS_RECEBIMENTO_PADRAO = {
-  lorena_olivios:  { label: 'Lorena/Olivios',   codigo: '', atualizadoEm: null },
   bruno_fcomercio: { label: 'Bruno/F Comércio', codigo: '', atualizadoEm: null },
+  lorena_olivios:  { label: 'Lorena/Olivios',   codigo: '', atualizadoEm: null },
 };
 function loadCodigosRecebimento() {
   try { return { ...CODIGOS_RECEBIMENTO_PADRAO, ...JSON.parse(fs.readFileSync(CODIGOS_RECEBIMENTO_FILE, 'utf8')) }; }
