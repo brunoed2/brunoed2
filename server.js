@@ -3145,12 +3145,13 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
           variacaoNome = extra.variations[i.item.variation_id] || null;
         }
         grupo.itensLista.push({
-          titulo:     i.item.title,
-          variacao:   variacaoNome,
-          sku:        extra.sku || '—',
-          thumbnail:  extra.thumbnail || null,
-          permalink:  extra.permalink || null,
-          quantidade: i.quantity || 1,
+          titulo:      i.item.title,
+          variacao:    variacaoNome,
+          variationId: i.item.variation_id || null,
+          sku:         extra.sku || '—',
+          thumbnail:   extra.thumbnail || null,
+          permalink:   extra.permalink || null,
+          quantidade:  i.quantity || 1,
         });
       }
     }
@@ -5446,13 +5447,17 @@ function withInstrucoesLock(fn) {
 }
 
 // Chave de identidade do item: anúncio + SKU + variação. Não pode ser só o SKU,
-// pois o backend usa '—' quando o item não tem SKU cadastrado, e isso misturaria
-// produtos diferentes na mesma instrução; e precisa da variação porque o mesmo
-// anúncio pode ter variações com preparo/destino diferentes.
+// pois o backend usa '—' quando o item não tem SKU cadastrado (e a Shopee às vezes
+// usa o mesmo SKU do anúncio pra variações diferentes) — isso misturaria produtos
+// distintos na mesma instrução. A variação usa o ID (variation_id do ML, model_id
+// da Shopee) quando disponível, não o texto — o nome nem sempre vem preenchido na
+// resposta do pedido, e o ID é estável mesmo quando o texto falha ou muda.
 function chaveInstrucaoDespacho(item, canal) {
-  const anuncio = item.itemId || item.permalink || item.titulo || '';
-  const sku     = (item.sku && item.sku !== '—') ? item.sku : '';
-  return `${canal || 'ml'}::${anuncio}::${sku}::${item.variacao || ''}`;
+  const anuncio    = item.itemId || item.permalink || item.titulo || '';
+  const sku        = (item.sku && item.sku !== '—') ? item.sku : '';
+  const variacaoId = item.variationId || item.modelId;
+  const variacao   = variacaoId ? `id:${variacaoId}` : (item.variacao || '');
+  return `${canal || 'ml'}::${anuncio}::${sku}::${variacao}`;
 }
 
 function anexarInstrucoesDespacho(itensLista, canal) {
@@ -5521,7 +5526,7 @@ app.get('/api/ml/pedido-por-shipment/:id', async (req, res) => {
           const variacaoNome = i.item.variation_attributes?.length
             ? i.item.variation_attributes.map(a => a.value_name).join(' / ')
             : (i.item.variation_id ? (d.variations[i.item.variation_id] || null) : null);
-          itensLista.push({ titulo: i.item.title, variacao: variacaoNome, sku: d.sku || '—', thumbnail: d.thumbnail, permalink: d.permalink, quantidade: i.quantity || 1 });
+          itensLista.push({ titulo: i.item.title, variacao: variacaoNome, variationId: i.item.variation_id || null, sku: d.sku || '—', thumbnail: d.thumbnail, permalink: d.permalink, quantidade: i.quantity || 1 });
         });
       } catch {}
     }
@@ -5631,6 +5636,7 @@ app.get('/api/shopee/pedido-por-tracking/:tracking', async (req, res) => {
         thumbnail:  i.image_info?.image_url || '',
         permalink:  '',
         itemId:     i.item_id || null,
+        modelId:    i.model_id || null,
       }));
       return res.json({
         encontrado: true, fonte: 'shopee', conta: num,
