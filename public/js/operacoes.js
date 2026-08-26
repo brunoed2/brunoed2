@@ -391,15 +391,16 @@ async function buscarTodasVendasEtiqueta() {
   return { vendas, erro: erroReal ? erroReal.error : null };
 }
 
-// Tag no topo da aba Vendas com a contagem por canal — quantos pedidos ainda
-// faltam despachar (não marcados como atendido), separado ML x Shopee.
+// Tag no topo da aba Vendas com a contagem por canal — total de pedidos com
+// etiqueta disponível pra despachar, separado ML x Shopee. Não desconta quem já
+// foi marcado como atendido: "atendida" é só um checklist pessoal do operador,
+// não significa que o pedido já saiu da fila de despacho.
 function atualizarResumoCanal(vendas) {
   const tag = document.getElementById('vendas-resumo-canal');
   if (!tag) return;
-  const pendentes = vendas.filter(v => !v.atendida);
-  if (!pendentes.length) { tag.style.display = 'none'; return; }
-  const ml     = pendentes.filter(v => v.canal !== 'shopee').length;
-  const shopee = pendentes.filter(v => v.canal === 'shopee').length;
+  if (!vendas.length) { tag.style.display = 'none'; return; }
+  const ml     = vendas.filter(v => v.canal !== 'shopee').length;
+  const shopee = vendas.filter(v => v.canal === 'shopee').length;
   document.getElementById('resumo-canal-ml').textContent     = ml;
   document.getElementById('resumo-canal-shopee').textContent = shopee;
   tag.style.display = 'flex';
