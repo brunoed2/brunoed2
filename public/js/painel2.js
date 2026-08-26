@@ -999,7 +999,7 @@ async function carregarVendas() {
       if (v.atendida) tr.classList.add('venda-atendida');
 
       const imgHtml0 = item0.thumbnail
-        ? `<a href="${item0.permalink || '#'}" target="_blank" class="venda-thumb-link" onclick="return ampliarFoto(event, '${item0.thumbnail}')"><img src="${item0.thumbnail}" class="venda-thumb" loading="lazy"></a>`
+        ? `<a href="${item0.permalink || '#'}" target="_blank" class="venda-thumb-link"><img src="${item0.thumbnail}" class="venda-thumb" loading="lazy"></a>`
         : `<div class="venda-thumb-vazio"></div>`;
 
       const flagClass = v.atendida ? 'btn-flag btn-flag-ativo' : 'btn-flag';
@@ -1037,7 +1037,7 @@ async function carregarVendas() {
         if (isLast) trSub.classList.add('venda-sub-last');
         if (v.atendida) trSub.classList.add('venda-atendida');
         const imgHtml = item.thumbnail
-          ? `<a href="${item.permalink || '#'}" target="_blank" class="venda-thumb-link" onclick="return ampliarFoto(event, '${item.thumbnail}')"><img src="${item.thumbnail}" class="venda-thumb" loading="lazy"></a>`
+          ? `<a href="${item.permalink || '#'}" target="_blank" class="venda-thumb-link"><img src="${item.thumbnail}" class="venda-thumb" loading="lazy"></a>`
           : `<div class="venda-thumb-vazio"></div>`;
         trSub.innerHTML = `
           <td class="venda-sub-indent"></td>
@@ -1154,7 +1154,7 @@ async function carregarFuturos() {
       if (liberaHoje) tr.style.background = 'rgba(234,179,8,0.08)';
 
       const imgHtml0 = item0.thumbnail
-        ? `<a href="${item0.permalink || '#'}" target="_blank" class="venda-thumb-link" onclick="return ampliarFoto(event, '${item0.thumbnail}')"><img src="${item0.thumbnail}" class="venda-thumb" loading="lazy"></a>`
+        ? `<a href="${item0.permalink || '#'}" target="_blank" class="venda-thumb-link"><img src="${item0.thumbnail}" class="venda-thumb" loading="lazy"></a>`
         : `<div class="venda-thumb-vazio"></div>`;
 
       tr.innerHTML = `
@@ -1175,7 +1175,7 @@ async function carregarFuturos() {
         trSub.classList.add('venda-sub-item');
         if (isLast) trSub.classList.add('venda-sub-last');
         const imgHtml = item.thumbnail
-          ? `<a href="${item.permalink || '#'}" target="_blank" class="venda-thumb-link" onclick="return ampliarFoto(event, '${item.thumbnail}')"><img src="${item.thumbnail}" class="venda-thumb" loading="lazy"></a>`
+          ? `<a href="${item.permalink || '#'}" target="_blank" class="venda-thumb-link"><img src="${item.thumbnail}" class="venda-thumb" loading="lazy"></a>`
           : `<div class="venda-thumb-vazio"></div>`;
         trSub.innerHTML = `
           <td class="td-thumb">${imgHtml}</td>
@@ -1322,7 +1322,7 @@ function renderizarHistorico() {
       : '<span style="color:#94a3b8;font-size:12px">—</span>';
     const item0 = (h.itensLista || [])[0];
     const imgHtml = item0?.thumbnail
-      ? `<a href="${item0.permalink || '#'}" target="_blank" class="venda-thumb-link" onclick="return ampliarFoto(event, '${item0.thumbnail}')"><img src="${item0.thumbnail}" class="venda-thumb" loading="lazy"></a>`
+      ? `<a href="${item0.permalink || '#'}" target="_blank" class="venda-thumb-link"><img src="${item0.thumbnail}" class="venda-thumb" loading="lazy"></a>`
       : '<span style="color:#94a3b8;font-size:11px">—</span>';
     const tr = document.createElement('tr');
     tr.innerHTML = `

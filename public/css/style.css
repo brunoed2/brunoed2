@@ -769,7 +769,7 @@ code {
 }
 
 /* Imagem clicável */
-.venda-thumb-link { display: block; line-height: 0; cursor: zoom-in; }
+.venda-thumb-link { display: block; line-height: 0; }
 .venda-thumb-link:hover .venda-thumb { opacity: .82; transform: scale(1.04); transition: opacity .15s, transform .15s; }
 
 /* Overlay de foto ampliada */
