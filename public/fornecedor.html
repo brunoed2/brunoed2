@@ -155,7 +155,6 @@
     /* ── Summary cards ──────────────────────────────────────── */
     .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 20px; }
     @media (max-width: 900px) { .cards { grid-template-columns: repeat(2,1fr); } }
-    @media (max-width: 520px) { .cards { grid-template-columns: 1fr; } }
 
     .card {
       background: var(--card); border-radius: 14px; padding: 20px 22px;
@@ -292,6 +291,47 @@
     .notif-central-item-texto{ white-space: pre-line; line-height: 1.4; }
     .notif-central-item-hora { font-size: 11px; color: #94a3b8; margin-top: 4px; }
     .notif-central-vazio     { padding: 30px 16px; text-align: center; color: #94a3b8; font-size: 13px; }
+
+    /* ── Mobile ──────────────────────────────────────────────
+       Header e ctrl-bar são position:fixed com altura fixa (--header-h/--ctrl-h)
+       pensados pro desktop — em tela estreita o conteúdo não cabe numa linha só
+       e ficava cortado pra fora da faixa fixa. No mobile eles viram estáticos
+       (crescem com o conteúdo, sem precisar acertar altura na régua) e tudo fica
+       menor/quebra linha. */
+    @media (max-width: 640px) {
+      header, .ctrl-bar { position: static; height: auto; }
+      main { padding-top: 16px; }
+
+      header {
+        flex-wrap: wrap;
+        padding: 10px 14px;
+        row-gap: 8px;
+      }
+      .h-brand { min-width: 0; }
+      .h-name  { font-size: 13px; }
+      .h-sub   { font-size: 10px; }
+      .h-right { flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+      #version-badge { display: none; }
+      .btn-sair { font-size: 11px; padding: 5px 10px; }
+      #notif-central-btn { padding: 5px 9px; }
+
+      .ctrl-bar {
+        flex-wrap: wrap;
+        padding: 10px 14px;
+        row-gap: 8px;
+      }
+      .ctrl-sep { display: none; }
+      .date-group { font-size: 11px; }
+      .date-input { padding: 4px 7px; font-size: 11px; }
+      .ctrl-right { width: 100%; margin-left: 0; justify-content: space-between; }
+
+      /* Cards em 2x2 bem mais compactos, pra caber tudo sem rolar uma tela inteira */
+      .cards { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+      .card { padding: 12px 14px; border-radius: 10px; }
+      .card-label { font-size: 10px; margin-bottom: 5px; }
+      .card-value { font-size: 20px; margin-bottom: 2px; }
+      .card-sub   { font-size: 10px; }
+    }
   </style>
 </head>
 <body>
@@ -306,7 +346,7 @@
     </div>
   </div>
   <div class="h-right">
-    <div id="version-badge">v464</div>
+    <div id="version-badge">v465</div>
     <button class="btn-sair" id="notif-central-btn" onclick="notifCentralToggle()" aria-label="Notificações">
       🔔
       <span id="notif-central-badge"></span>
