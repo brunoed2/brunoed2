@@ -58,6 +58,7 @@ const DATA_FILE     = path.join(DATA_DIR, 'data.json');
 const FISCAL_FILE   = path.join(DATA_DIR, 'fiscal-notas.json');
 const NOTIF_HIST_FILE = path.join(DATA_DIR, 'notificacoes.json');
 const INSTRUCOES_DESPACHO_FILE = path.join(DATA_DIR, 'instrucoes-despacho.json');
+const CODIGOS_RECEBIMENTO_FILE = path.join(DATA_DIR, 'codigos-recebimento.json');
 const BLING_FILE    = path.join(DATA_DIR, 'bling-tokens.json');
 const ACESSOS_FILE  = path.join(DATA_DIR, 'acessos-log.json');
 const SESSAO_FILE   = path.join(DATA_DIR, 'sessao.json');
@@ -742,6 +743,36 @@ app.delete('/api/usuarios/:senha', (req, res) => {
   if (!data.usuarios[senha]) return res.status(404).json({ error: 'Usuário não encontrado' });
   delete data.usuarios[senha];
   saveData(data);
+  res.json({ ok: true });
+});
+
+// ── Código de recebimento de mercadoria (aba "Código") ──────────
+// Preenchido manualmente pelo admin todo dia — a API do ML/Shopee não expõe esse
+// dado. Fica num arquivo próprio (mesmo motivo do notificacoes.json/bling-tokens.json)
+// pra não ser sobrescrito por um saveData() concorrente de outra rota.
+const CODIGOS_RECEBIMENTO_PADRAO = {
+  lorena_olivios:  { label: 'Lorena/Olivios',   codigo: '', atualizadoEm: null },
+  bruno_fcomercio: { label: 'Bruno/F Comércio', codigo: '', atualizadoEm: null },
+};
+function loadCodigosRecebimento() {
+  try { return { ...CODIGOS_RECEBIMENTO_PADRAO, ...JSON.parse(fs.readFileSync(CODIGOS_RECEBIMENTO_FILE, 'utf8')) }; }
+  catch { return { ...CODIGOS_RECEBIMENTO_PADRAO }; }
+}
+function saveCodigosRecebimento(dados) {
+  fs.writeFileSync(CODIGOS_RECEBIMENTO_FILE, JSON.stringify(dados, null, 2));
+}
+
+app.get('/api/codigos-recebimento', (req, res) => {
+  res.json(loadCodigosRecebimento());
+});
+
+app.post('/api/codigos-recebimento', (req, res) => {
+  const { chave, codigo, senha } = req.body || {};
+  if (senha !== '199412') return res.status(403).json({ error: 'Apenas o administrador pode editar o código' });
+  if (!chave || !CODIGOS_RECEBIMENTO_PADRAO[chave]) return res.status(400).json({ error: 'chave inválida' });
+  const dados = loadCodigosRecebimento();
+  dados[chave] = { ...dados[chave], codigo: String(codigo || '').trim(), atualizadoEm: new Date().toISOString() };
+  saveCodigosRecebimento(dados);
   res.json({ ok: true });
 });
 

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Painel</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📦</text></svg>">
-  <link rel="stylesheet" href="/css/style.css?v=17">
+  <link rel="stylesheet" href="/css/style.css?v=18">
   <link rel="manifest" href="/manifest.json">
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
   <meta name="theme-color" content="#2563eb">
@@ -75,6 +75,7 @@
         <a class="nav-btn" href="?tab=etiquetas" data-tab="etiquetas">🖨️ Etiquetas FULL</a>
         <a class="nav-btn" href="?tab=log-anuncio" data-tab="log-anuncio">🔍 Log Anúncio</a>
         <a class="nav-btn" href="?tab=scanner" data-tab="scanner">📷 Scanner</a>
+        <a class="nav-btn" href="?tab=codigo" data-tab="codigo">🔑 Código</a>
         <a class="nav-btn" href="?tab=configuracoes" data-tab="configuracoes">⚙️ Configurações</a>
       </nav>
       <!-- Mobile: barra inferior com label da aba ativa + hamburger -->
@@ -1541,6 +1542,13 @@
         <div id="log-resultado"></div>
       </section>
 
+      <!-- ── Aba: Código de recebimento ── -->
+      <section id="tab-codigo" class="tab">
+        <h1>Código</h1>
+        <p class="subtitle">Código de recebimento de mercadoria — atualizado manualmente todo dia.</p>
+        <div id="codigo-lista" class="codigo-lista"></div>
+      </section>
+
     </main>
   </div>
 
@@ -1573,6 +1581,7 @@
       <button class="mobile-drawer-btn" data-tab="etiquetas">🖨️ Etiquetas FULL</button>
       <button class="mobile-drawer-btn" data-tab="log-anuncio">🔍 Log Anúncio</button>
       <button class="mobile-drawer-btn" data-tab="scanner">📷 Scanner</button>
+      <button class="mobile-drawer-btn" data-tab="codigo">🔑 Código</button>
       <button class="mobile-drawer-btn" data-tab="configuracoes">⚙️ Configurações</button>
     </nav>
   </div>
@@ -1623,7 +1632,7 @@
 
   <script src="/js/compartilhar.js?v=1"></script>
   <script src="/js/lucro.js?v=6"></script>
-  <script src="/js/app-v2.js?v=6"></script>
+  <script src="/js/app-v2.js?v=7"></script>
   <script src="/js/operacoes.js?v=16"></script>
   <script src="/js/shopee.js?v=2"></script>
   <script src="/js/conexao.js?v=2"></script>
@@ -1641,6 +1650,7 @@
   <script src="/js/log-anuncio.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
   <script src="/js/scanner.js?v=6"></script>
+  <script src="/js/codigo-recebimento.js?v=1"></script>
   <script>
   // ── Gerenciamento de Usuários ─────────────────────────────────
 
@@ -1661,6 +1671,7 @@
     { id: 'etiquetas',     label: '🖨️ Etiquetas FULL' },
     { id: 'log-anuncio',   label: '🔍 Log Anúncio' },
     { id: 'scanner',       label: '📷 Scanner' },
+    { id: 'codigo',        label: '🔑 Código' },
     { id: 'configuracoes', label: '⚙️ Configurações' },
   ];
 
@@ -1962,6 +1973,6 @@
     </div>
   </div>
 
-  <div id="version-badge">v835</div>
+  <div id="version-badge">v836</div>
 </body>
 </html>

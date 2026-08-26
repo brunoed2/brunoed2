@@ -89,6 +89,7 @@ function abrirAba(nome) {
   if (nome === 'etiquetas')     etiquetasInit();
   if (nome === 'log-anuncio')  logAnuncioInit();
   if (nome === 'scanner')      scannerInit();
+  if (nome === 'codigo')       codigoInit();
   if (nome === 'configuracoes') { carregarConfig(contaConfigurando); }
   // compatibilidade: ?tab=config ou ?tab=conexao redireciona para configuracoes
   if (nome === 'config' || nome === 'conexao') {

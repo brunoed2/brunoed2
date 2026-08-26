@@ -2379,3 +2379,44 @@ tr.lucro-sub-item td {
   color: #94a3b8;
   margin-top: 4px;
 }
+
+/* ── Aba Código de recebimento ────────────────────────────────── */
+
+.codigo-lista {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 520px;
+  margin-top: 12px;
+}
+.codigo-card {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 18px 20px;
+}
+.codigo-card-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: #475569;
+  margin-bottom: 10px;
+}
+.codigo-card-valor {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  color: #111;
+  background: #f8fafc;
+  border: 1.5px dashed #cbd5e1;
+  border-radius: 10px;
+  padding: 16px;
+  text-align: center;
+  cursor: pointer;
+  user-select: none;
+  transition: background .15s, border-color .15s;
+}
+.codigo-card-valor:hover { background: #eef2ff; border-color: #6366f1; }
+.codigo-card-valor.codigo-vazio { font-size: 15px; font-weight: 500; color: #94a3b8; }
+.codigo-card-valor.codigo-copiado { background: #f0fdf4; border-color: #16a34a; color: #16a34a; }
+.codigo-card-edit { display: flex; gap: 8px; }
+.codigo-card-input { flex: 1; font-size: 18px; font-weight: 600; letter-spacing: .03em; }
