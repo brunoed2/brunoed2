@@ -3307,27 +3307,37 @@ app.get('/api/ml/pedidos-futuros', async (req, res) => {
     (s.logistic_type || '').includes('fulfillment')
   );
 
+  // Substatus onde o vendedor já pode agir agora (baixar etiqueta) — esses já
+  // aparecem na aba Vendas normal, não deveriam duplicar aqui
+  const SUBSTATUS_JA_ACIONAVEL = new Set(['ready_to_print', 'printed']);
+
   try {
-    // Pedidos pagos com envio ainda pendente (vendedor não iniciou handling)
+    // Pedidos pagos que ainda não estão prontos pro vendedor agir: shipping
+    // "pending" (ML ainda não liberou) e "ready_to_ship" com substatus tipo
+    // invoice_pending (aguardando emissão de NF-e — no Brasil isso já entra
+    // como ready_to_ship, não fica em pending, então sem essa segunda busca
+    // esses pedidos nunca eram nem buscados, independente da data calculada)
     const todasOrdens = [];
-    let offset = 0;
-    while (todasOrdens.length < 500) {
-      const resp = await axios.get('https://api.mercadolibre.com/orders/search', {
-        params: {
-          seller:            c.user_id,
-          'order.status':    'paid',
-          'shipping.status': 'pending',
-          sort:              'date_asc',
-          offset,
-          limit: 50,
-        },
-        headers: { Authorization: `Bearer ${c.access_token}` },
-        timeout: 15000,
-      });
-      const orders = resp.data.results || [];
-      todasOrdens.push(...orders);
-      if (orders.length < 50) break;
-      offset += 50;
+    for (const shippingStatus of ['pending', 'ready_to_ship']) {
+      let offset = 0;
+      while (true) {
+        const resp = await axios.get('https://api.mercadolibre.com/orders/search', {
+          params: {
+            seller:            c.user_id,
+            'order.status':    'paid',
+            'shipping.status': shippingStatus,
+            sort:              'date_asc',
+            offset,
+            limit: 50,
+          },
+          headers: { Authorization: `Bearer ${c.access_token}` },
+          timeout: 15000,
+        });
+        const orders = resp.data.results || [];
+        todasOrdens.push(...orders);
+        if (orders.length < 50 || todasOrdens.length >= 500) break;
+        offset += 50;
+      }
     }
 
     // Filtra apenas pedidos com shipment direto (não Full)
@@ -3380,7 +3390,9 @@ app.get('/api/ml/pedidos-futuros', async (req, res) => {
       resultado.push(...detalhes);
     }
 
-    const filtradas = resultado.filter(({ shipment }) => shipment && !isFull(shipment));
+    const filtradas = resultado.filter(({ shipment }) =>
+      shipment && !isFull(shipment) && !SUBSTATUS_JA_ACIONAVEL.has(shipment.substatus)
+    );
 
     // Modo debug: retorna o shipment bruto do primeiro pedido
     if (rawMode && filtradas.length > 0) {
