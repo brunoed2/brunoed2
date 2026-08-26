@@ -181,7 +181,7 @@ function loadData() {
     raw.usuarios['1234'] = { nome: 'Proposta ML (cliente)', abas: [], painel: 'simulador-ml' };
   }
   // 199412 é sempre admin no painel app — forçado mesmo se já existir com dados errados
-  const adminAbas = ['estoque','vendas','historico','ads','lucro','promocoes','contas-pagar','contas-receber','bling','fiscal','compras','calculadora','etiquetas','log-anuncio','configuracoes','scanner'];
+  const adminAbas = ['estoque','vendas','historico','ads','lucro','promocoes','contas-pagar','contas-receber','bling','fiscal','compras','calculadora','etiquetas','log-anuncio','configuracoes','scanner','codigo'];
   raw.usuarios['199412'] = {
     nome:         (raw.usuarios['199412'] || {}).nome || 'Admin',
     abas:         adminAbas,
