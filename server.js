@@ -3231,7 +3231,7 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
       saveData(data);
     }
 
-    res.json({ vendas });
+    res.json({ vendas: vendas.map(v => ({ ...v, itensLista: anexarInstrucoesDespacho(v.itensLista, 'ml') })) });
   } catch (err) {
     console.error('Erro ao buscar vendas com etiqueta:', err.response?.data || err.message);
     res.json({ error: 'Erro ao buscar vendas.' });
@@ -6497,14 +6497,16 @@ app.get('/api/shopee/vendas-etiquetas', async (req, res) => {
         statusLabel: STATUS_LABEL[o.order_status] || o.order_status,
         acaoLabel:  'Baixar',
         atendida:   false,
-        itensLista: (o.item_list || []).map(i => ({
+        itensLista: anexarInstrucoesDespacho((o.item_list || []).map(i => ({
           sku:        i.item_sku || i.model_sku || '',
           titulo:     i.item_name || '',
           variacao:   (i.model_name && i.model_name !== i.item_name) ? i.model_name : '',
           quantidade: i.model_quantity_purchased || 1,
           thumbnail:  i.image_info?.image_url || '',
           permalink:  '',
-        })),
+          itemId:     i.item_id || null,
+          modelId:    i.model_id || null,
+        })), 'shopee'),
       }));
     res.json({ vendas });
   } catch (err) {

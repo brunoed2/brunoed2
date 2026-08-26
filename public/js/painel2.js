@@ -907,6 +907,101 @@ function atualizarResumoCanal(vendas) {
   tag.style.display = 'flex';
 }
 
+// ── Instruções de despacho (aba Vendas) ─────────────────────────
+// Mesma instrução mostrada no scanner ao escanear a etiqueta — aqui o admin
+// cadastra, lá qualquer operador só visualiza. Chave (anúncio+SKU+variação)
+// já vem calculada do backend em item.chaveInstrucao.
+
+function instrucaoEscapeHtml(str) {
+  return String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function btnInstrucaoHtml(item, shipmentId, idx, isAdmin) {
+  if (!item || !item.chaveInstrucao) return '';
+  const tem = !!item.instrucaoDespacho;
+  if (!isAdmin && !tem) return '';
+  const classe    = 'btn-instrucao' + (tem ? ' tem-instrucao' : '');
+  const titleAttr = tem ? ` title="${instrucaoEscapeHtml(item.instrucaoDespacho)}"` : ' title="Adicionar instrução de despacho"';
+  return isAdmin
+    ? `<button type="button" class="${classe}"${titleAttr} onclick="abrirEditorInstrucao('${shipmentId}', ${idx})">📌 Instruções</button>`
+    : `<span class="${classe}"${titleAttr}>📌 Instruções</span>`;
+}
+
+let instrucaoModalItem = null;
+
+function instrucaoModalOverlay() {
+  let overlay = document.getElementById('instrucao-modal-overlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'instrucao-modal-overlay';
+    overlay.className = 'modal-overlay';
+    overlay.style.display = 'none';
+    overlay.addEventListener('click', e => { if (e.target === overlay) fecharEditorInstrucao(); });
+    overlay.innerHTML = `
+      <div class="modal-card">
+        <div class="modal-titulo">Instruções de despacho</div>
+        <div class="modal-campo">
+          <label id="instrucao-modal-item"></label>
+          <textarea id="instrucao-modal-txt" class="input-padrao" style="min-height:90px;resize:vertical" placeholder="O que precisa ser feito ao separar esse item..."></textarea>
+        </div>
+        <div class="modal-acoes">
+          <button class="btn-secondary" onclick="fecharEditorInstrucao()">Cancelar</button>
+          <button class="btn-primary" onclick="salvarEditorInstrucao()">Salvar</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+  }
+  return overlay;
+}
+
+function abrirEditorInstrucao(shipmentId, idx) {
+  const venda = vendaCache[String(shipmentId)];
+  const item  = venda?.itensLista?.[idx];
+  if (!item) return;
+  instrucaoModalItem = item;
+  const overlay = instrucaoModalOverlay();
+  overlay.querySelector('#instrucao-modal-item').textContent = `${item.titulo || ''}${item.variacao ? ' — ' + item.variacao : ''}`;
+  overlay.querySelector('#instrucao-modal-txt').value = item.instrucaoDespacho || '';
+  overlay.style.display = 'flex';
+  overlay.querySelector('#instrucao-modal-txt').focus();
+}
+
+function fecharEditorInstrucao() {
+  const overlay = document.getElementById('instrucao-modal-overlay');
+  if (overlay) overlay.style.display = 'none';
+  instrucaoModalItem = null;
+}
+
+async function salvarEditorInstrucao() {
+  if (!instrucaoModalItem) return;
+  const texto = document.getElementById('instrucao-modal-txt').value.trim();
+  try {
+    const resp = await fetch('/api/instrucoes-despacho', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chave:    instrucaoModalItem.chaveInstrucao,
+        texto,
+        titulo:   instrucaoModalItem.titulo,
+        sku:      instrucaoModalItem.sku,
+        variacao: instrucaoModalItem.variacao,
+        senha:    localStorage.getItem('usuarioSenha') || '',
+      }),
+    });
+    const out = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(out.error || 'Erro ao salvar');
+    fecharEditorInstrucao();
+    carregarVendas();
+  } catch (err) {
+    alert('Erro ao salvar instrução: ' + err.message);
+  }
+}
+
 async function carregarVendas() {
   const reqId   = ++vendasReqId;
   const gen     = contaGen;
@@ -964,6 +1059,8 @@ async function carregarVendas() {
 
     atualizarResumoCanal(todasVendas);
 
+    const isAdminInstrucao = localStorage.getItem('usuarioSenha') === '199412';
+
     todasVendas.forEach(v => {
       vendaCache[String(v.shipmentId)] = v;
       const bStatus = BADGE_VENDA_STATUS[v.status] || 'badge-outro';
@@ -993,6 +1090,7 @@ async function carregarVendas() {
         : '';
       const btnEtiquetaHtml = `<a class="btn-etiqueta" href="${hrefEtiqueta}" target="_blank">${v.acaoLabel}</a>` +
         `<a class="btn-etiqueta" href="#" onclick="compartilharPdf('${hrefEtiqueta}', 'etiqueta-${v.shipmentId}.pdf', this); return false;" title="Compartilhar" style="margin-left:4px;white-space:nowrap">🔗</a>`;
+      const instrucaoHtml0 = btnInstrucaoHtml(item0, v.shipmentId, 0, isAdminInstrucao);
 
       tr.innerHTML = `
         <td><input type="checkbox" class="check-venda" data-shipment-id="${v.shipmentId}" data-conta="${v.conta}" data-canal="${v.canal || 'ml'}" onchange="atualizarBotaoSelecionadas()"></td>
@@ -1001,7 +1099,7 @@ async function carregarVendas() {
         <td>${v.comprador}</td>
         <td class="col-num venda-qtd">${item0.quantidade ?? ''}</td>
         <td class="td-sku">${item0.sku || '—'}</td>
-        <td class="td-titulo" title="${item0.titulo || ''}${item0.variacao ? ` (${item0.variacao})` : ''}">${item0.titulo || '—'}${item0.variacao ? `<br><span class="venda-variacao">${item0.variacao}</span>` : ''}</td>
+        <td class="td-titulo" title="${item0.titulo || ''}${item0.variacao ? ` (${item0.variacao})` : ''}">${item0.titulo || '—'}${item0.variacao ? `<br><span class="venda-variacao">${item0.variacao}</span>` : ''}${instrucaoHtml0 ? `<br>${instrucaoHtml0}` : ''}</td>
         <td><span class="badge-deposito ${bStatus}">${v.statusLabel}</span></td>
         <td>${btnEtiquetaHtml}</td>
         <td><button class="${flagClass}" data-sid="${v.shipmentId}" title="${flagTitle}" onclick="toggleFlag('${v.shipmentId}', this)">✔</button></td>
@@ -1018,13 +1116,14 @@ async function carregarVendas() {
         const imgHtml = item.thumbnail
           ? `<a href="${item.permalink || '#'}" target="_blank" class="venda-thumb-link"><img src="${item.thumbnail}" class="venda-thumb" loading="lazy"></a>`
           : `<div class="venda-thumb-vazio"></div>`;
+        const instrucaoHtmlSub = btnInstrucaoHtml(item, v.shipmentId, i, isAdminInstrucao);
         trSub.innerHTML = `
           <td class="venda-sub-indent"></td>
           <td class="td-thumb">${imgHtml}</td>
           <td colspan="2" class="venda-sub-mais">↳ mesmo pedido</td>
           <td class="col-num venda-qtd">${item.quantidade ?? ''}</td>
           <td class="td-sku">${item.sku || '—'}</td>
-          <td class="td-titulo" title="${item.titulo || ''}${item.variacao ? ` (${item.variacao})` : ''}">${item.titulo || '—'}${item.variacao ? `<span class="venda-variacao"> — ${item.variacao}</span>` : ''}</td>
+          <td class="td-titulo" title="${item.titulo || ''}${item.variacao ? ` (${item.variacao})` : ''}">${item.titulo || '—'}${item.variacao ? `<span class="venda-variacao"> — ${item.variacao}</span>` : ''}${instrucaoHtmlSub ? `<br>${instrucaoHtmlSub}` : ''}</td>
           <td colspan="3"></td>
         `;
         tbody.appendChild(trSub);

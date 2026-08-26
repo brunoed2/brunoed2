@@ -772,6 +772,27 @@ code {
 .venda-thumb-link { display: block; line-height: 0; }
 .venda-thumb-link:hover .venda-thumb { opacity: .82; transform: scale(1.04); transition: opacity .15s, transform .15s; }
 
+/* Botão de instruções de despacho na aba Vendas */
+.btn-instrucao {
+  display: inline-block;
+  margin-top: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+  border: 1px dashed #cbd5e1;
+  background: #f8fafc;
+  color: #64748b;
+  cursor: pointer;
+}
+button.btn-instrucao { font-family: inherit; }
+.btn-instrucao.tem-instrucao {
+  border: 1px solid #f59e0b;
+  background: #fffbeb;
+  color: #b45309;
+}
+span.btn-instrucao { cursor: default; }
+
 /* Overlay de foto ampliada (usado pelo scanner de etiqueta) */
 .foto-ampliada-overlay {
   display: none;

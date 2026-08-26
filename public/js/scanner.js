@@ -7,6 +7,14 @@ let scannerPedidoAtual     = null;
 let scannerSidAtual        = null;
 let scannerInstrucaoEditando = null; // índice do item com o campo de edição aberto
 
+function scannerEscapeHtml(str) {
+  return String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 function scannerInit() {
   scannerParar();
   document.getElementById('scanner-resultado').style.display = 'none';
@@ -237,7 +245,7 @@ function scannerRenderInstrucao(idx) {
 
   if (scannerInstrucaoEditando === idx) {
     area.innerHTML = `
-      <textarea id="instrucao-txt" placeholder="O que precisa ser feito ao separar esse item...">${item.instrucaoDespacho || ''}</textarea>
+      <textarea id="instrucao-txt" placeholder="O que precisa ser feito ao separar esse item...">${scannerEscapeHtml(item.instrucaoDespacho || '')}</textarea>
       <div class="foto-ampliada-instrucao-botoes">
         <button class="btn-primary" onclick="scannerSalvarInstrucao(${idx})">Salvar</button>
         <button class="btn-secondary" onclick="scannerRenderInstrucao(${idx})">Cancelar</button>
@@ -249,7 +257,7 @@ function scannerRenderInstrucao(idx) {
 
   if (item.instrucaoDespacho) {
     area.innerHTML = `
-      <div class="foto-ampliada-instrucao-texto">📌 ${item.instrucaoDespacho}</div>
+      <div class="foto-ampliada-instrucao-texto">📌 ${scannerEscapeHtml(item.instrucaoDespacho)}</div>
       ${isAdmin ? `<button class="foto-ampliada-instrucao-editar" onclick="scannerEditarInstrucao(${idx})">✏️ editar instrução</button>` : ''}
     `;
   } else if (isAdmin) {
