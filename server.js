@@ -3307,9 +3307,14 @@ app.get('/api/ml/pedidos-futuros', async (req, res) => {
     (s.logistic_type || '').includes('fulfillment')
   );
 
-  // Substatus onde o vendedor já pode agir agora (baixar etiqueta) — esses já
-  // aparecem na aba Vendas normal, não deveriam duplicar aqui
-  const SUBSTATUS_JA_ACIONAVEL = new Set(['ready_to_print', 'printed']);
+  // Whitelist (não blacklist) dos substatus de "ready_to_ship" que realmente ainda
+  // não permitem agir: só o que trava a impressão da etiqueta (aguardando NF-e /
+  // autorização da transportadora). Qualquer coisa depois disso (ready_to_print,
+  // printed, dropped_off, picked_up, in_hub, in_packing_list, etc.) já foi
+  // impresso e/ou já está fisicamente a caminho — uma blacklist ia deixar passar
+  // esses estados intermediários (foi o que aconteceu: substatus in_packing_list
+  // não estava na blacklist antiga e o pedido, já despachado, continuava aparecendo)
+  const SUBSTATUS_AINDA_BLOQUEADO = new Set(['invoice_pending', 'waiting_for_carrier_authorization']);
 
   try {
     // Pedidos pagos que ainda não estão prontos pro vendedor agir: shipping
@@ -3394,13 +3399,12 @@ app.get('/api/ml/pedidos-futuros', async (req, res) => {
     // que já foi despachado (ou já virou ready_to_print/printed) entre a busca e agora
     // ainda pode vir na lista. Reconfirma com o status ATUAL do /shipments/{id} (recém
     // buscado acima), não com o que a busca retornou.
-    const STATUS_VALIDOS = new Set(['pending', 'ready_to_ship']);
-    const filtradas = resultado.filter(({ shipment }) =>
-      shipment &&
-      STATUS_VALIDOS.has(shipment.status) &&
-      !isFull(shipment) &&
-      !SUBSTATUS_JA_ACIONAVEL.has(shipment.substatus)
-    );
+    const filtradas = resultado.filter(({ shipment }) => {
+      if (!shipment || isFull(shipment)) return false;
+      if (shipment.status === 'pending') return true;
+      if (shipment.status === 'ready_to_ship') return SUBSTATUS_AINDA_BLOQUEADO.has(shipment.substatus);
+      return false; // shipped, delivered, cancelled etc. — já saiu da mão do vendedor
+    });
 
     // Modo debug: retorna o shipment bruto do primeiro pedido
     if (rawMode && filtradas.length > 0) {
@@ -3437,6 +3441,11 @@ app.get('/api/ml/pedidos-futuros', async (req, res) => {
       } catch {}
     }
 
+    // "Pedidos Futuros" é só o que ainda vou precisar despachar depois de hoje —
+    // o que já libera hoje (ou já passou) não é mais "futuro", é a aba Vendas normal.
+    const dataStrBR = (iso) => new Date(new Date(iso).getTime() - OFFSET_BRASILIA_MS).toISOString().slice(0, 10);
+    const hojeBR = dataStrBR(new Date().toISOString());
+
     const pedidos = [];
     for (const { order, shipment } of filtradas) {
       const bufferingDate = shipment.shipping_option?.buffering?.date;
@@ -3454,6 +3463,8 @@ app.get('/api/ml/pedidos-futuros', async (req, res) => {
       const dataLiberacao = (bufferingDate || scheduleLimit || payBefore)
         ? new Date(bufferingDate || scheduleLimit || payBefore).toISOString()
         : (prazoHandling || criado.toISOString());
+
+      if (dataStrBR(dataLiberacao) <= hojeBR) continue; // hoje ou atrasado não é "futuro"
 
       const itensLista = [];
       for (const i of (order.order_items || [])) {
