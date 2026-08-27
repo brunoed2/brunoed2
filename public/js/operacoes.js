@@ -502,6 +502,124 @@ async function salvarEditorInstrucao() {
   }
 }
 
+// ── Foto ampliada + instrução (aba Vendas) ──────────────────────
+// Mesmo overlay do scanner (foto grande + instrução de despacho por cima),
+// clicando na miniatura em vez de abrir o link do anúncio. O item vem do
+// vendaCache (vendas ativas / pedidos futuros) ou do histFiltradoAtual
+// (histórico), conforme quem chamou.
+
+let vendasFotoItem     = null;
+let vendasFotoEditando = false;
+
+function vendasThumbHtml(item, onclickExpr) {
+  if (!item || !item.thumbnail) return `<div class="venda-thumb-vazio"></div>`;
+  const temInstrucao = !!item.instrucaoDespacho;
+  const titleAttr   = temInstrucao ? 'Tem instrução de despacho — toque pra ver' : 'Toque pra ampliar';
+  const borderStyle = temInstrucao ? ' style="border-color:#f59e0b"' : '';
+  return `<span class="venda-thumb-link" style="cursor:zoom-in" title="${titleAttr}" onclick="${onclickExpr}"><img src="${item.thumbnail}" class="venda-thumb" loading="lazy"${borderStyle}></span>`;
+}
+
+function vendasFotoOverlay() {
+  let overlay = document.getElementById('vendas-foto-overlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'vendas-foto-overlay';
+    overlay.className = 'foto-ampliada-overlay';
+    overlay.innerHTML = '<div class="foto-ampliada-conteudo"><img><div class="foto-ampliada-instrucao"></div></div>';
+    overlay.addEventListener('click', e => { if (e.target === overlay) vendasFecharFoto(); });
+    document.body.appendChild(overlay);
+  }
+  return overlay;
+}
+
+function vendasFecharFoto() {
+  const overlay = document.getElementById('vendas-foto-overlay');
+  if (overlay) overlay.classList.remove('aberto');
+  vendasFotoItem     = null;
+  vendasFotoEditando = false;
+}
+
+function vendasAmpliarFotoItem(item) {
+  if (!item || !item.thumbnail) return;
+  vendasFotoItem     = item;
+  vendasFotoEditando = false;
+  const overlay = vendasFotoOverlay();
+  overlay.querySelector('img').src = item.thumbnail;
+  vendasRenderInstrucaoFoto();
+  overlay.classList.add('aberto');
+}
+
+function vendasAmpliarFoto(shipmentId, idx) {
+  vendasAmpliarFotoItem(vendaCache[String(shipmentId)]?.itensLista?.[idx]);
+}
+
+function vendasAmpliarFotoHistorico(hIdx, idx) {
+  vendasAmpliarFotoItem(histFiltradoAtual[hIdx]?.itensLista?.[idx]);
+}
+
+function vendasRenderInstrucaoFoto() {
+  const item = vendasFotoItem;
+  const area = document.querySelector('#vendas-foto-overlay .foto-ampliada-instrucao');
+  if (!item || !area) return;
+  if (!item.chaveInstrucao) { area.innerHTML = ''; return; }
+  const isAdmin = localStorage.getItem('usuarioSenha') === '199412';
+
+  if (vendasFotoEditando) {
+    area.innerHTML = `
+      <textarea id="vendas-foto-instrucao-txt" placeholder="O que precisa ser feito ao separar esse item...">${instrucaoEscapeHtml(item.instrucaoDespacho || '')}</textarea>
+      <div class="foto-ampliada-instrucao-botoes">
+        <button class="btn-primary" onclick="vendasSalvarInstrucaoFoto()">Salvar</button>
+        <button class="btn-secondary" onclick="vendasFotoEditando = false; vendasRenderInstrucaoFoto()">Cancelar</button>
+      </div>
+    `;
+    document.getElementById('vendas-foto-instrucao-txt')?.focus();
+    return;
+  }
+
+  if (item.instrucaoDespacho) {
+    area.innerHTML = `
+      <div class="foto-ampliada-instrucao-texto">📌 ${instrucaoEscapeHtml(item.instrucaoDespacho)}</div>
+      ${isAdmin ? `<button class="foto-ampliada-instrucao-editar" onclick="vendasFotoEditando = true; vendasRenderInstrucaoFoto()">✏️ editar instrução</button>` : ''}
+    `;
+  } else if (isAdmin) {
+    area.innerHTML = `<button class="foto-ampliada-instrucao-editar" onclick="vendasFotoEditando = true; vendasRenderInstrucaoFoto()">+ adicionar instrução de despacho</button>`;
+  } else {
+    area.innerHTML = '';
+  }
+}
+
+async function vendasSalvarInstrucaoFoto() {
+  const item     = vendasFotoItem;
+  const textarea = document.getElementById('vendas-foto-instrucao-txt');
+  if (!item || !item.chaveInstrucao || !textarea) return;
+  const texto = textarea.value.trim();
+
+  try {
+    const resp = await fetch('/api/instrucoes-despacho', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chave:    item.chaveInstrucao,
+        texto,
+        titulo:   item.titulo,
+        sku:      item.sku,
+        variacao: item.variacao,
+        senha:    localStorage.getItem('usuarioSenha') || '',
+      }),
+    });
+    const out = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(out.error || 'Erro ao salvar');
+
+    item.instrucaoDespacho = texto || null;
+    vendasFotoEditando     = false;
+    vendasRenderInstrucaoFoto();
+    carregarVendas();
+    if (pedidosFuturosCarregado) carregarFuturos();
+  } catch (err) {
+    alert('Erro ao salvar instrução: ' + err.message);
+  }
+}
+
 async function carregarVendas() {
   const reqId   = ++vendasReqId;
   const gen     = contaGen;
@@ -556,9 +674,7 @@ async function carregarVendas() {
       if (multi)      tr.classList.add('venda-multi-header');
       if (v.atendida) tr.classList.add('venda-atendida');
 
-      const imgHtml0 = item0.thumbnail
-        ? `<a href="${item0.permalink || '#'}" target="_blank" class="venda-thumb-link"><img src="${item0.thumbnail}" class="venda-thumb" loading="lazy"></a>`
-        : `<div class="venda-thumb-vazio"></div>`;
+      const imgHtml0 = vendasThumbHtml(item0, `vendasAmpliarFoto('${v.shipmentId}', 0)`);
 
       const flagClass = v.atendida ? 'btn-flag btn-flag-ativo' : 'btn-flag';
       const flagTitle = v.atendida ? 'Remover flag' : 'Marcar como atendido';
@@ -595,9 +711,7 @@ async function carregarVendas() {
         trSub.classList.add('venda-sub-item');
         if (isLast) trSub.classList.add('venda-sub-last');
         if (v.atendida) trSub.classList.add('venda-atendida');
-        const imgHtml = item.thumbnail
-          ? `<a href="${item.permalink || '#'}" target="_blank" class="venda-thumb-link"><img src="${item.thumbnail}" class="venda-thumb" loading="lazy"></a>`
-          : `<div class="venda-thumb-vazio"></div>`;
+        const imgHtml = vendasThumbHtml(item, `vendasAmpliarFoto('${v.shipmentId}', ${i})`);
         const instrucaoHtmlSub = btnInstrucaoHtml(item, v.shipmentId, i, isAdminInstrucao);
         trSub.innerHTML = `
           <td class="venda-sub-indent"></td>
@@ -745,9 +859,7 @@ async function carregarFuturos() {
       if (multi) tr.classList.add('venda-multi-header');
       if (liberaHoje) tr.style.background = 'rgba(234,179,8,0.08)';
 
-      const imgHtml0 = item0.thumbnail
-        ? `<a href="${item0.permalink || '#'}" target="_blank" class="venda-thumb-link"><img src="${item0.thumbnail}" class="venda-thumb" loading="lazy"></a>`
-        : `<div class="venda-thumb-vazio"></div>`;
+      const imgHtml0 = vendasThumbHtml(item0, `vendasAmpliarFoto('${p.shipmentId}', 0)`);
       const instrucaoHtml0 = btnInstrucaoHtml(item0, p.shipmentId, 0, isAdminInstrucao);
 
       tr.innerHTML = `
@@ -767,9 +879,7 @@ async function carregarFuturos() {
         const trSub  = document.createElement('tr');
         trSub.classList.add('venda-sub-item');
         if (isLast) trSub.classList.add('venda-sub-last');
-        const imgHtml = item.thumbnail
-          ? `<a href="${item.permalink || '#'}" target="_blank" class="venda-thumb-link"><img src="${item.thumbnail}" class="venda-thumb" loading="lazy"></a>`
-          : `<div class="venda-thumb-vazio"></div>`;
+        const imgHtml = vendasThumbHtml(item, `vendasAmpliarFoto('${p.shipmentId}', ${i})`);
         const instrucaoHtmlSub = btnInstrucaoHtml(item, p.shipmentId, i, isAdminInstrucao);
         trSub.innerHTML = `
           <td class="td-thumb">${imgHtml}</td>
@@ -823,7 +933,8 @@ async function toggleFlag(shipmentId, btn) {
 
 // ── Histórico de vendas ───────────────────────────────────────
 
-let histDados = [];
+let histDados          = [];
+let histFiltradoAtual  = []; // lista filtrada atualmente renderizada — usada por vendasAmpliarFotoHistorico
 
 function histIniciarDatas() {
   const ini = document.getElementById('hist-data-ini');
@@ -898,7 +1009,8 @@ function renderizarHistorico() {
   if (tabela) tabela.style.display = 'table';
 
   tbody.innerHTML = '';
-  for (const h of filtrado) {
+  histFiltradoAtual = filtrado;
+  filtrado.forEach((h, hIdx) => {
     const dataFmt = (h.dataDespacho || h.data) ? new Date(h.dataDespacho || h.data).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', timeZone: 'America/Sao_Paulo' }) : '—';
     const qtdTotal = (h.itensLista || []).reduce((s, i) => s + (i.quantidade || 1), 0);
     const skus  = [...new Set((h.itensLista || []).map(i => i.sku).filter(Boolean))].join(', ') || '—';
@@ -908,7 +1020,7 @@ function renderizarHistorico() {
       : '<span style="color:#94a3b8;font-size:12px">—</span>';
     const item0 = (h.itensLista || [])[0];
     const imgHtml = item0?.thumbnail
-      ? `<a href="${item0.permalink || '#'}" target="_blank" class="venda-thumb-link"><img src="${item0.thumbnail}" class="venda-thumb" loading="lazy"></a>`
+      ? vendasThumbHtml(item0, `vendasAmpliarFotoHistorico(${hIdx}, 0)`)
       : '<span style="color:#94a3b8;font-size:11px">—</span>';
     const tr = document.createElement('tr');
     tr.innerHTML = `
@@ -922,5 +1034,5 @@ function renderizarHistorico() {
       <td>${atendidoHtml}</td>
     `;
     tbody.appendChild(tr);
-  }
+  });
 }
