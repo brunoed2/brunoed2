@@ -9823,43 +9823,61 @@ async function buscarEstoqueFullPorMlb(c, itensInfo) {
   return fullPorMlb;
 }
 
+// Busca todos os pedidos pagos do período (orders/search não filtra por item, só
+// por vendedor — por isso sempre traz TODO o catálogo vendido, e o chamador filtra
+// depois). Pagina em paralelo (lotes de 8) em vez de sequencial: pra período longo
+// (ex: 12m) isso é a diferença entre dezenas de idas-e-voltas sequenciais e só
+// algumas rodadas paralelas — é o principal motivo do dashboard do fornecedor
+// demorar pra carregar.
+async function buscarTodosPedidosPagos(c, de, ate) {
+  const limit = 50;
+  const paramsBase = {
+    seller:                    c.user_id,
+    'order.status':            'paid',
+    'order.date_created.from': de  + 'T00:00:00.000-03:00',
+    'order.date_created.to':   ate + 'T23:59:59.000-03:00',
+    sort: 'date_asc',
+    limit,
+  };
+  const headers = { Authorization: `Bearer ${c.access_token}` };
+
+  const primeira = await axios.get('https://api.mercadolibre.com/orders/search', {
+    params: { ...paramsBase, offset: 0 }, headers, timeout: 15000,
+  });
+  const todasOrdens = [...(primeira.data.results || [])];
+  const total = Math.min(primeira.data.paging?.total || 0, 5000);
+
+  const offsets = [];
+  for (let offset = limit; offset < total; offset += limit) offsets.push(offset);
+
+  for (let i = 0; i < offsets.length; i += 8) {
+    const chunk = offsets.slice(i, i + 8);
+    const resultados = await Promise.allSettled(chunk.map(offset =>
+      axios.get('https://api.mercadolibre.com/orders/search', {
+        params: { ...paramsBase, offset }, headers, timeout: 15000,
+      })
+    ));
+    for (const r of resultados) {
+      if (r.status === 'fulfilled') todasOrdens.push(...(r.value.data.results || []));
+    }
+  }
+
+  return todasOrdens;
+}
+
 async function buscarDashboardFornecedorPorMlb(c, mlbs, de, ate, data) {
   const mlbSet        = new Set(mlbs);
   const vendasDiarias = {};
   for (const mlb of mlbs) vendasDiarias[mlb] = {};
 
-  let offset = 0;
-  const limit = 50;
-  let paginaTotal = Infinity;
-
-  while (offset < paginaTotal && offset < 5000) {
-    const resp = await axios.get('https://api.mercadolibre.com/orders/search', {
-      params: {
-        seller:                      c.user_id,
-        'order.status':              'paid',
-        'order.date_created.from':   de  + 'T00:00:00.000-03:00',
-        'order.date_created.to':     ate + 'T23:59:59.000-03:00',
-        sort:  'date_asc',
-        limit, offset,
-      },
-      headers: { Authorization: `Bearer ${c.access_token}` },
-      timeout: 15000,
-    });
-
-    const orders = resp.data.results || [];
-    paginaTotal  = resp.data.paging?.total || 0;
-
-    for (const order of orders) {
-      const date = (order.date_created || '').slice(0, 10);
-      for (const oi of (order.order_items || [])) {
-        const mlb = oi.item.id;
-        if (!mlbSet.has(mlb)) continue;
-        vendasDiarias[mlb][date] = (vendasDiarias[mlb][date] || 0) + (oi.quantity || 1);
-      }
+  const todasOrdens = await buscarTodosPedidosPagos(c, de, ate);
+  for (const order of todasOrdens) {
+    const date = (order.date_created || '').slice(0, 10);
+    for (const oi of (order.order_items || [])) {
+      const mlb = oi.item.id;
+      if (!mlbSet.has(mlb)) continue;
+      vendasDiarias[mlb][date] = (vendasDiarias[mlb][date] || 0) + (oi.quantity || 1);
     }
-
-    if (orders.length < limit) break;
-    offset += limit;
   }
 
   const itensInfo = [];
@@ -9967,36 +9985,35 @@ async function buscarDashboardFornecedorPorSku(data, contaNum, skusAlvo, canais,
   if (canais.includes('ml')) {
     const c = (data.contas || {})[contaNum];
     if (c?.access_token && c?.user_id) {
-      const todasOrdens = [];
-      let offset = 0;
-      const limit = 50;
-      let paginaTotal = Infinity;
-      while (offset < paginaTotal && offset < 5000) {
-        const resp = await axios.get('https://api.mercadolibre.com/orders/search', {
-          params: {
-            seller:                    c.user_id,
-            'order.status':            'paid',
-            'order.date_created.from': de  + 'T00:00:00.000-03:00',
-            'order.date_created.to':   ate + 'T23:59:59.000-03:00',
-            sort: 'date_asc', limit, offset,
-          },
-          headers: { Authorization: `Bearer ${c.access_token}` },
-          timeout: 15000,
-        });
-        const orders = resp.data.results || [];
-        paginaTotal  = resp.data.paging?.total || 0;
-        todasOrdens.push(...orders);
-        if (orders.length < limit) break;
-        offset += limit;
+      const todasOrdens = await buscarTodosPedidosPagos(c, de, ate);
+
+      // O item do pedido já vem com o SKU da variação vendida (oi.item.seller_sku) —
+      // não precisa buscar detalhe de cada anúncio pra descobrir o SKU. Isso evita
+      // puxar /items de TODO o catálogo vendido no período (podem ser dezenas/centenas
+      // de anúncios que nada têm a ver com esse fornecedor) só pra filtrar depois;
+      // busca só os MLBs que realmente bateram com algum SKU do fornecedor.
+      const mlbsMatch  = new Set();
+      const skusPorMlb = {}; // mlb -> Set(skuOriginal) — um MLB pode ter mais de 1 SKU do fornecedor (variações)
+      for (const order of todasOrdens) {
+        const date = (order.date_created || '').slice(0, 10);
+        for (const oi of (order.order_items || [])) {
+          const skuNorm = String(oi.item?.seller_sku || '').trim().toUpperCase();
+          if (!skuNorm || !skuSet.has(skuNorm)) continue;
+          const skuOriginal = skusAlvo.find(s => s.toUpperCase() === skuNorm);
+          const mlb = oi.item.id;
+          vendasDiarias[skuOriginal][date] = (vendasDiarias[skuOriginal][date] || 0) + (oi.quantity || 1);
+          mlbsMatch.add(mlb);
+          (skusPorMlb[mlb] || (skusPorMlb[mlb] = new Set())).add(skuOriginal);
+        }
       }
 
-      const mlbsUnicos = [...new Set(todasOrdens.flatMap(o => (o.order_items || []).map(i => i.item.id)))];
+      const mlbsUnicos = [...mlbsMatch];
       const itemInfoMap = {};
       for (let i = 0; i < mlbsUnicos.length; i += 20) {
         const chunk = mlbsUnicos.slice(i, i + 20);
         try {
           const r = await axios.get('https://api.mercadolibre.com/items', {
-            params: { ids: chunk.join(','), attributes: 'id,title,thumbnail,status,seller_custom_field,attributes,variations,shipping,user_product_id' },
+            params: { ids: chunk.join(','), attributes: 'id,title,thumbnail,shipping,user_product_id' },
             headers: { Authorization: `Bearer ${c.access_token}` },
             timeout: 10000,
           });
@@ -10004,7 +10021,7 @@ async function buscarDashboardFornecedorPorSku(data, contaNum, skusAlvo, canais,
             if (entry.code !== 200) continue;
             const b = entry.body;
             itemInfoMap[b.id] = {
-              sku: extrairSku(b), titulo: b.title, thumbnail: b.thumbnail,
+              titulo: b.title, thumbnail: b.thumbnail,
               logisticType: b.shipping?.logistic_type || 'self_service',
               userProductId: b.user_product_id || null,
             };
@@ -10018,29 +10035,16 @@ async function buscarDashboardFornecedorPorSku(data, contaNum, skusAlvo, canais,
       const fullPorMlb = await buscarEstoqueFullPorMlb(c, Object.entries(itemInfoMap).map(([mlb, info]) => ({ mlb, ...info })));
       const estoqueLocal = data.estoque_local || {};
       for (const [mlb, info] of Object.entries(itemInfoMap)) {
-        const skuNorm = String(info.sku).trim().toUpperCase();
-        if (!skuSet.has(skuNorm)) continue;
-        const skuOriginal = skusAlvo.find(s => s.toUpperCase() === skuNorm);
         const full = fullPorMlb[mlb] || 0;
-        if (!produtosInfo[skuOriginal]) {
-          let thumb = info.thumbnail;
-          if (thumb) thumb = thumb.replace(/-[A-Z]\.jpg/, '-O.jpg');
-          const local = estoqueLocal[skuOriginal] !== undefined ? estoqueLocal[skuOriginal] : 0;
-          produtosInfo[skuOriginal] = { titulo: info.titulo, thumbnail: thumb, estoque: local + full };
-        } else {
-          produtosInfo[skuOriginal].estoque += full; // local já foi somado 1x acima, só soma Full de MLBs adicionais
-        }
-      }
-
-      for (const order of todasOrdens) {
-        const date = (order.date_created || '').slice(0, 10);
-        for (const oi of (order.order_items || [])) {
-          const info = itemInfoMap[oi.item.id];
-          if (!info) continue;
-          const skuNorm = String(info.sku).trim().toUpperCase();
-          if (!skuSet.has(skuNorm)) continue;
-          const skuOriginal = skusAlvo.find(s => s.toUpperCase() === skuNorm);
-          vendasDiarias[skuOriginal][date] = (vendasDiarias[skuOriginal][date] || 0) + (oi.quantity || 1);
+        let thumb = info.thumbnail;
+        if (thumb) thumb = thumb.replace(/-[A-Z]\.jpg/, '-O.jpg');
+        for (const skuOriginal of (skusPorMlb[mlb] || [])) {
+          if (!produtosInfo[skuOriginal]) {
+            const local = estoqueLocal[skuOriginal] !== undefined ? estoqueLocal[skuOriginal] : 0;
+            produtosInfo[skuOriginal] = { titulo: info.titulo, thumbnail: thumb, estoque: local + full };
+          } else {
+            produtosInfo[skuOriginal].estoque += full; // local já foi somado 1x acima, só soma Full de MLBs adicionais
+          }
         }
       }
     }
