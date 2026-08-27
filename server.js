@@ -7259,20 +7259,35 @@ app.delete('/api/pedidos/notificados/todos', (_req, res) => {
 // ready_to_ship/ready_to_print assim que os dados da NF são enviados a ele, antes do
 // PDF da etiqueta em si terminar de ser gerado (mesmas 3 URLs tentadas pelo endpoint
 // de download da etiqueta, /api/ml/etiqueta/:shipment_id).
+// Não baixa a etiqueta inteira pra isso — abre a conexão como stream e corta assim
+// que confirma ~200 bytes (o suficiente pra distinguir um PDF de verdade de uma
+// resposta de erro pequena que o ML às vezes devolve com status 200 mesmo assim).
+// O corpo lido é descartado, nunca chega a virar um download real.
 async function mlEtiquetaDisponivel(token, sid) {
   const urls = [
     `https://api.mercadolibre.com/shipment_labels?shipment_ids=${sid}&response_type=pdf`,
     `https://api.mercadolibre.com/shipment_labels?shipment_ids=${sid}&response_type=zpl2`,
     `https://api.mercadolibre.com/shipments/${sid}/labels?response_type=pdf`,
   ];
+  const LIMIAR = 200;
   for (const url of urls) {
     try {
       const resp = await axios.get(url, {
         headers: { Authorization: `Bearer ${token}` },
-        responseType: 'arraybuffer',
+        responseType: 'stream',
         timeout: 15000,
       });
-      if (resp.status === 200 && resp.data.byteLength > 100) return true;
+      if (resp.status !== 200) { resp.data.destroy(); continue; }
+      const tamanho = await new Promise(resolve => {
+        let total = 0;
+        resp.data.on('data', chunk => {
+          total += chunk.length;
+          if (total >= LIMIAR) { resp.data.destroy(); resolve(total); }
+        });
+        resp.data.on('end',   () => resolve(total));
+        resp.data.on('error', () => resolve(total));
+      });
+      if (tamanho > 100) return true;
     } catch {}
   }
   return false;
