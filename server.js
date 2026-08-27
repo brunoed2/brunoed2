@@ -7254,6 +7254,30 @@ app.delete('/api/pedidos/notificados/todos', (_req, res) => {
   res.json({ ok: true, mensagem: 'Lista de notificados limpa — próximo ciclo verifica todos os pedidos' });
 });
 
+// Confirma que a etiqueta de fato existe pra baixar (PDF/ZPL válido) — não só que o
+// status/substatus do shipment "diz" que está pronta. O ML pode reportar
+// ready_to_ship/ready_to_print assim que os dados da NF são enviados a ele, antes do
+// PDF da etiqueta em si terminar de ser gerado (mesmas 3 URLs tentadas pelo endpoint
+// de download da etiqueta, /api/ml/etiqueta/:shipment_id).
+async function mlEtiquetaDisponivel(token, sid) {
+  const urls = [
+    `https://api.mercadolibre.com/shipment_labels?shipment_ids=${sid}&response_type=pdf`,
+    `https://api.mercadolibre.com/shipment_labels?shipment_ids=${sid}&response_type=zpl2`,
+    `https://api.mercadolibre.com/shipments/${sid}/labels?response_type=pdf`,
+  ];
+  for (const url of urls) {
+    try {
+      const resp = await axios.get(url, {
+        headers: { Authorization: `Bearer ${token}` },
+        responseType: 'arraybuffer',
+        timeout: 15000,
+      });
+      if (resp.status === 200 && resp.data.byteLength > 100) return true;
+    } catch {}
+  }
+  return false;
+}
+
 async function verificarNovosShipments() {
   const temWhatsApp = CALLMEBOT_PHONE_PEDIDOS && CALLMEBOT_APIKEY_PEDIDOS;
   if (!temWhatsApp) return;
@@ -7301,6 +7325,14 @@ async function verificarNovosShipments() {
           }
           if (!LABEL_STATUSES.has(shipment.status) || !LABEL_SUBSTATUSES.has(shipment.substatus)) {
             // etiqueta ainda não disponível — verifica de novo no próximo ciclo
+            continue;
+          }
+          // Status/substatus dizem "pronta", mas o ML pode reportar isso assim que os
+          // dados da NF chegam, antes do PDF em si existir — confirma baixando de
+          // verdade antes de notificar o operador (senão ele vê "Novos pedidos" e o
+          // botão de imprimir etiqueta ainda não funciona).
+          if (!(await mlEtiquetaDisponivel(c.access_token, sid))) {
+            addLog(`[pedido] #${order.id} (shipment ${sid}) status/substatus ok mas etiqueta ainda não gerada — aguarda próximo ciclo`, 'info');
             continue;
           }
 
@@ -7839,6 +7871,9 @@ app.post('/api/push/teste', async (req, res) => {
 // ── Central de notificações (histórico, exibido no sino do app) ───
 
 app.get('/api/notificacoes', (req, res) => {
+  // No-store: celular/navegador não pode devolver uma versão em cache quando o
+  // usuário abre o sino logo depois de um push chegar — tem que ser sempre fresco.
+  res.set('Cache-Control', 'no-store');
   const hist = loadNotifHistorico();
   const todos = Array.isArray(hist.itens) ? hist.itens : [];
   const senha = req.query.senha ? String(req.query.senha) : null;
