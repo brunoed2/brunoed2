@@ -832,9 +832,16 @@ span.btn-instrucao { cursor: default; }
   padding: 10px 12px;
   font-size: 13px;
   color: #fde68a;
-  white-space: pre-wrap;
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
   overflow-y: auto;
   max-height: 22vh;
+}
+.foto-ampliada-instrucao-texto .pin-texto {
+  white-space: pre-wrap;
+  flex: 1;
+  min-width: 0;
 }
 .foto-ampliada-instrucao-editar {
   align-self: flex-start;

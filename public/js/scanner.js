@@ -299,7 +299,7 @@ function scannerRenderInstrucao(idx) {
 
   if (item.instrucaoDespacho) {
     area.innerHTML = `
-      <div class="foto-ampliada-instrucao-texto">📌 ${scannerEscapeHtml(item.instrucaoDespacho)}</div>
+      <div class="foto-ampliada-instrucao-texto"><span>📌</span><span class="pin-texto">${scannerEscapeHtml(item.instrucaoDespacho)}</span></div>
       ${isAdmin ? `<button class="foto-ampliada-instrucao-editar" onclick="scannerEditarInstrucao(${idx})">✏️ editar instrução</button>` : ''}
     `;
   } else if (isAdmin) {

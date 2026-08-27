@@ -578,7 +578,7 @@ function vendasRenderInstrucaoFoto() {
 
   if (item.instrucaoDespacho) {
     area.innerHTML = `
-      <div class="foto-ampliada-instrucao-texto">📌 ${instrucaoEscapeHtml(item.instrucaoDespacho)}</div>
+      <div class="foto-ampliada-instrucao-texto"><span>📌</span><span class="pin-texto">${instrucaoEscapeHtml(item.instrucaoDespacho)}</span></div>
       ${isAdmin ? `<button class="foto-ampliada-instrucao-editar" onclick="vendasFotoEditando = true; vendasRenderInstrucaoFoto()">✏️ editar instrução</button>` : ''}
     `;
   } else if (isAdmin) {
