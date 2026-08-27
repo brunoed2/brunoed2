@@ -1252,7 +1252,7 @@ app.post('/api/estoque-local/sync', async (req, res) => {
         if (!sku || data.estoque_local[sku] === undefined) continue;
         const qty = oi.quantity || 1;
         const anterior = data.estoque_local[sku];
-        data.estoque_local[sku] = Math.max(0, anterior - qty);
+        data.estoque_local[sku] = anterior - qty;
         addEstoqueHistorico(data, { sku, anterior, novo: data.estoque_local[sku], tipo: 'venda', pedido_id: order.id, usuario: 'Automático' });
         deducted.push({ sku, qty });
       }
@@ -10149,7 +10149,7 @@ async function verificarVendasFornecedoresPorSku() {
                 if (!skuOriginal || data.estoque_local[skuOriginal] === undefined) continue;
                 const qty      = oi.quantity || 1;
                 const anterior = data.estoque_local[skuOriginal];
-                data.estoque_local[skuOriginal] = Math.max(0, anterior - qty);
+                data.estoque_local[skuOriginal] = anterior - qty;
                 addEstoqueHistorico(data, { sku: skuOriginal, anterior, novo: data.estoque_local[skuOriginal], tipo: 'venda', pedido_id: orderIdStr, usuario: 'Automático (ML)' });
                 deducted.push({ sku: skuOriginal, qty });
               }
@@ -10190,7 +10190,7 @@ async function verificarVendasFornecedoresPorSku() {
             const skuOriginal = forn.skus.find(s => String(s).trim().toUpperCase() === skuNorm);
             if (skuOriginal && data.estoque_local[skuOriginal] !== undefined) {
               const anterior = data.estoque_local[skuOriginal];
-              data.estoque_local[skuOriginal] = Math.max(0, anterior - (it.quantidade || 1));
+              data.estoque_local[skuOriginal] = anterior - (it.quantidade || 1);
               addEstoqueHistorico(data, {
                 sku: skuOriginal, anterior, novo: data.estoque_local[skuOriginal],
                 tipo: 'venda', pedido_id: pedido.orderSn, usuario: 'Automático (Shopee)',
