@@ -746,6 +746,7 @@ async function marcarAtendidoSelecionadas() {
       });
       atualizarBotaoSelecionadas();
       aplicarFiltroAtendidos();
+      atualizarResumoSeparar();
     } else {
       alert('Erro ao salvar. Tente novamente.');
     }
@@ -882,6 +883,63 @@ function renderizarChipsSKU(tipo, lista) {
   container.innerHTML = skus.map(sku =>
     `<button class="chip-sku" data-sku="${sku}" onclick="filtrarPorSku('${tipo}', this.dataset.sku)">${sku} · ${skuMap.get(sku)}un</button>`
   ).join('');
+}
+
+function chaveResumoItem(item) {
+  // '—' é o placeholder do backend pra "sem SKU cadastrado" — não pode ser
+  // usado como chave de agrupamento, senão produtos diferentes sem SKU
+  // se misturam num único grupo. Nesse caso agrupa por título+variação.
+  return (item.sku && item.sku !== '—')
+    ? `sku:${item.sku}`
+    : `titulo:${item.titulo || ''}|${item.variacao || ''}`;
+}
+
+function atualizarResumoSeparar() {
+  const card      = document.getElementById('vendas-resumo-card');
+  const container = document.getElementById('vendas-resumo-lista');
+  if (!card || !container) return;
+
+  const skuMap = new Map();
+  document.querySelectorAll('#tabela-vendas-body > tr:not(.venda-sub-item)').forEach(tr => {
+    if (tr.classList.contains('venda-atendida')) return;
+    const cb    = tr.querySelector('.check-venda');
+    const venda = cb && vendaCache[cb.dataset.shipmentId];
+    if (!venda) return;
+    for (const item of (venda.itensLista || [])) {
+      if (!item.titulo && !item.sku) continue;
+      const chave = chaveResumoItem(item);
+      const atual = skuMap.get(chave);
+      if (atual) {
+        atual.quantidade += (item.quantidade || 0);
+      } else {
+        skuMap.set(chave, {
+          titulo:     item.titulo || item.sku,
+          variacao:   item.variacao || '',
+          thumbnail:  item.thumbnail || '',
+          quantidade: item.quantidade || 0,
+        });
+      }
+    }
+  });
+
+  const lista = [...skuMap.values()].sort((a, b) => b.quantidade - a.quantidade || a.titulo.localeCompare(b.titulo));
+
+  if (!lista.length) {
+    card.style.display  = 'none';
+    container.innerHTML = '';
+    return;
+  }
+
+  card.style.display  = '';
+  container.innerHTML = lista.map(it => `
+    <div class="resumo-item">
+      ${it.thumbnail
+        ? `<img src="${it.thumbnail}" class="resumo-item-thumb" loading="lazy">`
+        : `<div class="resumo-item-thumb-vazio"></div>`}
+      <span class="resumo-item-qtd">${it.quantidade}×</span>
+      <span class="resumo-item-titulo" title="${it.titulo}${it.variacao ? ` (${it.variacao})` : ''}">${it.titulo}</span>
+    </div>
+  `).join('');
 }
 
 function filtrarPorSku(tipo, sku) {
@@ -1143,6 +1201,7 @@ async function carregarVendas() {
     tabela.style.display = 'table';
     renderizarChipsSKU('vendas', todasVendas);
     aplicarFiltroAtendidos();
+    atualizarResumoSeparar();
   } catch {
     loading.style.display = 'none';
     erroEl.textContent   = 'Erro ao carregar vendas.';
@@ -1319,6 +1378,7 @@ async function toggleFlag(shipmentId, btn) {
       next = next.nextElementSibling;
     }
     aplicarFiltroAtendidos();
+    atualizarResumoSeparar();
   } catch {}
   btn.disabled = false;
 }
