@@ -192,6 +192,46 @@ async function lucroShopeeCarregarConfig() {
   } catch {}
 }
 
+// Imposto da Shopee não tinha nenhuma forma de ser configurado pela UI (só o ML tinha,
+// via aba DRE) — taxa ficava sempre em 0 e a coluna Imposto da tabela Shopee sempre "—".
+// Mostra um input por mês presente na lista atual de vendas Shopee, igual à ideia da DRE.
+async function dreSetTaxaMesShopee(input, mes) {
+  const conta = lucroContaAtual();
+  const taxa  = parseFloat(input.value.replace(',', '.'));
+  const val   = isNaN(taxa) ? null : taxa;
+  try {
+    await fetch('/api/lucro/taxa-imposto-mes-shopee', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ conta, mes, taxa: val ?? 0 }),
+    });
+    lucroShopeeConfig.taxa_imposto_por_mes = lucroShopeeConfig.taxa_imposto_por_mes || {};
+    if (val !== null) lucroShopeeConfig.taxa_imposto_por_mes[mes] = val;
+    else delete lucroShopeeConfig.taxa_imposto_por_mes[mes];
+    if (lucroShopeeVendasRaw.length) lucroRecalcularERenderizar();
+  } catch {}
+}
+
+function lucroShopeeRenderizarImpostoConfig(vendas) {
+  const cont = document.getElementById('lucro-shopee-imposto-config');
+  if (!cont) return;
+  const meses = [...new Set(vendas.map(v => lucroDataLocalStr(v.data).slice(0, 7)))].sort();
+  if (!meses.length) { cont.innerHTML = ''; return; }
+  const porMes = lucroShopeeConfig.taxa_imposto_por_mes || {};
+  cont.innerHTML = meses.map(mes => {
+    const [y, mo]  = mes.split('-');
+    const nomeMes  = `${NOMES_MES[parseInt(mo) - 1]}/${y.slice(2)}`;
+    const val      = porMes[mes] !== undefined ? porMes[mes] : '';
+    return `<label style="font-size:12px;color:#64748b;display:flex;align-items:center;gap:4px">
+      Imposto ${nomeMes}
+      <input type="number" class="lucro-custo-input dre-taxa-input" style="width:60px" step="0.1" min="0" max="100"
+        value="${val}" placeholder="—"
+        onchange="dreSetTaxaMesShopee(this, '${mes}')"
+        title="Imposto sobre receita Shopee para ${nomeMes} (%)">%
+    </label>`;
+  }).join('');
+}
+
 // A Shopee permite variações com preços diferentes pro mesmo item_id (ex: "1 unidade" x
 // "kit 2 unidades") — o custo precisa ser por item_id+model_id, não só por item_id, senão
 // duas variações do mesmo anúncio compartilham o mesmo custo por engano.
@@ -706,6 +746,8 @@ function lucroShopeeRenderizarTabela(vendas) {
 
   const ativas = vendas.filter(v => !v.cancelado);
   if (totalEl) totalEl.textContent = `${ativas.length} venda${ativas.length !== 1 ? 's' : ''}`;
+
+  lucroShopeeRenderizarImpostoConfig(vendas);
 
   if (!vendas.length) {
     tabela.style.display = 'none';
