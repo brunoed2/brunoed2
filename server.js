@@ -816,6 +816,12 @@ function proximaMeiaNoiteBrasiliaTs() {
   localDate.setUTCHours(24, 0, 0, 0); // vira a próxima meia-noite "local"
   return localDate.getTime() + OFFSET_BRASILIA_MS;
 }
+// Converte um timestamp (ms) pro dia calendário de Brasília, no formato YYYY-MM-DD.
+// Necessário porque o servidor roda em UTC (Railway) — new Date(ms).toISOString()
+// já mostra o dia seguinte a partir das 21h de Brasília.
+function dataBRDeTimestamp(ms) {
+  return new Date(ms - OFFSET_BRASILIA_MS).toISOString().slice(0, 10);
+}
 function agendarLimpezaCodigosRecebimento() {
   const delay = Math.max(proximaMeiaNoiteBrasiliaTs() - Date.now(), 1000);
   setTimeout(() => {
@@ -10103,7 +10109,7 @@ async function buscarDashboardFornecedorPorSku(data, contaNum, skusAlvo, canais,
   if (canais.includes('shopee')) {
     const itensShopee = await buscarItensShopeePeriodoLeve(data, contaNum, de, ate);
     for (const pedido of itensShopee) {
-      const date = new Date(pedido.data).toISOString().slice(0, 10);
+      const date = dataBRDeTimestamp(pedido.data);
       for (const it of pedido.itens) {
         const skuNorm = String(it.sku).trim().toUpperCase();
         if (!skuSet.has(skuNorm)) continue;
@@ -10288,9 +10294,9 @@ app.get('/api/fornecedor/dashboard', async (req, res) => {
   }
 
   // Intervalo de datas (padrão: últimos 6 meses)
-  const hoje  = new Date();
-  const de    = req.query.de  || new Date(hoje.getTime() - 180 * 24 * 3600 * 1000).toISOString().slice(0, 10);
-  const ate   = req.query.ate || hoje.toISOString().slice(0, 10);
+  const hoje  = Date.now();
+  const de    = req.query.de  || dataBRDeTimestamp(hoje - 180 * 24 * 3600 * 1000);
+  const ate   = req.query.ate || dataBRDeTimestamp(hoje);
   const force = req.query.force === '1';
 
   // Serve do cache se ainda válido (1 hora) — uma entrada de cache por fornecedor

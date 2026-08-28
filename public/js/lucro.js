@@ -29,6 +29,13 @@ function lucroHoje() {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
 
+// Dia local (não toISOString/UTC) de um timestamp/Date — toISOString() mostra o
+// dia seguinte a partir das 21h de Brasília e bagunça comparação de custo por data.
+function lucroDataLocalStr(dataOuMs) {
+  const d = new Date(dataOuMs);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
 function lucroInitDatas() {
   const hoje = lucroHoje();
   const de  = document.getElementById('lucro-data-de');
@@ -242,7 +249,7 @@ function lucroShopeeCustoNaData(itemId, modelId, dataVendaMs) {
     const custos = lucroShopeeConfig.custos || {};
     return custos[chave] ?? custos[itemId] ?? 0;
   }
-  const dataISO = new Date(dataVendaMs).toISOString().slice(0, 10);
+  const dataISO = lucroDataLocalStr(dataVendaMs);
   let valor = 0;
   for (const h of hist) {
     if (h.desde <= dataISO) valor = h.valor; else break;
@@ -253,7 +260,7 @@ function lucroShopeeCustoNaData(itemId, modelId, dataVendaMs) {
 function lucroShopeeCalcular(raw) {
   const { taxa_imposto = 0, taxa_imposto_por_mes = {} } = lucroShopeeConfig;
   return raw.map(v => {
-    const mes     = new Date(v.data).toISOString().slice(0, 7);
+    const mes     = lucroDataLocalStr(v.data).slice(0, 7);
     const taxa    = mes in taxa_imposto_por_mes ? taxa_imposto_por_mes[mes] : taxa_imposto;
     const custo   = v.itens.reduce((s, i) => s + lucroShopeeCustoNaData(i.itemId, i.modelId, v.data) * i.quantidade, 0);
     const frete   = v.freteReal ?? 0;
@@ -713,7 +720,7 @@ function lucroShopeeRenderizarTabela(vendas) {
     const qtdTotal = v.itens.reduce((s, i) => s + i.quantidade, 0);
     const chave0   = lucroShopeeChave(item0.itemId, item0.modelId);
     const titulo0  = `${item0.titulo || '—'}${item0.variacao ? `<br><span style="color:#94a3b8;font-size:11px">${item0.variacao}</span>` : ''}`;
-    const dataVdata = new Date(v.data).toISOString().slice(0, 10);
+    const dataVdata = lucroDataLocalStr(v.data);
 
     if (v.cancelado) {
       const tr = document.createElement('tr');
