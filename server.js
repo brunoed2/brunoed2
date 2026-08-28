@@ -9943,7 +9943,7 @@ async function buscarDashboardFornecedorPorMlb(c, mlbs, de, ate, data) {
 
   const todasOrdens = await buscarTodosPedidosPagos(c, de, ate);
   for (const order of todasOrdens) {
-    const date = (order.date_created || '').slice(0, 10);
+    const date = order.date_created ? dataBRDeTimestamp(new Date(order.date_created).getTime()) : '';
     for (const oi of (order.order_items || [])) {
       const mlb = oi.item.id;
       if (!mlbSet.has(mlb)) continue;
@@ -10066,7 +10066,7 @@ async function buscarDashboardFornecedorPorSku(data, contaNum, skusAlvo, canais,
       const mlbsMatch  = new Set();
       const skusPorMlb = {}; // mlb -> Set(skuOriginal) — um MLB pode ter mais de 1 SKU do fornecedor (variações)
       for (const order of todasOrdens) {
-        const date = (order.date_created || '').slice(0, 10);
+        const date = order.date_created ? dataBRDeTimestamp(new Date(order.date_created).getTime()) : '';
         for (const oi of (order.order_items || [])) {
           const skuNorm = String(oi.item?.seller_sku || '').trim().toUpperCase();
           if (!skuNorm || !skuSet.has(skuNorm)) continue;
@@ -10332,8 +10332,15 @@ app.get('/api/fornecedor/dashboard', async (req, res) => {
       ? await buscarDashboardFornecedorPorMlb(c, mlbs, de, ate, data)
       : await buscarDashboardFornecedorPorSku(data, contaNum, skusAlvo, canais, de, ate);
 
-    data.fornecedor_dashboard_cache[fornecedor.id] = resultado;
-    saveData(data);
+    // Recarrega data.json aqui, em vez de reusar a cópia carregada antes das chamadas
+    // à API do ML/Shopee (que podem levar vários segundos) — nesse intervalo outra
+    // rotina (ex: verificarVendasFornecedoresPorSku, a cada 3min) pode ter alterado
+    // estoque_local/fornecedor_vendas_notificadas, e um saveData() da cópia velha
+    // reverteria essa mudança em silêncio (mesma classe de bug de [[race-condition-data-json]]).
+    const dataFresca = loadData();
+    dataFresca.fornecedor_dashboard_cache = dataFresca.fornecedor_dashboard_cache || {};
+    dataFresca.fornecedor_dashboard_cache[fornecedor.id] = resultado;
+    saveData(dataFresca);
     res.json(resultado);
   } catch (err) {
     addLog(`[Fornecedor] Erro dashboard (${fornecedor.id}): ${err.response?.data?.message || err.message}`, 'error');
