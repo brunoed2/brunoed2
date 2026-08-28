@@ -109,7 +109,7 @@ async function lucroCarregarConfig() {
     const cfg = await fetch(`/api/lucro/config?conta=${conta}`).then(r => r.json());
     if (contaGen !== gen) return; // resposta de conta antiga — descarta
     lucroConfig = { taxa_imposto: 0, taxa_imposto_por_mes: {}, frete_medio: 0, custos: {}, ...cfg };
-    if (lucroVendasRaw.length) lucroRecalcularERenderizar();
+    if (lucroVendasRaw.length || lucroShopeeVendasRaw.length) lucroRecalcularERenderizar();
   } catch {}
 }
 
@@ -127,7 +127,7 @@ async function dreSetTaxaMes(input, mes) {
     lucroConfig.taxa_imposto_por_mes = lucroConfig.taxa_imposto_por_mes || {};
     if (val !== null) lucroConfig.taxa_imposto_por_mes[mes] = val;
     else delete lucroConfig.taxa_imposto_por_mes[mes];
-    if (lucroVendasRaw.length) lucroRecalcularERenderizar();
+    if (lucroVendasRaw.length || lucroShopeeVendasRaw.length) lucroRecalcularERenderizar();
     input.style.borderColor = '#86efac';
     setTimeout(() => { input.style.borderColor = ''; }, 1200);
   } catch {
@@ -190,46 +190,6 @@ async function lucroShopeeCarregarConfig() {
     lucroShopeeConfig = { taxa_imposto: 0, taxa_imposto_por_mes: {}, custos: {}, custos_historico: {}, ...cfg };
     if (lucroShopeeVendasRaw.length) lucroRecalcularERenderizar();
   } catch {}
-}
-
-// Imposto da Shopee não tinha nenhuma forma de ser configurado pela UI (só o ML tinha,
-// via aba DRE) — taxa ficava sempre em 0 e a coluna Imposto da tabela Shopee sempre "—".
-// Mostra um input por mês presente na lista atual de vendas Shopee, igual à ideia da DRE.
-async function dreSetTaxaMesShopee(input, mes) {
-  const conta = lucroContaAtual();
-  const taxa  = parseFloat(input.value.replace(',', '.'));
-  const val   = isNaN(taxa) ? null : taxa;
-  try {
-    await fetch('/api/lucro/taxa-imposto-mes-shopee', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ conta, mes, taxa: val ?? 0 }),
-    });
-    lucroShopeeConfig.taxa_imposto_por_mes = lucroShopeeConfig.taxa_imposto_por_mes || {};
-    if (val !== null) lucroShopeeConfig.taxa_imposto_por_mes[mes] = val;
-    else delete lucroShopeeConfig.taxa_imposto_por_mes[mes];
-    if (lucroShopeeVendasRaw.length) lucroRecalcularERenderizar();
-  } catch {}
-}
-
-function lucroShopeeRenderizarImpostoConfig(vendas) {
-  const cont = document.getElementById('lucro-shopee-imposto-config');
-  if (!cont) return;
-  const meses = [...new Set(vendas.map(v => lucroDataLocalStr(v.data).slice(0, 7)))].sort();
-  if (!meses.length) { cont.innerHTML = ''; return; }
-  const porMes = lucroShopeeConfig.taxa_imposto_por_mes || {};
-  cont.innerHTML = meses.map(mes => {
-    const [y, mo]  = mes.split('-');
-    const nomeMes  = `${NOMES_MES[parseInt(mo) - 1]}/${y.slice(2)}`;
-    const val      = porMes[mes] !== undefined ? porMes[mes] : '';
-    return `<label style="font-size:12px;color:#64748b;display:flex;align-items:center;gap:4px">
-      Imposto ${nomeMes}
-      <input type="number" class="lucro-custo-input dre-taxa-input" style="width:60px" step="0.1" min="0" max="100"
-        value="${val}" placeholder="—"
-        onchange="dreSetTaxaMesShopee(this, '${mes}')"
-        title="Imposto sobre receita Shopee para ${nomeMes} (%)">%
-    </label>`;
-  }).join('');
 }
 
 // A Shopee permite variações com preços diferentes pro mesmo item_id (ex: "1 unidade" x
@@ -297,8 +257,10 @@ function lucroShopeeCustoNaData(itemId, modelId, dataVendaMs) {
   return valor;
 }
 
+// Imposto (Simples Nacional) é sobre a receita total da empresa, não muda por canal —
+// usa a mesma taxa mensal configurada na aba DRE (ML), não uma taxa separada da Shopee.
 function lucroShopeeCalcular(raw) {
-  const { taxa_imposto = 0, taxa_imposto_por_mes = {} } = lucroShopeeConfig;
+  const { taxa_imposto = 0, taxa_imposto_por_mes = {} } = lucroConfig;
   return raw.map(v => {
     const mes     = lucroDataLocalStr(v.data).slice(0, 7);
     const taxa    = mes in taxa_imposto_por_mes ? taxa_imposto_por_mes[mes] : taxa_imposto;
@@ -746,8 +708,6 @@ function lucroShopeeRenderizarTabela(vendas) {
 
   const ativas = vendas.filter(v => !v.cancelado);
   if (totalEl) totalEl.textContent = `${ativas.length} venda${ativas.length !== 1 ? 's' : ''}`;
-
-  lucroShopeeRenderizarImpostoConfig(vendas);
 
   if (!vendas.length) {
     tabela.style.display = 'none';
