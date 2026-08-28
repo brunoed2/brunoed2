@@ -6569,7 +6569,10 @@ async function buscarVendasShopeeComCustos(data, conta, dateFrom, dateTo) {
     (rd.data.response?.order_list || []).forEach(o => { detalhesPorSn[o.order_sn] = o; });
   }
 
-  // Comissão/valor líquido real — só para pedidos não cancelados, em lotes de 10 (paralelo)
+  // Comissão/valor líquido real — só para pedidos não cancelados, em lotes de 10 (paralelo).
+  // A Shopee às vezes falha/expira numa chamada isolada em meio ao lote (timeout, rate limit) sem
+  // que o pedido tenha nada de especial — por isso 1 retry antes de desistir e logar o motivo real,
+  // em vez de engolir o erro e deixar o pedido silenciosamente sem frete calculado.
   const escrowPorSn = {};
   const pendentes = orderSns.filter(sn => {
     const det = detalhesPorSn[sn];
@@ -6577,13 +6580,22 @@ async function buscarVendasShopeeComCustos(data, conta, dateFrom, dateTo) {
   });
   for (let i = 0; i < pendentes.length; i += 10) {
     await Promise.all(pendentes.slice(i, i + 10).map(async (sn) => {
-      try {
-        const pathE   = '/api/v2/payment/get_escrow_detail';
-        const paramsE = shopeeParams(pathE, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
-        paramsE.order_sn = sn;
-        const re = await axios.get(`${SHOPEE_BASE}/payment/get_escrow_detail`, { params: paramsE, timeout: 10000 });
-        escrowPorSn[sn] = re.data.response?.order_income || null;
-      } catch { escrowPorSn[sn] = null; }
+      const pathE   = '/api/v2/payment/get_escrow_detail';
+      for (let tentativa = 0; tentativa < 2; tentativa++) {
+        try {
+          const paramsE = shopeeParams(pathE, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
+          paramsE.order_sn = sn;
+          const re = await axios.get(`${SHOPEE_BASE}/payment/get_escrow_detail`, { params: paramsE, timeout: 10000 });
+          if (re.data.error) throw new Error(re.data.message || re.data.error);
+          escrowPorSn[sn] = re.data.response?.order_income || null;
+          return;
+        } catch (err) {
+          if (tentativa === 1) {
+            addLog(`Lucro Shopee: escrow do pedido ${sn} falhou — ${err.message}`, 'erro');
+            escrowPorSn[sn] = null;
+          }
+        }
+      }
     }));
   }
 
@@ -6605,8 +6617,11 @@ async function buscarVendasShopeeComCustos(data, conta, dateFrom, dateTo) {
     const receita     = income?.order_selling_price ?? receitaItens;
     const taxaShopee  = income ? (income.commission_fee || 0) + (income.service_fee || 0) : 0;
     const escrow      = income?.escrow_amount ?? null;
-    const freteRealBruto = (income && escrow != null) ? (receita - taxaShopee - escrow) : 0;
-    const freteReal   = Math.round(freteRealBruto * 100) / 100; // limpa ruído de ponto flutuante
+    // null = Shopee ainda não devolveu o escrow desse pedido (pendente) — diferente de frete
+    // realmente R$0,00. O frontend precisa diferenciar os dois casos, não tratar como igual.
+    const freteReal = (income && escrow != null)
+      ? Math.round((receita - taxaShopee - escrow) * 100) / 100 // limpa ruído de ponto flutuante
+      : null;
     return {
       orderId:  sn,
       data:     (det.create_time || 0) * 1000,

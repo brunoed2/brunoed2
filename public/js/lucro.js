@@ -715,6 +715,11 @@ function lucroShopeeRenderizarTabela(vendas) {
   }
 
   const fmtCusto = (val) => val > 0 ? lucroFmt(val) : '—';
+  // freteReal null = Shopee ainda não liberou o escrow desse pedido (frete indisponível),
+  // diferente de um frete que realmente é R$0,00 — não dá pra mostrar os dois como "—" iguais.
+  const fmtFreteShopee = (v) => v.freteReal === null
+    ? `<span style="color:#f59e0b" title="Shopee ainda não confirmou o valor do frete desse pedido">pendente</span>`
+    : fmtCusto(v.frete);
 
   vendas.forEach(v => {
     const item0    = v.itens[0] || {};
@@ -751,7 +756,7 @@ function lucroShopeeRenderizarTabela(vendas) {
       <td class="col-num">${qtdTotal}</td>
       <td class="col-num">${lucroFmt(v.receita)}</td>
       <td class="col-num lucro-neg-leve">${fmtCusto(v.taxaShopee)}</td>
-      <td class="col-num lucro-neg-leve">${fmtCusto(v.frete)}</td>
+      <td class="col-num lucro-neg-leve">${fmtFreteShopee(v)}</td>
       <td class="col-num">
         ${item0.itemId
           ? `${custoSalvo > 0 ? `<span class="lucro-custo-total">${fmtCusto(custoSalvo * qtdTotal)}</span>` : ''}
