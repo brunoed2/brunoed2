@@ -358,7 +358,7 @@
     </div>
   </div>
   <div class="h-right">
-    <div id="version-badge">v468</div>
+    <div id="version-badge">v469</div>
     <button class="btn-sair" id="notif-central-btn" onclick="notifCentralToggle()" aria-label="Notificações">
       🔔
       <span id="notif-central-badge"></span>
@@ -535,8 +535,13 @@
   let _semMap       = {};
 
   // ── Datas padrão: últimos 30 dias ────────────────────────────
-  function hojeStr()   { return new Date().toISOString().slice(0, 10); }
-  function addDias(n)  { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); }
+  // Usa data local (não toISOString/UTC) — no Brasil (UTC-3), toISOString()
+  // já mostra o dia seguinte a partir das 21h locais.
+  function dataLocalStr(d) {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+  function hojeStr()   { return dataLocalStr(new Date()); }
+  function addDias(n)  { const d = new Date(); d.setDate(d.getDate() + n); return dataLocalStr(d); }
 
   document.getElementById('inp-ate').value = hojeStr();
   document.getElementById('inp-de').value  = addDias(-30);
