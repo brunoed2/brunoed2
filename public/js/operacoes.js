@@ -293,7 +293,6 @@ function atualizarResumoSeparar() {
 
   const skuMap = new Map();
   document.querySelectorAll('#tabela-vendas-body > tr:not(.venda-sub-item)').forEach(tr => {
-    if (tr.classList.contains('venda-atendida')) return;
     const cb    = tr.querySelector('.check-venda');
     const venda = cb && vendaCache[cb.dataset.shipmentId];
     if (!venda) return;
