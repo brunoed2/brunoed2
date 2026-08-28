@@ -836,6 +836,33 @@ function agendarLimpezaCodigosRecebimento() {
 }
 agendarLimpezaCodigosRecebimento();
 
+// Lembrete diário às 8h de Brasília — só dispara se algum dos códigos ainda
+// estiver vazio (evita notificar à toa quando o admin já preencheu de manhã cedo).
+function proximoHorario8hBrasiliaTs() {
+  const localDate = new Date(Date.now() - OFFSET_BRASILIA_MS);
+  const alvo = new Date(localDate);
+  alvo.setUTCHours(8, 0, 0, 0);
+  if (alvo.getTime() <= localDate.getTime()) alvo.setUTCDate(alvo.getUTCDate() + 1);
+  return alvo.getTime() + OFFSET_BRASILIA_MS;
+}
+function agendarLembreteCodigoRecebimento() {
+  const delay = Math.max(proximoHorario8hBrasiliaTs() - Date.now(), 1000);
+  setTimeout(async () => {
+    try {
+      const dados     = loadCodigosRecebimento();
+      const faltando  = Object.values(dados).filter(c => !String(c.codigo || '').trim());
+      if (faltando.length) {
+        const texto = `📝 Lembrete: preencher o código de recebimento de hoje (${faltando.map(c => c.label).join(', ')})`;
+        await notificar(texto, 'codigo_recebimento');
+      }
+    } catch (e) {
+      addLog(`[codigo-recebimento] erro no lembrete diário: ${e.message}`, 'warn');
+    }
+    agendarLembreteCodigoRecebimento();
+  }, delay);
+}
+agendarLembreteCodigoRecebimento();
+
 // ── Rotas de configuração ─────────────────────────────────────
 
 app.get('/api/config', (req, res) => {
@@ -6987,6 +7014,7 @@ const NOTIF_CATEGORIAS = {
   contas_pagar:     '📅 Contas a pagar vencendo',
   shopee_boost:     '🚀 Impulso automático Shopee',
   prazo_despacho:   '⏰ Faltam 30min pro despacho',
+  codigo_recebimento: '📝 Lembrete: código de recebimento',
   'fornecedor_venda_bra-industria': '🛍️ Venda BRA-INDÚSTRIA (SKU 406)',
 };
 
