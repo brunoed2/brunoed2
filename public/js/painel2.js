@@ -1479,11 +1479,14 @@ function renderizarHistorico() {
     const imgHtml = item0?.thumbnail
       ? `<a href="${item0.permalink || '#'}" target="_blank" class="venda-thumb-link"><img src="${item0.thumbnail}" class="venda-thumb" loading="lazy"></a>`
       : '<span style="color:#94a3b8;font-size:11px">—</span>';
+    const badgeShopee = h.canal === 'shopee'
+      ? '<span style="background:#f97316;color:#fff;padding:1px 6px;border-radius:4px;font-size:10px;margin-left:5px;white-space:nowrap;vertical-align:middle">Shopee</span>'
+      : '';
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td style="white-space:nowrap">${dataFmt}</td>
       <td>${imgHtml}</td>
-      <td style="white-space:nowrap">#${h.orderId}</td>
+      <td style="white-space:nowrap">#${h.orderId}${badgeShopee}</td>
       <td>${h.comprador || '—'}</td>
       <td class="col-num">${qtdTotal}</td>
       <td style="font-size:12px;color:#64748b">${skus}</td>

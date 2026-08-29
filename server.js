@@ -3582,9 +3582,14 @@ app.get('/api/vendas/historico', (req, res) => {
   const data = loadData();
   const num  = req.query.conta || data.conta_ativa;
   const c    = data.contas[num];
-  if (!c) return res.json({ historico: [] });
+  const sp   = data.shopee_contas?.[num];
   const { de, ate } = req.query;
-  let historico = c.historico_vendas || [];
+  // Uma conta (ex: "1" = F Comércio) tem tanto um vendedor ML quanto uma loja
+  // Shopee — histórico precisa juntar os dois, senão pedidos Shopee somem da tela.
+  let historico = [
+    ...(c?.historico_vendas  || []).map(h => ({ ...h, canal: h.canal || 'ml' })),
+    ...(sp?.historico_vendas || []).map(h => ({ ...h, canal: 'shopee' })),
+  ];
   const dataOrdenar = h => (h.dataDespacho || h.data || '').slice(0, 10);
   if (de)  historico = historico.filter(h => dataOrdenar(h) >= de);
   if (ate) historico = historico.filter(h => dataOrdenar(h) <= ate);
@@ -6707,10 +6712,10 @@ app.get('/api/shopee/vendas-etiquetas', async (req, res) => {
     const baixadasSet   = new Set(sp.etiquetas_baixadas || []);
 
     const STATUS_LABEL = { READY_TO_SHIP: 'Pronto p/ envio', PROCESSED: 'Processado' };
-    const vendas = orderSns
+    const ordersValidas = orderSns
       .map(sn => detalhesPorSn[sn])
-      .filter(o => o && o.invoice_data?.status === 'valid') // só pedidos com NF já aceita pela Shopee — mesmo critério do ML (que só mostra quando a etiqueta está de fato pronta pra baixar)
-      .map(o => {
+      .filter(o => o && o.invoice_data?.status === 'valid'); // só pedidos com NF já aceita pela Shopee — mesmo critério do ML (que só mostra quando a etiqueta está de fato pronta pra baixar)
+    const vendas = ordersValidas.map(o => {
         const atendidaEntry = atendidasMap.get(String(o.order_sn));
         return {
           shipmentId: o.order_sn,
@@ -6735,6 +6740,55 @@ app.get('/api/shopee/vendas-etiquetas', async (req, res) => {
           })), 'shopee'),
         };
       });
+
+    // Registra no histórico todos os pedidos Shopee vistos agora — mesmo padrão
+    // usado pelo ML em /api/ml/vendas-etiquetas (histMap por shipmentId/order_sn).
+    // Sem isso, pedidos Shopee nunca entravam em sp.historico_vendas e a aba
+    // Histórico (que só lia data.contas[num].historico_vendas) nunca os mostrava.
+    const agora = new Date().toISOString();
+    const criadoPorSn = new Map(ordersValidas.map(o => [
+      o.order_sn,
+      o.create_time ? new Date(o.create_time * 1000).toISOString() : agora,
+    ]));
+    const histMap = new Map((sp.historico_vendas || []).map(h => [String(h.shipmentId), h]));
+    for (const v of vendas) {
+      const existente = histMap.get(v.shipmentId);
+      histMap.set(v.shipmentId, {
+        orderId:      v.orderId,
+        data:         existente?.data || criadoPorSn.get(v.shipmentId) || agora,
+        dataDespacho: existente?.dataDespachoFinalizado ? existente.dataDespacho : agora,
+        dataDespachoFinalizado: !!existente?.dataDespachoFinalizado,
+        comprador:    v.comprador,
+        shipmentId:   v.shipmentId,
+        conta:        num,
+        canal:        'shopee',
+        status:       v.status,
+        statusLabel:  v.statusLabel,
+        itensLista:   v.itensLista,
+        atendida:     v.atendida,
+        atendidaEm:   v.atendidaEm,
+        primeiroVisto: existente?.primeiroVisto || agora,
+        ultimoVisto:  agora,
+      });
+    }
+    // Pedidos que saíram da lista ativa (já enviados): congela a data de despacho
+    // no último momento em que foram vistos (Shopee não tem um endpoint simples
+    // equivalente ao /shipments do ML pra buscar a data real de envio depois).
+    const vistosAgora = new Set(vendas.map(v => String(v.shipmentId)));
+    for (const h of histMap.values()) {
+      if (h.canal === 'shopee' && !vistosAgora.has(String(h.shipmentId)) && !h.dataDespachoFinalizado) {
+        h.dataDespacho = h.ultimoVisto || agora;
+        h.dataDespachoFinalizado = true;
+      }
+    }
+    const historico = [...histMap.values()]
+      .sort((a, b) => b.primeiroVisto.localeCompare(a.primeiroVisto))
+      .slice(0, 500);
+    if (JSON.stringify(sp.historico_vendas) !== JSON.stringify(historico)) {
+      sp.historico_vendas = historico;
+      saveData(data);
+    }
+
     res.json({ vendas });
   } catch (err) {
     res.json({ error: err.message });
