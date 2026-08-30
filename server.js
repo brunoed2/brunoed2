@@ -3522,17 +3522,26 @@ app.get('/api/ml/pedidos-futuros', async (req, res) => {
       const bufferingDate = shipment.shipping_option?.buffering?.date;
       const scheduleLimit = shipment.shipping_option?.estimated_schedule_limit?.date;
       const payBefore     = shipment.shipping_option?.estimated_delivery_time?.pay_before;
-      // Pedido "normal" (sem agendamento) não tem buffering/scheduleLimit/payBefore —
-      // nesse caso o despacho real é criado + prazo de handling, não "agora". Sem isso,
-      // todo pedido pendente de NF-e caía sempre no bucket de "hoje", mesmo quando o
-      // prazo de handling empurra o despacho pra amanhã (mesmo cálculo de vendas-etiquetas).
+      // payBefore vem primeiro na prioridade: é o prazo que o próprio ML usa pra
+      // agrupar em "Hoje"/"Amanhã" no painel do vendedor (confirmado via
+      // /api/ml/debug-prazo). buffering.date às vezes vem preenchido mesmo em pedido
+      // xd_drop_off sem agendamento, só que como meia-noite UTC — subtraindo o offset
+      // de Brasília isso cai pro dia anterior e o pedido é classificado como atrasado
+      // um dia antes da hora (visto num pedido preso em invoice_pending há dias cujo
+      // payBefore real era amanhã de manhã, mas o buffering.date "ganhava" e jogava
+      // ele pra "hoje").
+      // Pedido "normal" (sem agendamento nem nenhum dos três campos) não tem
+      // buffering/scheduleLimit/payBefore — nesse caso o despacho real é criado + prazo
+      // de handling, não "agora". Sem isso, todo pedido pendente de NF-e caía sempre no
+      // bucket de "hoje", mesmo quando o prazo de handling empurra pra amanhã (mesmo
+      // cálculo de vendas-etiquetas).
       const handlingHoras = shipment.shipping_option?.estimated_delivery_time?.handling;
       const criado        = new Date(shipment.date_created);
       const prazoHandling = (handlingHoras != null && handlingHoras > 0)
         ? new Date(criado.getTime() + handlingHoras * 3600_000).toISOString()
         : null;
-      const dataLiberacao = (bufferingDate || scheduleLimit || payBefore)
-        ? new Date(bufferingDate || scheduleLimit || payBefore).toISOString()
+      const dataLiberacao = (payBefore || bufferingDate || scheduleLimit)
+        ? new Date(payBefore || bufferingDate || scheduleLimit).toISOString()
         : (prazoHandling || criado.toISOString());
 
       if (dataStrBR(dataLiberacao) <= hojeBR) continue; // hoje ou atrasado não é "futuro"
