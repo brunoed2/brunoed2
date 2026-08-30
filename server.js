@@ -3522,14 +3522,23 @@ app.get('/api/ml/pedidos-futuros', async (req, res) => {
       const bufferingDate = shipment.shipping_option?.buffering?.date;
       const scheduleLimit = shipment.shipping_option?.estimated_schedule_limit?.date;
       const payBefore     = shipment.shipping_option?.estimated_delivery_time?.pay_before;
-      // payBefore vem primeiro na prioridade: é o prazo que o próprio ML usa pra
-      // agrupar em "Hoje"/"Amanhã" no painel do vendedor (confirmado via
-      // /api/ml/debug-prazo). buffering.date às vezes vem preenchido mesmo em pedido
-      // xd_drop_off sem agendamento, só que como meia-noite UTC — subtraindo o offset
-      // de Brasília isso cai pro dia anterior e o pedido é classificado como atrasado
-      // um dia antes da hora (visto num pedido preso em invoice_pending há dias cujo
-      // payBefore real era amanhã de manhã, mas o buffering.date "ganhava" e jogava
-      // ele pra "hoje").
+      // buffering/scheduleLimit voltam a ter prioridade sobre payBefore (era assim antes
+      // do v883). O que estava errado não era a prioridade, era a interpretação: esses
+      // dois campos só carregam uma DATA (sem hora relevante pro vendedor), mas o ML
+      // serializa como "T00:00:00.000Z" — não é um instante UTC de verdade, é a data-
+      // calendário de Brasília disfarçada de meia-noite UTC. Tratar isso como instante
+      // real e subtrair o offset de Brasília jogava pro dia anterior (por isso o v883
+      // trocou pra payBefore primeiro). Só que payBefore não serve como prazo de
+      // despacho em todo tipo de envio — num pedido de retirada em agência (deliver_to
+      // "agency") ele aponta a data estimada de entrega ao comprador, não o prazo do
+      // vendedor, e ficou 2 dias errado enquanto o buffering.date (lido como data pura)
+      // batia certinho com o "Amanhã" do próprio painel do ML. Confirmado via
+      // /api/ml/debug-prazo em 3 pedidos: um sem nenhum dos dois (usa payBefore, ok),
+      // um xd_drop_off residencial (buffering e payBefore concordam) e um de retirada em
+      // agência (só buffering bate).
+      const dataBRDeCampoData = (iso) => iso
+        ? new Date(`${iso.slice(0, 10)}T00:00:00-03:00`).toISOString()
+        : null;
       // Pedido "normal" (sem agendamento nem nenhum dos três campos) não tem
       // buffering/scheduleLimit/payBefore — nesse caso o despacho real é criado + prazo
       // de handling, não "agora". Sem isso, todo pedido pendente de NF-e caía sempre no
@@ -3540,9 +3549,10 @@ app.get('/api/ml/pedidos-futuros', async (req, res) => {
       const prazoHandling = (handlingHoras != null && handlingHoras > 0)
         ? new Date(criado.getTime() + handlingHoras * 3600_000).toISOString()
         : null;
-      const dataLiberacao = (payBefore || bufferingDate || scheduleLimit)
-        ? new Date(payBefore || bufferingDate || scheduleLimit).toISOString()
-        : (prazoHandling || criado.toISOString());
+      const dataLiberacao = dataBRDeCampoData(bufferingDate || scheduleLimit)
+        || (payBefore ? new Date(payBefore).toISOString() : null)
+        || prazoHandling
+        || criado.toISOString();
 
       if (dataStrBR(dataLiberacao) <= hojeBR) continue; // hoje ou atrasado não é "futuro"
 
