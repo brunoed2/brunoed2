@@ -514,8 +514,11 @@ function vendasThumbHtml(item, onclickExpr) {
   if (!item || !item.thumbnail) return `<div class="venda-thumb-vazio"></div>`;
   const temInstrucao = !!item.instrucaoDespacho;
   const titleAttr   = temInstrucao ? 'Tem instrução de despacho — toque pra ver' : 'Toque pra ampliar';
-  const borderStyle = temInstrucao ? ' style="border-color:#f59e0b"' : '';
-  return `<span class="venda-thumb-link" style="cursor:zoom-in" title="${titleAttr}" onclick="${onclickExpr}"><img src="${item.thumbnail}" class="venda-thumb" loading="lazy"${borderStyle}></span>`;
+  const borderStyle = temInstrucao ? ' style="border:2px solid #f59e0b"' : '';
+  const badge = temInstrucao
+    ? `<span style="position:absolute;top:-8px;right:-8px;width:22px;height:22px;border-radius:50%;background:#f59e0b;color:#fff;font-size:14px;font-weight:900;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 2px #fff;line-height:1">!</span>`
+    : '';
+  return `<span class="venda-thumb-link" style="cursor:zoom-in;position:relative;display:inline-block" title="${titleAttr}" onclick="${onclickExpr}"><img src="${item.thumbnail}" class="venda-thumb" loading="lazy"${borderStyle}>${badge}</span>`;
 }
 
 function vendasFotoOverlay() {

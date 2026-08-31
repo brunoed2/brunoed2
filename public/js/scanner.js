@@ -150,8 +150,11 @@ function scannerMostrarResultado(pedido, sid) {
   const itensHtml = itens.map((i, idx) => {
     const thumb = i.thumbnail ? i.thumbnail.replace(/^http:\/\//, 'https://') : null;
     const temInstrucao = !!i.instrucaoDespacho;
+    const instrucaoBadge = temInstrucao
+      ? `<span style="position:absolute;top:-8px;right:-8px;width:24px;height:24px;border-radius:50%;background:#f59e0b;color:#fff;font-size:15px;font-weight:900;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 2px #0f172a;line-height:1">!</span>`
+      : '';
     const thumbHtml = thumb
-      ? `<img src="${thumb}" onclick="scannerAmpliarFoto(${idx})" title="${temInstrucao ? 'Tem instrução de despacho — toque pra ver' : 'Toque pra ampliar'}" style="width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid ${temInstrucao ? '#f59e0b' : '#334155'};flex-shrink:0;cursor:zoom-in">`
+      ? `<span style="position:relative;display:inline-block;flex-shrink:0" onclick="scannerAmpliarFoto(${idx})" title="${temInstrucao ? 'Tem instrução de despacho — toque pra ver' : 'Toque pra ampliar'}"><img src="${thumb}" style="width:72px;height:72px;object-fit:cover;border-radius:8px;border:${temInstrucao ? '2px solid #f59e0b' : '1px solid #334155'};display:block;cursor:zoom-in">${instrucaoBadge}</span>`
       : `<div style="width:72px;height:72px;border-radius:8px;background:#0f172a;flex-shrink:0"></div>`;
     return `
       <div style="padding:12px 0;border-bottom:1px solid #1e293b;display:flex;gap:12px;align-items:center">
