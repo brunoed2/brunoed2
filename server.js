@@ -4925,16 +4925,29 @@ async function buscarVendasComCustos(c, headers, dateFrom, dateTo) {
   return { todasOrdens, fretePorShipment, pedidosPorShipment, shipmentIds };
 }
 
+// Correção pontual de SKU errado digitado no anúncio do ML — o seller_sku fica
+// gravado pra sempre no pedido (é um retrato do momento da venda na API de orders),
+// então corrigir o SKU no anúncio depois não muda o que pedidos antigos retornam.
+const LUCRO_SKU_CORRECOES_ML = {
+  '2000018232250388': { de: '389', para: '408' },
+  '2000018162541208': { de: '389', para: '408' },
+};
+
 function montarVendas(todasOrdens, fretePorShipment, pedidosPorShipment) {
   return todasOrdens.map(order => {
-    const itens = (order.order_items || []).map(oi => ({
-      mlb:        oi.item?.id         || '',
-      sku:        oi.item?.seller_sku || '',
-      titulo:     oi.item?.title      || '',
-      quantidade: oi.quantity         || 1,
-      precoUnit:  oi.unit_price       || 0,
-      taxaML:     (oi.sale_fee || 0) * (oi.quantity || 1), // sale_fee é por unidade
-    }));
+    const correcaoSku = LUCRO_SKU_CORRECOES_ML[String(order.id)];
+    const itens = (order.order_items || []).map(oi => {
+      let sku = oi.item?.seller_sku || '';
+      if (correcaoSku && sku === correcaoSku.de) sku = correcaoSku.para;
+      return {
+        mlb:        oi.item?.id    || '',
+        sku,
+        titulo:     oi.item?.title || '',
+        quantidade: oi.quantity    || 1,
+        precoUnit:  oi.unit_price  || 0,
+        taxaML:     (oi.sale_fee || 0) * (oi.quantity || 1), // sale_fee é por unidade
+      };
+    });
     const receita   = itens.reduce((s, i) => s + i.precoUnit * i.quantidade, 0);
     const taxaML    = itens.reduce((s, i) => s + i.taxaML, 0);
     const sid       = order.shipping?.id;
