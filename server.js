@@ -1763,6 +1763,15 @@ async function checarMunicipioEtiqueta(etiqueta) {
   return null;
 }
 
+// Situação padrão "Cancelado" do módulo Pedidos de Venda no Bling v3 (numeração-padrão
+// de fábrica: 6=Em aberto — já confirmado em uso aqui em fetchBlingPedidosPendentes —
+// 9=Atendido, 12=Cancelado, 15=Em andamento). Não existe endpoint confirmado nesta
+// integração pra descobrir esse ID dinamicamente por conta, então assumimos o padrão;
+// se a conta tiver customizado as situações, o PATCH abaixo falha com 400/404 (logado
+// em [bling-cancel], visível em /api/bling/log-cancelamento) e o pedido continua
+// aparecendo normalmente — nunca some da lista sem confirmação de sucesso do Bling.
+const BLING_SITUACAO_CANCELADO = 12;
+
 async function fetchBlingPedidosPendentes(conta) {
   const token = await getBlingToken(conta);
   const resp = await axios.get('https://api.bling.com.br/Api/v3/pedidos/vendas', {
@@ -1896,7 +1905,31 @@ async function fetchBlingPedidosPendentes(conta) {
   }
   const SHOPEE_STATUS_LIBERADO = new Set(['READY_TO_SHIP', 'PROCESSED', 'SHIPPED', 'COMPLETED']);
 
-  return itensDetalhados.map(p => {
+  // Pedido cancelado na Shopee mas ainda "Em aberto" (idSituacao:6) no Bling — o Bling
+  // não sabe do cancelamento sozinho, e antes disso a única forma de tirar da lista era
+  // o usuário ir cancelar manualmente no site do Bling. Só mexe em pedido que já está
+  // aqui (ou seja, sem NF ainda) — nunca em pedido já faturado.
+  const paraCancelar = itensDetalhados.filter(p =>
+    p.isShopee && p.numeroLoja && SHOPEE_STATUS_CANCELADO.includes(shopeeStatusPorOrderSn[p.numeroLoja])
+  );
+  const canceladosComSucesso = new Set();
+  if (paraCancelar.length) {
+    await Promise.all(paraCancelar.map(async p => {
+      try {
+        await axios.patch(
+          `https://api.bling.com.br/Api/v3/pedidos/vendas/${p.id}/situacoes/${BLING_SITUACAO_CANCELADO}`,
+          {},
+          { headers: { Authorization: `Bearer ${token}` }, timeout: 10000 }
+        );
+        canceladosComSucesso.add(p.id);
+        addLog(`[bling-cancel] #${p.numero}: cancelado automaticamente (Shopee: ${shopeeStatusPorOrderSn[p.numeroLoja]})`, 'ok');
+      } catch (err) {
+        addLog(`[bling-cancel] #${p.numero}: falha ao cancelar (Shopee: ${shopeeStatusPorOrderSn[p.numeroLoja]}) — HTTP ${err.response?.status || '?'} ${JSON.stringify(err.response?.data || err.message).slice(0, 200)}`, 'warn');
+      }
+    }));
+  }
+
+  return itensDetalhados.filter(p => !canceladosComSucesso.has(p.id)).map(p => {
     const shopeeStatus = p.isShopee ? (shopeeStatusPorOrderSn[p.numeroLoja] || null) : null;
     return {
       id:               p.id,
@@ -1955,6 +1988,28 @@ app.get('/api/bling/log-etiqueta', (req, res) => {
   <h2>Log Etiqueta ML <small style="font-size:13px;color:#9ca3af">(atualiza a cada 5s)</small></h2>
   ${linhas}
   <p style="color:#6b7280;font-size:11px;margin-top:16px">Total: ${logs.length} entradas — últimas ${logBuffer.length} linhas do servidor em memória</p>
+  </body></html>`);
+});
+
+// Página de diagnóstico: cancelamento automático de pedido Bling quando a Shopee
+// cancela do lado dela. BLING_SITUACAO_CANCELADO (id 12) é um palpite pela numeração-
+// padrão do Bling — essa página é o jeito de confirmar se realmente está funcionando
+// nesta conta sem precisar abrir o pedido manualmente no Bling toda vez.
+app.get('/api/bling/log-cancelamento', (req, res) => {
+  const logs = logBuffer.filter(e => e.msg && e.msg.includes('[bling-cancel]'));
+  const linhas = logs.map(e => {
+    const cor = e.tipo === 'warn' ? '#f59e0b' : e.tipo === 'erro' ? '#ef4444' : '#34d399';
+    const hora = new Date(e.ts - BR_OFFSET_MS).toLocaleString('pt-BR', { timeZone: 'UTC' });
+    return `<div style="color:${cor};font-family:monospace;font-size:13px;padding:2px 0">[${hora}] ${e.msg}</div>`;
+  }).join('') || '<div style="color:#6b7280;font-family:monospace">Nenhum log ainda — abra a aba Bling (Emitir NF) pra gerar.</div>';
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Log Cancelamento Bling</title>
+  <meta http-equiv="refresh" content="5">
+  <style>body{background:#111;color:#e5e7eb;padding:20px;margin:0}h2{color:#fff;margin-bottom:16px}</style>
+  </head><body>
+  <h2>Log Cancelamento Bling <small style="font-size:13px;color:#9ca3af">(atualiza a cada 5s)</small></h2>
+  ${linhas}
+  <p style="color:#6b7280;font-size:11px;margin-top:16px">Total: ${logs.length} entradas — últimas ${logBuffer.length} linhas do servidor em memória (reinicia a cada deploy)</p>
   </body></html>`);
 });
 
