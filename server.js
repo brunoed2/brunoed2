@@ -2627,16 +2627,17 @@ app.post('/api/shopee/enviar-nf-autorizada/:orderSn', async (req, res) => {
 
 // ── Bling: Shopee Super — gera NF + SEFAZ + aguarda autorização + envia XML pra Shopee ──
 
-app.post('/api/bling/shopee-super/:pedidoId', async (req, res) => {
-  const conta = blingContaReq(req);
+// Extraído da rota pra ser reusável pelo job de emissão automática (autoSuperJob)
+// além do clique manual do botão Super — mesmo fluxo completo pros dois casos.
+async function blingShopeeSuperHelper(pedidoId, conta) {
   const blingErrDetail = err => {
     try { return err.response ? `HTTP ${err.response.status}: ${JSON.stringify(err.response.data ?? null).slice(0, 300)}` : (err.message || 'erro'); }
     catch { return err.message || 'erro'; }
   };
   let etapa = 'gerar-nf';
   try {
-    addLog(`[bling] shopee-super pedido ${req.params.pedidoId}`, 'info');
-    const nfId = await blingEmitirNFHelper(req.params.pedidoId, conta);
+    addLog(`[bling] shopee-super pedido ${pedidoId}`, 'info');
+    const nfId = await blingEmitirNFHelper(pedidoId, conta);
 
     etapa = 'enviar-sefaz';
     await new Promise(r => setTimeout(r, 3500));
@@ -2649,116 +2650,154 @@ app.post('/api/bling/shopee-super/:pedidoId', async (req, res) => {
     etapa = 'enviar-shopee';
     const orderSn = await shopeeEnviarNotaHelper(nf, conta);
 
-    addLog(`[bling] shopee-super pedido ${req.params.pedidoId}: NF ${nfId} autorizada e enviada pra Shopee (pedido ${orderSn})`, 'ok');
-    return res.json({ ok: true, nfId, orderSn });
+    addLog(`[bling] shopee-super pedido ${pedidoId}: NF ${nfId} autorizada e enviada pra Shopee (pedido ${orderSn})`, 'ok');
+    return { nfId, orderSn };
   } catch (err) {
     const detail = blingErrDetail(err);
-    addLog(`[bling] shopee-super [${etapa}] pedido ${req.params.pedidoId}: ${detail}`, 'warn');
-    return res.json({ ok: false, etapa, erro: `[${etapa}] ${detail}` });
+    addLog(`[bling] shopee-super [${etapa}] pedido ${pedidoId}: ${detail}`, 'warn');
+    const erro = new Error(`[${etapa}] ${detail}`);
+    erro.etapa = etapa;
+    throw erro;
+  }
+}
+
+app.post('/api/bling/shopee-super/:pedidoId', async (req, res) => {
+  const conta = blingContaReq(req);
+  try {
+    const { nfId, orderSn } = await blingShopeeSuperHelper(req.params.pedidoId, conta);
+    return res.json({ ok: true, nfId, orderSn });
+  } catch (err) {
+    return res.json({ ok: false, etapa: err.etapa, erro: err.message });
   }
 });
 
-// ── Auto Super: notificação + confirmação via link ─────────────
+// ── Auto Super: emissão automática de NF dentro do horário de despacho ──
+// Antes disso era "notifica + link pra confirmar" (precisava clicar). Trocado a
+// pedido do usuário: dentro da janela (dia útil, a partir das 7h — assim já está
+// tudo emitido quando ele chega na empresa) e sem pendência, emite sozinho e só
+// avisa que já emitiu; pedido com pendência nunca é emitido sozinho, só notifica
+// pra alguém entrar e corrigir manualmente.
+//
+// Janela do ML usa a grade oficial de despacho (mesma que já alimenta o aviso de
+// "faltam 30min", cache em data.prazoDespacho — só lê daqui, quem escreve
+// continua sendo verificarPrazoDespachoPush, pra não ter duas rotinas mexendo no
+// mesmo cache). A Shopee não tem uma grade equivalente exposta pela API, então
+// usa um horário fixo (7h-13h) combinado com o usuário.
+const AUTO_SUPER_INICIO_HORA   = 7;  // 07:00 BRT, os dois canais
+const SHOPEE_AUTO_SUPER_FIM_HORA = 13; // 13:00 BRT — só a Shopee, que não tem grade tipo ML
 
-const APP_URL = (process.env.APP_URL || '').replace(/\/$/, '');
+function ehDiaUtilHoje() {
+  const diaSemana = new Date(Date.now() - BR_OFFSET_MS).getUTCDay(); // 0=domingo, 6=sábado
+  return diaSemana >= 1 && diaSemana <= 5;
+}
 
-function autoSuperHtml(ok, msg) {
-  const cor   = ok ? '#15803d' : '#dc2626';
-  const bg    = ok ? '#f0fdf4' : '#fff1f2';
-  const icone = ok ? '✅' : '❌';
-  const titulo = ok ? 'NF Emitida!' : 'Erro';
-  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${titulo}</title>
-<style>body{font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;background:${bg};margin:0}
-.box{text-align:center;padding:40px 32px;background:#fff;border-radius:16px;box-shadow:0 4px 24px rgba(0,0,0,.08);max-width:400px;width:90%}
-.icon{font-size:60px;margin-bottom:12px}.title{font-size:22px;font-weight:700;color:${cor}}.msg{color:#64748b;margin-top:12px;line-height:1.6;font-size:15px}</style>
-</head><body><div class="box"><div class="icon">${icone}</div><div class="title">${titulo}</div><p class="msg">${msg}</p></div></body></html>`;
+function dentroDaJanelaShopeeAgora() {
+  const inicio = horaHojeParaData(`${String(AUTO_SUPER_INICIO_HORA).padStart(2, '0')}:00`);
+  const fim    = horaHojeParaData(`${String(SHOPEE_AUTO_SUPER_FIM_HORA).padStart(2, '0')}:00`);
+  const agora  = Date.now();
+  return agora >= inicio.getTime() && agora < fim.getTime();
+}
+
+// prazoISO: horário de despacho de hoje pra essa conta, já cacheado pela grade do
+// ML (null se ainda não descoberto neste dia — nesse caso não emite, não adivinha).
+function dentroDaJanelaMLAgora(prazoISO) {
+  if (!prazoISO) return false;
+  const inicio = horaHojeParaData(`${String(AUTO_SUPER_INICIO_HORA).padStart(2, '0')}:00`);
+  const corte  = new Date(prazoISO).getTime() - 30 * 60_000;
+  const agora  = Date.now();
+  return agora >= inicio.getTime() && agora <= corte;
+}
+
+// Cada emissão/notificação pode levar dezenas de segundos (blingAguardarAutorizacaoNF
+// chega a esperar até 2min) e o job roda vários pedidos em sequência — segurar um
+// único snapshot de data.json em memória e salvar tudo de uma vez no final, como o
+// resto do arquivo faz normalmente, sobrescreveria mudanças concorrentes feitas por
+// outras rotas durante esse tempo todo (mesmo risco já documentado no impulso Shopee
+// e nas notificações). Por isso cada marcação individual relê e grava na hora, dentro
+// do lock, só o campo que importa.
+async function marcarAutoSuperFlag(campo, chave) {
+  await withDataLock(() => {
+    const d = loadData();
+    if (!d[campo]) d[campo] = {};
+    d[campo][chave] = Date.now();
+    saveData(d);
+  });
 }
 
 async function autoSuperJob() {
-  if (!APP_URL) {
-    addLog('[auto-super] APP_URL não configurado — job desativado', 'warn');
-    return;
-  }
-  const data = loadData();
-  if (!data.auto_super_notificados) data.auto_super_notificados = {};
-  if (!data.auto_super_emitidos)    data.auto_super_emitidos    = {};
-  if (!data.auto_super_tokens)      data.auto_super_tokens      = {};
+  if (!ehDiaUtilHoje()) return; // fim de semana — nada a fazer
 
-  const agora = Date.now();
-  // Limpa tokens expirados
-  for (const tk of Object.keys(data.auto_super_tokens)) {
-    if (agora > data.auto_super_tokens[tk].expiresAt) delete data.auto_super_tokens[tk];
-  }
+  const dataLeitura = loadData();
+  const emitidos             = dataLeitura.auto_super_emitidos             || {};
+  const pendenciaNotificada  = dataLeitura.auto_super_pendencia_notificada || {};
 
-  const contasBling = ['1', '2'].filter(c => !!(getBlingDataConta(data, c)?.access_token));
-  if (!contasBling.length) { saveData(data); return; }
+  const contasBling = ['1', '2'].filter(c => !!(getBlingDataConta(dataLeitura, c)?.access_token));
+  if (!contasBling.length) return;
 
-  let changed = false;
+  const prazoCache      = carregarPrazoDespachoCache();
+  const hoje             = hojeSP();
+  const janelaShopeeAgora = dentroDaJanelaShopeeAgora();
+
   for (const conta of contasBling) {
     let pedidos = [];
     try { pedidos = await fetchBlingPedidosPendentes(conta); } catch (err) {
       addLog(`[auto-super] erro conta ${conta}: ${err.message}`, 'warn'); continue;
     }
-    for (const p of pedidos.filter(p => p.temEtiqueta)) {
+
+    const entryPrazo = prazoCache[conta];
+    const prazoISOHoje = (entryPrazo && entryPrazo.dia === hoje) ? entryPrazo.prazoISO : null;
+    const janelaMLAgora = dentroDaJanelaMLAgora(prazoISOHoje);
+
+    for (const p of pedidos) {
       const chave = `${p.id}_${conta}`;
-      if (data.auto_super_notificados[chave] || data.auto_super_emitidos[chave]) continue;
+      if (emitidos[chave]) continue;
 
-      const token = crypto.randomBytes(24).toString('hex');
-      data.auto_super_tokens[token] = {
-        pedidoId: String(p.id), conta, comprador: p.comprador,
-        valor: p.valor_total, numero: p.numero, produtos: p.produtos || [],
-        expiresAt: agora + 48 * 3600_000,
-      };
-      data.auto_super_notificados[chave] = agora;
-      changed = true;
+      // Gate de "pronto pra NF" por canal: ML usa temEtiqueta (shipment já em
+      // ready_to_ship/invoice_pending), Shopee usa shopeeLiberado (mesmo campo
+      // que já desabilita o botão Super manual enquanto a Shopee não libera).
+      const prontoPraNF = p.isShopee ? (p.shopeeLiberado !== false) : p.temEtiqueta;
+      if (!prontoPraNF) continue;
 
-      const link    = `${APP_URL}/api/bling/confirmar/${token}`;
-      const valor   = (p.valor_total || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-      const prods   = (p.produtos || []).join('\n• ');
-      const texto   = `⚡ Pedido pronto para NF\n\n#${p.numero} — ${p.comprador} — ${valor}\nConta ${conta}${prods ? `\n\n• ${prods}` : ''}\n\nConfirmar emissão:\n${link}\n\n(Link válido por 48h)`;
-      notificar(texto, 'auto_super').catch(() => {});
-      addLog(`[auto-super] notificado pedido ${p.numero} conta ${conta}`, 'ok');
-      await new Promise(r => setTimeout(r, 4000));
+      const dentroDaJanela = p.isShopee ? janelaShopeeAgora : janelaMLAgora;
+      if (!dentroDaJanela) continue;
+
+      if ((p.pendencias || []).length) {
+        if (!pendenciaNotificada[chave]) {
+          pendenciaNotificada[chave] = Date.now(); // evita renotificar no mesmo ciclo desta conta
+          await marcarAutoSuperFlag('auto_super_pendencia_notificada', chave);
+          const valor = (p.valor_total || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+          notificar(`⚠️ Pedido #${p.numero} com pendência — NF não emitida automaticamente\n\n${p.comprador} — ${valor}\nConta ${conta}${p.isShopee ? ' · Shopee' : ''}\n\n${p.pendencias.join('\n')}`, 'bling_pendencia').catch(() => {});
+          addLog(`[auto-super] pedido ${p.numero} conta ${conta}: pendência — ${p.pendencias.join(' | ')}`, 'warn');
+        }
+        continue;
+      }
+
+      try {
+        if (p.isShopee) {
+          await blingShopeeSuperHelper(p.id, conta);
+        } else {
+          const nfId = await blingEmitirNFHelper(p.id, conta);
+          await new Promise(r => setTimeout(r, 3500));
+          await blingEnviarNFHelper(nfId, conta);
+        }
+        emitidos[chave] = Date.now();
+        await marcarAutoSuperFlag('auto_super_emitidos', chave);
+        const valorFmt = (p.valor_total || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        notificar(`✅ NF emitida automaticamente\n\n#${p.numero} — ${p.comprador} — ${valorFmt}\nConta ${conta}${p.isShopee ? ' · Shopee' : ''}`, 'nf_emitida').catch(() => {});
+        addLog(`[auto-super] NF emitida automaticamente: pedido ${p.numero} conta ${conta}`, 'ok');
+      } catch (err) {
+        if (!pendenciaNotificada[chave]) {
+          pendenciaNotificada[chave] = Date.now();
+          await marcarAutoSuperFlag('auto_super_pendencia_notificada', chave);
+          const detail = err.response ? JSON.stringify(err.response.data).slice(0, 200) : err.message;
+          notificar(`❌ Falha ao emitir NF automaticamente\n\n#${p.numero} — ${p.comprador}\nConta ${conta}${p.isShopee ? ' · Shopee' : ''}\n\n${detail}`, 'bling_pendencia').catch(() => {});
+        }
+        addLog(`[auto-super] erro ao emitir pedido ${p.numero} conta ${conta}: ${err.message}`, 'warn');
+      }
+      await new Promise(r => setTimeout(r, 4000)); // evita rate limit do Bling entre pedidos
     }
   }
-  if (changed) saveData(data);
 }
-
-app.get('/api/bling/confirmar/:token', async (req, res) => {
-  const data  = loadData();
-  const info  = (data.auto_super_tokens || {})[req.params.token];
-
-  if (!info)                    return res.send(autoSuperHtml(false, 'Link inválido ou expirado.<br>Emita manualmente na aba Bling.'));
-  if (Date.now() > info.expiresAt) {
-    delete data.auto_super_tokens[req.params.token];
-    saveData(data);
-    return res.send(autoSuperHtml(false, 'Link expirado.<br>Emita manualmente na aba Bling.'));
-  }
-
-  const { pedidoId, conta, comprador, valor, numero } = info;
-  const chave = `${pedidoId}_${conta}`;
-  if ((data.auto_super_emitidos || {})[chave])
-    return res.send(autoSuperHtml(true, `Pedido #${numero} já havia sido emitido.`));
-
-  try {
-    const nfId = await blingEmitirNFHelper(pedidoId, conta);
-    await blingEnviarNFHelper(nfId, conta);
-
-    if (!data.auto_super_emitidos) data.auto_super_emitidos = {};
-    data.auto_super_emitidos[chave] = Date.now();
-    delete data.auto_super_tokens[req.params.token];
-    saveData(data);
-
-    const valorFmt = (valor || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-    notificar(`✅ NF emitida automaticamente\n\n#${numero} — ${comprador} — ${valorFmt}\nConta ${conta}`, 'nf_emitida').catch(() => {});
-    addLog(`[auto-super] NF emitida e enviada: pedido ${numero} conta ${conta}`, 'ok');
-    return res.send(autoSuperHtml(true, `Pedido #${numero} — ${comprador}<br>${valorFmt} · Conta ${conta}<br><br>NF gerada e enviada para a SEFAZ.`));
-  } catch (err) {
-    const detail = err.response ? JSON.stringify(err.response.data).slice(0, 200) : err.message;
-    addLog(`[auto-super] erro ao confirmar pedido ${numero}: ${detail}`, 'warn');
-    return res.send(autoSuperHtml(false, `Erro: ${detail}<br><br>Tente novamente ou emita manualmente na aba Bling.`));
-  }
-});
 
 app.get('/api/ml/estoque', async (req, res) => {
   const data = loadData();
@@ -7181,6 +7220,7 @@ const NOTIF_CATEGORIAS = {
   nf_emitida:       '✅ NF emitida automaticamente',
   nf_travada:       '⚠️ NF travada (recusada pelo ML)',
   auto_super:       '⚡ Pedido pronto pra NF',
+  bling_pendencia:  '⚠️ Pendência bloqueando emissão automática',
   contas_pagar:     '📅 Contas a pagar vencendo',
   shopee_boost:     '🚀 Impulso automático Shopee',
   prazo_despacho:   '⏰ Faltam 30min pro despacho',
@@ -7972,8 +8012,8 @@ setInterval(() => {
   if (hora === 8) notificarContasVencendoHoje().catch(() => {});
 }, 60 * 60 * 1000);
 
-// Auto Super: verifica pedidos prontos para NF a cada 15 minutos
-setInterval(() => autoSuperJob().catch(err => addLog(`[auto-super] erro no job: ${err.message}`, 'warn')), 15 * 60 * 1000);
+// Auto Super: emite NF automaticamente a cada 5 minutos (dentro da janela permitida)
+setInterval(() => autoSuperJob().catch(err => addLog(`[auto-super] erro no job: ${err.message}`, 'warn')), 5 * 60 * 1000);
 // Roda 1x na inicialização (após 30s para tokens carregarem)
 setTimeout(() => autoSuperJob().catch(err => addLog(`[auto-super] erro no job inicial: ${err.message}`, 'warn')), 30 * 1000);
 
