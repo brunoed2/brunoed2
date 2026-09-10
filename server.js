@@ -2013,6 +2013,113 @@ app.get('/api/bling/log-cancelamento', (req, res) => {
   </body></html>`);
 });
 
+// Limpeza em massa de pedidos de venda antigos no Bling — página à parte (bling-limpeza.html,
+// não linkada em nenhum menu) pra apagar de trás pra frente por período, em vez de 100 em 100
+// manualmente na tela do Bling. Reaproveita o token OAuth já conectado (getBlingToken) e o
+// mesmo endpoint DELETE que o próprio Bling usa por trás do botão de excluir.
+async function blingListarPedidosPeriodo(conta, dataInicial, dataFinal, onPagina) {
+  const token = await getBlingToken(conta);
+  const pedidos = [];
+  let pagina = 1;
+  let truncado = false;
+  const MAX_PAGINAS = 50; // 5000 pedidos — teto de segurança contra loop infinito
+  while (true) {
+    const resp = await axios.get('https://api.bling.com.br/Api/v3/pedidos/vendas', {
+      headers: { Authorization: `Bearer ${token}` },
+      params: { pagina, limite: 100, dataInicial, dataFinal },
+      timeout: 20000,
+    });
+    const itens = resp.data?.data || [];
+    pedidos.push(...itens);
+    if (onPagina) onPagina(pedidos.length);
+    if (itens.length < 100) break;
+    pagina++;
+    if (pagina > MAX_PAGINAS) { truncado = true; break; }
+    await new Promise(r => setTimeout(r, 350)); // evita 429 entre páginas
+  }
+  return { pedidos, truncado };
+}
+
+app.get('/api/bling/limpeza/listar', async (req, res) => {
+  const { senha, conta = '1', dataInicial, dataFinal } = req.query;
+  if (senha !== '199412') return res.status(403).json({ error: 'Apenas o administrador pode usar a limpeza em massa' });
+  if (!dataInicial || !dataFinal) return res.status(400).json({ error: 'Informe dataInicial e dataFinal (AAAA-MM-DD)' });
+  try {
+    const { pedidos, truncado } = await blingListarPedidosPeriodo(conta, dataInicial, dataFinal);
+    addLog(`[bling-limpeza] conta ${conta}: listou ${pedidos.length} pedidos entre ${dataInicial} e ${dataFinal}${truncado ? ' (TRUNCADO no teto de 5000)' : ''}`, 'info');
+    res.json({
+      total: pedidos.length,
+      truncado,
+      pedidos: pedidos.map(p => ({
+        id: p.id,
+        numero: p.numero,
+        data: p.data,
+        contato: p.contato?.nome || '',
+        total: p.total,
+        situacao: p.situacao?.valor || '',
+      })),
+    });
+  } catch (err) {
+    const detalhe = err.response ? JSON.stringify(err.response.data).slice(0, 300) : err.message;
+    addLog(`[bling-limpeza] conta ${conta}: falha ao listar — HTTP ${err.response?.status || '?'} ${detalhe}`, 'erro');
+    res.status(500).json({ error: detalhe });
+  }
+});
+
+// SSE: apaga um a um, mandando cada resultado assim que acontece, pra página ir mostrando
+// a lista ao vivo. Query string (não POST) porque EventSource do navegador só faz GET.
+app.get('/api/bling/limpeza/apagar', async (req, res) => {
+  const { senha, conta = '1', dataInicial, dataFinal } = req.query;
+  if (senha !== '199412') return res.status(403).end('Apenas o administrador pode usar a limpeza em massa');
+  if (!dataInicial || !dataFinal) return res.status(400).end('Informe dataInicial e dataFinal');
+
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream; charset=utf-8',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+  });
+  const manda = obj => res.write(`data: ${JSON.stringify(obj)}\n\n`);
+
+  let cancelado = false;
+  req.on('close', () => { cancelado = true; });
+
+  try {
+    const token = await getBlingToken(conta);
+    const { pedidos, truncado } = await blingListarPedidosPeriodo(conta, dataInicial, dataFinal, total => manda({ tipo: 'buscando', total }));
+    manda({ tipo: 'inicio', total: pedidos.length, truncado });
+    addLog(`[bling-limpeza] conta ${conta}: iniciando exclusão de ${pedidos.length} pedidos entre ${dataInicial} e ${dataFinal}`, 'info');
+
+    let apagados = 0, erros = 0;
+    for (const p of pedidos) {
+      if (cancelado) break;
+      let sucesso = false, motivoErro = '';
+      for (let tentativa = 0; tentativa < 2 && !sucesso; tentativa++) {
+        if (tentativa > 0) await new Promise(r => setTimeout(r, 5000)); // backoff em caso de 429
+        try {
+          await axios.delete(`https://api.bling.com.br/Api/v3/pedidos/vendas/${p.id}`, {
+            headers: { Authorization: `Bearer ${token}` }, timeout: 15000,
+          });
+          sucesso = true;
+        } catch (err) {
+          motivoErro = err.response?.data?.error?.description || err.response?.data?.error?.message
+            || JSON.stringify(err.response?.data || err.message).slice(0, 200);
+          if (err.response?.status !== 429) break; // só re-tenta em rate limit; outros erros não adianta insistir
+        }
+      }
+      if (sucesso) { apagados++; manda({ tipo: 'ok', id: p.id, numero: p.numero }); }
+      else { erros++; manda({ tipo: 'erro', id: p.id, numero: p.numero, motivo: motivoErro }); }
+      await new Promise(r => setTimeout(r, 400)); // ~2,5 req/s pra não estourar rate limit do Bling
+    }
+    addLog(`[bling-limpeza] conta ${conta}: concluído — ${apagados} apagados, ${erros} erros${cancelado ? ' (cancelado pelo usuário)' : ''}`, 'ok');
+    manda({ tipo: 'fim', apagados, erros, cancelado });
+  } catch (err) {
+    const detalhe = err.response ? JSON.stringify(err.response.data).slice(0, 300) : err.message;
+    addLog(`[bling-limpeza] conta ${conta}: falha geral — ${detalhe}`, 'erro');
+    manda({ tipo: 'erro-geral', motivo: detalhe });
+  }
+  res.end();
+});
+
 // Endpoint temporário de diagnóstico: lista canal/loja de todos os pedidos pendentes de uma conta
 app.get('/api/bling/debug-canais', async (req, res) => {
   try {

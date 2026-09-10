@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Limpeza de pedidos — Bling</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    background: #0f1115; color: #e5e7eb; font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    margin: 0; padding: 24px 16px 60px;
+  }
+  .wrap { max-width: 820px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0 0 4px; color: #fff; }
+  .sub { color: #9ca3af; font-size: 13px; margin-bottom: 24px; }
+  .card {
+    background: #171a21; border: 1px solid #262b36; border-radius: 10px;
+    padding: 18px; margin-bottom: 16px;
+  }
+  label { display: block; font-size: 12px; color: #9ca3af; margin-bottom: 4px; margin-top: 12px; }
+  label:first-child { margin-top: 0; }
+  input, select {
+    width: 100%; background: #0f1115; border: 1px solid #2d323e; color: #e5e7eb;
+    border-radius: 6px; padding: 9px 10px; font-size: 14px;
+  }
+  .row { display: flex; gap: 12px; }
+  .row > div { flex: 1; }
+  button {
+    border: none; border-radius: 6px; padding: 10px 18px; font-size: 14px; font-weight: 600;
+    cursor: pointer; margin-top: 16px; margin-right: 8px;
+  }
+  .btn-primary { background: #2563eb; color: #fff; }
+  .btn-primary:hover { background: #1d4ed8; }
+  .btn-danger { background: #dc2626; color: #fff; }
+  .btn-danger:hover { background: #b91c1c; }
+  .btn-secondary { background: #262b36; color: #e5e7eb; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .info { font-size: 13px; color: #9ca3af; margin-top: 10px; }
+  .badge { display: inline-block; background: #1f2937; color: #93c5fd; border-radius: 4px; padding: 2px 8px; font-size: 12px; margin-left: 6px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 12px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #21242c; }
+  th { color: #9ca3af; font-weight: 500; }
+  .tbl-scroll { max-height: 260px; overflow-y: auto; border: 1px solid #21242c; border-radius: 6px; }
+  #log { max-height: 320px; overflow-y: auto; font-family: ui-monospace, monospace; font-size: 12.5px; margin-top: 12px; }
+  .linha-ok { color: #34d399; }
+  .linha-erro { color: #f87171; }
+  .linha-sys { color: #9ca3af; }
+  .progress-bar { height: 6px; background: #21242c; border-radius: 3px; overflow: hidden; margin-top: 12px; }
+  .progress-fill { height: 100%; background: #2563eb; width: 0%; transition: width .2s; }
+  .aviso {
+    background: #3f1d1d; border: 1px solid #7f1d1d; color: #fca5a5; border-radius: 8px;
+    padding: 12px 14px; font-size: 13px; margin-bottom: 16px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Limpeza de pedidos de venda — Bling</h1>
+  <div class="sub">Ferramenta interna, sem link em nenhum menu. Apaga em lote via API, respeitando a mesma regra da tela do Bling (não estorna estoque, estorna contas não pagas/geradas, não apaga pedido com link de pagamento + conta a receber vinculada).</div>
+
+  <div class="aviso">⚠️ Ação irreversível. Sempre confira a contagem em "Buscar" antes de apagar — compare com a tela do Bling se tiver dúvida.</div>
+
+  <div class="card">
+    <label>Senha admin</label>
+    <input type="password" id="senha" placeholder="senha do administrador">
+
+    <div class="row">
+      <div>
+        <label>Conta Bling</label>
+        <select id="conta">
+          <option value="1">Conta 1</option>
+          <option value="2">Conta 2</option>
+        </select>
+      </div>
+      <div>
+        <label>Data início</label>
+        <input type="date" id="dataInicial">
+      </div>
+      <div>
+        <label>Data fim</label>
+        <input type="date" id="dataFinal">
+      </div>
+    </div>
+
+    <button class="btn-primary" id="btnBuscar" onclick="buscar()">Buscar pedidos</button>
+    <button class="btn-danger" id="btnApagar" onclick="confirmarApagar()" disabled>Apagar todos os listados</button>
+    <button class="btn-secondary" id="btnCancelar" onclick="cancelar()" style="display:none">Parar</button>
+
+    <div class="info" id="resumoBusca"></div>
+    <div class="tbl-scroll" id="tblWrap" style="display:none">
+      <table>
+        <thead><tr><th>Número</th><th>Data</th><th>Cliente</th><th>Total</th><th>Situação</th></tr></thead>
+        <tbody id="tblBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card" id="cardProgresso" style="display:none">
+    <div class="info" id="progressoTexto">Apagando...</div>
+    <div class="progress-bar"><div class="progress-fill" id="progressoFill"></div></div>
+    <div id="log"></div>
+  </div>
+</div>
+
+<script>
+let ultimaBusca = null; // { pedidos, dataInicial, dataFinal, conta }
+let es = null;
+
+function params() {
+  return {
+    senha: document.getElementById('senha').value.trim(),
+    conta: document.getElementById('conta').value,
+    dataInicial: document.getElementById('dataInicial').value,
+    dataFinal: document.getElementById('dataFinal').value,
+  };
+}
+
+async function buscar() {
+  const p = params();
+  if (!p.senha) return alert('Informe a senha admin');
+  if (!p.dataInicial || !p.dataFinal) return alert('Informe data início e data fim');
+
+  const btn = document.getElementById('btnBuscar');
+  btn.disabled = true; btn.textContent = 'Buscando...';
+  document.getElementById('btnApagar').disabled = true;
+  document.getElementById('resumoBusca').textContent = '';
+  document.getElementById('tblWrap').style.display = 'none';
+
+  try {
+    const qs = new URLSearchParams(p).toString();
+    const r = await fetch('/api/bling/limpeza/listar?' + qs);
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || 'Falha ao buscar');
+
+    ultimaBusca = { ...p, total: data.total };
+    document.getElementById('resumoBusca').innerHTML =
+      `Encontrados <span class="badge">${data.total}</span> pedidos entre ${p.dataInicial} e ${p.dataFinal}` +
+      (data.truncado ? ' — <b style="color:#f87171">lista truncada em 5000, refine o período</b>' : '');
+
+    const tbody = document.getElementById('tblBody');
+    tbody.innerHTML = data.pedidos.slice(0, 300).map(ped => `
+      <tr>
+        <td>${ped.numero ?? ''}</td>
+        <td>${ped.data ?? ''}</td>
+        <td>${(ped.contato || '').slice(0, 30)}</td>
+        <td>${ped.total ?? ''}</td>
+        <td>${ped.situacao ?? ''}</td>
+      </tr>`).join('');
+    if (data.pedidos.length > 300) {
+      tbody.innerHTML += `<tr><td colspan="5" style="color:#6b7280">... e mais ${data.pedidos.length - 300} (mostrando só os 300 primeiros na prévia)</td></tr>`;
+    }
+    document.getElementById('tblWrap').style.display = data.pedidos.length ? 'block' : 'none';
+    document.getElementById('btnApagar').disabled = data.total === 0;
+  } catch (err) {
+    alert('Erro: ' + err.message);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Buscar pedidos';
+  }
+}
+
+function confirmarApagar() {
+  if (!ultimaBusca) return;
+  const texto = prompt(`Isso vai apagar ${ultimaBusca.total} pedidos de venda no Bling (conta ${ultimaBusca.conta}), sem volta.\n\nDigite APAGAR para confirmar:`);
+  if (texto !== 'APAGAR') return;
+  apagar();
+}
+
+function apagar() {
+  const p = ultimaBusca;
+  document.getElementById('btnBuscar').disabled = true;
+  document.getElementById('btnApagar').disabled = true;
+  document.getElementById('btnCancelar').style.display = 'inline-block';
+  document.getElementById('cardProgresso').style.display = 'block';
+  document.getElementById('log').innerHTML = '';
+  document.getElementById('progressoFill').style.width = '0%';
+  document.getElementById('progressoTexto').textContent = 'Buscando lista final...';
+
+  const qs = new URLSearchParams(p).toString();
+  es = new EventSource('/api/bling/limpeza/apagar?' + qs);
+  let total = p.total, feitos = 0;
+
+  const log = document.getElementById('log');
+  function addLinha(texto, classe) {
+    const div = document.createElement('div');
+    div.className = classe;
+    div.textContent = texto;
+    log.appendChild(div);
+    log.scrollTop = log.scrollHeight;
+  }
+
+  es.onmessage = (ev) => {
+    const msg = JSON.parse(ev.data);
+    if (msg.tipo === 'buscando') {
+      document.getElementById('progressoTexto').textContent = `Buscando lista final... ${msg.total} encontrados até agora`;
+    } else if (msg.tipo === 'inicio') {
+      total = msg.total;
+      addLinha(`Iniciando exclusão de ${total} pedidos${msg.truncado ? ' (truncado em 5000)' : ''}...`, 'linha-sys');
+    } else if (msg.tipo === 'ok') {
+      feitos++;
+      addLinha(`✓ Pedido #${msg.numero} apagado`, 'linha-ok');
+      atualizaProgresso(feitos, total);
+    } else if (msg.tipo === 'erro') {
+      feitos++;
+      addLinha(`✗ Pedido #${msg.numero} — ${msg.motivo}`, 'linha-erro');
+      atualizaProgresso(feitos, total);
+    } else if (msg.tipo === 'fim') {
+      addLinha(`Concluído: ${msg.apagados} apagados, ${msg.erros} erros${msg.cancelado ? ' (parado pelo usuário)' : ''}`, 'linha-sys');
+      finalizar();
+    } else if (msg.tipo === 'erro-geral') {
+      addLinha(`Erro geral: ${msg.motivo}`, 'linha-erro');
+      finalizar();
+    }
+  };
+  es.onerror = () => {
+    addLinha('Conexão encerrada.', 'linha-sys');
+    finalizar();
+  };
+}
+
+function atualizaProgresso(feitos, total) {
+  const pct = total ? Math.round((feitos / total) * 100) : 0;
+  document.getElementById('progressoFill').style.width = pct + '%';
+  document.getElementById('progressoTexto').textContent = `${feitos} de ${total} processados (${pct}%)`;
+}
+
+function cancelar() {
+  if (es) es.close();
+  document.getElementById('log').innerHTML += '<div class="linha-sys">Parando...</div>';
+  finalizar();
+}
+
+function finalizar() {
+  if (es) { es.close(); es = null; }
+  document.getElementById('btnBuscar').disabled = false;
+  document.getElementById('btnCancelar').style.display = 'none';
+}
+</script>
+</body>
+</html>
