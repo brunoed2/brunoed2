@@ -2101,8 +2101,16 @@ app.get('/api/bling/limpeza/apagar', async (req, res) => {
           });
           sucesso = true;
         } catch (err) {
-          motivoErro = err.response?.data?.error?.description || err.response?.data?.error?.message
+          // A mensagem de topo do Bling ("houveram erros de validação") é genérica — o motivo
+          // real geralmente vem em error.fields (ex: NF-e vinculada). Prioriza fields, cai pro
+          // resto se não vier, e sempre loga o corpo completo pra dar pra investigar depois.
+          const errData = err.response?.data?.error;
+          const fields = Array.isArray(errData?.fields)
+            ? errData.fields.map(f => f.msg || f.message || f.description).filter(Boolean).join('; ')
+            : '';
+          motivoErro = fields || errData?.description || errData?.message
             || JSON.stringify(err.response?.data || err.message).slice(0, 200);
+          addLog(`[bling-limpeza] pedido #${p.numero} (id ${p.id}) — HTTP ${err.response?.status || '?'} corpo completo: ${JSON.stringify(err.response?.data || err.message)}`, 'warn');
           if (err.response?.status !== 429) break; // só re-tenta em rate limit; outros erros não adianta insistir
         }
       }
