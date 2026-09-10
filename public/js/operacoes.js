@@ -162,10 +162,13 @@ function baixarSelecionadas(canal) {
     const conta = cb.dataset.conta;
     if (!porConta[conta]) porConta[conta] = [];
     porConta[conta].push(cb.dataset.shipmentId);
+    const btn = cb.closest('tr')?.querySelector('.btn-etiqueta');
+    if (btn) { btn.classList.remove('btn-etiqueta-pendente'); btn.textContent = 'Baixar novamente'; }
   });
+  const usuarioParam = encodeURIComponent(localStorage.getItem('usuarioSenha') || '');
   const base = canal === 'shopee' ? '/api/shopee/etiquetas' : '/api/ml/etiquetas';
   for (const [conta, ids] of Object.entries(porConta)) {
-    window.open(`${base}?ids=${ids.join(',')}&conta=${conta}`, '_blank');
+    window.open(`${base}?ids=${ids.join(',')}&conta=${conta}&usuario=${usuarioParam}`, '_blank');
   }
 }
 
@@ -380,9 +383,10 @@ function filtrarPorSku(tipo, sku) {
 // cada resposta vem com o campo "conta" em cada venda, então dá pra misturar
 // sem perder de onde veio.
 async function buscarTodasVendasEtiqueta() {
+  const usuarioParam = encodeURIComponent(localStorage.getItem('usuarioSenha') || '');
   const resultados = await Promise.all(['1', '2'].flatMap(num => [
-    apiFetch(`/api/ml/vendas-etiquetas?conta=${num}`).catch(() => ({ vendas: [] })),
-    apiFetch(`/api/shopee/vendas-etiquetas?conta=${num}`).catch(() => ({ vendas: [] })),
+    apiFetch(`/api/ml/vendas-etiquetas?conta=${num}&usuario=${usuarioParam}`).catch(() => ({ vendas: [] })),
+    apiFetch(`/api/shopee/vendas-etiquetas?conta=${num}&usuario=${usuarioParam}`).catch(() => ({ vendas: [] })),
   ]));
   const vendas = [];
   resultados.forEach(r => { if (Array.isArray(r.vendas)) vendas.push(...r.vendas); });
@@ -680,15 +684,18 @@ async function carregarVendas() {
 
       const flagClass = v.atendida ? 'btn-flag btn-flag-ativo' : 'btn-flag';
       const flagTitle = v.atendida ? 'Remover flag' : 'Marcar como atendido';
-      const hrefEtiqueta = v.canal === 'shopee'
+      const usuarioParam  = encodeURIComponent(localStorage.getItem('usuarioSenha') || '');
+      const hrefEtiquetaBase = v.canal === 'shopee'
         ? `/api/shopee/etiqueta/${v.shipmentId}?conta=${v.conta}`
         : `/api/ml/etiqueta/${v.shipmentId}?conta=${v.conta}`;
+      const hrefEtiqueta = `${hrefEtiquetaBase}&usuario=${usuarioParam}`;
       const badgeShopee = v.canal === 'shopee'
         ? `<span style="background:#f97316;color:#fff;padding:1px 6px;border-radius:4px;font-size:10px;margin-left:5px;white-space:nowrap;vertical-align:middle">Shopee</span>`
         : '';
       const contaCor  = v.conta === '1' ? '#2563eb' : '#7c3aed';
       const badgeConta = `<span style="background:${contaCor};color:#fff;padding:1px 6px;border-radius:4px;font-size:10px;margin-left:5px;white-space:nowrap;vertical-align:middle">C${v.conta}</span>`;
-      const btnEtiquetaHtml = `<a class="btn-etiqueta" href="${hrefEtiqueta}" target="_blank">${v.acaoLabel}</a>` +
+      const classeEtiqueta = v.jaImpressa ? 'btn-etiqueta' : 'btn-etiqueta btn-etiqueta-pendente';
+      const btnEtiquetaHtml = `<a class="${classeEtiqueta}" href="${hrefEtiqueta}" target="_blank" onclick="this.classList.remove('btn-etiqueta-pendente'); this.textContent='Baixar novamente'">${v.acaoLabel}</a>` +
         `<a class="btn-etiqueta" href="#" onclick="compartilharPdf('${hrefEtiqueta}', 'etiqueta-${v.shipmentId}.pdf', this); return false;" title="Compartilhar" style="margin-left:4px;white-space:nowrap">🔗</a>`;
       const instrucaoHtml0 = btnInstrucaoHtml(item0, v.shipmentId, 0, isAdminInstrucao);
 

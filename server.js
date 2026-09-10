@@ -355,6 +355,27 @@ function contaAtiva(data, num) {
   return data.contas[num || data.conta_ativa] || {};
 }
 
+// Rastreia quem (por senha de login) já baixou a etiqueta de cada pedido — usado pra
+// virar "Baixar novamente" só pra quem já baixou, e não pra conta inteira. Recarrega
+// data.json de dentro do lock (mesmo padrão do impulso automático da Shopee) porque a
+// função roda depois de uma chamada lenta à API externa, então o arquivo pode ter
+// mudado nesse meio tempo.
+async function marcarEtiquetaImpressa(getConta, num, id, usuarioSenha) {
+  if (!usuarioSenha) return;
+  await withDataLock(() => {
+    const d  = loadData();
+    const cc = getConta(d, num);
+    if (!cc) return;
+    cc.etiquetas_impressas = cc.etiquetas_impressas || {};
+    const sid = String(id);
+    if (!cc.etiquetas_impressas[sid]) cc.etiquetas_impressas[sid] = [];
+    if (!cc.etiquetas_impressas[sid].includes(usuarioSenha)) {
+      cc.etiquetas_impressas[sid].push(usuarioSenha);
+      saveData(d);
+    }
+  });
+}
+
 // ── Persistência via Railway Environment Variables ────────────
 
 // Estado do último sync — visível via /api/sync/status
@@ -3095,6 +3116,8 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
   const rawMode = req.query.raw === '1'; // ?raw=1 retorna o shipment bruto do primeiro pedido
   const num  = req.query.conta || data.conta_ativa;
   const c    = contaAtiva(data, num);
+  const usuarioAtual = String(req.query.usuario || '');
+  const impressasMap = c.etiquetas_impressas || {};
   if (!c.access_token) return res.json({ error: 'Não conectado' });
   if (!c.user_id)      return res.json({ error: 'user_id não encontrado' });
 
@@ -3177,7 +3200,6 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
       resultado.push(...detalhes);
     }
 
-    const SUBSTATUS_LABEL = { ready_to_print: 'Baixar', printed: 'Baixar novamente' };
     const STATUS_PT = {
       handling:      'Preparando',
       ready_to_ship: 'Aguardando coleta',
@@ -3255,7 +3277,8 @@ app.get('/api/ml/vendas-etiquetas', async (req, res) => {
           conta:          num,
           status:         shipment.status,
           statusLabel:    STATUS_PT[shipment.status] || shipment.status,
-          acaoLabel:      SUBSTATUS_LABEL[shipment.substatus] || 'Baixar',
+          acaoLabel:      (impressasMap[sid] || []).includes(usuarioAtual) ? 'Baixar novamente' : 'Baixar',
+          jaImpressa:     (impressasMap[sid] || []).includes(usuarioAtual),
           prazoDespacho:  prazo,
           itensLista:     [],
         });
@@ -5608,11 +5631,15 @@ app.get('/api/ml/etiquetas', async (req, res) => {
   if (!ids.length) return res.status(400).json({ error: 'Nenhum ID informado' });
 
   const idsParam = ids.join(',');
+  const usuarioAtual = String(req.query.usuario || '');
   try {
     const resp = await axios.get(
       `https://api.mercadolibre.com/shipment_labels?shipment_ids=${idsParam}&response_type=pdf`,
       { headers: { Authorization: `Bearer ${c.access_token}` }, responseType: 'arraybuffer', timeout: 20000 }
     );
+    if (usuarioAtual) {
+      Promise.all(ids.map(id => marcarEtiquetaImpressa(contaAtiva, num, id, usuarioAtual))).catch(() => {});
+    }
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="etiquetas.pdf"`);
     return res.send(Buffer.from(resp.data));
@@ -5629,6 +5656,7 @@ app.get('/api/ml/etiqueta/:shipment_id', async (req, res) => {
 
   const sid  = req.params.shipment_id;
   const tok  = c.access_token;
+  const usuarioAtual = String(req.query.usuario || '');
 
   // Tenta o novo endpoint /shipment_labels
   const urls = [
@@ -5646,6 +5674,7 @@ app.get('/api/ml/etiqueta/:shipment_id', async (req, res) => {
       });
       const ct = resp.headers['content-type'] || '';
       if (resp.status === 200 && resp.data.byteLength > 100) {
+        if (usuarioAtual) marcarEtiquetaImpressa(contaAtiva, num, sid, usuarioAtual).catch(() => {});
         res.setHeader('Content-Type', ct || 'application/pdf');
         res.setHeader('Content-Disposition', `inline; filename="etiqueta-${sid}.pdf"`);
         return res.send(Buffer.from(resp.data));
@@ -6704,6 +6733,7 @@ app.get('/api/shopee/vendas-etiquetas', async (req, res) => {
   const num  = String(req.query.conta || '1');
   const data = loadData();
   const sp   = shopeeConta(data, num);
+  const usuarioAtual = String(req.query.usuario || '');
   if (!sp.access_token) return res.json({ vendas: [] });
   try {
     const accessToken = await getShopeeToken(data, num);
@@ -6739,9 +6769,10 @@ app.get('/api/shopee/vendas-etiquetas', async (req, res) => {
     // Flag "atendida" e "etiqueta já baixada" ficam na própria conta Shopee
     // (data.shopee_contas) — bug antigo: essa rota sempre devolvia atendida:false
     // e acaoLabel:'Baixar' fixos, então o flag nunca colava e o botão nunca virava
-    // "Baixar novamente" pra pedidos Shopee.
-    const atendidasMap  = new Map((sp.atendidas_dados || []).map(v => [String(v.shipmentId), v]));
-    const baixadasSet   = new Set(sp.etiquetas_baixadas || []);
+    // "Baixar novamente" pra pedidos Shopee. Rastreio agora é por usuário (senha de
+    // login), não mais global pra conta inteira — mesmo esquema do ML.
+    const atendidasMap = new Map((sp.atendidas_dados || []).map(v => [String(v.shipmentId), v]));
+    const impressasMap = sp.etiquetas_impressas || {};
 
     const STATUS_LABEL = { READY_TO_SHIP: 'Pronto p/ envio', PROCESSED: 'Processado' };
     const ordersValidas = orderSns
@@ -6749,6 +6780,7 @@ app.get('/api/shopee/vendas-etiquetas', async (req, res) => {
       .filter(o => o && o.invoice_data?.status === 'valid'); // só pedidos com NF já aceita pela Shopee — mesmo critério do ML (que só mostra quando a etiqueta está de fato pronta pra baixar)
     const vendas = ordersValidas.map(o => {
         const atendidaEntry = atendidasMap.get(String(o.order_sn));
+        const jaImpressa = (impressasMap[String(o.order_sn)] || []).includes(usuarioAtual);
         return {
           shipmentId: o.order_sn,
           orderId:    o.order_sn,
@@ -6757,7 +6789,8 @@ app.get('/api/shopee/vendas-etiquetas', async (req, res) => {
           canal:      'shopee',
           status:     o.order_status,
           statusLabel: STATUS_LABEL[o.order_status] || o.order_status,
-          acaoLabel:  baixadasSet.has(o.order_sn) ? 'Baixar novamente' : 'Baixar',
+          acaoLabel:  jaImpressa ? 'Baixar novamente' : 'Baixar',
+          jaImpressa,
           atendida:   !!atendidaEntry,
           atendidaEm: atendidaEntry?.atendidaEm || null,
           itensLista: anexarInstrucoesDespacho((o.item_list || []).map(i => ({
@@ -6901,7 +6934,7 @@ async function shopeeOrganizarEnvio(orderSn, sp, accessToken) {
 }
 
 // Gera a etiqueta de transporte da Shopee (tracking → doc type → create → download → ZPL→PDF)
-async function shopeeGerarEtiquetaPdf(orderSn, conta) {
+async function shopeeGerarEtiquetaPdf(orderSn, conta, usuarioSenha) {
   const num  = String(conta || '1');
   const data = loadData();
   const sp   = shopeeConta(data, num);
@@ -6981,21 +7014,16 @@ async function shopeeGerarEtiquetaPdf(orderSn, conta) {
     pages.forEach(p => merged.addPage(p));
   }
 
-  // O ML devolve sozinho o substatus "printed" depois que a etiqueta é baixada, e é
-  // isso que vira "Baixar novamente" na aba Vendas — a Shopee não expõe esse dado,
-  // então rastreamos aqui pra manter o mesmo comportamento nos dois canais.
-  sp.etiquetas_baixadas = sp.etiquetas_baixadas || [];
-  if (!sp.etiquetas_baixadas.includes(orderSn)) {
-    sp.etiquetas_baixadas.push(orderSn);
-    saveData(data);
-  }
+  // Rastreia quem baixou (por usuário logado), não a conta inteira — mesmo esquema
+  // usado no ML em marcarEtiquetaImpressa().
+  if (usuarioSenha) marcarEtiquetaImpressa(shopeeConta, num, orderSn, usuarioSenha).catch(() => {});
 
   return Buffer.from(await merged.save());
 }
 
 app.get('/api/shopee/etiqueta/:order_sn', async (req, res) => {
   try {
-    const pdf = await shopeeGerarEtiquetaPdf(req.params.order_sn, req.query.conta);
+    const pdf = await shopeeGerarEtiquetaPdf(req.params.order_sn, req.query.conta, String(req.query.usuario || ''));
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', 'inline');
     res.send(pdf);
@@ -7010,6 +7038,7 @@ app.get('/api/shopee/etiqueta/:order_sn', async (req, res) => {
 // junta tudo num PDF só.
 app.get('/api/shopee/etiquetas', async (req, res) => {
   const conta = req.query.conta || '1';
+  const usuarioAtual = String(req.query.usuario || '');
   const ids = (req.query.ids || '').split(',').map(s => s.trim()).filter(Boolean);
   if (!ids.length) return res.status(400).json({ error: 'Nenhum ID informado' });
   try {
@@ -7024,7 +7053,7 @@ app.get('/api/shopee/etiquetas', async (req, res) => {
       for (let tentativa = 0; tentativa < 2 && !pdfBuf; tentativa++) {
         if (tentativa > 0) await new Promise(r => setTimeout(r, 2000));
         try {
-          pdfBuf = await shopeeGerarEtiquetaPdf(orderSn, conta);
+          pdfBuf = await shopeeGerarEtiquetaPdf(orderSn, conta, usuarioAtual);
         } catch (err) {
           ultimoErro = err;
         }
