@@ -1942,6 +1942,7 @@ async function fetchBlingPedidosPendentes(conta) {
       dataPrevista:     p.dataPrevista || null,
       produtos:         p.produtos || [],
       canal:            p.canal || null,
+      isShopee:         !!p.isShopee,
       lojaId:           p.lojaId || null,
       temEtiqueta:      p.isShopee ? false : (mlTokens.length > 0 ? idsComEtiqueta.has(p.id) : true),
       pendencias:       p.pendencias || [],
