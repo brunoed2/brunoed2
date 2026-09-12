@@ -172,6 +172,17 @@ function loadData() {
   if (!raw.fornecedores_por_conta['1'].find(f => f.id === 'bra-industria')) {
     raw.fornecedores_por_conta['1'].push({ id: 'bra-industria', nome: 'BRA-INDÚSTRIA', leadTimeDias: 30, skus: ['406'], mlbs: [], canais: ['ml', 'shopee'] });
   }
+  {
+    // Pedidos ML #2000014914150799 e #2000018329688420 (07/09/2026) venderam o SKU
+    // 409 sem o SKU vinculado na variação na hora da venda — o ML não deixa vincular
+    // depois, então oi.item.seller_sku nunca vai bater com esse SKU nesses pedidos e
+    // eles ficariam de fora do dashboard do fornecedor pra sempre. Ajuste manual
+    // (ver buscarDashboardFornecedorPorSku) soma essas 2 vendas na data certa.
+    const braForn = raw.fornecedores_por_conta['1'].find(f => f.id === 'bra-industria');
+    if (braForn && !braForn.ajustesManuais) {
+      braForn.ajustesManuais = [{ sku: '409', data: '2026-09-07', quantidade: 2 }];
+    }
+  }
   raw.usuarios = raw.usuarios || {};
   if (!raw.usuarios['1224']) {
     raw.usuarios['1224'] = { nome: 'Operador', abas: ['estoque', 'vendas', 'historico', 'etiquetas'], painel: 'painel2' };
@@ -10401,7 +10412,7 @@ async function buscarItensShopeePeriodoLeve(data, conta, de, ate) {
   return resultado;
 }
 
-async function buscarDashboardFornecedorPorSku(data, contaNum, skusAlvo, canais, de, ate) {
+async function buscarDashboardFornecedorPorSku(data, contaNum, skusAlvo, canais, de, ate, ajustesManuais = []) {
   const skuSet        = new Set(skusAlvo.map(s => s.toUpperCase()));
   const vendasDiarias  = {};
   for (const sku of skusAlvo) vendasDiarias[sku] = {};
@@ -10490,6 +10501,18 @@ async function buscarDashboardFornecedorPorSku(data, contaNum, skusAlvo, canais,
         }
       }
     }
+  }
+
+  // Ajuste manual: pedidos antigos que venderam o SKU mas o vendedor não tinha
+  // vinculado o SKU na variação na hora da venda — o ML não deixa vincular depois,
+  // então esse pedido nunca vai aparecer no oi.item.seller_sku e ficaria de fora
+  // pra sempre. Cadastrado pelo admin direto em fornecedor.ajustesManuais.
+  for (const adj of ajustesManuais) {
+    const skuNorm = String(adj.sku || '').trim().toUpperCase();
+    if (!skuSet.has(skuNorm)) continue;
+    if (adj.data < de || adj.data > ate) continue;
+    const skuOriginal = skusAlvo.find(s => s.toUpperCase() === skuNorm);
+    vendasDiarias[skuOriginal][adj.data] = (vendasDiarias[skuOriginal][adj.data] || 0) + (adj.quantidade || 1);
   }
 
   const produtos = skusAlvo.map(sku => ({
@@ -10684,7 +10707,7 @@ app.get('/api/fornecedor/dashboard', async (req, res) => {
   try {
     const resultado = mlbs.length > 0
       ? await buscarDashboardFornecedorPorMlb(c, mlbs, de, ate, data)
-      : await buscarDashboardFornecedorPorSku(data, contaNum, skusAlvo, canais, de, ate);
+      : await buscarDashboardFornecedorPorSku(data, contaNum, skusAlvo, canais, de, ate, fornecedor.ajustesManuais || []);
 
     // Recarrega data.json aqui, em vez de reusar a cópia carregada antes das chamadas
     // à API do ML/Shopee (que podem levar vários segundos) — nesse intervalo outra
