@@ -6041,15 +6041,19 @@ app.get('/api/ml/pedido-por-shipment/:id', async (req, res) => {
           try {
             const r = await axios.get(`https://api.mercadolibre.com/items/${i.item.id}`, {
               headers: { Authorization: `Bearer ${token}` },
-              params: { attributes: 'thumbnail,seller_custom_field,permalink,variations' },
+              params: { attributes: 'thumbnail,seller_custom_field,permalink,variations,attributes' },
               timeout: 5000,
             });
             const varMap = {};
             for (const v of (r.data.variations || [])) {
               varMap[v.id] = (v.attribute_combinations || []).map(a => a.value_name).join(' / ') || null;
             }
-            return { thumbnail: r.data.thumbnail || null, sku: r.data.seller_custom_field || null, permalink: r.data.permalink || null, variations: varMap };
-          } catch { return { thumbnail: null, sku: null, permalink: null, variations: {} }; }
+            // extrairSku é a mesma função usada no sync principal / aba Vendas pra calcular
+            // o SKU (olha seller_custom_field do item, atributo SELLER_SKU e variações) —
+            // usar qualquer outra lógica aqui gera um SKU diferente do que virou a chave da
+            // instrução de despacho salva pelo admin, e a instrução nunca é encontrada.
+            return { thumbnail: r.data.thumbnail || null, sku: extrairSku(r.data), permalink: r.data.permalink || null, variations: varMap };
+          } catch { return { thumbnail: null, sku: '—', permalink: null, variations: {} }; }
         }));
         items.forEach((i, idx) => {
           const d = detalhes[idx];
@@ -6060,11 +6064,7 @@ app.get('/api/ml/pedido-por-shipment/:id', async (req, res) => {
           const variacaoNome = i.item.variation_attributes?.length
             ? i.item.variation_attributes.map(a => a.value_name).join(' / ')
             : (i.item.variation_id ? (d.variations[i.item.variation_id] || null) : null);
-          // oi.item.seller_sku já vem no pedido refletindo a variação vendida — o
-          // seller_custom_field do endpoint /items/:id é só do anúncio (não da variação)
-          // e costuma vir vazio quando o anúncio tem variações, gerando SKU '—' à toa.
-          const sku = i.item.seller_sku || d.sku || '—';
-          itensLista.push({ titulo: i.item.title, variacao: variacaoNome, variationId: i.item.variation_id || null, sku, thumbnail: d.thumbnail, permalink: d.permalink, quantidade: i.quantity || 1 });
+          itensLista.push({ titulo: i.item.title, variacao: variacaoNome, variationId: i.item.variation_id || null, sku: d.sku, thumbnail: d.thumbnail, permalink: d.permalink, quantidade: i.quantity || 1 });
         });
       } catch {}
     }
