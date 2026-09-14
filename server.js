@@ -2851,9 +2851,27 @@ async function marcarAutoSuperFlag(campo, chave) {
   });
 }
 
-async function autoSuperJob() {
-  if (!ehDiaUtilHoje()) return; // fim de semana — nada a fazer
+// Trava contra execuções sobrepostas: cada pedido Shopee pode esperar até 2min pela
+// autorização SEFAZ (blingAguardarAutorizacaoNF) + pausas entre etapas, então com vários
+// pedidos prontos ao mesmo tempo um ciclo pode passar dos 5min do setInterval. Sem essa
+// trava, um novo ciclo começava por cima do anterior e os dois liam o mesmo `emitidos`
+// (ainda não gravado) — resultado: dois pedidos concorrentes pro mesmo pedido, um caindo
+// em rate limit ou erro de validação do Bling e o outro emitindo, gerando o par de
+// notificações "falha" + "sucesso" quase ao mesmo tempo pro mesmo pedido.
+let autoSuperEmExecucao = false;
 
+async function autoSuperJob() {
+  if (autoSuperEmExecucao) return;
+  if (!ehDiaUtilHoje()) return; // fim de semana — nada a fazer
+  autoSuperEmExecucao = true;
+  try {
+    await autoSuperJobCiclo();
+  } finally {
+    autoSuperEmExecucao = false;
+  }
+}
+
+async function autoSuperJobCiclo() {
   const dataLeitura = loadData();
   const emitidos             = dataLeitura.auto_super_emitidos             || {};
   const pendenciaNotificada  = dataLeitura.auto_super_pendencia_notificada || {};
