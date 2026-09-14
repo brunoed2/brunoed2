@@ -6079,9 +6079,26 @@ app.get('/api/ml/pedido-por-shipment/:id', async (req, res) => {
 
     // Enriquece thumbnail/SKU se algum item estiver sem
     const semThumb = (base.itensLista || []).some(i => !i.thumbnail || !i.sku || i.sku === '—');
-    if (semThumb && c.access_token && base.orderId) {
+    if (semThumb && c.access_token) {
       try {
-        const { itensLista, comprador } = await enriquecerItens([base.orderId], c.access_token);
+        let itensLista = [], comprador = base.comprador;
+        if (base.orderId) {
+          ({ itensLista, comprador } = await enriquecerItens([base.orderId], c.access_token));
+        }
+        // orderId ausente ou incorreto (ex: pedido marcado "atendido" antes do v898, quando
+        // a resposta 'ml-api' não devolvia orderId — o front salvava o shipmentId no lugar,
+        // e /orders/{shipmentId} sempre falha) — redescobre via /shipments/:id, igual ao
+        // fallback 2 abaixo, e corrige o orderId guardado pra essa tentativa e as próximas.
+        if (!itensLista.length) {
+          const rShip = await axios.get(`https://api.mercadolibre.com/shipments/${sid}`, {
+            headers: { Authorization: `Bearer ${c.access_token}` }, timeout: 6000,
+          }).catch(() => null);
+          const freshOrderIds = rShip?.data?.order_ids?.length ? rShip.data.order_ids : (rShip?.data?.order_id ? [rShip.data.order_id] : []);
+          if (freshOrderIds.length) {
+            base.orderId = freshOrderIds[0];
+            ({ itensLista, comprador } = await enriquecerItens(freshOrderIds, c.access_token));
+          }
+        }
         if (itensLista.length) base.itensLista = itensLista;
         if (comprador !== '—') base.comprador = comprador;
       } catch {}
@@ -6100,7 +6117,12 @@ app.get('/api/ml/pedido-por-shipment/:id', async (req, res) => {
       const orderIds = shipment.order_ids?.length ? shipment.order_ids : (shipment.order_id ? [shipment.order_id] : []);
       if (!orderIds.length) continue;
       const { itensLista, comprador } = await enriquecerItens(orderIds, c.access_token);
-      return res.json({ encontrado: true, fonte: 'ml-api', conta: num, shipmentId: sid, comprador, status: shipment.status, itensLista: anexarInstrucoesDespacho(itensLista, 'ml') });
+      // orderId precisa ir na resposta: o front usa pedido.orderId ao marcar "atendido"
+      // (scannerToggleAtendido em scanner.js), e sem ele cai no fallback `|| sid` — salva o
+      // shipmentId no lugar do orderId. Isso quebra o auto-heal do SKU pra sempre nesse
+      // pedido: toda tentativa seguinte busca /orders/{shipmentId} (ID errado), a chamada
+      // falha, e o item fica travado com o SKU velho mesmo depois de corrigir a extração.
+      return res.json({ encontrado: true, fonte: 'ml-api', conta: num, shipmentId: sid, orderId: orderIds[0], comprador, status: shipment.status, itensLista: anexarInstrucoesDespacho(itensLista, 'ml') });
     } catch {}
   }
 
