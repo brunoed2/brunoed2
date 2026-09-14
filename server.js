@@ -2756,15 +2756,20 @@ app.post('/api/shopee/enviar-nf-autorizada/:orderSn', async (req, res) => {
 
 // Extraído da rota pra ser reusável pelo job de emissão automática (autoSuperJob)
 // além do clique manual do botão Super — mesmo fluxo completo pros dois casos.
-async function blingShopeeSuperHelper(pedidoId, conta) {
+async function blingShopeeSuperHelper(pedidoId, conta, opts = {}) {
+  const { nfIdExistente, onNfGerada } = opts;
   const blingErrDetail = err => {
     try { return err.response ? `HTTP ${err.response.status}: ${JSON.stringify(err.response.data ?? null).slice(0, 300)}` : (err.message || 'erro'); }
     catch { return err.message || 'erro'; }
   };
-  let etapa = 'gerar-nf';
+  let etapa = nfIdExistente ? 'enviar-sefaz' : 'gerar-nf';
   try {
     addLog(`[bling] shopee-super pedido ${pedidoId}`, 'info');
-    const nfId = await blingEmitirNFHelper(pedidoId, conta);
+    let nfId = nfIdExistente;
+    if (!nfId) {
+      nfId = await blingEmitirNFHelper(pedidoId, conta);
+      if (onNfGerada) await onNfGerada(nfId);
+    }
 
     etapa = 'enviar-sefaz';
     await new Promise(r => setTimeout(r, 3500));
@@ -2842,11 +2847,19 @@ function dentroDaJanelaMLAgora(prazoISO) {
 // outras rotas durante esse tempo todo (mesmo risco já documentado no impulso Shopee
 // e nas notificações). Por isso cada marcação individual relê e grava na hora, dentro
 // do lock, só o campo que importa.
-async function marcarAutoSuperFlag(campo, chave) {
+async function marcarAutoSuperFlag(campo, chave, valor = Date.now()) {
   await withDataLock(() => {
     const d = loadData();
     if (!d[campo]) d[campo] = {};
-    d[campo][chave] = Date.now();
+    d[campo][chave] = valor;
+    saveData(d);
+  });
+}
+
+async function removerAutoSuperFlag(campo, chave) {
+  await withDataLock(() => {
+    const d = loadData();
+    if (d[campo]) delete d[campo][chave];
     saveData(d);
   });
 }
@@ -2875,6 +2888,7 @@ async function autoSuperJobCiclo() {
   const dataLeitura = loadData();
   const emitidos             = dataLeitura.auto_super_emitidos             || {};
   const pendenciaNotificada  = dataLeitura.auto_super_pendencia_notificada || {};
+  const nfGerada             = dataLeitura.auto_super_nf_gerada            || {};
 
   const contasBling = ['1', '2'].filter(c => !!(getBlingDataConta(dataLeitura, c)?.access_token));
   if (!contasBling.length) return;
@@ -2917,16 +2931,31 @@ async function autoSuperJobCiclo() {
         continue;
       }
 
+      // Se uma tentativa anterior já gerou a NF no Bling mas falhou antes de enviar
+      // pra SEFAZ (ex.: rate limit), reusa o nfId salvo em vez de gerar outra — o
+      // Bling recusa uma segunda NF pro mesmo pedido, o que travava o pedido num
+      // loop de erro de validação silencioso (só notificava a falha uma vez).
+      const nfIdSalvo = nfGerada[chave];
+      const salvarNfGerada = async (nfId) => {
+        nfGerada[chave] = nfId;
+        await marcarAutoSuperFlag('auto_super_nf_gerada', chave, nfId);
+      };
+
       try {
         if (p.isShopee) {
-          await blingShopeeSuperHelper(p.id, conta);
+          await blingShopeeSuperHelper(p.id, conta, { nfIdExistente: nfIdSalvo, onNfGerada: salvarNfGerada });
         } else {
-          const nfId = await blingEmitirNFHelper(p.id, conta);
+          let nfId = nfIdSalvo;
+          if (!nfId) {
+            nfId = await blingEmitirNFHelper(p.id, conta);
+            await salvarNfGerada(nfId);
+          }
           await new Promise(r => setTimeout(r, 3500));
           await blingEnviarNFHelper(nfId, conta);
         }
         emitidos[chave] = Date.now();
         await marcarAutoSuperFlag('auto_super_emitidos', chave);
+        if (nfGerada[chave]) { delete nfGerada[chave]; await removerAutoSuperFlag('auto_super_nf_gerada', chave); }
         const valorFmt = (p.valor_total || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
         notificar(`✅ NF emitida automaticamente\n\n#${p.numero} — ${p.comprador} — ${valorFmt}\nConta ${conta}${p.isShopee ? ' · Shopee' : ''}`, 'nf_emitida').catch(() => {});
         addLog(`[auto-super] NF emitida automaticamente: pedido ${p.numero} conta ${conta}`, 'ok');
