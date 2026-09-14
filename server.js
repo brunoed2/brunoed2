@@ -6060,7 +6060,11 @@ app.get('/api/ml/pedido-por-shipment/:id', async (req, res) => {
           const variacaoNome = i.item.variation_attributes?.length
             ? i.item.variation_attributes.map(a => a.value_name).join(' / ')
             : (i.item.variation_id ? (d.variations[i.item.variation_id] || null) : null);
-          itensLista.push({ titulo: i.item.title, variacao: variacaoNome, variationId: i.item.variation_id || null, sku: d.sku || '—', thumbnail: d.thumbnail, permalink: d.permalink, quantidade: i.quantity || 1 });
+          // oi.item.seller_sku já vem no pedido refletindo a variação vendida — o
+          // seller_custom_field do endpoint /items/:id é só do anúncio (não da variação)
+          // e costuma vir vazio quando o anúncio tem variações, gerando SKU '—' à toa.
+          const sku = i.item.seller_sku || d.sku || '—';
+          itensLista.push({ titulo: i.item.title, variacao: variacaoNome, variationId: i.item.variation_id || null, sku, thumbnail: d.thumbnail, permalink: d.permalink, quantidade: i.quantity || 1 });
         });
       } catch {}
     }
