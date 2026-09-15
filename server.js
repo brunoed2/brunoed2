@@ -6081,23 +6081,25 @@ app.get('/api/ml/pedido-por-shipment/:id', async (req, res) => {
     const semThumb = (base.itensLista || []).some(i => !i.thumbnail || !i.sku || i.sku === '—');
     if (semThumb && c.access_token) {
       try {
+        // Busca sempre os order_ids reais via /shipments/:id em vez de confiar só no
+        // base.orderId salvo — um shipment pode ser um "pack" de várias orders do ML
+        // (carrinho com produtos diferentes). Usar só base.orderId trazia de volta os
+        // itens de UMA order só, e como o resultado não vinha vazio, sobrescrevia
+        // base.itensLista (que tinha todos os itens certos vindos do histórico) com
+        // essa lista incompleta — perdendo produtos do pedido pra sempre no scanner.
+        // Também corrige orderId ausente/incorreto (ex: pedido marcado "atendido" antes
+        // do v898, quando a resposta 'ml-api' não devolvia orderId e o front salvava o
+        // shipmentId no lugar).
+        const rShip = await axios.get(`https://api.mercadolibre.com/shipments/${sid}`, {
+          headers: { Authorization: `Bearer ${c.access_token}` }, timeout: 6000,
+        }).catch(() => null);
+        let orderIds = rShip?.data?.order_ids?.length ? rShip.data.order_ids : (rShip?.data?.order_id ? [rShip.data.order_id] : []);
+        if (!orderIds.length && base.orderId) orderIds = [base.orderId];
+
         let itensLista = [], comprador = base.comprador;
-        if (base.orderId) {
-          ({ itensLista, comprador } = await enriquecerItens([base.orderId], c.access_token));
-        }
-        // orderId ausente ou incorreto (ex: pedido marcado "atendido" antes do v898, quando
-        // a resposta 'ml-api' não devolvia orderId — o front salvava o shipmentId no lugar,
-        // e /orders/{shipmentId} sempre falha) — redescobre via /shipments/:id, igual ao
-        // fallback 2 abaixo, e corrige o orderId guardado pra essa tentativa e as próximas.
-        if (!itensLista.length) {
-          const rShip = await axios.get(`https://api.mercadolibre.com/shipments/${sid}`, {
-            headers: { Authorization: `Bearer ${c.access_token}` }, timeout: 6000,
-          }).catch(() => null);
-          const freshOrderIds = rShip?.data?.order_ids?.length ? rShip.data.order_ids : (rShip?.data?.order_id ? [rShip.data.order_id] : []);
-          if (freshOrderIds.length) {
-            base.orderId = freshOrderIds[0];
-            ({ itensLista, comprador } = await enriquecerItens(freshOrderIds, c.access_token));
-          }
+        if (orderIds.length) {
+          if (base.orderId !== orderIds[0]) base.orderId = orderIds[0];
+          ({ itensLista, comprador } = await enriquecerItens(orderIds, c.access_token));
         }
         if (itensLista.length) base.itensLista = itensLista;
         if (comprador !== '—') base.comprador = comprador;
