@@ -6030,12 +6030,33 @@ app.get('/api/ml/pedido-por-shipment/:id', async (req, res) => {
   async function enriquecerItens(orderIds, token) {
     const itensLista = [];
     let comprador = '—';
-    for (const orderId of orderIds) {
+    // Fila que cresce conforme descobrimos orders-irmãs: carrinho com produtos
+    // diferentes vira várias orders do ML compartilhando o mesmo shipment/pack, e
+    // cada order só devolve os PRÓPRIOS order_items — sem seguir pack_id, orders
+    // depois da primeira (ou passadas de fora, ex: só base.orderId salvo) nunca
+    // são buscadas e o produto delas some da lista pro scanner.
+    const fila = [...orderIds].map(String);
+    const vistos = new Set();
+    for (let i = 0; i < fila.length; i++) {
+      const orderId = fila[i];
+      if (vistos.has(orderId)) continue;
+      vistos.add(orderId);
       try {
         const rOrder = await axios.get(`https://api.mercadolibre.com/orders/${orderId}`, {
           headers: { Authorization: `Bearer ${token}` }, timeout: 6000,
         });
         comprador = rOrder.data.buyer?.nickname || comprador;
+        const packId = rOrder.data.pack_id;
+        if (packId) {
+          try {
+            const rPack = await axios.get(`https://api.mercadolibre.com/packs/${packId}`, {
+              headers: { Authorization: `Bearer ${token}` }, timeout: 6000,
+            });
+            for (const po of (rPack.data.orders || [])) {
+              if (po.id && !vistos.has(String(po.id))) fila.push(String(po.id));
+            }
+          } catch {}
+        }
         const items = rOrder.data.order_items || [];
         const detalhes = await Promise.all(items.map(async i => {
           try {
