@@ -1608,7 +1608,7 @@ app.get('/api/bling/callback', async (req, res) => {
     const resp = await axios.post(
       'https://api.bling.com.br/Api/v3/oauth/token',
       new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri: callback }),
-      { headers: { Authorization: `Basic ${creds}`, 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 15000 }
+      { headers: { Authorization: `Basic ${creds}`, 'Content-Type': 'application/x-www-form-urlencoded', 'enable-jwt': '1' }, timeout: 15000 }
     );
     const token = {
       access_token:  resp.data.access_token,
@@ -1658,7 +1658,7 @@ async function _executarRefreshBling(conta) {
     resp = await axios.post(
       'https://api.bling.com.br/Api/v3/oauth/token',
       new URLSearchParams({ grant_type: 'refresh_token', refresh_token: b.refresh_token }),
-      { headers: { Authorization: `Basic ${creds}`, 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 15000 }
+      { headers: { Authorization: `Basic ${creds}`, 'Content-Type': 'application/x-www-form-urlencoded', 'enable-jwt': '1' }, timeout: 15000 }
     );
   } catch (err) {
     const status = err.response?.status;
