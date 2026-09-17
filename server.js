@@ -7014,15 +7014,20 @@ async function buscarVendasShopeeComCustos(data, conta, dateFrom, dateTo) {
     if (!det) return null;
     const cancelado = SHOPEE_STATUS_CANCELADO.includes(det.order_status);
     const income  = escrowPorSn[sn];
-    const itens = (det.item_list || []).map(i => ({
-      itemId:     i.item_id,
-      modelId:    i.model_id || 0,
-      sku:        i.item_sku || i.model_sku || '',
-      titulo:     i.item_name || '',
-      variacao:   (i.model_name && i.model_name !== i.item_name) ? i.model_name : '',
-      quantidade: i.model_quantity_purchased || 1,
-      precoUnit:  i.model_discounted_price ?? i.model_original_price ?? 0,
-    }));
+    const correcaoSku = SHOPEE_SKU_CORRECOES[sn];
+    const itens = (det.item_list || []).map(i => {
+      let sku = i.item_sku || i.model_sku || '';
+      if (correcaoSku && sku === correcaoSku.de) sku = correcaoSku.para;
+      return {
+        itemId:     i.item_id,
+        modelId:    i.model_id || 0,
+        sku,
+        titulo:     i.item_name || '',
+        variacao:   (i.model_name && i.model_name !== i.item_name) ? i.model_name : '',
+        quantidade: i.model_quantity_purchased || 1,
+        precoUnit:  i.model_discounted_price ?? i.model_original_price ?? 0,
+      };
+    });
     const receitaItens = itens.reduce((s, i) => s + i.precoUnit * i.quantidade, 0);
     const receita     = income?.order_selling_price ?? receitaItens;
     const taxaShopee  = income ? (income.commission_fee || 0) + (income.service_fee || 0) : 0;
@@ -10444,6 +10449,15 @@ async function buscarDashboardFornecedorPorMlb(c, mlbs, de, ate, data) {
   return { produtos, vendas_diarias: vendasDiarias, de, ate, lastSync: new Date().toISOString() };
 }
 
+// Correção pontual de SKU errado cadastrado na variação do anúncio Shopee — o
+// item_sku fica gravado no pedido no momento da venda (retrato daquele instante),
+// então corrigir o SKU no cadastro da Shopee depois não muda o que pedidos antigos
+// já retornam (mesmo problema do LUCRO_SKU_CORRECOES_ML, só que pro lado Shopee).
+const SHOPEE_SKU_CORRECOES = {
+  '2609178EHGKXV3': { de: '410', para: '409' },
+  '2609167NP06BX2': { de: '410', para: '409' },
+};
+
 // Versão enxuta da busca de pedidos Shopee num período — só o essencial (sku,
 // quantidade, data) pra contagem de vendas, sem os lookups de escrow/custos que
 // buscarVendasShopeeComCustos faz (desnecessários aqui e mais lentos)
@@ -10494,14 +10508,19 @@ async function buscarItensShopeePeriodoLeve(data, conta, de, ate) {
     const rd = await axios.get(`${SHOPEE_BASE}/order/get_order_detail`, { params: paramsD, timeout: 15000 });
     for (const o of (rd.data.response?.order_list || [])) {
       if (SHOPEE_STATUS_CANCELADO.includes(o.order_status)) continue;
+      const correcaoSku = SHOPEE_SKU_CORRECOES[o.order_sn];
       resultado.push({
         orderSn: o.order_sn,
         data:    (o.create_time || 0) * 1000,
-        itens:   (o.item_list || []).map(i => ({
-          sku:        i.item_sku || i.model_sku || '',
-          titulo:     i.item_name || '',
-          quantidade: i.model_quantity_purchased || 1,
-        })),
+        itens:   (o.item_list || []).map(i => {
+          let sku = i.item_sku || i.model_sku || '';
+          if (correcaoSku && sku === correcaoSku.de) sku = correcaoSku.para;
+          return {
+            sku,
+            titulo:     i.item_name || '',
+            quantidade: i.model_quantity_purchased || 1,
+          };
+        }),
       });
     }
   }
