@@ -10780,9 +10780,12 @@ app.get('/api/fornecedor/vendas-detalhe', async (req, res) => {
   const ate  = req.query.ate || dataBRDeTimestamp(hoje);
 
   const registros = [];
+  const erros = {};
 
   const c = (data.contas || {})[contaNum];
-  if (c?.access_token && c?.user_id) {
+  if (!c?.access_token || !c?.user_id) {
+    erros.ml = 'Conta não conectada ao Mercado Livre (sem access_token/user_id)';
+  } else {
     try {
       const todasOrdens = await buscarTodosPedidosPagos(c, de, ate);
       for (const order of todasOrdens) {
@@ -10797,7 +10800,9 @@ app.get('/api/fornecedor/vendas-detalhe', async (req, res) => {
         }
       }
     } catch (err) {
-      addLog(`[fornecedor-debug] Erro ML: ${err.message}`, 'warn');
+      const msg = err.response?.data?.message || err.message;
+      addLog(`[fornecedor-debug] Erro ML: ${msg}`, 'warn');
+      erros.ml = msg;
     }
   }
 
@@ -10815,7 +10820,9 @@ app.get('/api/fornecedor/vendas-detalhe', async (req, res) => {
       }
     }
   } catch (err) {
-    addLog(`[fornecedor-debug] Erro Shopee: ${err.message}`, 'warn');
+    const msg = err.response?.data?.message || err.message;
+    addLog(`[fornecedor-debug] Erro Shopee: ${msg}`, 'warn');
+    erros.shopee = msg;
   }
 
   for (const num of Object.keys(data.fornecedores_por_conta || {})) {
@@ -10833,7 +10840,7 @@ app.get('/api/fornecedor/vendas-detalhe', async (req, res) => {
 
   registros.sort((a, b) => String(a.data).localeCompare(String(b.data)));
   const total = registros.reduce((s, r) => s + (r.quantidade || 1), 0);
-  res.json({ sku, conta: contaNum, de, ate, total, registros });
+  res.json({ sku, conta: contaNum, de, ate, total, registros, erros: Object.keys(erros).length ? erros : undefined });
 });
 
 app.get('/api/fornecedor/dashboard', async (req, res) => {
