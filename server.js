@@ -10767,6 +10767,75 @@ async function verificarVendasFornecedoresPorSku() {
   }
 }
 
+// Debug admin: lista pedido a pedido tudo que está sendo somado na contagem "vendas
+// no período" de um SKU específico no painel do fornecedor — ML (por seller_sku),
+// Shopee e ajustesManuais, pra investigar contagens que não batem com conferência manual.
+app.get('/api/fornecedor/vendas-detalhe', async (req, res) => {
+  const sku = String(req.query.sku || '').trim().toUpperCase();
+  if (!sku) return res.status(400).json({ error: 'sku obrigatório' });
+  const data = loadData();
+  const contaNum = String(req.query.conta || data.conta_ativa || '1');
+  const hoje = Date.now();
+  const de   = req.query.de  || dataBRDeTimestamp(hoje - 180 * 24 * 3600 * 1000);
+  const ate  = req.query.ate || dataBRDeTimestamp(hoje);
+
+  const registros = [];
+
+  const c = (data.contas || {})[contaNum];
+  if (c?.access_token && c?.user_id) {
+    try {
+      const todasOrdens = await buscarTodosPedidosPagos(c, de, ate);
+      for (const order of todasOrdens) {
+        const dataPedido = order.date_created ? dataBRDeTimestamp(new Date(order.date_created).getTime()) : '';
+        for (const oi of (order.order_items || [])) {
+          const skuNorm = String(oi.item?.seller_sku || '').trim().toUpperCase();
+          if (skuNorm !== sku) continue;
+          registros.push({
+            origem: 'ml', orderId: order.id, data: dataPedido,
+            mlb: oi.item.id, titulo: oi.item.title, quantidade: oi.quantity || 1,
+          });
+        }
+      }
+    } catch (err) {
+      addLog(`[fornecedor-debug] Erro ML: ${err.message}`, 'warn');
+    }
+  }
+
+  try {
+    const itensShopee = await buscarItensShopeePeriodoLeve(data, contaNum, de, ate);
+    for (const pedido of itensShopee) {
+      const dataPedido = dataBRDeTimestamp(pedido.data);
+      for (const it of pedido.itens) {
+        const skuNorm = String(it.sku).trim().toUpperCase();
+        if (skuNorm !== sku) continue;
+        registros.push({
+          origem: 'shopee', orderId: pedido.orderSn, data: dataPedido,
+          titulo: it.titulo, quantidade: it.quantidade || 1,
+        });
+      }
+    }
+  } catch (err) {
+    addLog(`[fornecedor-debug] Erro Shopee: ${err.message}`, 'warn');
+  }
+
+  for (const num of Object.keys(data.fornecedores_por_conta || {})) {
+    for (const f of (data.fornecedores_por_conta[num] || [])) {
+      for (const adj of (f.ajustesManuais || [])) {
+        if (String(adj.sku || '').trim().toUpperCase() !== sku) continue;
+        if (adj.data < de || adj.data > ate) continue;
+        registros.push({
+          origem: 'ajuste_manual', fornecedorId: f.id, data: adj.data,
+          quantidade: adj.quantidade || 1,
+        });
+      }
+    }
+  }
+
+  registros.sort((a, b) => String(a.data).localeCompare(String(b.data)));
+  const total = registros.reduce((s, r) => s + (r.quantidade || 1), 0);
+  res.json({ sku, conta: contaNum, de, ate, total, registros });
+});
+
 app.get('/api/fornecedor/dashboard', async (req, res) => {
   const data = loadData();
   const resolvido = resolverFornecedorPorSenha(data, req.query.senha);
