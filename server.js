@@ -1503,13 +1503,16 @@ app.get('/api/dashboard', async (req, res) => {
           headers: { Authorization: `Bearer ${tok}` },
           params: { role: 'respondent', status: 'opened', limit: 1 }, timeout: 8000,
         }).catch(() => null),
+        // date_closed (data em que fechou como pago), não date_created — um pedido
+        // criado dias atrás com pagamento recusado e aprovado só hoje com outro
+        // cartão precisa contar como venda de hoje, não sumir por causa da tentativa antiga.
         uid ? axios.get('https://api.mercadolibre.com/orders/search', {
           headers: { Authorization: `Bearer ${tok}` },
-          params: { seller: uid, 'order.status': 'paid', 'order.date_created.from': hoje.toISOString(), limit: 1 }, timeout: 8000,
+          params: { seller: uid, 'order.status': 'paid', 'order.date_closed.from': hoje.toISOString(), limit: 1 }, timeout: 8000,
         }).catch(() => null) : null,
         uid ? axios.get('https://api.mercadolibre.com/orders/search', {
           headers: { Authorization: `Bearer ${tok}` },
-          params: { seller: uid, 'order.status': 'paid', 'order.date_created.from': semana.toISOString(), limit: 1 }, timeout: 8000,
+          params: { seller: uid, 'order.status': 'paid', 'order.date_closed.from': semana.toISOString(), limit: 1 }, timeout: 8000,
         }).catch(() => null) : null,
       ]);
 
@@ -5165,9 +5168,13 @@ async function buscarVendasComCustos(c, headers, dateFrom, dateTo) {
   let todasOrdens = [];
   let offset = 0;
   while (offset < 5000) {
+    // Filtra por date_closed (data em que o pedido fechou como pago), não date_created —
+    // um pedido pode nascer com um pagamento recusado e só ser aprovado dias depois com
+    // outro cartão; date_created fica preso na tentativa recusada, então filtrar por ela
+    // faz a venda "sumir" do dia em que ela realmente aconteceu (o que o próprio ML mostra).
     const params = { seller: c.user_id, 'order.status': 'paid', sort: 'date_desc', limit: 50, offset };
-    if (dateFrom) params['order.date_created.from'] = dateFrom + 'T00:00:00.000-03:00';
-    if (dateTo)   params['order.date_created.to']   = dateTo   + 'T23:59:59.000-03:00';
+    if (dateFrom) params['order.date_closed.from'] = dateFrom + 'T00:00:00.000-03:00';
+    if (dateTo)   params['order.date_closed.to']   = dateTo   + 'T23:59:59.000-03:00';
     const resp = await axios.get('https://api.mercadolibre.com/orders/search', { params, headers, timeout: 15000 });
     const results = resp.data.results || [];
     todasOrdens = todasOrdens.concat(results);
