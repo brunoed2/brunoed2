@@ -7870,6 +7870,90 @@ async function verificarNovosShipments() {
   }
 }
 
+// Mesmo controle de "já notificados" acima (shipmentsNotificados), mas em Set/arquivo
+// próprios — order_sn da Shopee (alfanumérico) e shipment id do ML nunca deveriam se
+// misturar no mesmo controle.
+function carregarShopeeOrdersNotificados() {
+  const data = loadData();
+  return new Set(Array.isArray(data.shopeeOrdersNotificados) ? data.shopeeOrdersNotificados : []);
+}
+function salvarShopeeOrdersNotificados(set) {
+  const data = loadData();
+  const arr = Array.from(set);
+  data.shopeeOrdersNotificados = arr.slice(-500);
+  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+}
+const shopeeOrdersNotificados = carregarShopeeOrdersNotificados();
+
+// Equivalente Shopee de verificarNovosShipments() acima — até aqui só existia pro ML,
+// então o separador nunca recebia "Novos pedidos" quando a NF da Shopee ficava pronta
+// (mesma dúvida que o usuário trouxe). Critério "pronto pra embalar" é o mesmo já usado
+// em /api/shopee/vendas-etiquetas: invoice_data.status === 'valid' — a Shopee não tem
+// um PDF de etiqueta separado pra confirmar feito o mlEtiquetaDisponivel do ML, mas o
+// invoice_data só vira 'valid' depois que a NF é de fato aceita, então já é o sinal
+// equivalente de "não é só status/substatus dizendo que está pronto".
+async function verificarNovosShipmentsShopee() {
+  const temWhatsApp = CALLMEBOT_PHONE_PEDIDOS && CALLMEBOT_APIKEY_PEDIDOS;
+  if (!temWhatsApp) return;
+  const data = loadData();
+  for (const num of ['1', '2']) {
+    const sp = shopeeConta(data, num);
+    if (!sp.access_token) continue;
+    try {
+      const accessToken = await getShopeeToken(data, num);
+
+      let orderSns = [];
+      for (const status of ['READY_TO_SHIP', 'PROCESSED']) {
+        const path   = '/api/v2/order/get_order_list';
+        const params = shopeeParams(path, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
+        params.order_status     = status;
+        params.page_size        = 50;
+        params.cursor           = '';
+        params.time_range_field = 'create_time';
+        params.time_from        = Math.floor(Date.now() / 1000) - 15 * 24 * 60 * 60;
+        params.time_to          = Math.floor(Date.now() / 1000);
+        const r = await axios.get(`${SHOPEE_BASE}/order/get_order_list`, { params, timeout: 15000 });
+        if (r.data.error) continue;
+        orderSns = orderSns.concat((r.data.response?.order_list || []).map(o => o.order_sn));
+      }
+      orderSns = [...new Set(orderSns)].filter(sn => !shopeeOrdersNotificados.has(sn));
+      if (!orderSns.length) continue;
+      addLog(`[pedido-shopee] Conta ${num}: ${orderSns.length} pedidos ainda não notificados encontrados na API`, 'info');
+
+      for (let i = 0; i < orderSns.length; i += 50) {
+        const lote    = orderSns.slice(i, i + 50);
+        const pathD   = '/api/v2/order/get_order_detail';
+        const paramsD = shopeeParams(pathD, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
+        paramsD.order_sn_list = lote.join(',');
+        paramsD.response_optional_fields = 'buyer_username,item_list,order_status,invoice_data';
+        const rd = await axios.get(`${SHOPEE_BASE}/order/get_order_detail`, { params: paramsD, timeout: 15000 });
+        const detalhes = rd.data.response?.order_list || [];
+
+        for (const o of detalhes) {
+          if (o.invoice_data?.status !== 'valid') {
+            addLog(`[pedido-shopee] ${o.order_sn} status=${o.order_status} mas NF ainda não válida — aguarda próximo ciclo`, 'info');
+            continue;
+          }
+          shopeeOrdersNotificados.add(o.order_sn);
+          salvarShopeeOrdersNotificados(shopeeOrdersNotificados);
+
+          const itens = (o.item_list || []).map(i => `• ${i.item_name} (x${i.model_quantity_purchased || 1})`).join('\n');
+          const conta = sp.nome || `Conta ${num}`;
+          const texto = `🛍 <b>Novo pedido — Shopee ${conta}</b>\n` +
+            `Pedido: #${o.order_sn}\n` +
+            `Comprador: ${o.buyer_username || '—'}\n\n${itens}`;
+          await notificarPedido(texto);
+          if (_notificarTodosTimeout) { clearTimeout(_notificarTodosTimeout); _notificarTodosTimeout = null; }
+          addLog(`[pedido-shopee] Notificação enviada — #${o.order_sn}`, 'ok');
+          await new Promise(r => setTimeout(r, 4000)); // evita rate limit do CallMeBot entre pedidos
+        }
+      }
+    } catch (err) {
+      addLog(`Monitor pedidos Shopee conta ${num}: ${err.message}`, 'warn');
+    }
+  }
+}
+
 // ── Polling em background: avisa 30min antes do horário-limite de despacho ──
 // O prazo do dia vem da grade oficial (buscarPrazoDespachoHoje) — é fixo pro
 // dia inteiro, então só precisa buscar 1x e ficar comparando com o relógio.
@@ -10196,6 +10280,8 @@ app.listen(PORT, () => {
     setTimeout(() => {
       verificarNovosShipments().catch(() => {});
       setInterval(() => verificarNovosShipments().catch(() => {}), 60_000);
+      verificarNovosShipmentsShopee().catch(() => {});
+      setInterval(() => verificarNovosShipmentsShopee().catch(() => {}), 60_000);
     }, 10_000);
   }
   // Prazo de despacho: avisa 30min antes do horário-limite de envio (só push do site).
