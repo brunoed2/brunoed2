@@ -2820,10 +2820,11 @@ app.post('/api/bling/shopee-super/:pedidoId', async (req, res) => {
 // usa um horário fixo (7h-13h) combinado com o usuário.
 const AUTO_SUPER_INICIO_HORA   = 7;  // 07:00 BRT, os dois canais
 const SHOPEE_AUTO_SUPER_FIM_HORA = 13; // 13:00 BRT — só a Shopee, que não tem grade tipo ML
-// Sábado (só Shopee): às 7h emite tudo que estiver liberado (o que caiu até sexta
+// Sábado (ML e Shopee): às 7h emite tudo que estiver liberado (o que caiu até sexta
 // meia-noite + o que caiu de madrugada — despachar adiantado não tem problema) e
 // continua emitindo o que for caindo até as 8h, quando o usuário chega na empresa.
-// Depois das 8h o que cair no sábado fica pra segunda. ML não emite no sábado.
+// Depois das 8h o que cair no sábado fica pra segunda. No sábado o ML também usa
+// essa janela fixa, não a grade oficial.
 const SHOPEE_AUTO_SUPER_FIM_HORA_SABADO = 8;
 
 function diaSemanaBR(ms = Date.now()) {
@@ -2895,7 +2896,7 @@ let autoSuperEmExecucao = false;
 
 async function autoSuperJob() {
   if (autoSuperEmExecucao) return;
-  if (diaSemanaBR() === 0) return; // domingo — nada a fazer (sábado só Shopee, ver autoSuperJobCiclo)
+  if (diaSemanaBR() === 0) return; // domingo — nada a fazer (sábado: janela 7h-8h)
   autoSuperEmExecucao = true;
   try {
     await autoSuperJobCiclo();
@@ -2925,7 +2926,9 @@ async function autoSuperJobCiclo() {
 
     const entryPrazo = prazoCache[conta];
     const prazoISOHoje = (entryPrazo && entryPrazo.dia === hoje) ? entryPrazo.prazoISO : null;
-    const janelaMLAgora = ehDiaUtilHoje() && dentroDaJanelaMLAgora(prazoISOHoje); // ML só em dia útil
+    const janelaMLAgora = diaSemanaBR() === 6
+      ? dentroDaJanelaShopeeAgora() // sábado: mesma janela fixa 7h-8h da Shopee
+      : ehDiaUtilHoje() && dentroDaJanelaMLAgora(prazoISOHoje);
 
     for (const p of pedidos) {
       const chave = `${p.id}_${conta}`;
