@@ -7189,6 +7189,85 @@ app.get('/api/shopee/vendas-etiquetas', async (req, res) => {
   }
 });
 
+// ── Shopee: pedidos futuros (ainda sem NF, postagem só depois de hoje) ──
+// Regra da Shopee combinada com o usuário: pedido que cai até as 13h tem que ser
+// postado no mesmo dia; depois disso fica pro dia seguinte (sábado conta, domingo
+// pula pra segunda). Não dá pra usar ship_by_date — é o prazo máximo da Shopee
+// (ex: sexta 15h → segunda 23:59), não o dia em que o pedido vai ser postado.
+// Só entra pedido sem NF válida: com NF ele já aparece na aba Vendas.
+function shopeeDataPostagemBR(createTimeSec) {
+  const d = new Date(createTimeSec * 1000 - OFFSET_BRASILIA_MS); // campos UTC = relógio de Brasília
+  if (d.getUTCHours() >= SHOPEE_AUTO_SUPER_FIM_HORA) d.setUTCDate(d.getUTCDate() + 1);
+  if (d.getUTCDay() === 0) d.setUTCDate(d.getUTCDate() + 1); // domingo → segunda
+  return d.toISOString().slice(0, 10);
+}
+
+app.get('/api/shopee/pedidos-futuros', async (req, res) => {
+  const num  = String(req.query.conta || '1');
+  const data = loadData();
+  const sp   = shopeeConta(data, num);
+  if (!sp.access_token) return res.json({ error: 'Não conectado' });
+  try {
+    const accessToken = await getShopeeToken(data, num);
+
+    const path   = '/api/v2/order/get_order_list';
+    const params = shopeeParams(path, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
+    params.order_status     = 'READY_TO_SHIP';
+    params.page_size        = 100;
+    params.cursor           = '';
+    params.time_range_field = 'create_time';
+    params.time_from        = Math.floor(Date.now() / 1000) - 15 * 24 * 60 * 60;
+    params.time_to          = Math.floor(Date.now() / 1000);
+    const r = await axios.get(`${SHOPEE_BASE}/order/get_order_list`, { params, timeout: 15000 });
+    if (r.data.error) return res.json({ error: r.data.message || r.data.error });
+    const orderSns = (r.data.response?.order_list || []).map(o => o.order_sn);
+    if (!orderSns.length) return res.json({ pedidos: [] });
+
+    const detalhes = [];
+    for (let i = 0; i < orderSns.length; i += 50) {
+      const pathD   = '/api/v2/order/get_order_detail';
+      const paramsD = shopeeParams(pathD, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
+      paramsD.order_sn_list = orderSns.slice(i, i + 50).join(',');
+      paramsD.response_optional_fields = 'buyer_username,item_list,order_status,invoice_data';
+      const rd = await axios.get(`${SHOPEE_BASE}/order/get_order_detail`, { params: paramsD, timeout: 15000 });
+      detalhes.push(...(rd.data.response?.order_list || []));
+    }
+
+    const hojeBR = new Date(Date.now() - OFFSET_BRASILIA_MS).toISOString().slice(0, 10);
+    const pedidos = [];
+    for (const o of detalhes) {
+      if (o.invoice_data?.status === 'valid') continue; // já está na aba Vendas
+      const dataPostagem = shopeeDataPostagemBR(o.create_time || 0);
+      if (dataPostagem <= hojeBR) continue; // hoje ou atrasado não é "futuro"
+      pedidos.push({
+        orderId:       o.order_sn,
+        data:          new Date((o.create_time || 0) * 1000).toISOString(),
+        comprador:     o.buyer_username || '—',
+        shipmentId:    o.order_sn,
+        conta:         num,
+        canal:         'shopee',
+        // Mesmo formato do ML (meia-noite de Brasília em UTC) — o frontend agrupa por slice(0, 10)
+        dataLiberacao: new Date(`${dataPostagem}T00:00:00-03:00`).toISOString(),
+        itensLista: anexarInstrucoesDespacho((o.item_list || []).map(i => ({
+          sku:        i.item_sku || i.model_sku || '',
+          titulo:     i.item_name || '',
+          variacao:   (i.model_name && i.model_name !== i.item_name) ? i.model_name : '',
+          quantidade: i.model_quantity_purchased || 1,
+          thumbnail:  i.image_info?.image_url || '',
+          permalink:  '',
+          itemId:     i.item_id || null,
+          modelId:    i.model_id || null,
+        })), 'shopee'),
+      });
+    }
+    pedidos.sort((a, b) => a.dataLiberacao.localeCompare(b.dataLiberacao));
+    res.json({ pedidos });
+  } catch (err) {
+    console.error('Erro ao buscar pedidos futuros Shopee:', err.response?.data || err.message);
+    res.json({ error: 'Erro ao buscar pedidos futuros Shopee.' });
+  }
+});
+
 // Lê um ZIP pelo diretório central (final do arquivo) em vez dos local file headers —
 // necessário porque a Shopee gera o ZIP em modo streaming (bit 3 do flag setado), que
 // deixa os tamanhos zerados no header local; só o diretório central tem o valor real.

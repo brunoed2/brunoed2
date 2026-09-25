@@ -780,9 +780,12 @@ async function carregarFuturos() {
   try {
     // Junta as duas contas — senão os pedidos futuros da conta que não está
     // ativa no momento somem da lista (mesmo problema que carregarVendas já resolve).
-    const [d1, d2] = await Promise.all(['1', '2'].map(num =>
-      apiFetch(`/api/ml/pedidos-futuros?conta=${num}`).catch(err => ({ error: String(err) }))
-    ));
+    // Shopee entra junto (pedidos ainda sem NF que só postam depois de hoje) —
+    // antes a lista só consultava o ML e pedido Shopee pós-13h sumia de todo lugar.
+    const [d1, d2, ds1, ds2] = await Promise.all([
+      ...['1', '2'].map(num => apiFetch(`/api/ml/pedidos-futuros?conta=${num}`).catch(err => ({ error: String(err) }))),
+      ...['1', '2'].map(num => apiFetch(`/api/shopee/pedidos-futuros?conta=${num}`).catch(err => ({ error: String(err) }))),
+    ]);
     if (contaGen !== gen) return;
     loading.style.display = 'none';
 
@@ -792,7 +795,7 @@ async function carregarFuturos() {
       return;
     }
 
-    const pedidos = [...(d1.pedidos || []), ...(d2.pedidos || [])];
+    const pedidos = [d1, d2, ds1, ds2].flatMap(d => d.pedidos || []);
     pedidosFuturosCarregado = true;
     totalEl.textContent = `${pedidos.length} pedido${pedidos.length !== 1 ? 's' : ''}`;
 
@@ -873,7 +876,7 @@ async function carregarFuturos() {
 
       tr.innerHTML = `
         <td class="td-thumb">${imgHtml0}</td>
-        <td class="td-order-id">#${p.orderId}</td>
+        <td class="td-order-id">#${p.orderId}${p.canal === 'shopee' ? `<span style="background:#f97316;color:#fff;padding:1px 6px;border-radius:4px;font-size:10px;margin-left:5px;white-space:nowrap;vertical-align:middle">Shopee</span>` : ''}</td>
         <td>${p.comprador}</td>
         <td class="col-num venda-qtd">${item0.quantidade ?? ''}</td>
         <td class="td-sku">${item0.sku || '—'}</td>
