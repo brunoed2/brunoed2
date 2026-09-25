@@ -2820,15 +2820,32 @@ app.post('/api/bling/shopee-super/:pedidoId', async (req, res) => {
 // usa um horário fixo (7h-13h) combinado com o usuário.
 const AUTO_SUPER_INICIO_HORA   = 7;  // 07:00 BRT, os dois canais
 const SHOPEE_AUTO_SUPER_FIM_HORA = 13; // 13:00 BRT — só a Shopee, que não tem grade tipo ML
+// Sábado (só Shopee): às 7h emite tudo que estiver liberado (o que caiu até sexta
+// meia-noite + o que caiu de madrugada — despachar adiantado não tem problema) e
+// continua emitindo o que for caindo até as 8h, quando o usuário chega na empresa.
+// Depois das 8h o que cair no sábado fica pra segunda. ML não emite no sábado.
+const SHOPEE_AUTO_SUPER_FIM_HORA_SABADO = 8;
+
+function diaSemanaBR(ms = Date.now()) {
+  return new Date(ms - BR_OFFSET_MS).getUTCDay(); // 0=domingo, 6=sábado
+}
+
+// Hora de corte da Shopee pra um dia da semana: pedido que cai antes disso posta
+// no mesmo dia; depois, fica pro próximo dia de postagem.
+function shopeeFimHoraDoDia(diaSemana) {
+  return diaSemana === 6 ? SHOPEE_AUTO_SUPER_FIM_HORA_SABADO : SHOPEE_AUTO_SUPER_FIM_HORA;
+}
 
 function ehDiaUtilHoje() {
-  const diaSemana = new Date(Date.now() - BR_OFFSET_MS).getUTCDay(); // 0=domingo, 6=sábado
+  const diaSemana = diaSemanaBR();
   return diaSemana >= 1 && diaSemana <= 5;
 }
 
 function dentroDaJanelaShopeeAgora() {
+  const diaSemana = diaSemanaBR();
+  if (diaSemana === 0) return false;
   const inicio = horaHojeParaData(`${String(AUTO_SUPER_INICIO_HORA).padStart(2, '0')}:00`);
-  const fim    = horaHojeParaData(`${String(SHOPEE_AUTO_SUPER_FIM_HORA).padStart(2, '0')}:00`);
+  const fim    = horaHojeParaData(`${String(shopeeFimHoraDoDia(diaSemana)).padStart(2, '0')}:00`);
   const agora  = Date.now();
   return agora >= inicio.getTime() && agora < fim.getTime();
 }
@@ -2878,7 +2895,7 @@ let autoSuperEmExecucao = false;
 
 async function autoSuperJob() {
   if (autoSuperEmExecucao) return;
-  if (!ehDiaUtilHoje()) return; // fim de semana — nada a fazer
+  if (diaSemanaBR() === 0) return; // domingo — nada a fazer (sábado só Shopee, ver autoSuperJobCiclo)
   autoSuperEmExecucao = true;
   try {
     await autoSuperJobCiclo();
@@ -2908,7 +2925,7 @@ async function autoSuperJobCiclo() {
 
     const entryPrazo = prazoCache[conta];
     const prazoISOHoje = (entryPrazo && entryPrazo.dia === hoje) ? entryPrazo.prazoISO : null;
-    const janelaMLAgora = dentroDaJanelaMLAgora(prazoISOHoje);
+    const janelaMLAgora = ehDiaUtilHoje() && dentroDaJanelaMLAgora(prazoISOHoje); // ML só em dia útil
 
     for (const p of pedidos) {
       const chave = `${p.id}_${conta}`;
@@ -7190,14 +7207,14 @@ app.get('/api/shopee/vendas-etiquetas', async (req, res) => {
 });
 
 // ── Shopee: pedidos futuros (ainda sem NF, postagem só depois de hoje) ──
-// Regra da Shopee combinada com o usuário: pedido que cai até as 13h tem que ser
-// postado no mesmo dia; depois disso fica pro dia seguinte (sábado conta, domingo
-// pula pra segunda). Não dá pra usar ship_by_date — é o prazo máximo da Shopee
+// Regra da Shopee combinada com o usuário: pedido que cai até as 13h (sábado: 8h)
+// tem que ser postado no mesmo dia; depois disso fica pro dia seguinte (sábado
+// conta, domingo pula pra segunda). Não dá pra usar ship_by_date — é o prazo máximo da Shopee
 // (ex: sexta 15h → segunda 23:59), não o dia em que o pedido vai ser postado.
 // Só entra pedido sem NF válida: com NF ele já aparece na aba Vendas.
 function shopeeDataPostagemBR(createTimeSec) {
   const d = new Date(createTimeSec * 1000 - OFFSET_BRASILIA_MS); // campos UTC = relógio de Brasília
-  if (d.getUTCHours() >= SHOPEE_AUTO_SUPER_FIM_HORA) d.setUTCDate(d.getUTCDate() + 1);
+  if (d.getUTCHours() >= shopeeFimHoraDoDia(d.getUTCDay())) d.setUTCDate(d.getUTCDate() + 1);
   if (d.getUTCDay() === 0) d.setUTCDate(d.getUTCDate() + 1); // domingo → segunda
   return d.toISOString().slice(0, 10);
 }
