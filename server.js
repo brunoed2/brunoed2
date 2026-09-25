@@ -1895,6 +1895,7 @@ async function fetchBlingPedidosPendentes(conta) {
   // a partir de [data]"). Sem essa checagem o botão Super aparece habilitado e falha com
   // "Upload invoice failed. This order cannot accept invoices yet."
   const shopeeStatusPorOrderSn = {};
+  const shopeeCriadoPorOrderSn = {};
   const shopeePendentes = itensDetalhados.filter(p => p.isShopee && p.numeroLoja);
   if (shopeePendentes.length) {
     try {
@@ -1910,7 +1911,10 @@ async function fetchBlingPedidosPendentes(conta) {
           paramsD.order_sn_list = lote.join(',');
           paramsD.response_optional_fields = 'order_status';
           const rd = await axios.get(`${SHOPEE_BASE}/order/get_order_detail`, { params: paramsD, timeout: 15000 });
-          (rd.data.response?.order_list || []).forEach(o => { shopeeStatusPorOrderSn[o.order_sn] = o.order_status; });
+          (rd.data.response?.order_list || []).forEach(o => {
+            shopeeStatusPorOrderSn[o.order_sn] = o.order_status;
+            if (o.create_time) shopeeCriadoPorOrderSn[o.order_sn] = o.create_time;
+          });
         }
       }
     } catch (err) {
@@ -1963,6 +1967,7 @@ async function fetchBlingPedidosPendentes(conta) {
       // null = não conseguimos checar (falha de API) — não bloqueia, pra não travar por instabilidade
       shopeeLiberado:   shopeeStatus === null ? true : SHOPEE_STATUS_LIBERADO.has(shopeeStatus),
       shopeeStatus,
+      shopeeCriadoEm:   p.isShopee ? (shopeeCriadoPorOrderSn[p.numeroLoja] || null) : null, // unix (s)
       conta,
     };
   });
@@ -2846,9 +2851,21 @@ function dentroDaJanelaShopeeAgora() {
   const diaSemana = diaSemanaBR();
   if (diaSemana === 0) return false;
   const inicio = horaHojeParaData(`${String(AUTO_SUPER_INICIO_HORA).padStart(2, '0')}:00`);
-  const fim    = horaHojeParaData(`${String(shopeeFimHoraDoDia(diaSemana)).padStart(2, '0')}:00`);
+  const fim    = horaHojeParaData(`${String(shopeeFimHoraDoDia(diaSemana)).padStart(2, '0')}:01`); // 13:00 ainda conta
   const agora  = Date.now();
   return agora >= inicio.getTime() && agora < fim.getTime();
+}
+
+// Shopee com horário de criação conhecido: decide pela hora em que o pedido CAIU,
+// não pela hora em que o job roda. O job roda a cada 5min e o pedido ainda demora a
+// chegar no Bling — pela janela do relógio, um pedido das 12:58 podia só ser visto
+// às 13:03 e ficar sem NF até o dia seguinte mesmo tendo que postar hoje. Aqui: a
+// partir das 7h (nunca domingo), emite tudo cuja data de postagem já é hoje ou antes.
+function shopeeProntoPraEmitirAgora(criadoEmSec) {
+  if (diaSemanaBR() === 0) return false;
+  const inicio = horaHojeParaData(`${String(AUTO_SUPER_INICIO_HORA).padStart(2, '0')}:00`);
+  if (Date.now() < inicio.getTime()) return false;
+  return shopeeDataPostagemBR(criadoEmSec) <= hojeSP();
 }
 
 // prazoISO: horário de despacho de hoje pra essa conta, já cacheado pela grade do
@@ -2940,7 +2957,9 @@ async function autoSuperJobCiclo() {
       const prontoPraNF = p.isShopee ? (p.shopeeLiberado !== false) : p.temEtiqueta;
       if (!prontoPraNF) continue;
 
-      const dentroDaJanela = p.isShopee ? janelaShopeeAgora : janelaMLAgora;
+      const dentroDaJanela = !p.isShopee ? janelaMLAgora
+        : p.shopeeCriadoEm ? shopeeProntoPraEmitirAgora(p.shopeeCriadoEm)
+        : janelaShopeeAgora; // sem create_time (falha na API da Shopee): cai na janela do relógio
       if (!dentroDaJanela) continue;
 
       if ((p.pendencias || []).length) {
@@ -7210,14 +7229,16 @@ app.get('/api/shopee/vendas-etiquetas', async (req, res) => {
 });
 
 // ── Shopee: pedidos futuros (ainda sem NF, postagem só depois de hoje) ──
-// Regra da Shopee combinada com o usuário: pedido que cai até as 13h (sábado: 8h)
-// tem que ser postado no mesmo dia; depois disso fica pro dia seguinte (sábado
+// Regra da Shopee combinada com o usuário: pedido que cai até as 13:00 (sábado: 8:00),
+// inclusive o próprio minuto do corte, tem que ser postado no mesmo dia; depois disso fica pro dia seguinte (sábado
 // conta, domingo pula pra segunda). Não dá pra usar ship_by_date — é o prazo máximo da Shopee
 // (ex: sexta 15h → segunda 23:59), não o dia em que o pedido vai ser postado.
 // Só entra pedido sem NF válida: com NF ele já aparece na aba Vendas.
 function shopeeDataPostagemBR(createTimeSec) {
   const d = new Date(createTimeSec * 1000 - OFFSET_BRASILIA_MS); // campos UTC = relógio de Brasília
-  if (d.getUTCHours() >= shopeeFimHoraDoDia(d.getUTCDay())) d.setUTCDate(d.getUTCDate() + 1);
+  // Corte inclusivo: pedido das 13:00 (sábado 8:00) ainda posta no mesmo dia, só a partir de 13:01 vira
+  const corte = shopeeFimHoraDoDia(d.getUTCDay());
+  if (d.getUTCHours() > corte || (d.getUTCHours() === corte && d.getUTCMinutes() >= 1)) d.setUTCDate(d.getUTCDate() + 1);
   if (d.getUTCDay() === 0) d.setUTCDate(d.getUTCDate() + 1); // domingo → segunda
   return d.toISOString().slice(0, 10);
 }
