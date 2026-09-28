@@ -5628,11 +5628,11 @@ app.get('/api/ml/debug-billing', async (req, res) => {
   const headers = { Authorization: `Bearer ${c.access_token}` };
   const result  = {};
 
-  // 1. Tenta listar os períodos de billing disponíveis
+  // 1. Lista os períodos de faturamento. /billing/monthly/periods (sem "integration")
+  // não existe — dava 404 desde o v181; o caminho documentado é /billing/integration/...
   const periodosTentativas = [
-    { label: 'monthly/periods',              url: `https://api.mercadolibre.com/billing/monthly/periods`,                              params: { user_id: c.user_id } },
-    { label: 'monthly/periods_no_param',     url: `https://api.mercadolibre.com/billing/monthly/periods`,                              params: {} },
-    { label: 'monthly/periods_seller',       url: `https://api.mercadolibre.com/billing/monthly/periods`,                              params: { seller_id: c.user_id } },
+    { label: 'integration/monthly/periods_ML', url: `https://api.mercadolibre.com/billing/integration/monthly/periods`, params: { group: 'ML', document_type: 'BILL', offset: 0, limit: 6 } },
+    { label: 'integration/monthly/periods_MP', url: `https://api.mercadolibre.com/billing/integration/monthly/periods`, params: { group: 'MP', document_type: 'BILL', offset: 0, limit: 6 } },
   ];
 
   for (const { label, url, params } of periodosTentativas) {
@@ -5644,13 +5644,13 @@ app.get('/api/ml/debug-billing', async (req, res) => {
     }
   }
 
-  // 2. Se passado um key, testa summary e details
-  if (req.query.key) {
-    const key = req.query.key;
+  // 2. Detalhe de um período: o ?key= passado ou, sem ele, o mais recente da lista
+  const periodosML = result['integration/monthly/periods_ML']?.data?.results || [];
+  const key = req.query.key || periodosML[0]?.key;
+  if (key) {
     const detalhesTentativas = [
-      { label: `monthly_summary_${key}`,        url: `https://api.mercadolibre.com/billing/monthly/periods/key/${key}/group/ML/summary`,  params: {} },
-      { label: `monthly_details_${key}`,        url: `https://api.mercadolibre.com/billing/monthly/periods/key/${key}/group/ML/details`,  params: { limit: 5 } },
-      { label: `integration_details_${key}`,    url: `https://api.mercadolibre.com/billing/integration/periods/key/${key}/group/ML/details`, params: { document_type: 'BILL' } },
+      { label: `summary_${key}`, url: `https://api.mercadolibre.com/billing/integration/periods/key/${key}/group/ML/summary/details`, params: { document_type: 'BILL' } },
+      { label: `details_${key}`, url: `https://api.mercadolibre.com/billing/integration/periods/key/${key}/group/ML/details`,         params: { document_type: 'BILL', limit: 30 } },
     ];
     for (const { label, url, params } of detalhesTentativas) {
       try {
