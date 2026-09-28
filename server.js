@@ -5753,6 +5753,205 @@ app.get('/api/ml/debug-billing-resumo', (req, res) => {
   });
 });
 
+// ── Fatura do ML (billing) → "Outros custos do ML" e conferência no Lucro mensal ──
+// A fatura traz cada cobrança do ML com um código (detail_sub_type). Parte delas já é
+// descontada por venda na sub-aba Vendas (comissão = sale_fee, frete = custo do envio) e
+// não pode entrar de novo; o resto (devolução, Full, "Minha página"...) não aparecia em
+// lugar nenhum. Ler um período leva ~10min (4500+ cobranças, API devolve 429 seguido —
+// ver v914-v916), então uma rotina diária lê e guarda só o resumo em billing-ml.json
+// (arquivo próprio: só essa rotina escreve nele, sem risco de race com data.json).
+// Períodos da fatura fecham no dia 19 — por isso o resumo é agrupado pelo mês da data da
+// cobrança (creation_date_time), não pelo período, e um mês usa 2 períodos.
+const BILLING_ML_FILE = path.join(DATA_DIR, 'billing-ml.json');
+function loadBillingML() {
+  try { return JSON.parse(fs.readFileSync(BILLING_ML_FILE, 'utf8')); } catch { return {}; }
+}
+function saveBillingML(d) {
+  fs.writeFileSync(BILLING_ML_FILE, JSON.stringify(d));
+}
+
+// Códigos já contados em outro lugar (confirmado com a fatura real de 09/2026, conta 1).
+// Tudo que não está aqui cai em "outros" — tipo novo que aparecer vira custo visível, não some.
+const BILLING_GRUPO = {
+  CVVML: 'comissao', CVVPRC: 'comissao',                       // = sale_fee do pedido
+  CXDE: 'frete', CFFE: 'frete', CXDI: 'frete', CFFI: 'frete',  // = custo do envio
+  CFONPN: 'neutro', // parcelamento pago pelo comprador (receita usa o preço do anúncio, se anula)
+  PADS: 'ads',      // Product Ads — já vem da API de Ads
+};
+// Estorno (BONUS) usa o mesmo código trocando o C inicial por B (BXDE ↔ CXDE)
+function billingCodigoBase(tipo, sub) {
+  return tipo === 'BONUS' && /^B/.test(sub) ? 'C' + sub.slice(1) : sub;
+}
+
+let billingMLStatus = { rodando: false };
+
+async function lerPeriodoBillingML(num, key, progresso) {
+  const esperar = ms => new Promise(r => setTimeout(r, ms));
+  const porMes  = {}; // mês da cobrança → código → { descricao, grupo, total, quantidade }
+  const pedidos = {}; // mês da venda → orderId → { c: comissão, f: frete } (pra conferência)
+  let offset = 0, total = null, limit = 150, espera429 = 0, qtd429 = 0;
+  while (true) {
+    if (offset > 0) await esperar(1000);
+    // Token relido a cada página — a leitura dura minutos e o token pode ser renovado no meio
+    const c = loadData().contas[num];
+    if (!c?.access_token) throw new Error('conta desconectada');
+    try {
+      const r = await axios.get(
+        `https://api.mercadolibre.com/billing/integration/periods/key/${key}/group/ML/details`,
+        { params: { document_type: 'BILL', offset, limit }, headers: { Authorization: `Bearer ${c.access_token}` }, timeout: 20000 }
+      );
+      total = r.data.total ?? total;
+      const results = r.data.results || [];
+      for (const d of results) {
+        const ci     = d.charge_info || {};
+        const bonus  = ci.detail_type === 'BONUS';
+        const codigo = billingCodigoBase(ci.detail_type, String(ci.detail_sub_type || ''));
+        const valor  = (bonus ? -1 : 1) * (Number(ci.detail_amount) || 0);
+        const mes    = String(ci.creation_date_time || '').slice(0, 7);
+        if (!codigo || !/^\d{4}-\d{2}$/.test(mes)) continue;
+        const grupo = BILLING_GRUPO[codigo] || 'outros';
+        const m = porMes[mes] = porMes[mes] || {};
+        const t = m[codigo] = m[codigo] || { descricao: '', grupo, total: 0, quantidade: 0 };
+        if (!bonus) { t.descricao = ci.transaction_detail || t.descricao; t.quantidade++; }
+        else if (!t.descricao) t.descricao = String(ci.transaction_detail || '').replace(/^Cancelamento d[aeo] /i, '');
+        t.total += valor;
+        if (grupo === 'comissao' || grupo === 'frete') {
+          const vendas = (Array.isArray(d.sales_info) ? d.sales_info : []).filter(s => s.order_id);
+          for (const s of vendas) {
+            const mv = String(s.sale_date_time || '').slice(0, 7) || mes;
+            const pm = pedidos[mv] = pedidos[mv] || {};
+            const p  = pm[s.order_id] = pm[s.order_id] || { c: 0, f: 0 };
+            p[grupo === 'comissao' ? 'c' : 'f'] += valor / vendas.length; // frete de pack dividido, igual montarVendas
+          }
+        }
+      }
+      offset += results.length;
+      espera429 = 0;
+      progresso.lidos = offset;
+      progresso.total = total;
+      if (!results.length || (total !== null && offset >= total)) break;
+    } catch (e) {
+      if (e.response?.status === 429 && qtd429 < 300) {
+        qtd429++;
+        progresso.qtd429 = (progresso.qtd429 || 0) + 1;
+        espera429 = Math.min(espera429 ? espera429 * 2 : 5000, 60000);
+        await esperar(espera429);
+        continue;
+      }
+      if (limit > 50 && offset === 0) { limit = 50; continue; }
+      throw new Error(`offset ${offset}: ${e.response?.status || ''} ${JSON.stringify(e.response?.data || e.message).slice(0, 200)}`);
+    }
+  }
+  const r2 = v => Math.round(v * 100) / 100;
+  for (const m of Object.values(porMes)) for (const t of Object.values(m)) t.total = r2(t.total);
+  for (const pm of Object.values(pedidos)) for (const p of Object.values(pm)) { p.c = r2(p.c); p.f = r2(p.f); }
+  return { porMes, pedidos, total };
+}
+
+// Lê os 4 períodos mais recentes das 2 contas. Período fechado já salvo não é relido
+// (não muda mais); o aberto é relido toda vez.
+async function atualizarBillingML() {
+  if (billingMLStatus.rodando) return;
+  const esperar = ms => new Promise(r => setTimeout(r, ms));
+  billingMLStatus = { rodando: true, iniciou_em: new Date().toISOString(), conta: null, key: null, lidos: 0, total: null, qtd429: 0, erros: [] };
+  try {
+    for (const num of ['1', '2']) {
+      const c = loadData().contas[num];
+      if (!c?.access_token) continue;
+      let periodos = [];
+      try {
+        const r = await axios.get('https://api.mercadolibre.com/billing/integration/monthly/periods', {
+          params: { group: 'ML', document_type: 'BILL', offset: 0, limit: 4 },
+          headers: { Authorization: `Bearer ${c.access_token}` }, timeout: 15000,
+        });
+        periodos = r.data.results || [];
+      } catch (e) {
+        billingMLStatus.erros.push(`conta ${num}: lista de períodos — ${e.response?.status || e.message}`);
+        continue;
+      }
+      for (const p of periodos) {
+        const salvo = loadBillingML()[num]?.periodos?.[p.key];
+        if (salvo && salvo.status === 'CLOSED') continue;
+        Object.assign(billingMLStatus, { conta: num, key: p.key, lidos: 0, total: null });
+        try {
+          const res = await lerPeriodoBillingML(num, p.key, billingMLStatus);
+          const cache = loadBillingML();
+          cache[num] = cache[num] || { periodos: {} };
+          cache[num].periodos[p.key] = {
+            status: p.period_status, lido_em: new Date().toISOString(), total_cobrancas: res.total,
+            porMes: res.porMes, pedidos: res.pedidos,
+          };
+          cache[num].atualizado_em = new Date().toISOString();
+          saveBillingML(cache);
+          addLog(`[billing-ml] conta ${num} período ${p.key} (${p.period_status}): ${res.total} cobranças lidas`, 'info');
+        } catch (e) {
+          billingMLStatus.erros.push(`conta ${num} período ${p.key}: ${e.message}`);
+          addLog(`[billing-ml] conta ${num} período ${p.key} erro: ${e.message}`, 'warn');
+        }
+        await esperar(3000);
+      }
+    }
+    const cache = loadBillingML();
+    cache._ultima_execucao = hojeSP();
+    saveBillingML(cache);
+  } finally {
+    billingMLStatus.rodando = false;
+    billingMLStatus.terminou_em = new Date().toISOString();
+  }
+}
+
+// 1x por dia a partir das 4h (Brasília). Checa a cada 30min — também cobre o caso de o
+// servidor ter reiniciado (deploy) no meio da leitura ou antes dela.
+setInterval(() => {
+  const horaBR = new Date(Date.now() - BR_OFFSET_MS).getUTCHours();
+  if (horaBR >= 4 && loadBillingML()._ultima_execucao !== hojeSP()) {
+    atualizarBillingML().catch(e => addLog(`[billing-ml] erro: ${e.message}`, 'warn'));
+  }
+}, 30 * 60 * 1000);
+
+function mesSeguinteStr(mes) {
+  const [a, m] = mes.split('-').map(Number);
+  return m === 12 ? `${a + 1}-01` : `${a}-${String(m + 1).padStart(2, '0')}`;
+}
+
+app.get('/api/lucro/billing-ml', (req, res) => {
+  const num = String(req.query.conta || '1');
+  const mes = String(req.query.mes || '');
+  if (!/^\d{4}-\d{2}$/.test(mes)) return res.status(400).json({ error: 'mes inválido' });
+  const cc = loadBillingML()[num] || { periodos: {} };
+  const tipos = {}, pedidos = {};
+  for (const p of Object.values(cc.periodos || {})) {
+    for (const [codigo, t] of Object.entries(p.porMes?.[mes] || {})) {
+      const x = tipos[codigo] = tipos[codigo] || { codigo, descricao: t.descricao, grupo: t.grupo, total: 0, quantidade: 0 };
+      if (!x.descricao) x.descricao = t.descricao;
+      x.total += t.total;
+      x.quantidade += t.quantidade;
+    }
+    for (const [id, v] of Object.entries(p.pedidos?.[mes] || {})) {
+      const x = pedidos[id] = pedidos[id] || { c: 0, f: 0 };
+      x.c += v.c;
+      x.f += v.f;
+    }
+  }
+  // Mês completo = período do próprio mês lido + (período seguinte lido, ou o do mês ainda aberto)
+  const pMes = cc.periodos?.[`${mes}-01`];
+  const pSeg = cc.periodos?.[`${mesSeguinteStr(mes)}-01`];
+  const completo = !!pMes && (!!pSeg || pMes.status === 'OPEN');
+  res.json({
+    tem_dados: Object.keys(tipos).length > 0,
+    completo,
+    atualizado_em: cc.atualizado_em || null,
+    tipos: Object.values(tipos).map(t => ({ ...t, total: Math.round(t.total * 100) / 100 })).sort((a, b) => b.total - a.total),
+    pedidos,
+    leitura: billingMLStatus,
+  });
+});
+
+app.post('/api/lucro/billing-ml/atualizar', (req, res) => {
+  if (!billingMLStatus.rodando) atualizarBillingML().catch(e => addLog(`[billing-ml] erro: ${e.message}`, 'warn'));
+  res.json({ ok: true, leitura: billingMLStatus });
+});
+
 // Debug — estrutura real do shipment para diagnóstico do frete
 // Debug — mostra o prazo de despacho capturado hoje pra cada conta
 app.get('/api/ml/debug-prazo-despacho', (req, res) => {

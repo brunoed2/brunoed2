@@ -1771,7 +1771,9 @@ function dreToggleExpand(mes) {
 // O resultado das APIs fica salvo como snapshot no servidor pra abrir o mês na hora;
 // mês atual (ou mês sem snapshot) busca de novo sozinho ao abrir.
 
-let lmEstado = { conta: null, mes: null, linhas: [], snapshot: null, linhasMesAnterior: [] };
+let lmEstado = { conta: null, mes: null, linhas: [], snapshot: null, linhasMesAnterior: [], billing: null };
+let lmVendasML = null;    // vendas ML (sem canceladas) da última busca — pra conferir com a fatura
+let lmBillingTimer = null;
 let lmGen = 0;            // descarta respostas de mês/conta que já não estão na tela
 let lmSalvarTimer = null;
 
@@ -1805,9 +1807,11 @@ async function lmCarregar() {
   const mes   = document.getElementById('lm-mes')?.value || lmMesAtualStr();
   const conta = lucroContaAtual();
   const gen   = ++lmGen;
-  lmEstado = { conta, mes, linhas: [], snapshot: null, linhasMesAnterior: [] };
+  lmEstado = { conta, mes, linhas: [], snapshot: null, linhasMesAnterior: [], billing: null };
+  lmVendasML = null;
   lmStatus('');
   lmRenderizar();
+  lmCarregarBilling();
   try {
     const d = await fetch(`/api/lucro/mensal?conta=${conta}&mes=${mes}`).then(r => r.json());
     if (gen !== lmGen) return;
@@ -1861,6 +1865,7 @@ async function lmAtualizarApis() {
 
     if (!vML.error) {
       const calc = lucroCalcular(vML.vendas || []).filter(v => !v.cancelado);
+      lmVendasML = calc;
       const t = lucroTotais(calc);
       Object.assign(snap, { receitaML: t.receita, lucroML: t.lucro, pedidosML: calc.length });
     } else if (naoConectada(vML)) {
@@ -1905,7 +1910,8 @@ function lmTotais() {
   const receita     = (s.receitaML || 0) + (s.receitaShopee || 0);
   const lucroVendas = (s.lucroML || 0) + (s.lucroShopee || 0);
   const ads         = (s.adsML || 0) + (s.adsShopee || 0);
-  const gastos      = lmEstado.linhas.reduce((acc, l) => acc + (parseFloat(l.valor) || 0), 0);
+  const outrosML    = lmOutrosML().reduce((acc, t) => acc + t.total, 0);
+  const gastos      = lmEstado.linhas.reduce((acc, l) => acc + (parseFloat(l.valor) || 0), 0) + outrosML;
   const liquido     = lucroVendas - ads - gastos;
   return { receita, lucroVendas, ads, gastos, liquido, margem: receita > 0 ? liquido / receita * 100 : null };
 }
@@ -1948,11 +1954,13 @@ function lmRenderizar() {
         <td class="col-num lucro-val-pos">${val(s?.lucroML, '')}</td><td></td></tr>
     <tr><td>Lucro das vendas — Shopee${pedidos(s?.pedidosShopee, s?.receitaShopee)}</td>
         <td class="col-num lucro-val-pos">${val(s?.lucroShopee, '')}</td><td></td></tr>
-    <tr class="lm-secao"><td colspan="3">Ads e gastos</td></tr>
+    <tr class="lm-secao"><td colspan="3">Ads</td></tr>
     <tr><td>Ads Mercado Livre${sub('automático, pela API')}</td>
         <td class="col-num lucro-val-neg">${val(s?.adsML, '− ')}</td><td></td></tr>
     <tr><td>Ads Shopee${sub(adsShopeeSub)}</td>
-        <td class="col-num lucro-val-neg">${s?.adsShopeeErro ? '<span style="color:#94a3b8">—</span>' : val(s?.adsShopee, '− ')}</td><td></td></tr>`;
+        <td class="col-num lucro-val-neg">${s?.adsShopeeErro ? '<span style="color:#94a3b8">—</span>' : val(s?.adsShopee, '− ')}</td><td></td></tr>
+    ${lmHtmlOutrosML()}
+    <tr class="lm-secao"><td colspan="3">Seus gastos</td></tr>`;
 
   lmEstado.linhas.forEach(l => {
     const id = lmEsc(l.id);
@@ -1970,7 +1978,7 @@ function lmRenderizar() {
   }
 
   html += `
-    <tr class="lm-subtotal"><td>Total Ads + gastos</td><td class="col-num lucro-val-neg" id="lm-total-gastos"></td><td></td></tr>
+    <tr class="lm-subtotal"><td>Total Ads + custos + gastos</td><td class="col-num lucro-val-neg" id="lm-total-gastos"></td><td></td></tr>
     <tr class="lm-total"><td>Lucro líquido do mês</td><td class="col-num" id="lm-total-liquido"></td><td></td></tr>`;
   corpo.innerHTML = html;
 
@@ -1982,6 +1990,128 @@ function lmRenderizar() {
     lmStatus(`Vendas e Ads atualizados em ${d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} às ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`);
   }
   lmAtualizarTotais();
+  lmRenderizarConferencia();
+}
+
+// ── Fatura do ML: "Outros custos do ML" + conferência ──
+// O servidor lê a fatura 1x por dia (leva ~10min por período) e guarda só o resumo;
+// aqui só consulta. Enquanto uma leitura estiver rodando, consulta de novo a cada 15s.
+
+async function lmCarregarBilling() {
+  clearTimeout(lmBillingTimer);
+  const { conta, mes } = lmEstado;
+  const gen = lmGen;
+  try {
+    const b = await fetch(`/api/lucro/billing-ml?conta=${conta}&mes=${mes}`).then(r => r.json());
+    if (gen !== lmGen || b.error) return;
+    lmEstado.billing = b;
+    // Não redesenha a tabela com o cursor num campo de gasto (perderia o que está digitando)
+    if (document.activeElement?.closest?.('#lm-corpo')) lmAtualizarTotais();
+    else lmRenderizar();
+    if (b.leitura?.rodando) {
+      lmBillingTimer = setTimeout(() => {
+        if (gen === lmGen && document.getElementById('lucro-aba-mensal')?.style.display !== 'none') lmCarregarBilling();
+      }, 15000);
+    }
+  } catch {}
+}
+
+async function lmLerFaturaAgora() {
+  try { await fetch('/api/lucro/billing-ml/atualizar', { method: 'POST' }); } catch {}
+  lmCarregarBilling();
+}
+
+// Só o que não está no cálculo por venda (comissão/frete) nem no Ads
+function lmOutrosML() {
+  return (lmEstado.billing?.tipos || []).filter(t => t.grupo === 'outros' && Math.abs(t.total) >= 0.005);
+}
+
+function lmHtmlOutrosML() {
+  const b = lmEstado.billing;
+  const sub = txt => `<div class="lm-sub">${txt}</div>`;
+  let h = `<tr class="lm-secao"><td colspan="3">Outros custos do ML — pela fatura</td></tr>`;
+  if (!b) return h + `<tr><td colspan="3" style="color:#94a3b8;font-size:13px">Carregando…</td></tr>`;
+  const l = b.leitura || {};
+  const lendo = l.rodando
+    ? `<span style="color:#2563eb">Lendo a fatura agora (conta ${lmEsc(l.conta || '…')}: ${l.lidos || 0}${l.total ? ' de ' + l.total : ''} cobranças) — pode levar vários minutos, a tela atualiza sozinha.</span>`
+    : '';
+  const btnLer = l.rodando ? ''
+    : ` <button class="btn-secondary" onclick="lmLerFaturaAgora()" style="font-size:12px;padding:3px 10px;margin-left:6px">Ler fatura agora</button>`;
+  const outros = lmOutrosML();
+  if (!outros.length) {
+    const msg = b.tem_dados ? 'Nenhum outro custo na fatura neste mês.'
+      : b.atualizado_em ? 'A fatura lida não tem cobranças deste mês.'
+      : 'A fatura do ML ainda não foi lida (é lida sozinha todo dia de madrugada).';
+    return h + `<tr><td colspan="3" style="font-size:13px;color:#94a3b8">${msg}${btnLer}${lendo ? sub(lendo) : ''}</td></tr>`;
+  }
+  outros.forEach(t => {
+    const valor = t.total >= 0 ? `− ${lucroFmt(t.total)}` : `+ ${lucroFmt(-t.total)}`;
+    h += `<tr><td>${lmEsc(t.descricao || t.codigo)}${sub(`${t.quantidade} cobrança${t.quantidade === 1 ? '' : 's'} · código ${lmEsc(t.codigo)}`)}</td>
+      <td class="col-num lucro-val-neg">${valor}</td><td></td></tr>`;
+  });
+  let rodape = '';
+  if (b.atualizado_em) {
+    const d = new Date(b.atualizado_em);
+    rodape = `Fatura lida em ${d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} às ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+  }
+  if (!b.completo) rodape += ` · <span style="color:#b45309">parcial: faltam cobranças deste mês na leitura</span>`;
+  h += `<tr><td colspan="3">${sub(rodape + btnLer)}${lendo ? sub(lendo) : ''}</td></tr>`;
+  return h;
+}
+
+// Compara, pedido a pedido, comissão e frete que o sistema calcula (sub-aba Vendas)
+// com o que o ML cobrou de fato na fatura. Só pedidos que estão nos dois lados.
+function lmRenderizarConferencia() {
+  const el = document.getElementById('lm-conferencia');
+  if (!el) return;
+  const b = lmEstado.billing;
+  if (!b?.tem_dados) { el.style.display = 'none'; return; }
+  if (!lmVendasML) {
+    el.innerHTML = '<div class="lm-sub" style="font-size:13px">Pra conferir comissão e frete com a fatura do ML, clique em <strong>↻ Atualizar vendas e Ads</strong>.</div>';
+    el.style.display = '';
+    return;
+  }
+  const pedidosFatura = b.pedidos || {};
+  let n = 0, semFatura = 0, sisC = 0, fatC = 0, sisF = 0, fatF = 0;
+  const difs = [];
+  for (const v of lmVendasML) {
+    const p = pedidosFatura[String(v.orderId)];
+    if (!p) { semFatura++; continue; }
+    n++;
+    sisC += v.taxaML; fatC += p.c;
+    sisF += v.frete;  fatF += p.f;
+    const dc = p.c - v.taxaML, df = p.f - v.frete;
+    if (Math.abs(dc) + Math.abs(df) >= 1) difs.push({ v, p, dc, df });
+  }
+  if (!n) { el.style.display = 'none'; return; }
+  difs.sort((a, c) => (Math.abs(c.dc) + Math.abs(c.df)) - (Math.abs(a.dc) + Math.abs(a.df)));
+
+  const fmtDif = d => Math.abs(d) < 0.5
+    ? '<span style="color:#16a34a">bate</span>'
+    : `<span class="${d > 0 ? 'lucro-val-neg' : 'lucro-val-pos'}">${d > 0 ? 'ML cobrou ' + lucroFmt(d) + ' a mais' : 'ML cobrou ' + lucroFmt(-d) + ' a menos'}</span>`;
+  let h = `<h2 style="margin:0 0 4px">Conferência com a fatura do ML</h2>
+    <p class="card-desc" style="margin:0 0 10px">${n} pedido${n === 1 ? '' : 's'} do ML deste mês comparado${n === 1 ? '' : 's'} com o que o ML cobrou de fato${semFatura ? ` · ${semFatura} ainda não aparece${semFatura === 1 ? '' : 'm'} na fatura (normal para vendas dos últimos dias)` : ''}.</p>
+    <table class="tabela lm-tabela">
+      <thead><tr><th></th><th class="col-num">Sistema calcula</th><th class="col-num">Fatura do ML</th><th class="col-num">Diferença</th></tr></thead>
+      <tbody>
+        <tr><td>Comissão</td><td class="col-num">${lucroFmt(sisC)}</td><td class="col-num">${lucroFmt(fatC)}</td><td class="col-num">${fmtDif(fatC - sisC)}</td></tr>
+        <tr><td>Frete</td><td class="col-num">${lucroFmt(sisF)}</td><td class="col-num">${lucroFmt(fatF)}</td><td class="col-num">${fmtDif(fatF - sisF)}</td></tr>
+      </tbody>
+    </table>`;
+  if (difs.length) {
+    h += `<div class="lm-sub" style="margin:12px 0 4px;font-size:12px">Pedidos com diferença (${difs.length}${difs.length > 15 ? ', mostrando os 15 maiores' : ''}). Comissão zerada na fatura costuma ser venda devolvida/reembolsada que o sistema ainda conta como venda.</div>
+      <table class="tabela lm-tabela">
+        <thead><tr><th>Pedido</th><th class="col-num">Comissão (sistema → fatura)</th><th class="col-num">Frete (sistema → fatura)</th></tr></thead><tbody>`;
+    difs.slice(0, 15).forEach(({ v, p, dc, df }) => {
+      const cel = (sis, fat, d) => Math.abs(d) < 0.5 ? `<span style="color:#94a3b8">${lucroFmt(sis)}</span>`
+        : `${lucroFmt(sis)} → <strong class="${d > 0 ? 'lucro-val-neg' : 'lucro-val-pos'}">${lucroFmt(fat)}</strong>`;
+      h += `<tr><td><span style="cursor:pointer" title="Copiar número do pedido" onclick="lucroCopiarPedido(this,'${v.orderId}')">#${v.orderId}</span></td>
+        <td class="col-num">${cel(v.taxaML, p.c, dc)}</td><td class="col-num">${cel(v.frete, p.f, df)}</td></tr>`;
+    });
+    h += `</tbody></table>`;
+  }
+  el.innerHTML = h;
+  el.style.display = '';
 }
 
 function lmEditar(id, campo, valor) {

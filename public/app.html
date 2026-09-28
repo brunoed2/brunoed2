@@ -389,7 +389,8 @@
               <span id="lm-salvar-status" style="font-size:12px;color:#64748b;align-self:center"></span>
             </div>
           </div>
-          <p class="card-desc" style="margin-top:10px">Lucro das vendas = mesmo cálculo da sub-aba Vendas (receita − comissão − frete − custo do produto − imposto), somando ML e Shopee do mês inteiro, sem as canceladas. Ads vêm direto da API. Os gastos são digitados aqui e salvos na hora.</p>
+          <div class="card lm-extrato" id="lm-conferencia" style="margin-top:16px;display:none"></div>
+          <p class="card-desc" style="margin-top:10px">Lucro das vendas = mesmo cálculo da sub-aba Vendas (receita − comissão − frete − custo do produto − imposto), somando ML e Shopee do mês inteiro, sem as canceladas. Ads vêm direto da API. "Outros custos do ML" vêm da fatura do ML (lida sozinha 1x por dia de madrugada) e só incluem o que não está no cálculo por venda nem no Ads. Os gastos são digitados aqui e salvos na hora.</p>
         </div>
 
         <!-- Aba: DRE -->
@@ -1675,7 +1676,7 @@
   </div>
 
   <script src="/js/compartilhar.js?v=1"></script>
-  <script src="/js/lucro.js?v=9"></script>
+  <script src="/js/lucro.js?v=10"></script>
   <script src="/js/app-v2.js?v=7"></script>
   <script src="/js/operacoes.js?v=21"></script>
   <script src="/js/shopee.js?v=2"></script>
@@ -2018,6 +2019,6 @@
   </div>
 
   <script src="/js/busca-pagina.js?v=1"></script>
-  <div id="version-badge">v916</div>
+  <div id="version-badge">v917</div>
 </body>
 </html>
