@@ -5681,8 +5681,12 @@ app.get('/api/ml/debug-billing-resumo', async (req, res) => {
 
   const grupos = {};
   const exemplos = {};
-  let offset = 0, total = null, lidos = 0, limit = 150, erro = null;
+  let offset = 0, total = null, lidos = 0, limit = 150, erro = null, tentativas429 = 0;
+  const esperar = ms => new Promise(r => setTimeout(r, ms));
   while (offset < 20000) {
+    // A API de faturamento devolve 429 "local_rate_limited" já na 2ª página se não houver
+    // pausa entre as chamadas (visto no v914)
+    if (offset > 0) await esperar(700);
     try {
       const r = await axios.get(
         `https://api.mercadolibre.com/billing/integration/periods/key/${key}/group/ML/details`,
@@ -5705,8 +5709,14 @@ app.get('/api/ml/debug-billing-resumo', async (req, res) => {
         }
       }
       offset += results.length;
+      tentativas429 = 0;
       if (!results.length || (total !== null && offset >= total)) break;
     } catch (e) {
+      if (e.response?.status === 429 && tentativas429 < 6) {
+        tentativas429++;
+        await esperar(2000 * tentativas429); // 2s, 4s, 6s... antes de repetir a mesma página
+        continue;
+      }
       // Limite máximo por página não documentado — se 150 for recusado, tenta 50
       if (limit > 50 && offset === 0) { limit = 50; continue; }
       erro = { offset, status: e.response?.status, data: e.response?.data || e.message };
