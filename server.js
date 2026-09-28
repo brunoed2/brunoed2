@@ -5665,6 +5665,61 @@ app.get('/api/ml/debug-billing', async (req, res) => {
   res.json(result);
 });
 
+// Debug — resumo de um período de faturamento do ML agrupado por tipo de cobrança
+// (tipo | subtipo | descrição → quantidade e total), pra decidir quais tipos entram no
+// Lucro mensal sem duplicar o que já é descontado por venda (tarifa de venda, frete).
+// Períodos fecham no dia 19, não no fim do mês — ?mes=YYYY-MM filtra pela data da cobrança.
+app.get('/api/ml/debug-billing-resumo', async (req, res) => {
+  const data = loadData();
+  const num  = req.query.conta || data.conta_ativa;
+  const c    = data.contas[num];
+  if (!c?.access_token) return res.json({ error: 'Não conectado' });
+  const key = String(req.query.key || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) return res.json({ error: 'Passe ?key=YYYY-MM-01 (veja em /api/ml/debug-billing)' });
+  const mes = req.query.mes ? String(req.query.mes) : null;
+  const headers = { Authorization: `Bearer ${c.access_token}` };
+
+  const grupos = {};
+  const exemplos = {};
+  let offset = 0, total = null, lidos = 0, limit = 150, erro = null;
+  while (offset < 20000) {
+    try {
+      const r = await axios.get(
+        `https://api.mercadolibre.com/billing/integration/periods/key/${key}/group/ML/details`,
+        { params: { document_type: 'BILL', offset, limit }, headers, timeout: 20000 }
+      );
+      total = r.data.total ?? total;
+      const results = r.data.results || [];
+      for (const d of results) {
+        const ci = d.charge_info || {};
+        lidos++;
+        if (mes && !String(ci.creation_date_time || '').startsWith(mes)) continue;
+        const k = `${ci.detail_type} | ${ci.detail_sub_type} | ${ci.transaction_detail}`;
+        const g = grupos[k] = grupos[k] || { quantidade: 0, total: 0, cancelados_no_mes: 0, marketplace: d.marketplace_info?.marketplace };
+        g.quantidade++;
+        g.total += Number(ci.detail_amount) || 0;
+        if (ci.status === 'BONUS_ON_BILL') g.cancelados_no_mes++;
+        // Um exemplo completo por tipo — mostra se sales_info/shipping_info liga a cobrança a um pedido
+        if (!exemplos[k] && (d.sales_info || d.shipping_info || d.items_info)) {
+          exemplos[k] = { sales_info: d.sales_info, shipping_info: d.shipping_info, items_info: d.items_info, creation_date_time: ci.creation_date_time, detail_amount: ci.detail_amount };
+        }
+      }
+      offset += results.length;
+      if (!results.length || (total !== null && offset >= total)) break;
+    } catch (e) {
+      // Limite máximo por página não documentado — se 150 for recusado, tenta 50
+      if (limit > 50 && offset === 0) { limit = 50; continue; }
+      erro = { offset, status: e.response?.status, data: e.response?.data || e.message };
+      break;
+    }
+  }
+
+  const tipos = Object.entries(grupos)
+    .map(([tipo, g]) => ({ tipo, ...g, total: Math.round(g.total * 100) / 100 }))
+    .sort((a, b) => b.total - a.total);
+  res.json({ key, mes, total_no_periodo: total, lidos, erro, tipos, exemplos });
+});
+
 // Debug — estrutura real do shipment para diagnóstico do frete
 // Debug — mostra o prazo de despacho capturado hoje pra cada conta
 app.get('/api/ml/debug-prazo-despacho', (req, res) => {
