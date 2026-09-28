@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Painel</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📦</text></svg>">
-  <link rel="stylesheet" href="/css/style.css?v=21">
+  <link rel="stylesheet" href="/css/style.css?v=22">
   <link rel="manifest" href="/manifest.json">
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
   <meta name="theme-color" content="#2563eb">
@@ -114,6 +114,7 @@
           <button class="lucro-subaba-btn active" data-aba="vendas" onclick="lucroAba('vendas')">Vendas</button>
           <button class="lucro-subaba-btn" data-aba="custos" onclick="lucroAba('custos')">Custos por SKU</button>
           <button class="lucro-subaba-btn" data-aba="gastos" onclick="lucroAba('gastos')">Gastos</button>
+          <button class="lucro-subaba-btn" data-aba="mensal" onclick="lucroAba('mensal')">Lucro mensal</button>
           <button class="lucro-subaba-btn" data-aba="dre" onclick="lucroAba('dre')">DRE</button>
           <button class="lucro-subaba-btn" data-aba="abc" onclick="lucroAba('abc')">Curva ABC</button>
         </div>
@@ -346,6 +347,49 @@
               <tbody id="tabela-gastos-body"></tbody>
             </table>
           </div>
+        </div>
+
+        <!-- Aba: Lucro mensal -->
+        <div id="lucro-aba-mensal" class="lucro-aba" style="display:none">
+          <div style="display:flex;align-items:center;gap:10px;margin-top:4px;margin-bottom:16px;flex-wrap:wrap">
+            <button class="btn-secondary" onclick="lmMudarMes(-1)" style="padding:5px 12px" title="Mês anterior">‹</button>
+            <input type="month" id="lm-mes" class="lucro-date-input" onchange="lmCarregar()">
+            <button class="btn-secondary" onclick="lmMudarMes(1)" style="padding:5px 12px" title="Próximo mês">›</button>
+            <button class="btn-primary" id="btn-lm-atualizar" onclick="lmAtualizarApis()" style="font-size:13px;padding:6px 16px">↻ Atualizar vendas e Ads</button>
+            <span id="lm-status" style="font-size:12px;color:#64748b"></span>
+          </div>
+
+          <div class="lucro-cards">
+            <div class="lucro-card">
+              <div class="lucro-card-label">Faturamento</div>
+              <div class="lucro-card-valor" id="lm-card-receita">—</div>
+            </div>
+            <div class="lucro-card">
+              <div class="lucro-card-label">Lucro das vendas</div>
+              <div class="lucro-card-valor" id="lm-card-vendas">—</div>
+            </div>
+            <div class="lucro-card">
+              <div class="lucro-card-label">Ads + gastos</div>
+              <div class="lucro-card-valor lucro-val-neg" id="lm-card-gastos">—</div>
+            </div>
+            <div class="lucro-card lucro-card-destaque">
+              <div class="lucro-card-label">Lucro líquido do mês</div>
+              <div class="lucro-card-valor" id="lm-card-liquido">—</div>
+              <div id="lm-card-margem" style="font-size:12px;color:#64748b;margin-top:2px"></div>
+            </div>
+          </div>
+
+          <div class="card lm-extrato">
+            <table class="tabela lm-tabela">
+              <tbody id="lm-corpo"></tbody>
+            </table>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+              <button class="btn-secondary" onclick="lmAdicionarLinha()">+ Adicionar gasto</button>
+              <button class="btn-secondary" id="btn-lm-copiar" onclick="lmCopiarMesAnterior()" style="display:none">Copiar gastos do mês anterior</button>
+              <span id="lm-salvar-status" style="font-size:12px;color:#64748b;align-self:center"></span>
+            </div>
+          </div>
+          <p class="card-desc" style="margin-top:10px">Lucro das vendas = mesmo cálculo da sub-aba Vendas (receita − comissão − frete − custo do produto − imposto), somando ML e Shopee do mês inteiro, sem as canceladas. Ads vêm direto da API. Os gastos são digitados aqui e salvos na hora.</p>
         </div>
 
         <!-- Aba: DRE -->
@@ -1631,7 +1675,7 @@
   </div>
 
   <script src="/js/compartilhar.js?v=1"></script>
-  <script src="/js/lucro.js?v=8"></script>
+  <script src="/js/lucro.js?v=9"></script>
   <script src="/js/app-v2.js?v=7"></script>
   <script src="/js/operacoes.js?v=21"></script>
   <script src="/js/shopee.js?v=2"></script>
@@ -1974,6 +2018,6 @@
   </div>
 
   <script src="/js/busca-pagina.js?v=1"></script>
-  <div id="version-badge">v911</div>
+  <div id="version-badge">v912</div>
 </body>
 </html>

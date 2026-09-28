@@ -1011,12 +1011,13 @@ function lucroAba(nome) {
   document.querySelectorAll('.lucro-subaba-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.aba === nome);
   });
-  ['vendas', 'custos', 'gastos', 'dre', 'abc'].forEach(a => {
+  ['vendas', 'custos', 'gastos', 'mensal', 'dre', 'abc'].forEach(a => {
     const el = document.getElementById(`lucro-aba-${a}`);
     if (el) el.style.display = a === nome ? '' : 'none';
   });
   if (nome === 'custos') lucroCustosCarregar();
   if (nome === 'gastos') { gastosInitMes(); gastosAtualizarTudo(); }
+  if (nome === 'mensal') lmInit();
   if (nome === 'dre')    dreInit();
   if (nome === 'abc')    lucroAbcRenderizar();
 }
@@ -1763,3 +1764,281 @@ function dreToggleExpand(mes) {
   row.style.display = open ? 'none' : '';
   if (icon) icon.textContent = open ? '▶' : '▼';
 }
+
+// ── Lucro mensal ─────────────────────────────────────────────
+// Lucro das vendas do mês (ML + Shopee da conta ativa, mesma regra da sub-aba Vendas)
+// − Ads (API do ML e da Shopee) − linhas de gasto livres, salvas por mês.
+// O resultado das APIs fica salvo como snapshot no servidor pra abrir o mês na hora;
+// mês atual (ou mês sem snapshot) busca de novo sozinho ao abrir.
+
+let lmEstado = { conta: null, mes: null, linhas: [], snapshot: null, linhasMesAnterior: [] };
+let lmGen = 0;            // descarta respostas de mês/conta que já não estão na tela
+let lmSalvarTimer = null;
+
+function lmMesAtualStr() {
+  return lucroHoje().slice(0, 7);
+}
+
+function lmEsc(s) {
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function lmNovoId() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+}
+
+function lmInit() {
+  const mesEl = document.getElementById('lm-mes');
+  if (mesEl && !mesEl.value) mesEl.value = lmMesAtualStr();
+  lmCarregar();
+}
+
+function lmMudarMes(delta) {
+  const mesEl = document.getElementById('lm-mes');
+  const [a, m] = (mesEl.value || lmMesAtualStr()).split('-').map(Number);
+  const d = new Date(a, m - 1 + delta, 1);
+  mesEl.value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  lmCarregar();
+}
+
+async function lmCarregar() {
+  const mes   = document.getElementById('lm-mes')?.value || lmMesAtualStr();
+  const conta = lucroContaAtual();
+  const gen   = ++lmGen;
+  lmEstado = { conta, mes, linhas: [], snapshot: null, linhasMesAnterior: [] };
+  lmStatus('');
+  lmRenderizar();
+  try {
+    const d = await fetch(`/api/lucro/mensal?conta=${conta}&mes=${mes}`).then(r => r.json());
+    if (gen !== lmGen) return;
+    lmEstado.linhas            = d.linhas || [];
+    lmEstado.snapshot          = d.snapshot || null;
+    lmEstado.linhasMesAnterior = d.linhasMesAnterior || [];
+  } catch {
+    if (gen !== lmGen) return;
+    lmStatus('Erro ao carregar o mês.', true);
+  }
+  lmRenderizar();
+  if (mes <= lmMesAtualStr() && (!lmEstado.snapshot || mes === lmMesAtualStr())) lmAtualizarApis();
+}
+
+function lmStatus(texto, erro) {
+  const el = document.getElementById('lm-status');
+  if (!el) return;
+  el.textContent = texto || '';
+  el.style.color = erro ? '#dc2626' : '#64748b';
+}
+
+let lmBuscando = false;
+
+async function lmAtualizarApis() {
+  const { conta, mes } = lmEstado;
+  if (!mes) return;
+  if (mes > lmMesAtualStr()) { lmStatus('Mês futuro — sem vendas ainda.'); return; }
+  const gen = lmGen;
+  const btn = document.getElementById('btn-lm-atualizar');
+  if (btn) btn.disabled = true;
+  lmBuscando = true;
+  lmStatus('Buscando vendas e Ads do mês… (pode levar alguns segundos)');
+  try {
+    // Custos e imposto precisam estar carregados pra calcular o lucro igual à sub-aba Vendas
+    await Promise.all([lucroCarregarConfig(), lucroShopeeCarregarConfig()]);
+    const { de, ate } = drePeriodoMes(mes);
+    const qs = new URLSearchParams({ conta, date_from: de, date_to: ate });
+    const pegar = url => fetch(url).then(r => r.json()).catch(e => ({ error: e.message || 'falha de conexão' }));
+    const [vML, vSh, aML, aSh] = await Promise.all([
+      pegar(`/api/lucro/vendas?${qs}`),
+      pegar(`/api/lucro/vendas-shopee?${qs}`),
+      pegar(`/api/lucro/gastos-auto?conta=${conta}&mes=${mes}&so_ads=1`),
+      pegar(`/api/lucro/ads-shopee?conta=${conta}&mes=${mes}`),
+    ]);
+    if (gen !== lmGen) return;
+
+    // Pedaço que falhou mantém o valor do snapshot anterior (não zera um número bom por erro de API)
+    const snap = { ...(lmEstado.snapshot || {}) };
+    const naoConectada = r => /não conectad/i.test(r.error || '');
+    const erros = [];
+
+    if (!vML.error) {
+      const calc = lucroCalcular(vML.vendas || []).filter(v => !v.cancelado);
+      const t = lucroTotais(calc);
+      Object.assign(snap, { receitaML: t.receita, lucroML: t.lucro, pedidosML: calc.length });
+    } else if (naoConectada(vML)) {
+      Object.assign(snap, { receitaML: 0, lucroML: 0, pedidosML: 0 });
+    } else erros.push('vendas ML');
+
+    if (!vSh.error) {
+      const calc = lucroShopeeCalcular(vSh.vendas || []).filter(v => !v.cancelado);
+      const t = lucroShopeeTotais(calc);
+      Object.assign(snap, { receitaShopee: t.receita, lucroShopee: t.lucro, pedidosShopee: calc.length });
+    } else if (naoConectada(vSh)) {
+      Object.assign(snap, { receitaShopee: 0, lucroShopee: 0, pedidosShopee: 0 });
+    } else erros.push('vendas Shopee');
+
+    if (!aML.error) snap.adsML = aML.ads_cost ?? 0;
+    else if (naoConectada(aML)) snap.adsML = 0;
+    else erros.push('Ads ML');
+
+    if (!aSh.error) { snap.adsShopee = aSh.ads_cost ?? 0; snap.adsShopeeErro = null; }
+    else if (naoConectada(aSh)) { snap.adsShopee = 0; snap.adsShopeeErro = null; }
+    else snap.adsShopeeErro = aSh.error;
+
+    snap.atualizadoEm = new Date().toISOString();
+    lmEstado.snapshot = snap;
+    lmBuscando = false;
+    lmRenderizar();
+    fetch('/api/lucro/mensal/snapshot', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ conta, mes, snapshot: snap }),
+    }).catch(() => {});
+    if (erros.length) lmStatus(`Falhou: ${erros.join(', ')} — mantido o último valor salvo. Tente de novo.`, true);
+  } catch {
+    if (gen === lmGen) lmStatus('Erro ao buscar vendas/Ads. Tente de novo.', true);
+  } finally {
+    lmBuscando = false;
+    if (btn) btn.disabled = false;
+  }
+}
+
+function lmTotais() {
+  const s = lmEstado.snapshot || {};
+  const receita     = (s.receitaML || 0) + (s.receitaShopee || 0);
+  const lucroVendas = (s.lucroML || 0) + (s.lucroShopee || 0);
+  const ads         = (s.adsML || 0) + (s.adsShopee || 0);
+  const gastos      = lmEstado.linhas.reduce((acc, l) => acc + (parseFloat(l.valor) || 0), 0);
+  const liquido     = lucroVendas - ads - gastos;
+  return { receita, lucroVendas, ads, gastos, liquido, margem: receita > 0 ? liquido / receita * 100 : null };
+}
+
+// Atualiza só os números (cards + linhas de total) — usado enquanto digita, sem
+// redesenhar os inputs e perder o foco.
+function lmAtualizarTotais() {
+  const temSnap = !!lmEstado.snapshot;
+  const t   = lmTotais();
+  const cls = v => v >= 0 ? 'lucro-val-pos' : 'lucro-val-neg';
+  const set = (id, txt, c) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = txt;
+    if (c !== undefined) el.className = c;
+  };
+  set('lm-card-receita',  temSnap ? lucroFmt(t.receita) : '—');
+  set('lm-card-vendas',   temSnap ? lucroFmt(t.lucroVendas) : '—', 'lucro-card-valor ' + (temSnap ? cls(t.lucroVendas) : ''));
+  set('lm-card-gastos',   lucroFmt(t.ads + t.gastos));
+  set('lm-card-liquido',  temSnap ? lucroFmt(t.liquido) : '—', 'lucro-card-valor ' + (temSnap ? cls(t.liquido) : ''));
+  set('lm-card-margem',   temSnap && t.margem !== null ? `${t.margem.toFixed(1).replace('.', ',')}% do faturamento` : '');
+  set('lm-total-gastos',  '− ' + lucroFmt(t.ads + t.gastos));
+  set('lm-total-liquido', temSnap ? lucroFmt(t.liquido) : '—', 'col-num ' + (temSnap ? cls(t.liquido) : ''));
+}
+
+function lmRenderizar() {
+  const corpo = document.getElementById('lm-corpo');
+  if (!corpo) return;
+  const s   = lmEstado.snapshot;
+  const val = (v, sinal) => s ? `${sinal}${lucroFmt(v || 0)}` : '<span style="color:#94a3b8">—</span>';
+  const sub = txt => `<div class="lm-sub">${txt}</div>`;
+  const pedidos = (n, rec) => s ? sub(`${n || 0} pedido${n === 1 ? '' : 's'} · faturamento ${lucroFmt(rec || 0)}`) : '';
+  const adsShopeeSub = s?.adsShopeeErro
+    ? `<span style="color:#b45309" title="${lmEsc(s.adsShopeeErro)}">API da Shopee não liberou o Ads — lance como gasto abaixo</span>`
+    : 'automático, pela API';
+
+  let html = `
+    <tr class="lm-secao"><td colspan="3">Vendas</td></tr>
+    <tr><td>Lucro das vendas — Mercado Livre${pedidos(s?.pedidosML, s?.receitaML)}</td>
+        <td class="col-num lucro-val-pos">${val(s?.lucroML, '')}</td><td></td></tr>
+    <tr><td>Lucro das vendas — Shopee${pedidos(s?.pedidosShopee, s?.receitaShopee)}</td>
+        <td class="col-num lucro-val-pos">${val(s?.lucroShopee, '')}</td><td></td></tr>
+    <tr class="lm-secao"><td colspan="3">Ads e gastos</td></tr>
+    <tr><td>Ads Mercado Livre${sub('automático, pela API')}</td>
+        <td class="col-num lucro-val-neg">${val(s?.adsML, '− ')}</td><td></td></tr>
+    <tr><td>Ads Shopee${sub(adsShopeeSub)}</td>
+        <td class="col-num lucro-val-neg">${s?.adsShopeeErro ? '<span style="color:#94a3b8">—</span>' : val(s?.adsShopee, '− ')}</td><td></td></tr>`;
+
+  lmEstado.linhas.forEach(l => {
+    const id = lmEsc(l.id);
+    html += `
+    <tr data-lm-id="${id}">
+      <td><input type="text" class="lm-input-desc" value="${lmEsc(l.descricao)}" placeholder="Descrição (ex: Aluguel, Embalagens)"
+            oninput="lmEditar('${id}','descricao',this.value)" onchange="lmSalvarLinhas()"></td>
+      <td class="col-num"><input type="number" step="0.01" class="lm-input-valor" value="${l.valor || ''}" placeholder="0,00"
+            oninput="lmEditar('${id}','valor',this.value)" onchange="lmSalvarLinhas()"></td>
+      <td style="text-align:center"><button class="lucro-btn-remover" onclick="lmRemoverLinha('${id}')" title="Remover">✕</button></td>
+    </tr>`;
+  });
+  if (!lmEstado.linhas.length) {
+    html += `<tr><td colspan="3" style="color:#94a3b8;font-size:13px">Nenhum gasto lançado neste mês.</td></tr>`;
+  }
+
+  html += `
+    <tr class="lm-subtotal"><td>Total Ads + gastos</td><td class="col-num lucro-val-neg" id="lm-total-gastos"></td><td></td></tr>
+    <tr class="lm-total"><td>Lucro líquido do mês</td><td class="col-num" id="lm-total-liquido"></td><td></td></tr>`;
+  corpo.innerHTML = html;
+
+  const btnCopiar = document.getElementById('btn-lm-copiar');
+  if (btnCopiar) btnCopiar.style.display = (!lmEstado.linhas.length && lmEstado.linhasMesAnterior.length) ? '' : 'none';
+
+  if (s?.atualizadoEm && !lmBuscando) {
+    const d = new Date(s.atualizadoEm);
+    lmStatus(`Vendas e Ads atualizados em ${d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} às ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`);
+  }
+  lmAtualizarTotais();
+}
+
+function lmEditar(id, campo, valor) {
+  const l = lmEstado.linhas.find(x => x.id === id);
+  if (!l) return;
+  l[campo] = campo === 'valor' ? (parseFloat(String(valor).replace(',', '.')) || 0) : valor;
+  lmAtualizarTotais();
+}
+
+function lmAdicionarLinha() {
+  if (!lmEstado.mes) return;
+  const id = lmNovoId();
+  lmEstado.linhas.push({ id, descricao: '', valor: 0 });
+  lmRenderizar();
+  document.querySelector(`tr[data-lm-id="${id}"] .lm-input-desc`)?.focus();
+}
+
+function lmRemoverLinha(id) {
+  const l = lmEstado.linhas.find(x => x.id === id);
+  if (l && (l.descricao || l.valor) && !confirm(`Remover "${l.descricao || 'gasto'}"?`)) return;
+  lmEstado.linhas = lmEstado.linhas.filter(x => x.id !== id);
+  lmRenderizar();
+  lmSalvarLinhas();
+}
+
+function lmCopiarMesAnterior() {
+  lmEstado.linhas = lmEstado.linhasMesAnterior.map(l => ({ id: lmNovoId(), descricao: l.descricao, valor: l.valor }));
+  lmRenderizar();
+  lmSalvarLinhas();
+}
+
+// Debounce curto: vários "change" seguidos (tab entre campos) viram um save só
+function lmSalvarLinhas() {
+  clearTimeout(lmSalvarTimer);
+  const { conta, mes } = lmEstado;
+  const linhas   = lmEstado.linhas.map(l => ({ ...l }));
+  const statusEl = document.getElementById('lm-salvar-status');
+  if (statusEl) { statusEl.textContent = 'Salvando…'; statusEl.style.color = '#64748b'; }
+  lmSalvarTimer = setTimeout(async () => {
+    try {
+      const r = await fetch('/api/lucro/mensal/linhas', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conta, mes, linhas }),
+      }).then(r => r.json());
+      if (!r.ok) throw new Error(r.error);
+      if (statusEl) {
+        statusEl.textContent = 'Salvo ✓'; statusEl.style.color = '#16a34a';
+        setTimeout(() => { if (statusEl.textContent === 'Salvo ✓') statusEl.textContent = ''; }, 2000);
+      }
+    } catch {
+      if (statusEl) { statusEl.textContent = 'Erro ao salvar — tente de novo'; statusEl.style.color = '#dc2626'; }
+    }
+  }, 300);
+}
+
+document.addEventListener('contaMudou', () => {
+  const aba = document.getElementById('lucro-aba-mensal');
+  const tab = document.getElementById('tab-lucro');
+  if (aba && aba.style.display !== 'none' && tab && tab.classList.contains('active')) lmCarregar();
+});

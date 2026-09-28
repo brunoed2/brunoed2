@@ -5158,7 +5158,10 @@ app.get('/api/lucro/gastos-auto', async (req, res) => {
     })(),
 
     // ── Full: busca pedidos Full e soma custos de envio ───────
+    // so_ads=1 pula essa parte (lenta: todos os pedidos do mês + custo de cada envio) —
+    // a sub-aba Lucro mensal só precisa do Ads.
     (async () => {
+      if (req.query.so_ads === '1') return 0;
       try {
         let todasOrdens = [];
         let offset = 0;
@@ -5199,6 +5202,105 @@ app.get('/api/lucro/gastos-auto', async (req, res) => {
   ]);
 
   res.json({ ads_cost: adsCost, full_cost: fullCost });
+});
+
+// ── Lucro mensal ─────────────────────────────────────────────
+// Sub-aba que substitui na prática a DRE: lucro das vendas do mês (ML + Shopee, calculado
+// no front com a mesma regra da sub-aba Vendas) − Ads (API) − linhas de gasto livres.
+// Guardado em lucro_contas[num].lucro_mensal[mes] = { linhas: [{id, descricao, valor}], snapshot }.
+// snapshot = último cálculo das vendas/Ads, pra abrir o mês na hora sem esperar as APIs.
+function lucroMensalMes(data, num, mes) {
+  data.lucro_contas = data.lucro_contas || {};
+  const lc = data.lucro_contas[num] = data.lucro_contas[num] || {};
+  lc.lucro_mensal = lc.lucro_mensal || {};
+  return lc.lucro_mensal[mes] = lc.lucro_mensal[mes] || { linhas: [], snapshot: null };
+}
+
+function mesAnteriorStr(mes) {
+  const [a, m] = mes.split('-').map(Number);
+  return m === 1 ? `${a - 1}-12` : `${a}-${String(m - 1).padStart(2, '0')}`;
+}
+
+app.get('/api/lucro/mensal', (req, res) => {
+  const data = loadData();
+  const num  = String(req.query.conta || '1');
+  const mes  = String(req.query.mes || '');
+  if (!/^\d{4}-\d{2}$/.test(mes)) return res.status(400).json({ error: 'mes inválido' });
+  const lm   = ((data.lucro_contas || {})[num] || {}).lucro_mensal || {};
+  const atual    = lm[mes] || {};
+  const anterior = lm[mesAnteriorStr(mes)] || {};
+  res.json({
+    linhas:            atual.linhas   || [],
+    snapshot:          atual.snapshot || null,
+    linhasMesAnterior: anterior.linhas || [],
+  });
+});
+
+// Grava a lista inteira de linhas do mês (o front mantém o estado e manda tudo junto).
+// loadData dentro do lock e sem await antes do saveData — ver race condition em data.json.
+app.post('/api/lucro/mensal/linhas', async (req, res) => {
+  const { conta, mes, linhas } = req.body || {};
+  const num = String(conta || '1');
+  if (!/^\d{4}-\d{2}$/.test(String(mes || ''))) return res.status(400).json({ error: 'mes inválido' });
+  if (!Array.isArray(linhas)) return res.status(400).json({ error: 'linhas inválido' });
+  const limpas = linhas.map(l => ({
+    id:        String(l.id || (Date.now().toString(36) + Math.random().toString(36).slice(2, 6))),
+    descricao: String(l.descricao || '').trim().slice(0, 120),
+    valor:     parseFloat(l.valor) || 0,
+  }));
+  await withDataLock(() => {
+    const data = loadData();
+    lucroMensalMes(data, num, mes).linhas = limpas;
+    saveData(data);
+  });
+  res.json({ ok: true, linhas: limpas });
+});
+
+app.post('/api/lucro/mensal/snapshot', async (req, res) => {
+  const { conta, mes, snapshot } = req.body || {};
+  const num = String(conta || '1');
+  if (!/^\d{4}-\d{2}$/.test(String(mes || ''))) return res.status(400).json({ error: 'mes inválido' });
+  if (!snapshot || typeof snapshot !== 'object') return res.status(400).json({ error: 'snapshot inválido' });
+  await withDataLock(() => {
+    const data = loadData();
+    lucroMensalMes(data, num, mes).snapshot = { ...snapshot, atualizadoEm: new Date().toISOString() };
+    saveData(data);
+  });
+  res.json({ ok: true });
+});
+
+// Gasto com Ads da Shopee no mês (CPC ads, soma de "expense" por dia). Depende do app da
+// Shopee ter a permissão de Ads liberada — se não tiver, devolve o erro da Shopee pra tela
+// mostrar "não disponível" em vez de um R$ 0 enganoso.
+app.get('/api/lucro/ads-shopee', async (req, res) => {
+  const num  = String(req.query.conta || '1');
+  const mes  = String(req.query.mes || '');
+  if (!/^\d{4}-\d{2}$/.test(mes)) return res.status(400).json({ error: 'mes inválido' });
+  const data = loadData();
+  const sp   = shopeeConta(data, num);
+  if (!sp.access_token) return res.json({ error: 'Shopee não conectada' });
+  try {
+    const [ano, m] = mes.split('-').map(Number);
+    const hoje     = dataBRDeTimestamp(Date.now());
+    const ultimo   = `${mes}-${String(new Date(ano, m, 0).getDate()).padStart(2, '0')}`;
+    const ate      = ultimo > hoje ? hoje : ultimo;
+    if (`${mes}-01` > hoje) return res.json({ ads_cost: 0 });
+    const ddmmyyyy = s => s.split('-').reverse().join('-');
+    const accessToken = await getShopeeToken(data, num);
+    const path   = '/api/v2/ads/get_all_cpc_ads_daily_performance';
+    const params = shopeeParams(path, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
+    params.start_date = ddmmyyyy(`${mes}-01`);
+    params.end_date   = ddmmyyyy(ate);
+    const r = await axios.get(`${SHOPEE_BASE}/ads/get_all_cpc_ads_daily_performance`, { params, timeout: 15000 });
+    if (r.data.error) return res.json({ error: `${r.data.error}${r.data.message ? ': ' + r.data.message : ''}` });
+    const dias = Array.isArray(r.data.response) ? r.data.response : (r.data.response?.list || []);
+    const total = dias.reduce((s, d) => s + (Number(d.expense) || 0), 0);
+    res.json({ ads_cost: total });
+  } catch (err) {
+    const msg = err.response?.data?.message || err.response?.data?.error || err.message;
+    addLog(`[lucro-mensal] Ads Shopee conta ${num}: ${msg}`, 'warn');
+    res.json({ error: msg });
+  }
 });
 
 // Busca pedidos pagos no período + custo de frete real por shipment (dividido entre pedidos

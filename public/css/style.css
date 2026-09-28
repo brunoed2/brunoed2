@@ -1245,6 +1245,33 @@ tr.lucro-sub-item td {
   background: #fee2e2;
 }
 
+/* Lucro mensal */
+.lm-extrato { max-width: 760px; }
+.lm-tabela td { vertical-align: middle; }
+.lm-tabela td.col-num { white-space: nowrap; width: 140px; }
+.lm-tabela td:last-child { width: 40px; }
+.lm-sub { font-size: 11px; color: #94a3b8; margin-top: 2px; }
+.lm-secao td {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .6px;
+  color: #64748b;
+  background: #f8fafc;
+  padding-top: 10px;
+}
+.lm-subtotal td { font-weight: 600; border-top: 1px solid #e2e8f0; }
+.lm-total td { font-weight: 700; font-size: 16px; border-top: 2px solid #334155; }
+.lm-input-desc, .lm-input-valor {
+  padding: 5px 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 5px;
+  font-size: 13px;
+}
+.lm-input-desc { width: 100%; box-sizing: border-box; }
+.lm-input-valor { width: 110px; text-align: right; }
+.lm-input-desc:focus, .lm-input-valor:focus { outline: none; border-color: #818cf8; }
+
 .lucro-btn-lock {
   background: none;
   border: none;
