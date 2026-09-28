@@ -5669,65 +5669,88 @@ app.get('/api/ml/debug-billing', async (req, res) => {
 // (tipo | subtipo | descrição → quantidade e total), pra decidir quais tipos entram no
 // Lucro mensal sem duplicar o que já é descontado por venda (tarifa de venda, frete).
 // Períodos fecham no dia 19, não no fim do mês — ?mes=YYYY-MM filtra pela data da cobrança.
-app.get('/api/ml/debug-billing-resumo', async (req, res) => {
-  const data = loadData();
-  const num  = req.query.conta || data.conta_ativa;
-  const c    = data.contas[num];
-  if (!c?.access_token) return res.json({ error: 'Não conectado' });
-  const key = String(req.query.key || '');
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) return res.json({ error: 'Passe ?key=YYYY-MM-01 (veja em /api/ml/debug-billing)' });
-  const mes = req.query.mes ? String(req.query.mes) : null;
-  const headers = { Authorization: `Bearer ${c.access_token}` };
+// Roda em segundo plano: a API de faturamento devolve 429 "local_rate_limited" com
+// frequência (v914/v915), e uma leitura de ~4500 cobranças numa requisição só ficava
+// minutos carregando. A 1ª chamada inicia; as seguintes mostram progresso/resultado.
+// ?reiniciar=1 descarta o resultado anterior e começa de novo.
+const billingResumoJobs = {};
 
-  const grupos = {};
-  const exemplos = {};
-  let offset = 0, total = null, lidos = 0, limit = 150, erro = null, tentativas429 = 0;
+async function rodarBillingResumo(job, headers) {
   const esperar = ms => new Promise(r => setTimeout(r, ms));
+  const grupos = {};
+  let offset = 0, limit = 150, espera429 = 0;
   while (offset < 20000) {
-    // A API de faturamento devolve 429 "local_rate_limited" já na 2ª página se não houver
-    // pausa entre as chamadas (visto no v914)
-    if (offset > 0) await esperar(700);
+    if (offset > 0) await esperar(1000);
     try {
       const r = await axios.get(
-        `https://api.mercadolibre.com/billing/integration/periods/key/${key}/group/ML/details`,
+        `https://api.mercadolibre.com/billing/integration/periods/key/${job.key}/group/ML/details`,
         { params: { document_type: 'BILL', offset, limit }, headers, timeout: 20000 }
       );
-      total = r.data.total ?? total;
+      job.total_no_periodo = r.data.total ?? job.total_no_periodo;
       const results = r.data.results || [];
       for (const d of results) {
         const ci = d.charge_info || {};
-        lidos++;
-        if (mes && !String(ci.creation_date_time || '').startsWith(mes)) continue;
+        job.lidos++;
+        if (job.mes && !String(ci.creation_date_time || '').startsWith(job.mes)) continue;
         const k = `${ci.detail_type} | ${ci.detail_sub_type} | ${ci.transaction_detail}`;
         const g = grupos[k] = grupos[k] || { quantidade: 0, total: 0, cancelados_no_mes: 0, marketplace: d.marketplace_info?.marketplace };
         g.quantidade++;
         g.total += Number(ci.detail_amount) || 0;
         if (ci.status === 'BONUS_ON_BILL') g.cancelados_no_mes++;
         // Um exemplo completo por tipo — mostra se sales_info/shipping_info liga a cobrança a um pedido
-        if (!exemplos[k] && (d.sales_info || d.shipping_info || d.items_info)) {
-          exemplos[k] = { sales_info: d.sales_info, shipping_info: d.shipping_info, items_info: d.items_info, creation_date_time: ci.creation_date_time, detail_amount: ci.detail_amount };
+        if (!job.exemplos[k] && (d.sales_info || d.shipping_info || d.items_info)) {
+          job.exemplos[k] = { sales_info: d.sales_info, shipping_info: d.shipping_info, items_info: d.items_info, creation_date_time: ci.creation_date_time, detail_amount: ci.detail_amount };
         }
       }
+      job.tipos = Object.entries(grupos)
+        .map(([tipo, g]) => ({ tipo, ...g, total: Math.round(g.total * 100) / 100 }))
+        .sort((a, b) => b.total - a.total);
       offset += results.length;
-      tentativas429 = 0;
-      if (!results.length || (total !== null && offset >= total)) break;
+      espera429 = 0;
+      if (!results.length || (job.total_no_periodo != null && offset >= job.total_no_periodo)) break;
     } catch (e) {
-      if (e.response?.status === 429 && tentativas429 < 6) {
-        tentativas429++;
-        await esperar(2000 * tentativas429); // 2s, 4s, 6s... antes de repetir a mesma página
+      if (e.response?.status === 429) {
+        job.qtd_429++;
+        if (job.qtd_429 > 300) { job.erro = { offset, status: 429, data: 'desistiu: 429 demais' }; break; }
+        espera429 = Math.min(espera429 ? espera429 * 2 : 5000, 60000); // 5s, 10s, 20s... até 60s
+        job.aguardando_ate = new Date(Date.now() + espera429).toISOString();
+        await esperar(espera429);
+        job.aguardando_ate = null;
         continue;
       }
       // Limite máximo por página não documentado — se 150 for recusado, tenta 50
       if (limit > 50 && offset === 0) { limit = 50; continue; }
-      erro = { offset, status: e.response?.status, data: e.response?.data || e.message };
+      job.erro = { offset, status: e.response?.status, data: e.response?.data || e.message };
       break;
     }
   }
+  job.status = job.erro ? 'erro' : 'concluido';
+  job.terminou_em = new Date().toISOString();
+}
 
-  const tipos = Object.entries(grupos)
-    .map(([tipo, g]) => ({ tipo, ...g, total: Math.round(g.total * 100) / 100 }))
-    .sort((a, b) => b.total - a.total);
-  res.json({ key, mes, total_no_periodo: total, lidos, erro, tipos, exemplos });
+app.get('/api/ml/debug-billing-resumo', (req, res) => {
+  const data = loadData();
+  const num  = String(req.query.conta || data.conta_ativa);
+  const c    = data.contas[num];
+  if (!c?.access_token) return res.json({ error: 'Não conectado' });
+  const key = String(req.query.key || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) return res.json({ error: 'Passe ?key=YYYY-MM-01 (veja em /api/ml/debug-billing)' });
+  const mes = req.query.mes ? String(req.query.mes) : null;
+  const id  = `${num}|${key}|${mes || ''}`;
+
+  let job = billingResumoJobs[id];
+  if (!job || (req.query.reiniciar === '1' && job.status !== 'rodando')) {
+    job = billingResumoJobs[id] = {
+      status: 'rodando', conta: num, key, mes, iniciou_em: new Date().toISOString(),
+      total_no_periodo: null, lidos: 0, qtd_429: 0, aguardando_ate: null, erro: null, tipos: [], exemplos: {},
+    };
+    rodarBillingResumo(job, { Authorization: `Bearer ${c.access_token}` })
+      .catch(e => { job.status = 'erro'; job.erro = e.message; });
+  }
+  res.json({
+    ...(job.status === 'rodando' ? { aviso: 'Ainda lendo — recarregue a página daqui a pouco pra ver o progresso' } : {}),
+    ...job,
+  });
 });
 
 // Debug — estrutura real do shipment para diagnóstico do frete
