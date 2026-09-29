@@ -6393,6 +6393,58 @@ app.post('/api/devolucoes/nf', (req, res) => {
   res.json({ ok: true, nf: nfs[id] || null });
 });
 
+// Debug — de onde vem a devolução de um pedido específico. A aba só enxerga devolução
+// aberta por reclamação; pacote que não foi entregue ao comprador e voltou pro
+// vendedor (retorno ao remetente, no envio da própria venda) não passa por reclamação.
+// Mostra: se o pedido está no registro, o envio da venda (status + histórico), as
+// reclamações do pedido e a devolução de cada uma. ?conta=N (sem: tenta as duas).
+app.get('/api/ml/debug-devolucao-pedido/:order_id', async (req, res) => {
+  const data    = loadData();
+  const orderId = String(req.params.order_id);
+  const contas  = req.query.conta ? [String(req.query.conta)] : Object.keys(data.contas || {});
+  const estado  = loadDevolucoes();
+  const saida   = {
+    no_registro: Object.entries(estado.registro).filter(([, dv]) => String(dv.order_id) === orderId).map(([id, dv]) => ({ id, ...dv })),
+    primeira_carga_feita: estado.backfill_feito,
+  };
+  for (const num of contas) {
+    let tok;
+    try { tok = await getToken(data, num); } catch (e) { saida[`conta_${num}`] = { erro: e.message }; continue; }
+    const headers = { Authorization: `Bearer ${tok}` };
+    let o;
+    try { o = await mlGetDevolucao(`https://api.mercadolibre.com/orders/${orderId}`, headers); }
+    catch (e) { saida[`conta_${num}`] = { erro_pedido: e.response?.status || e.message }; continue; }
+    const r = saida[`conta_${num}`] = {
+      pedido: { status: o.status, criado: o.date_created, pack_id: o.pack_id, comprador: o.buyer?.nickname, tags: o.tags,
+        itens: (o.order_items || []).map(i => `${i.item?.title} x${i.quantity}`), mediations: o.mediations, shipping_id: o.shipping?.id },
+    };
+    if (o.shipping?.id) {
+      try {
+        const sh = await mlGetDevolucao(`https://api.mercadolibre.com/shipments/${o.shipping.id}`, headers);
+        r.envio_da_venda = { status: sh.status, substatus: sh.substatus, logistic_type: sh.logistic_type, tracking: sh.tracking_number, status_history: sh.status_history, tags: sh.tags };
+      } catch (e) { r.envio_da_venda = { erro: e.response?.status || e.message }; }
+      try {
+        r.historico_envio = await mlGetDevolucao(`https://api.mercadolibre.com/shipments/${o.shipping.id}/history`, headers);
+      } catch (e) { r.historico_envio = { erro: e.response?.status || e.message }; }
+    }
+    r.reclamacoes = [];
+    for (const recurso of [orderId, o.pack_id].filter(Boolean)) {
+      try {
+        const s = await mlGetDevolucao('https://api.mercadolibre.com/post-purchase/v1/claims/search', headers, { resource_id: recurso });
+        for (const cl of (s?.data || [])) {
+          const item = { claim_id: cl.id, status: cl.status, stage: cl.stage, tipo: cl.type, motivo: cl.reason_id, criado: cl.date_created, atualizado: cl.last_updated, recurso };
+          try {
+            const ret = await mlGetDevolucao(`https://api.mercadolibre.com/post-purchase/v2/claims/${cl.id}/returns`, headers);
+            item.devolucao = { status: ret.status, subtype: ret.subtype, criado: ret.date_created, envios: (ret.shipments || []).map(x => ({ id: x.shipment_id, status: x.status, destino: x.destination?.name, tracking: x.tracking_number })) };
+          } catch (e) { item.devolucao = { erro: e.response?.status || e.message }; }
+          r.reclamacoes.push(item);
+        }
+      } catch (e) { r.reclamacoes.push({ recurso, erro_busca: e.response?.status || e.message }); }
+    }
+  }
+  res.json(saida);
+});
+
 // Situação da rotina (debug). ?rodar=1 roda agora em segundo plano; ?rodar=1&avisar=0
 // roda sem mandar notificação.
 app.get('/api/ml/debug-devolucoes', (req, res) => {
