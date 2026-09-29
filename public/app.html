@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Painel</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📦</text></svg>">
-  <link rel="stylesheet" href="/css/style.css?v=22">
+  <link rel="stylesheet" href="/css/style.css?v=23">
   <link rel="manifest" href="/manifest.json">
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
   <meta name="theme-color" content="#2563eb">
@@ -76,6 +76,7 @@
         <a class="nav-btn" href="?tab=log-anuncio" data-tab="log-anuncio">🔍 Log Anúncio</a>
         <a class="nav-btn" href="?tab=scanner" data-tab="scanner">📷 Scanner</a>
         <a class="nav-btn" href="?tab=codigo" data-tab="codigo">🔑 Código</a>
+        <a class="nav-btn" href="?tab=devolucoes" data-tab="devolucoes">↩️ Devoluções</a>
         <a class="nav-btn" href="?tab=configuracoes" data-tab="configuracoes">⚙️ Configurações</a>
       </nav>
       <!-- Mobile: barra inferior com label da aba ativa + hamburger -->
@@ -1594,6 +1595,70 @@
         <div id="codigo-lista" class="codigo-lista"></div>
       </section>
 
+      <!-- ── Aba: Devoluções (ML) ── -->
+      <section id="tab-devolucoes" class="tab">
+        <h1>Devoluções</h1>
+        <p class="subtitle">Devoluções do Mercado Livre e da Shopee que vêm pro seu endereço (as do Full o próprio ML emite a NF) — marque quando a NF de devolução for emitida.</p>
+        <div class="lucro-cards">
+          <div class="lucro-card dev-card-click" onclick="devSetFiltro('situacao','caminho'); devSetFiltro('nf','todas')">
+            <div class="lucro-card-label">A caminho</div>
+            <div class="lucro-card-valor" id="dev-card-caminho">—</div>
+          </div>
+          <div class="lucro-card lucro-card-destaque dev-card-click" onclick="devSetFiltro('situacao','chegou'); devSetFiltro('nf','pendente')">
+            <div class="lucro-card-label">Chegaram sem NF</div>
+            <div class="lucro-card-valor" id="dev-card-semnf">—</div>
+            <div class="dev-sub" id="dev-card-semnf-valor"></div>
+          </div>
+          <div class="lucro-card dev-card-click" onclick="devSetFiltro('situacao','todas'); devSetFiltro('nf','emitida')">
+            <div class="lucro-card-label">NF emitida</div>
+            <div class="lucro-card-valor" id="dev-card-comnf">—</div>
+          </div>
+        </div>
+        <div class="filtros-bar">
+          <span class="filtro-label">Situação:</span>
+          <span data-dev-filtro="situacao" style="display:contents">
+            <button class="filtro-btn active" data-valor="todas" onclick="devSetFiltro('situacao','todas')">Todas</button>
+            <button class="filtro-btn" data-valor="caminho" onclick="devSetFiltro('situacao','caminho')">A caminho</button>
+            <button class="filtro-btn" data-valor="chegou" onclick="devSetFiltro('situacao','chegou')">Chegaram</button>
+          </span>
+          <span class="filtro-sep">|</span>
+          <span class="filtro-label">NF:</span>
+          <span data-dev-filtro="nf" style="display:contents">
+            <button class="filtro-btn active" data-valor="pendente" onclick="devSetFiltro('nf','pendente')">Pendente</button>
+            <button class="filtro-btn" data-valor="emitida" onclick="devSetFiltro('nf','emitida')">Emitida</button>
+            <button class="filtro-btn" data-valor="todas" onclick="devSetFiltro('nf','todas')">Todas</button>
+          </span>
+        </div>
+        <div class="filtros-bar">
+          <span class="filtro-label">Conta:</span>
+          <span id="dev-filtro-conta" style="display:contents"></span>
+          <span class="filtro-sep">|</span>
+          <span class="filtro-label">Canal:</span>
+          <span data-dev-filtro="canal" style="display:contents">
+            <button class="filtro-btn active" data-valor="todos" onclick="devSetFiltro('canal','todos')">Todos</button>
+            <button class="filtro-btn" data-valor="ml" onclick="devSetFiltro('canal','ml')">Mercado Livre</button>
+            <button class="filtro-btn" data-valor="shopee" onclick="devSetFiltro('canal','shopee')">Shopee</button>
+          </span>
+          <span class="filtro-sep">|</span>
+          <input type="text" class="filtro-sku-input" placeholder="Pedido, produto ou rastreio" oninput="devFiltro.busca=this.value; devRender()">
+        </div>
+        <div class="tabela-container">
+          <div class="tabela-topo">
+            <span id="dev-contagem"></span>
+            <span style="display:flex;align-items:center;gap:10px">
+              <span id="dev-status" style="font-size:12px;color:#94a3b8"></span>
+              <button class="btn-sm" id="dev-btn-atualizar" onclick="devolucoesAtualizar()">🔄 Atualizar</button>
+            </span>
+          </div>
+          <table class="tabela">
+            <thead><tr>
+              <th>Canal</th><th>Conta</th><th>Pedido</th><th>Produto</th><th class="col-num">Valor</th><th>Situação</th><th>Chegou em</th><th style="text-align:center">NF devolução</th>
+            </tr></thead>
+            <tbody id="dev-tbody"><tr><td colspan="8" style="text-align:center;color:#94a3b8;padding:28px">Carregando...</td></tr></tbody>
+          </table>
+        </div>
+      </section>
+
     </main>
   </div>
 
@@ -1627,6 +1692,7 @@
       <button class="mobile-drawer-btn" data-tab="log-anuncio">🔍 Log Anúncio</button>
       <button class="mobile-drawer-btn" data-tab="scanner">📷 Scanner</button>
       <button class="mobile-drawer-btn" data-tab="codigo">🔑 Código</button>
+      <button class="mobile-drawer-btn" data-tab="devolucoes">↩️ Devoluções</button>
       <button class="mobile-drawer-btn" data-tab="configuracoes">⚙️ Configurações</button>
     </nav>
   </div>
@@ -1677,7 +1743,7 @@
 
   <script src="/js/compartilhar.js?v=1"></script>
   <script src="/js/lucro.js?v=10"></script>
-  <script src="/js/app-v2.js?v=7"></script>
+  <script src="/js/app-v2.js?v=8"></script>
   <script src="/js/operacoes.js?v=21"></script>
   <script src="/js/shopee.js?v=2"></script>
   <script src="/js/conexao.js?v=2"></script>
@@ -1696,6 +1762,7 @@
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
   <script src="/js/scanner.js?v=7"></script>
   <script src="/js/codigo-recebimento.js?v=1"></script>
+  <script src="/js/devolucoes.js?v=1"></script>
   <script>
   // ── Gerenciamento de Usuários ─────────────────────────────────
 
@@ -1717,6 +1784,7 @@
     { id: 'log-anuncio',   label: '🔍 Log Anúncio' },
     { id: 'scanner',       label: '📷 Scanner' },
     { id: 'codigo',        label: '🔑 Código' },
+    { id: 'devolucoes',    label: '↩️ Devoluções' },
     { id: 'configuracoes', label: '⚙️ Configurações' },
   ];
 
@@ -2019,6 +2087,6 @@
   </div>
 
   <script src="/js/busca-pagina.js?v=1"></script>
-  <div id="version-badge">v920</div>
+  <div id="version-badge">v921</div>
 </body>
 </html>

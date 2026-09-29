@@ -2457,3 +2457,15 @@ tr.lucro-sub-item td {
 .codigo-card-valor.codigo-copiado { background: #f0fdf4; border-color: #16a34a; color: #16a34a; }
 .codigo-card-edit { display: flex; gap: 8px; }
 .codigo-card-input { flex: 1; font-size: 18px; font-weight: 600; letter-spacing: .03em; }
+
+/* ── Aba Devoluções ── */
+.dev-sub { font-size: 12px; color: #94a3b8; margin-top: 2px; }
+.dev-card-click { cursor: pointer; transition: border-color .15s; }
+.dev-card-click:hover { border-color: #6366f1; }
+.dev-nf-check { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-size: 13px; white-space: nowrap; }
+.dev-nf-check input { width: 16px; height: 16px; cursor: pointer; }
+.dev-nf-info { font-size: 11px; color: #16a34a; margin-top: 3px; white-space: nowrap; }
+.dev-badge-ml     { background: #fef9c3; color: #854d0e; }
+.dev-badge-shopee { background: #ffedd5; color: #c2410c; }
+.dev-linha-ok td { opacity: .6; }
+.dev-linha-ok td:last-child { opacity: 1; }

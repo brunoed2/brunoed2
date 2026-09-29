@@ -218,7 +218,7 @@ function loadData() {
     raw.usuarios['1234'] = { nome: 'Proposta ML (cliente)', abas: [], painel: 'simulador-ml' };
   }
   // 199412 é sempre admin no painel app — forçado mesmo se já existir com dados errados
-  const adminAbas = ['estoque','vendas','historico','ads','lucro','promocoes','contas-pagar','contas-receber','bling','fiscal','compras','calculadora','etiquetas','log-anuncio','configuracoes','scanner','codigo'];
+  const adminAbas = ['estoque','vendas','historico','ads','lucro','promocoes','contas-pagar','contas-receber','bling','fiscal','compras','calculadora','etiquetas','log-anuncio','configuracoes','scanner','codigo','devolucoes'];
   raw.usuarios['199412'] = {
     nome:         (raw.usuarios['199412'] || {}).nome || 'Admin',
     abas:         adminAbas,
@@ -6048,29 +6048,49 @@ app.get('/api/ml/debug-shipment/:sid', async (req, res) => {
   } catch (err) { res.json({ error: err.message }); }
 });
 
-// ── Devoluções chegando no galpão ─────────────────────────────
-// Avisa o funcionário no dia em que uma devolução do ML vai chegar no galpão.
-// A previsão de entrega do envio de volta não serve pra isso (v918): pacotes já
-// "saiu pra entrega" vinham com previsão de dias atrás, e nos de Correios (PAC) a
-// previsão é o prazo máximo, um mês pra frente. O sinal confiável é o substatus
-// out_for_delivery do envio de volta — foi o que bateu com o que chegou de fato.
+// ── Devoluções (Mercado Livre + Shopee) ───────────────────────
+// Alimenta a aba Devoluções (controle de NF de devolução pra abater imposto) e o
+// aviso "chega hoje no galpão" pro funcionário (só ML — Shopee fica fora do aviso,
+// o rastreio reverso dela não tem "saiu pra entrega", ver v920).
 //
-// A busca de reclamações do ML não é confiável pra achar "as devoluções a caminho"
-// (2 mil+ reclamações, ordenação duvidosa), então cada devolução que vai pro galpão
-// (destino seller_address; warehouse é o Full em Cajamar, fica de fora) entra numa
-// lista de acompanhamento quando é descoberta e é consultada direto pelo envio até
-// ser entregue ou cancelada. Descoberta: reclamações abertas + as atualizadas nos
-// últimos 20 dias. Reclamação já vista com o mesmo last_updated não é reconsultada.
-// Arquivo próprio pelo mesmo motivo dos outros (race condition em data.json).
-const DEVOLUCOES_FILE = path.join(DATA_DIR, 'devolucoes-ml.json');
+// Aviso: o sinal é o substatus out_for_delivery do envio de volta. A previsão de
+// entrega não serve (v918): os que já tinham saído pra entrega vinham com previsão
+// de dias atrás, e nos de Correios (PAC) a previsão é o prazo máximo, um mês pra frente.
+//
+// A busca de reclamações do ML não é confiável pra achar "as devoluções" (2 mil+
+// reclamações, ordenação duvidosa), então cada devolução descoberta entra no
+// registro e passa a ser consultada direto pelo envio até chegar. Descoberta:
+// reclamações abertas + atualizadas nos últimos 20 dias; na primeira vez (backfill)
+// varre todas as reclamações e pega as criadas nos últimos 90 dias. Reclamação já
+// vista com o mesmo last_updated não é reconsultada. Só entra destino seller_address
+// (galpão, Ribeirão Preto): devolução com destino warehouse vai pro Full (Cajamar) e
+// a NF de devolução dela o próprio ML emite.
+//
+// Arquivo próprio pelo mesmo motivo dos outros (race condition em data.json). A
+// marcação de NF emitida fica em OUTRO arquivo: a rotina carrega o registro no
+// início e só salva minutos depois, e sobrescreveria uma marcação feita no meio.
+const DEVOLUCOES_FILE    = path.join(DATA_DIR, 'devolucoes-ml.json');
+const DEVOLUCOES_NF_FILE = path.join(DATA_DIR, 'devolucoes-nf.json');
 function loadDevolucoes() {
-  try {
-    const d = JSON.parse(fs.readFileSync(DEVOLUCOES_FILE, 'utf8'));
-    return { acompanhando: d.acompanhando || {}, claims_vistos: d.claims_vistos || {}, avisados: d.avisados || {}, ultima_execucao: d.ultima_execucao || null, ultimo_erro: d.ultimo_erro || null };
-  } catch { return { acompanhando: {}, claims_vistos: {}, avisados: {}, ultima_execucao: null, ultimo_erro: null }; }
+  let d = {};
+  try { d = JSON.parse(fs.readFileSync(DEVOLUCOES_FILE, 'utf8')); } catch {}
+  // v919 só guardava as devoluções a caminho do galpão (acompanhando) e marcou como
+  // vistas reclamações cujas devoluções já tinham chegado — recomeça a descoberta.
+  if (d.versao !== 2) {
+    d = { versao: 2, registro: d.acompanhando || {}, claims_vistos: {}, avisados: d.avisados || {}, backfill_feito: {} };
+  }
+  d.registro = d.registro || {}; d.claims_vistos = d.claims_vistos || {};
+  d.avisados = d.avisados || {}; d.backfill_feito = d.backfill_feito || {};
+  return d;
 }
 function saveDevolucoes(d) {
   fs.writeFileSync(DEVOLUCOES_FILE, JSON.stringify(d, null, 2));
+}
+function loadDevolucoesNf() {
+  try { return JSON.parse(fs.readFileSync(DEVOLUCOES_NF_FILE, 'utf8')); } catch { return {}; }
+}
+function saveDevolucoesNf(d) {
+  fs.writeFileSync(DEVOLUCOES_NF_FILE, JSON.stringify(d, null, 2));
 }
 
 const pausa = ms => new Promise(r => setTimeout(r, ms));
@@ -6088,8 +6108,11 @@ async function mlGetDevolucao(url, headers, params) {
   }
 }
 
-const DEVOLUCAO_FINALIZADA = new Set(['delivered', 'cancelled', 'not_delivered', 'expired', 'closed']);
+// Envio de volta que não vai chegar (comprador não postou, cancelado) — sai do
+// registro, a não ser que a NF já tenha sido marcada.
+const DEVOLUCAO_SEM_PRODUTO = new Set(['cancelled', 'expired']);
 let devolucoesRodando = false;
+let devolucoesProgresso = null;
 
 async function verificarDevolucoes({ notificarChegando = true } = {}) {
   if (devolucoesRodando) return;
@@ -6097,34 +6120,50 @@ async function verificarDevolucoes({ notificarChegando = true } = {}) {
   const estado = loadDevolucoes();
   const data   = loadData();
   const hoje   = dataBRDeTimestamp(Date.now());
-  const corte  = Date.now() - 20 * 24 * 60 * 60 * 1000;
+  const DIA    = 24 * 60 * 60 * 1000;
   const erros  = [];
+  const nfs    = loadDevolucoesNf();
   try {
     for (const num of Object.keys(data.contas || {})) {
       const c = data.contas[num];
       if (!c?.access_token || !c.user_id) continue;
       let tok;
       try { tok = await getToken(data, num); } catch (e) { erros.push(`conta ${num}: ${e.message}`); continue; }
-      const headers = { Authorization: `Bearer ${tok}` };
+      const headers  = { Authorization: `Bearer ${tok}` };
+      const backfill = !estado.backfill_feito[num];
 
       // 1. Descobre reclamações candidatas
       const candidatas = new Map();
-      const buscas = [{ status: 'opened', offset: 0 }, { offset: 0 }, { offset: 50 }, { offset: 100 }];
-      for (const b of buscas) {
-        try {
-          const r = await mlGetDevolucao('https://api.mercadolibre.com/post-purchase/v1/claims/search', headers, {
-            player_role: 'respondent', player_user_id: c.user_id, limit: 50, sort: 'last_updated:desc', ...b,
-          });
-          for (const cl of (r?.data || [])) {
-            const atual = Date.parse(cl.last_updated || cl.date_created || 0);
-            if (cl.status === 'opened' || atual >= corte) candidatas.set(String(cl.id), cl);
+      const buscar = async (extra) => {
+        const r = await mlGetDevolucao('https://api.mercadolibre.com/post-purchase/v1/claims/search', headers, {
+          player_role: 'respondent', player_user_id: c.user_id, limit: 50, sort: 'last_updated:desc', ...extra,
+        });
+        return r?.data || [];
+      };
+      // Backfill conta como feito se leu ao menos a 1a página — se o ML limitar o offset
+      // lá pelo meio, não fica repetindo a varredura inteira a cada 30 min.
+      let buscaOk = false;
+      try {
+        for (const cl of await buscar({ status: 'opened', offset: 0 })) candidatas.set(String(cl.id), cl);
+        const paginas = backfill ? 80 : 4;
+        for (let p = 0; p < paginas; p++) {
+          devolucoesProgresso = `conta ${num}: lendo reclamações (página ${p + 1}${backfill ? ', primeira carga' : ''})`;
+          const lote = await buscar({ offset: p * 50 });
+          buscaOk = true;
+          for (const cl of lote) {
+            const ref = backfill ? Date.parse(cl.date_created || 0) : Date.parse(cl.last_updated || cl.date_created || 0);
+            if (ref >= Date.now() - (backfill ? 90 : 20) * DIA) candidatas.set(String(cl.id), cl);
           }
-        } catch (e) { erros.push(`conta ${num} busca: ${e.response?.status || e.message}`); }
-      }
+          if (lote.length < 50) break;
+        }
+      } catch (e) { erros.push(`conta ${num} busca: ${e.response?.status || e.message}`); }
 
-      // 2. Pra cada reclamação nova/alterada, vê se tem devolução indo pro galpão
+      // 2. Pra cada reclamação nova/alterada, registra as devoluções com envio de volta
+      let i = 0;
       for (const [id, cl] of candidatas) {
+        i++;
         if (estado.claims_vistos[id]?.last_updated === cl.last_updated) continue;
+        devolucoesProgresso = `conta ${num}: conferindo reclamação ${i} de ${candidatas.size}`;
         let ret;
         try {
           ret = await mlGetDevolucao(`https://api.mercadolibre.com/post-purchase/v2/claims/${id}/returns`, headers);
@@ -6133,49 +6172,71 @@ async function verificarDevolucoes({ notificarChegando = true } = {}) {
         }
         estado.claims_vistos[id] = { last_updated: cl.last_updated, visto: Date.now() };
         for (const sh of (ret?.shipments || [])) {
-          if (sh.destination?.name !== 'seller_address' || !sh.shipment_id) continue;
+          if (!sh.shipment_id || (sh.type && sh.type !== 'return')) continue;
+          if (sh.destination?.name === 'warehouse') continue; // Full — NF é do ML
           const sid = String(sh.shipment_id);
-          if (estado.acompanhando[sid] || DEVOLUCAO_FINALIZADA.has(sh.status)) continue;
-          let titulo = null;
-          try {
-            const o = await mlGetDevolucao(`https://api.mercadolibre.com/orders/${cl.resource_id}`, headers);
-            titulo = (o?.order_items || []).map(i => `${i.item?.title || i.item?.id}${i.quantity > 1 ? ` (${i.quantity} un)` : ''}`).join(', ') || null;
-          } catch { /* sem título, avisa só com o pedido */ }
-          estado.acompanhando[sid] = {
-            conta: num, nickname: c.nickname || null, claim_id: id, order_id: cl.resource_id, titulo,
-            tracking: sh.tracking_number || null, status: sh.status, substatus: null, desde: Date.now(),
-          };
+          const semProduto = DEVOLUCAO_SEM_PRODUTO.has(sh.status) || DEVOLUCAO_SEM_PRODUTO.has(ret.status);
+          if (semProduto) { if (!nfs[sid]) delete estado.registro[sid]; continue; }
+          const reg = estado.registro[sid] || {};
+          if (!reg.order_id || reg.valor == null) {
+            try {
+              const o = await mlGetDevolucao(`https://api.mercadolibre.com/orders/${cl.resource_id}`, headers);
+              const devolvidos = new Map((ret.orders || []).map(x => [x.item_id, Number(x.return_quantity) || null]));
+              const itens = (o?.order_items || []).filter(it => !devolvidos.size || devolvidos.has(it.item?.id));
+              reg.titulo = itens.map(it => {
+                const qtd = devolvidos.get(it.item?.id) || it.quantity;
+                return `${it.item?.title || it.item?.id}${qtd > 1 ? ` (${qtd} un)` : ''}`;
+              }).join(', ') || null;
+              reg.valor = Math.round(itens.reduce((s, it) => s + (Number(it.unit_price) || 0) * (devolvidos.get(it.item?.id) || it.quantity || 1), 0) * 100) / 100;
+              reg.venda_em = o?.date_closed || o?.date_created || null;
+            } catch { /* sem título/valor — tenta de novo na próxima vez que a reclamação mudar */ }
+          }
+          Object.assign(reg, {
+            canal: 'ml', conta: num, nickname: c.nickname || null, claim_id: id, order_id: cl.resource_id, return_id: ret.id,
+            devolucao_em: reg.devolucao_em || ret.date_created || cl.date_created,
+            reembolso: ret.status_money || null,
+            tracking: sh.tracking_number || reg.tracking || null,
+            status: reg.status || sh.status,
+          });
+          estado.registro[sid] = reg;
         }
       }
+      if (backfill && buscaOk) estado.backfill_feito[num] = Date.now();
 
-      // 3. Atualiza o envio de cada devolução acompanhada desta conta
-      for (const [sid, dv] of Object.entries(estado.acompanhando)) {
-        if (dv.conta !== num) continue;
+      // 3. Atualiza o envio de cada devolução desta conta que ainda não chegou
+      for (const [sid, dv] of Object.entries(estado.registro)) {
+        if (dv.canal === 'shopee' || dv.conta !== num || dv.chegou_em) continue;
+        devolucoesProgresso = `conta ${num}: atualizando envios`;
         try {
-          const d = await mlGetDevolucao(`https://api.mercadolibre.com/shipments/${sid}`, { ...headers, 'x-format-new': 'true' });
-          dv.status = d.status; dv.substatus = d.substatus || null; dv.tracking = d.tracking_number || dv.tracking;
-          dv.metodo = d.tracking_method || null; dv.atualizado = Date.now();
-          if (DEVOLUCAO_FINALIZADA.has(d.status)) delete estado.acompanhando[sid];
+          const d = await mlGetDevolucao(`https://api.mercadolibre.com/shipments/${sid}`, headers);
+          dv.status = d.status; dv.substatus = d.substatus || null;
+          dv.tracking = d.tracking_number || dv.tracking; dv.metodo = d.tracking_method || dv.metodo || null;
+          if (d.status === 'delivered') dv.chegou_em = d.status_history?.date_delivered || new Date().toISOString();
+          if (DEVOLUCAO_SEM_PRODUTO.has(d.status) && !nfs[sid]) delete estado.registro[sid];
         } catch (e) {
-          if (e.response?.status === 404) delete estado.acompanhando[sid];
+          if (e.response?.status === 404 && !nfs[sid]) delete estado.registro[sid];
           else erros.push(`envio ${sid}: ${e.response?.status || e.message}`);
         }
       }
     }
 
-    // Limpeza: reclamações vistas há mais de 60 dias e avisos de dias anteriores
-    const limite = Date.now() - 60 * 24 * 60 * 60 * 1000;
-    for (const [id, v] of Object.entries(estado.claims_vistos)) if ((v.visto || 0) < limite) delete estado.claims_vistos[id];
+    await verificarDevolucoesShopee(estado, nfs, erros, data);
+
+    // Limpeza: reclamações vistas há mais de 120 dias, devoluções que chegaram há
+    // mais de 1 ano e avisos de dias anteriores
+    for (const [id, v] of Object.entries(estado.claims_vistos)) if ((v.visto || 0) < Date.now() - 120 * DIA) delete estado.claims_vistos[id];
+    for (const [sid, dv] of Object.entries(estado.registro)) if (dv.chegou_em && Date.parse(dv.chegou_em) < Date.now() - 365 * DIA) delete estado.registro[sid];
     for (const dia of Object.keys(estado.avisados)) if (dia !== hoje) delete estado.avisados[dia];
 
-    // 4. Avisa as que saíram pra entrega hoje e ainda não foram avisadas hoje
+    // 4. Avisa as do ML que saíram pra entrega hoje e ainda não foram avisadas hoje
+    const hora = new Date(Date.now() - OFFSET_BRASILIA_MS).getUTCHours();
     const avisadosHoje = new Set(estado.avisados[hoje] || []);
-    const chegando = Object.entries(estado.acompanhando)
-      .filter(([sid, dv]) => dv.substatus === 'out_for_delivery' && !avisadosHoje.has(sid));
-    if (chegando.length && notificarChegando) {
+    const chegando = Object.entries(estado.registro)
+      .filter(([sid, dv]) => dv.canal !== 'shopee' && !dv.chegou_em && dv.substatus === 'out_for_delivery' && !avisadosHoje.has(sid));
+    if (chegando.length && notificarChegando && hora >= 7 && hora < 19) {
       const linhas = chegando.map(([, dv]) => `• ${dv.nickname || 'Conta ' + dv.conta} — pedido ${dv.order_id}${dv.titulo ? ' — ' + dv.titulo : ''}`);
-      const texto = `↩️ ${chegando.length === 1 ? 'Chega hoje 1 devolução' : `Chegam hoje ${chegando.length} devoluções`} no galpão:\n${linhas.join('\n')}`;
-      await notificar(texto, 'devolucao_chegando');
+      const qtd = chegando.length === 1 ? 'chega hoje 1 devolução' : `chegam hoje ${chegando.length} devoluções`;
+      await notificar(`↩️ Mercado Livre: ${qtd} no galpão:\n${linhas.join('\n')}`, 'devolucao_chegando');
       for (const [sid] of chegando) avisadosHoje.add(sid);
       estado.avisados[hoje] = [...avisadosHoje];
     }
@@ -6187,37 +6248,160 @@ async function verificarDevolucoes({ notificarChegando = true } = {}) {
     saveDevolucoes(estado);
     if (erros.length) addLog(`[devolucoes] ${erros.length} erro(s): ${erros.slice(0, 3).join(' | ')}`, 'warn');
     devolucoesRodando = false;
+    devolucoesProgresso = null;
   }
 }
 
-// A cada 30 min, das 7h às 18h de Brasília (Correios e Mercado Envios entregam de
-// dia; fora disso não tem o que avisar). Avisa só as novas de cada rodada, então
-// quem sair pra entrega no meio do dia gera um aviso separado. Roda também 1 min
-// depois de subir, senão cada deploy deixaria 30 min sem checar.
+// Shopee: devoluções com produto voltando (needs_logistics), sem aviso — só pra aba.
+// A lista da Shopee só aceita janela de 15 dias; a primeira carga varre 90 dias em
+// janelas de 15 (por update_time). Chave do registro: shopee-<return_sn>, pra não
+// colidir com o shipment_id do ML. Cada devolução descoberta é reconsultada pelo
+// rastreio reverso até chegar (LOGISTICS_DELIVERY_DONE). O status é convertido pro
+// mesmo formato do envio do ML (status/substatus/chegou_em) pra tela tratar igual.
+async function shopeeGetDevolucao(sp, tok, rota, extra) {
+  for (let tentativa = 0; ; tentativa++) {
+    await pausa(300);
+    const params = { ...shopeeParams(`/api/v2/${rota}`, sp.partner_key, sp.partner_id, tok, sp.shop_id), ...extra };
+    const r = await axios.get(`${SHOPEE_BASE}/${rota}`, { params, timeout: 15000 }).catch(e => {
+      if (e.response?.status === 429 && tentativa < 4) return null;
+      throw e;
+    });
+    if (!r) { await pausa(3000 * 2 ** tentativa); continue; }
+    if (r.data?.error) throw new Error(`${r.data.error}: ${r.data.message || ''}`);
+    return r.data?.response;
+  }
+}
+
+async function verificarDevolucoesShopee(estado, nfs, erros, data) {
+  const DIA_S = 86400;
+  for (const num of Object.keys(data.shopee_contas || {})) {
+    const sp = shopeeConta(data, num);
+    if (!sp.access_token) continue;
+    let tok;
+    try { tok = await getShopeeToken(data, num); } catch (e) { erros.push(`shopee ${num}: ${e.message}`); continue; }
+    const chaveBackfill = 'shopee-' + num;
+    const backfill = !estado.backfill_feito[chaveBackfill];
+    const agora = Math.floor(Date.now() / 1000);
+    const janelas = backfill ? 6 : 1;
+
+    let leuAlguma = false;
+    for (let j = 0; j < janelas; j++) {
+      const ate = agora - j * 15 * DIA_S, de = ate - 15 * DIA_S + 1;
+      try {
+        for (let page = 0; page < 20; page++) {
+          devolucoesProgresso = `Shopee ${num}: lendo devoluções${backfill ? ` (primeira carga, janela ${j + 1} de ${janelas})` : ''}`;
+          const resp = await shopeeGetDevolucao(sp, tok, 'returns/get_return_list', {
+            page_no: page, page_size: 50, update_time_from: de, update_time_to: ate,
+          });
+          leuAlguma = true;
+          for (const dv of (resp?.return || [])) {
+            const id = 'shopee-' + dv.return_sn;
+            const semProduto = dv.needs_logistics === false || dv.status === 'CANCELLED';
+            if (semProduto) { if (!nfs[id]) delete estado.registro[id]; continue; }
+            const reg = estado.registro[id] || {};
+            const itens = dv.item || [];
+            Object.assign(reg, {
+              canal: 'shopee', conta: num, nickname: `Shopee ${num}`, order_id: dv.order_sn, return_sn: dv.return_sn,
+              titulo: itens.map(i => `${i.name || i.item_id}${i.amount > 1 ? ` (${i.amount} un)` : ''}`).join(', ') || null,
+              valor: Math.round(itens.reduce((s, i) => s + (Number(i.item_price) || 0) * (Number(i.amount) || 1), 0) * 100) / 100,
+              devolucao_em: reg.devolucao_em || (dv.create_time ? new Date(dv.create_time * 1000).toISOString() : null),
+              tracking: dv.tracking_number || reg.tracking || null,
+              status: reg.status || 'ready_to_ship',
+            });
+            estado.registro[id] = reg;
+          }
+          if (!resp?.more) break;
+        }
+      } catch (e) { erros.push(`shopee ${num} lista: ${e.response?.status || e.message}`); }
+    }
+    if (backfill && leuAlguma) estado.backfill_feito[chaveBackfill] = Date.now();
+
+    for (const [id, dv] of Object.entries(estado.registro)) {
+      if (dv.canal !== 'shopee' || dv.conta !== num || dv.chegou_em) continue;
+      devolucoesProgresso = `Shopee ${num}: atualizando rastreios`;
+      try {
+        const t = await shopeeGetDevolucao(sp, tok, 'returns/get_reverse_tracking_info', { return_sn: dv.return_sn });
+        const st = t?.reverse_logistics_status || '';
+        dv.status_shopee = st;
+        dv.tracking = t?.tracking_number || dv.tracking;
+        if (st === 'LOGISTICS_DELIVERY_DONE') {
+          dv.status = 'delivered';
+          dv.chegou_em = new Date((t.reverse_logistics_update_time || Math.floor(Date.now() / 1000)) * 1000).toISOString();
+        } else if (st === 'LOGISTICS_REQUEST_CANCELED') {
+          if (!nfs[id]) delete estado.registro[id]; else dv.status = 'cancelled';
+        } else if (/FAILED|LOST/.test(st)) {
+          dv.status = 'not_delivered';
+        } else if (st === 'LOGISTICS_PICKUP_DONE') {
+          dv.status = 'shipped';
+        }
+      } catch (e) { erros.push(`shopee ${dv.return_sn}: ${e.response?.status || e.message}`); }
+    }
+  }
+}
+
+// A cada 30 min (o aviso só sai das 7h às 19h de Brasília, dentro da função). Avisa
+// só as novas de cada rodada, então quem sair pra entrega no meio do dia gera um
+// aviso separado. Roda também 1 min depois de subir, senão cada deploy deixaria
+// 30 min sem checar.
 function rodadaDevolucoes() {
-  const hora = new Date(Date.now() - OFFSET_BRASILIA_MS).getUTCHours();
-  if (hora >= 7 && hora < 19) verificarDevolucoes().catch(e => addLog(`[devolucoes] ${e.message}`, 'warn'));
+  verificarDevolucoes().catch(e => addLog(`[devolucoes] ${e.message}`, 'warn'));
 }
 setInterval(rodadaDevolucoes, 30 * 60 * 1000);
 setTimeout(rodadaDevolucoes, 60 * 1000);
 
-// Situação da rotina: devoluções acompanhadas, avisos de hoje e erros da última
-// rodada. ?rodar=1 roda agora em segundo plano (recarregar pra ver o resultado);
-// ?rodar=1&avisar=0 roda sem mandar notificação.
+// Aba Devoluções — registro + marcação de NF
+app.get('/api/devolucoes', (req, res) => {
+  const estado = loadDevolucoes();
+  const nfs    = loadDevolucoesNf();
+  const data   = loadData();
+  const contas = [...Object.keys(data.contas || {}),
+    ...Object.keys(data.shopee_contas || {}).filter(n => data.shopee_contas[n]?.access_token).map(n => 'shopee-' + n)];
+  res.json({
+    rodando: devolucoesRodando,
+    progresso: devolucoesProgresso,
+    ultima_execucao: estado.ultima_execucao || null,
+    carregando_historico: contas.some(n => !estado.backfill_feito[n]),
+    erros: estado.ultimo_erro || null,
+    itens: Object.entries(estado.registro).map(([id, dv]) => ({ id, ...dv, nf: nfs[id] || null })),
+  });
+});
+
+app.post('/api/devolucoes/atualizar', (req, res) => {
+  if (!devolucoesRodando) rodadaDevolucoes();
+  res.json({ ok: true });
+});
+
+app.post('/api/devolucoes/nf', (req, res) => {
+  const { id, emitida, senha } = req.body || {};
+  const usuario = loadData().usuarios?.[senha];
+  if (!usuario || !(senha === '199412' || (usuario.abas || []).includes('devolucoes'))) {
+    return res.status(403).json({ error: 'Sem permissão pra marcar NF de devolução' });
+  }
+  if (!id) return res.status(400).json({ error: 'id obrigatório' });
+  const nfs = loadDevolucoesNf();
+  if (emitida) nfs[id] = { em: new Date().toISOString(), por: usuario.nome || senha };
+  else delete nfs[id];
+  saveDevolucoesNf(nfs);
+  res.json({ ok: true, nf: nfs[id] || null });
+});
+
+// Situação da rotina (debug). ?rodar=1 roda agora em segundo plano; ?rodar=1&avisar=0
+// roda sem mandar notificação.
 app.get('/api/ml/debug-devolucoes', (req, res) => {
   if (req.query.rodar === '1' && !devolucoesRodando) {
     verificarDevolucoes({ notificarChegando: req.query.avisar !== '0' }).catch(e => addLog(`[devolucoes] ${e.message}`, 'warn'));
-    return res.json({ ok: true, msg: 'Rodando em segundo plano — recarregue sem ?rodar=1 em 1-2 minutos' });
+    return res.json({ ok: true, msg: 'Rodando em segundo plano — recarregue sem ?rodar=1 em alguns minutos' });
   }
   const estado = loadDevolucoes();
-  const hoje   = dataBRDeTimestamp(Date.now());
   res.json({
-    rodando: devolucoesRodando,
+    rodando: devolucoesRodando, progresso: devolucoesProgresso,
     ultima_execucao: estado.ultima_execucao ? new Date(estado.ultima_execucao - OFFSET_BRASILIA_MS).toISOString().replace('Z', ' (Brasília)') : null,
-    ultimo_erro: estado.ultimo_erro,
-    avisados_hoje: estado.avisados[hoje] || [],
+    ultimo_erro: estado.ultimo_erro || null,
+    backfill_feito: estado.backfill_feito,
+    avisados_hoje: estado.avisados[dataBRDeTimestamp(Date.now())] || [],
     reclamacoes_vistas: Object.keys(estado.claims_vistos).length,
-    acompanhando: Object.entries(estado.acompanhando).map(([sid, dv]) => ({ shipment_id: sid, ...dv })),
+    registro: Object.keys(estado.registro).length,
+    a_caminho: Object.entries(estado.registro).filter(([, dv]) => !dv.chegou_em).map(([sid, dv]) => ({ shipment_id: sid, ...dv })),
   });
 });
 
