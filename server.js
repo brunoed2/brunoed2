@@ -6048,90 +6048,177 @@ app.get('/api/ml/debug-shipment/:sid', async (req, res) => {
   } catch (err) { res.json({ error: err.message }); }
 });
 
-// Debug — devoluções a caminho. Lista as reclamações recentes das contas ML, busca a
-// devolução (claims/{id}/returns) e o envio de volta (shipments/{id}) de cada uma, pra
-// ver se dá pra saber o dia em que o pacote chega e avisar o funcionário. Não filtra
-// por reclamação aberta: o ML costuma fechar a reclamação (reembolso) com o pacote
-// ainda voltando. ?conta=1 limita a uma conta; ?limit=N (padrão 30, máx 50).
-app.get('/api/ml/debug-devolucoes', async (req, res) => {
-  const data   = loadData();
-  const contas = req.query.conta ? [String(req.query.conta)] : Object.keys(data.contas || {});
-  const limit  = Math.min(parseInt(req.query.limit) || 30, 50);
-  const saida  = {};
-  let exemploRaw = null;
+// ── Devoluções chegando no galpão ─────────────────────────────
+// Avisa o funcionário no dia em que uma devolução do ML vai chegar no galpão.
+// A previsão de entrega do envio de volta não serve pra isso (v918): pacotes já
+// "saiu pra entrega" vinham com previsão de dias atrás, e nos de Correios (PAC) a
+// previsão é o prazo máximo, um mês pra frente. O sinal confiável é o substatus
+// out_for_delivery do envio de volta — foi o que bateu com o que chegou de fato.
+//
+// A busca de reclamações do ML não é confiável pra achar "as devoluções a caminho"
+// (2 mil+ reclamações, ordenação duvidosa), então cada devolução que vai pro galpão
+// (destino seller_address; warehouse é o Full em Cajamar, fica de fora) entra numa
+// lista de acompanhamento quando é descoberta e é consultada direto pelo envio até
+// ser entregue ou cancelada. Descoberta: reclamações abertas + as atualizadas nos
+// últimos 20 dias. Reclamação já vista com o mesmo last_updated não é reconsultada.
+// Arquivo próprio pelo mesmo motivo dos outros (race condition em data.json).
+const DEVOLUCOES_FILE = path.join(DATA_DIR, 'devolucoes-ml.json');
+function loadDevolucoes() {
+  try {
+    const d = JSON.parse(fs.readFileSync(DEVOLUCOES_FILE, 'utf8'));
+    return { acompanhando: d.acompanhando || {}, claims_vistos: d.claims_vistos || {}, avisados: d.avisados || {}, ultima_execucao: d.ultima_execucao || null, ultimo_erro: d.ultimo_erro || null };
+  } catch { return { acompanhando: {}, claims_vistos: {}, avisados: {}, ultima_execucao: null, ultimo_erro: null }; }
+}
+function saveDevolucoes(d) {
+  fs.writeFileSync(DEVOLUCOES_FILE, JSON.stringify(d, null, 2));
+}
 
-  for (const num of contas) {
-    const c = data.contas[num];
-    const r = saida[num] = { nickname: c?.nickname || null };
-    let tok;
-    try { tok = await getToken(data, num); } catch (e) { r.error = e.message; continue; }
-    const headers = { Authorization: `Bearer ${tok}` };
-
-    let claims = [];
+const pausa = ms => new Promise(r => setTimeout(r, ms));
+// GET na API do ML com pausa entre chamadas e repetição no 429 — no v918, 5 chamadas
+// em paralelo já davam too_many_requests em metade das reclamações.
+async function mlGetDevolucao(url, headers, params) {
+  for (let tentativa = 0; ; tentativa++) {
+    await pausa(400);
     try {
-      const s = await axios.get('https://api.mercadolibre.com/post-purchase/v1/claims/search', {
-        headers, timeout: 15000,
-        params: { player_role: 'respondent', player_user_id: c.user_id, limit, offset: 0, sort: 'last_updated:desc' },
-      });
-      claims = s.data?.data || [];
-      r.total_reclamacoes = s.data?.paging?.total ?? claims.length;
+      return (await axios.get(url, { headers, params, timeout: 15000 })).data;
     } catch (e) {
-      r.error_busca = { status: e.response?.status, error: e.response?.data || e.message };
-      continue;
-    }
-
-    r.devolucoes = [];
-    r.sem_devolucao = 0;
-    // Em lotes de 5 pra não estourar o limite de requisições do ML
-    for (let i = 0; i < claims.length; i += 5) {
-      const lote = claims.slice(i, i + 5);
-      await Promise.all(lote.map(async cl => {
-        let ret;
-        try {
-          ret = (await axios.get(`https://api.mercadolibre.com/post-purchase/v2/claims/${cl.id}/returns`, { headers, timeout: 10000 })).data;
-        } catch (e) {
-          if (e.response?.status === 404) { r.sem_devolucao++; return; }
-          r.devolucoes.push({ claim_id: cl.id, erro_returns: { status: e.response?.status, error: e.response?.data || e.message } });
-          return;
-        }
-        const envios = [];
-        for (const sh of (ret.shipments || [])) {
-          const item = {
-            shipment_id: sh.shipment_id, status: sh.status, type: sh.type,
-            destino: sh.destination?.name, tracking_number: sh.tracking_number,
-          };
-          if (sh.shipment_id) {
-            try {
-              const d = (await axios.get(`https://api.mercadolibre.com/shipments/${sh.shipment_id}`, {
-                headers: { ...headers, 'x-format-new': 'true' }, timeout: 10000,
-              })).data;
-              if (!exemploRaw) exemploRaw = { claim: cl, returns: ret, shipment: d };
-              item.shipment = {
-                status: d.status, substatus: d.substatus, logistic_type: d.logistic?.type || d.logistic_type,
-                tracking_number: d.tracking_number, tracking_method: d.tracking_method,
-                previsao_entrega: d.lead_time?.estimated_delivery_time || d.shipping_option?.estimated_delivery_time || null,
-                previsao_limite:  d.lead_time?.estimated_delivery_limit || d.shipping_option?.estimated_delivery_limit || null,
-                data_entrega: d.status_history?.date_delivered || null,
-                data_envio:   d.status_history?.date_shipped || null,
-                destino_cidade: d.destination?.shipping_address?.city?.name || d.receiver_address?.city?.name || null,
-              };
-            } catch (e) {
-              item.erro_shipment = { status: e.response?.status, error: e.response?.data || e.message };
-            }
-          }
-          envios.push(item);
-        }
-        r.devolucoes.push({
-          claim_id: cl.id, order_id: cl.resource_id, claim_status: cl.status, claim_stage: cl.stage,
-          motivo: cl.reason_id, criado: cl.date_created,
-          return_id: ret.id, return_status: ret.status, return_subtype: ret.subtype,
-          status_dinheiro: ret.status_money, envios,
-        });
-      }));
+      if (e.response?.status === 429 && tentativa < 4) { await pausa(3000 * 2 ** tentativa); continue; }
+      throw e;
     }
   }
+}
 
-  res.json({ contas: saida, exemplo_raw: exemploRaw });
+const DEVOLUCAO_FINALIZADA = new Set(['delivered', 'cancelled', 'not_delivered', 'expired', 'closed']);
+let devolucoesRodando = false;
+
+async function verificarDevolucoes({ notificarChegando = true } = {}) {
+  if (devolucoesRodando) return;
+  devolucoesRodando = true;
+  const estado = loadDevolucoes();
+  const data   = loadData();
+  const hoje   = dataBRDeTimestamp(Date.now());
+  const corte  = Date.now() - 20 * 24 * 60 * 60 * 1000;
+  const erros  = [];
+  try {
+    for (const num of Object.keys(data.contas || {})) {
+      const c = data.contas[num];
+      if (!c?.access_token || !c.user_id) continue;
+      let tok;
+      try { tok = await getToken(data, num); } catch (e) { erros.push(`conta ${num}: ${e.message}`); continue; }
+      const headers = { Authorization: `Bearer ${tok}` };
+
+      // 1. Descobre reclamações candidatas
+      const candidatas = new Map();
+      const buscas = [{ status: 'opened', offset: 0 }, { offset: 0 }, { offset: 50 }, { offset: 100 }];
+      for (const b of buscas) {
+        try {
+          const r = await mlGetDevolucao('https://api.mercadolibre.com/post-purchase/v1/claims/search', headers, {
+            player_role: 'respondent', player_user_id: c.user_id, limit: 50, sort: 'last_updated:desc', ...b,
+          });
+          for (const cl of (r?.data || [])) {
+            const atual = Date.parse(cl.last_updated || cl.date_created || 0);
+            if (cl.status === 'opened' || atual >= corte) candidatas.set(String(cl.id), cl);
+          }
+        } catch (e) { erros.push(`conta ${num} busca: ${e.response?.status || e.message}`); }
+      }
+
+      // 2. Pra cada reclamação nova/alterada, vê se tem devolução indo pro galpão
+      for (const [id, cl] of candidatas) {
+        if (estado.claims_vistos[id]?.last_updated === cl.last_updated) continue;
+        let ret;
+        try {
+          ret = await mlGetDevolucao(`https://api.mercadolibre.com/post-purchase/v2/claims/${id}/returns`, headers);
+        } catch (e) {
+          if (e.response?.status !== 404) { erros.push(`claim ${id}: ${e.response?.status || e.message}`); continue; }
+        }
+        estado.claims_vistos[id] = { last_updated: cl.last_updated, visto: Date.now() };
+        for (const sh of (ret?.shipments || [])) {
+          if (sh.destination?.name !== 'seller_address' || !sh.shipment_id) continue;
+          const sid = String(sh.shipment_id);
+          if (estado.acompanhando[sid] || DEVOLUCAO_FINALIZADA.has(sh.status)) continue;
+          let titulo = null;
+          try {
+            const o = await mlGetDevolucao(`https://api.mercadolibre.com/orders/${cl.resource_id}`, headers);
+            titulo = (o?.order_items || []).map(i => `${i.item?.title || i.item?.id}${i.quantity > 1 ? ` (${i.quantity} un)` : ''}`).join(', ') || null;
+          } catch { /* sem título, avisa só com o pedido */ }
+          estado.acompanhando[sid] = {
+            conta: num, nickname: c.nickname || null, claim_id: id, order_id: cl.resource_id, titulo,
+            tracking: sh.tracking_number || null, status: sh.status, substatus: null, desde: Date.now(),
+          };
+        }
+      }
+
+      // 3. Atualiza o envio de cada devolução acompanhada desta conta
+      for (const [sid, dv] of Object.entries(estado.acompanhando)) {
+        if (dv.conta !== num) continue;
+        try {
+          const d = await mlGetDevolucao(`https://api.mercadolibre.com/shipments/${sid}`, { ...headers, 'x-format-new': 'true' });
+          dv.status = d.status; dv.substatus = d.substatus || null; dv.tracking = d.tracking_number || dv.tracking;
+          dv.metodo = d.tracking_method || null; dv.atualizado = Date.now();
+          if (DEVOLUCAO_FINALIZADA.has(d.status)) delete estado.acompanhando[sid];
+        } catch (e) {
+          if (e.response?.status === 404) delete estado.acompanhando[sid];
+          else erros.push(`envio ${sid}: ${e.response?.status || e.message}`);
+        }
+      }
+    }
+
+    // Limpeza: reclamações vistas há mais de 60 dias e avisos de dias anteriores
+    const limite = Date.now() - 60 * 24 * 60 * 60 * 1000;
+    for (const [id, v] of Object.entries(estado.claims_vistos)) if ((v.visto || 0) < limite) delete estado.claims_vistos[id];
+    for (const dia of Object.keys(estado.avisados)) if (dia !== hoje) delete estado.avisados[dia];
+
+    // 4. Avisa as que saíram pra entrega hoje e ainda não foram avisadas hoje
+    const avisadosHoje = new Set(estado.avisados[hoje] || []);
+    const chegando = Object.entries(estado.acompanhando)
+      .filter(([sid, dv]) => dv.substatus === 'out_for_delivery' && !avisadosHoje.has(sid));
+    if (chegando.length && notificarChegando) {
+      const linhas = chegando.map(([, dv]) => `• ${dv.nickname || 'Conta ' + dv.conta} — pedido ${dv.order_id}${dv.titulo ? ' — ' + dv.titulo : ''}`);
+      const texto = `↩️ ${chegando.length === 1 ? 'Chega hoje 1 devolução' : `Chegam hoje ${chegando.length} devoluções`} no galpão:\n${linhas.join('\n')}`;
+      await notificar(texto, 'devolucao_chegando');
+      for (const [sid] of chegando) avisadosHoje.add(sid);
+      estado.avisados[hoje] = [...avisadosHoje];
+    }
+  } catch (e) {
+    erros.push(e.message);
+  } finally {
+    estado.ultima_execucao = Date.now();
+    estado.ultimo_erro = erros.length ? erros.slice(0, 20) : null;
+    saveDevolucoes(estado);
+    if (erros.length) addLog(`[devolucoes] ${erros.length} erro(s): ${erros.slice(0, 3).join(' | ')}`, 'warn');
+    devolucoesRodando = false;
+  }
+}
+
+// A cada 30 min, das 7h às 18h de Brasília (Correios e Mercado Envios entregam de
+// dia; fora disso não tem o que avisar). Avisa só as novas de cada rodada, então
+// quem sair pra entrega no meio do dia gera um aviso separado. Roda também 1 min
+// depois de subir, senão cada deploy deixaria 30 min sem checar.
+function rodadaDevolucoes() {
+  const hora = new Date(Date.now() - OFFSET_BRASILIA_MS).getUTCHours();
+  if (hora >= 7 && hora < 19) verificarDevolucoes().catch(e => addLog(`[devolucoes] ${e.message}`, 'warn'));
+}
+setInterval(rodadaDevolucoes, 30 * 60 * 1000);
+setTimeout(rodadaDevolucoes, 60 * 1000);
+
+// Situação da rotina: devoluções acompanhadas, avisos de hoje e erros da última
+// rodada. ?rodar=1 roda agora em segundo plano (recarregar pra ver o resultado);
+// ?rodar=1&avisar=0 roda sem mandar notificação.
+app.get('/api/ml/debug-devolucoes', (req, res) => {
+  if (req.query.rodar === '1' && !devolucoesRodando) {
+    verificarDevolucoes({ notificarChegando: req.query.avisar !== '0' }).catch(e => addLog(`[devolucoes] ${e.message}`, 'warn'));
+    return res.json({ ok: true, msg: 'Rodando em segundo plano — recarregue sem ?rodar=1 em 1-2 minutos' });
+  }
+  const estado = loadDevolucoes();
+  const hoje   = dataBRDeTimestamp(Date.now());
+  res.json({
+    rodando: devolucoesRodando,
+    ultima_execucao: estado.ultima_execucao ? new Date(estado.ultima_execucao - OFFSET_BRASILIA_MS).toISOString().replace('Z', ' (Brasília)') : null,
+    ultimo_erro: estado.ultimo_erro,
+    avisados_hoje: estado.avisados[hoje] || [],
+    reclamacoes_vistas: Object.keys(estado.claims_vistos).length,
+    acompanhando: Object.entries(estado.acompanhando).map(([sid, dv]) => ({ shipment_id: sid, ...dv })),
+  });
 });
 
 // Debug — shipment completo + lead_time a partir do order_id
@@ -8055,6 +8142,7 @@ const NOTIF_CATEGORIAS = {
   shopee_boost:     '🚀 Impulso automático Shopee',
   prazo_despacho:   '⏰ Faltam 30min pro despacho',
   codigo_recebimento: '📝 Lembrete: código de recebimento',
+  devolucao_chegando: '↩️ Devolução chega hoje no galpão',
   'fornecedor_venda_bra-industria': '🛍️ Venda BRA-INDÚSTRIA (SKU 406)',
 };
 
