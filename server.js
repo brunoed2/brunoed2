@@ -6061,7 +6061,7 @@ app.get('/api/ml/debug-shipment/:sid', async (req, res) => {
 // reclamações, ordenação duvidosa), então cada devolução descoberta entra no
 // registro e passa a ser consultada direto pelo envio até chegar. Descoberta:
 // reclamações abertas + atualizadas nos últimos 20 dias; na primeira vez (backfill)
-// varre todas as reclamações e pega as criadas nos últimos 90 dias. Reclamação já
+// varre todas as reclamações e pega as criadas nos últimos 12 meses. Reclamação já
 // vista com o mesmo last_updated não é reconsultada. Só entra destino seller_address
 // (galpão, Ribeirão Preto): devolução com destino warehouse vai pro Full (Cajamar) e
 // a NF de devolução dela o próprio ML emite.
@@ -6076,9 +6076,12 @@ function loadDevolucoes() {
   try { d = JSON.parse(fs.readFileSync(DEVOLUCOES_FILE, 'utf8')); } catch {}
   // v919 só guardava as devoluções a caminho do galpão (acompanhando) e marcou como
   // vistas reclamações cujas devoluções já tinham chegado — recomeça a descoberta.
-  if (d.versao !== 2) {
-    d = { versao: 2, registro: d.acompanhando || {}, claims_vistos: {}, avisados: d.avisados || {}, backfill_feito: {} };
+  if (d.versao !== 2 && d.versao !== 3) {
+    d = { versao: 3, registro: d.acompanhando || {}, claims_vistos: {}, avisados: d.avisados || {}, backfill_feito: {} };
   }
+  // v922: primeira carga passou de 90 dias pra 12 meses e o registro ganhou o
+  // comprador — refaz a descoberta (mantém o registro; as NFs ficam em outro arquivo).
+  if (d.versao === 2) { d.versao = 3; d.claims_vistos = {}; d.backfill_feito = {}; }
   d.registro = d.registro || {}; d.claims_vistos = d.claims_vistos || {};
   d.avisados = d.avisados || {}; d.backfill_feito = d.backfill_feito || {};
   return d;
@@ -6152,7 +6155,7 @@ async function verificarDevolucoes({ notificarChegando = true } = {}) {
           buscaOk = true;
           for (const cl of lote) {
             const ref = backfill ? Date.parse(cl.date_created || 0) : Date.parse(cl.last_updated || cl.date_created || 0);
-            if (ref >= Date.now() - (backfill ? 90 : 20) * DIA) candidatas.set(String(cl.id), cl);
+            if (ref >= Date.now() - (backfill ? 365 : 20) * DIA) candidatas.set(String(cl.id), cl);
           }
           if (lote.length < 50) break;
         }
@@ -6163,6 +6166,9 @@ async function verificarDevolucoes({ notificarChegando = true } = {}) {
       for (const [id, cl] of candidatas) {
         i++;
         if (estado.claims_vistos[id]?.last_updated === cl.last_updated) continue;
+        // Primeira carga de 12 meses leva dezenas de minutos — salva o andamento de
+        // tempos em tempos pra um deploy no meio não jogar tudo fora.
+        if (i % 100 === 0) saveDevolucoes(estado);
         devolucoesProgresso = `conta ${num}: conferindo reclamação ${i} de ${candidatas.size}`;
         let ret;
         try {
@@ -6178,7 +6184,7 @@ async function verificarDevolucoes({ notificarChegando = true } = {}) {
           const semProduto = DEVOLUCAO_SEM_PRODUTO.has(sh.status) || DEVOLUCAO_SEM_PRODUTO.has(ret.status);
           if (semProduto) { if (!nfs[sid]) delete estado.registro[sid]; continue; }
           const reg = estado.registro[sid] || {};
-          if (!reg.order_id || reg.valor == null) {
+          if (!reg.order_id || reg.valor == null || reg.comprador === undefined) {
             try {
               const o = await mlGetDevolucao(`https://api.mercadolibre.com/orders/${cl.resource_id}`, headers);
               const devolvidos = new Map((ret.orders || []).map(x => [x.item_id, Number(x.return_quantity) || null]));
@@ -6189,6 +6195,7 @@ async function verificarDevolucoes({ notificarChegando = true } = {}) {
               }).join(', ') || null;
               reg.valor = Math.round(itens.reduce((s, it) => s + (Number(it.unit_price) || 0) * (devolvidos.get(it.item?.id) || it.quantity || 1), 0) * 100) / 100;
               reg.venda_em = o?.date_closed || o?.date_created || null;
+              reg.comprador = o?.buyer?.nickname || null;
             } catch { /* sem título/valor — tenta de novo na próxima vez que a reclamação mudar */ }
           }
           Object.assign(reg, {
@@ -6253,7 +6260,7 @@ async function verificarDevolucoes({ notificarChegando = true } = {}) {
 }
 
 // Shopee: devoluções com produto voltando (needs_logistics), sem aviso — só pra aba.
-// A lista da Shopee só aceita janela de 15 dias; a primeira carga varre 90 dias em
+// A lista da Shopee só aceita janela de 15 dias; a primeira carga varre 12 meses em
 // janelas de 15 (por update_time). Chave do registro: shopee-<return_sn>, pra não
 // colidir com o shipment_id do ML. Cada devolução descoberta é reconsultada pelo
 // rastreio reverso até chegar (LOGISTICS_DELIVERY_DONE). O status é convertido pro
@@ -6282,7 +6289,7 @@ async function verificarDevolucoesShopee(estado, nfs, erros, data) {
     const chaveBackfill = 'shopee-' + num;
     const backfill = !estado.backfill_feito[chaveBackfill];
     const agora = Math.floor(Date.now() / 1000);
-    const janelas = backfill ? 6 : 1;
+    const janelas = backfill ? 25 : 1;
 
     let leuAlguma = false;
     for (let j = 0; j < janelas; j++) {
@@ -6302,6 +6309,7 @@ async function verificarDevolucoesShopee(estado, nfs, erros, data) {
             const itens = dv.item || [];
             Object.assign(reg, {
               canal: 'shopee', conta: num, nickname: `Shopee ${num}`, order_id: dv.order_sn, return_sn: dv.return_sn,
+              comprador: dv.user?.username || null,
               titulo: itens.map(i => `${i.name || i.item_id}${i.amount > 1 ? ` (${i.amount} un)` : ''}`).join(', ') || null,
               valor: Math.round(itens.reduce((s, i) => s + (Number(i.item_price) || 0) * (Number(i.amount) || 1), 0) * 100) / 100,
               devolucao_em: reg.devolucao_em || (dv.create_time ? new Date(dv.create_time * 1000).toISOString() : null),

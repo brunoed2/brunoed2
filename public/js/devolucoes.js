@@ -33,7 +33,7 @@ async function devolucoesCarregar() {
     devRenderStatus(d);
     devRenderContas();
     devRender();
-    // Enquanto a rotina roda (principalmente na primeira carga, que varre 90 dias),
+    // Enquanto a rotina roda (principalmente na primeira carga, que varre 12 meses),
     // recarrega sozinho pra ir mostrando o que já foi encontrado.
     clearTimeout(devPollTimer);
     const abaAberta = document.getElementById('tab-devolucoes')?.classList.contains('active');
@@ -49,7 +49,7 @@ function devRenderStatus(d) {
   let txt = '';
   if (d.rodando) txt = `🔄 Atualizando${d.progresso ? ' — ' + d.progresso : '...'}`;
   else if (d.ultima_execucao) txt = `Atualizado às ${new Date(d.ultima_execucao).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' })}`;
-  if (d.carregando_historico) txt += ' · primeira carga (últimos 90 dias) em andamento — pode levar alguns minutos';
+  if (d.carregando_historico) txt += ' · primeira carga (últimos 12 meses) em andamento — pode levar mais de meia hora';
   if (d.erros?.length) txt += ` · ⚠️ ${d.erros.length} erro(s) na última leitura`;
   el.textContent = txt;
 }
@@ -99,7 +99,7 @@ function devFiltrar() {
     if (devFiltro.nf === 'emitida' && !i.nf) return false;
     if (devFiltro.conta !== 'todas' && devChaveConta(i) !== devFiltro.conta) return false;
     if (devFiltro.canal !== 'todos' && (i.canal || 'ml') !== devFiltro.canal) return false;
-    if (busca && !`${i.order_id} ${i.titulo || ''} ${i.tracking || ''}`.toLowerCase().includes(busca)) return false;
+    if (busca && !`${i.order_id} ${i.comprador || ''} ${i.titulo || ''} ${i.tracking || ''}`.toLowerCase().includes(busca)) return false;
     return true;
   }).sort((a, b) => {
     // Chegadas primeiro (mais recentes no topo), depois as que estão a caminho
@@ -138,7 +138,7 @@ function devRender() {
     return `<tr class="${i.nf ? 'dev-linha-ok' : ''}">
       <td><span class="badge-deposito ${shopee ? 'dev-badge-shopee' : 'dev-badge-ml'}">${shopee ? 'Shopee' : 'Mercado Livre'}</span></td>
       <td>${devEsc(i.nickname || 'Conta ' + i.conta)}</td>
-      <td>${pedido}${i.venda_em ? `<div class="dev-sub">venda ${devData(i.venda_em)}</div>` : ''}</td>
+      <td>${pedido}${i.comprador ? `<div class="dev-comprador">${devEsc(i.comprador)}</div>` : ''}${i.venda_em ? `<div class="dev-sub">venda ${devData(i.venda_em)}</div>` : ''}</td>
       <td class="td-titulo" title="${devEsc(i.titulo)}">${devEsc(i.titulo || '—')}</td>
       <td class="col-num">${devMoeda(i.valor)}</td>
       <td><span class="badge-deposito ${sit.cls}">${sit.txt}</span>
