@@ -6048,6 +6048,92 @@ app.get('/api/ml/debug-shipment/:sid', async (req, res) => {
   } catch (err) { res.json({ error: err.message }); }
 });
 
+// Debug — devoluções a caminho. Lista as reclamações recentes das contas ML, busca a
+// devolução (claims/{id}/returns) e o envio de volta (shipments/{id}) de cada uma, pra
+// ver se dá pra saber o dia em que o pacote chega e avisar o funcionário. Não filtra
+// por reclamação aberta: o ML costuma fechar a reclamação (reembolso) com o pacote
+// ainda voltando. ?conta=1 limita a uma conta; ?limit=N (padrão 30, máx 50).
+app.get('/api/ml/debug-devolucoes', async (req, res) => {
+  const data   = loadData();
+  const contas = req.query.conta ? [String(req.query.conta)] : Object.keys(data.contas || {});
+  const limit  = Math.min(parseInt(req.query.limit) || 30, 50);
+  const saida  = {};
+  let exemploRaw = null;
+
+  for (const num of contas) {
+    const c = data.contas[num];
+    const r = saida[num] = { nickname: c?.nickname || null };
+    let tok;
+    try { tok = await getToken(data, num); } catch (e) { r.error = e.message; continue; }
+    const headers = { Authorization: `Bearer ${tok}` };
+
+    let claims = [];
+    try {
+      const s = await axios.get('https://api.mercadolibre.com/post-purchase/v1/claims/search', {
+        headers, timeout: 15000,
+        params: { player_role: 'respondent', player_user_id: c.user_id, limit, offset: 0, sort: 'last_updated:desc' },
+      });
+      claims = s.data?.data || [];
+      r.total_reclamacoes = s.data?.paging?.total ?? claims.length;
+    } catch (e) {
+      r.error_busca = { status: e.response?.status, error: e.response?.data || e.message };
+      continue;
+    }
+
+    r.devolucoes = [];
+    r.sem_devolucao = 0;
+    // Em lotes de 5 pra não estourar o limite de requisições do ML
+    for (let i = 0; i < claims.length; i += 5) {
+      const lote = claims.slice(i, i + 5);
+      await Promise.all(lote.map(async cl => {
+        let ret;
+        try {
+          ret = (await axios.get(`https://api.mercadolibre.com/post-purchase/v2/claims/${cl.id}/returns`, { headers, timeout: 10000 })).data;
+        } catch (e) {
+          if (e.response?.status === 404) { r.sem_devolucao++; return; }
+          r.devolucoes.push({ claim_id: cl.id, erro_returns: { status: e.response?.status, error: e.response?.data || e.message } });
+          return;
+        }
+        const envios = [];
+        for (const sh of (ret.shipments || [])) {
+          const item = {
+            shipment_id: sh.shipment_id, status: sh.status, type: sh.type,
+            destino: sh.destination?.name, tracking_number: sh.tracking_number,
+          };
+          if (sh.shipment_id) {
+            try {
+              const d = (await axios.get(`https://api.mercadolibre.com/shipments/${sh.shipment_id}`, {
+                headers: { ...headers, 'x-format-new': 'true' }, timeout: 10000,
+              })).data;
+              if (!exemploRaw) exemploRaw = { claim: cl, returns: ret, shipment: d };
+              item.shipment = {
+                status: d.status, substatus: d.substatus, logistic_type: d.logistic?.type || d.logistic_type,
+                tracking_number: d.tracking_number, tracking_method: d.tracking_method,
+                previsao_entrega: d.lead_time?.estimated_delivery_time || d.shipping_option?.estimated_delivery_time || null,
+                previsao_limite:  d.lead_time?.estimated_delivery_limit || d.shipping_option?.estimated_delivery_limit || null,
+                data_entrega: d.status_history?.date_delivered || null,
+                data_envio:   d.status_history?.date_shipped || null,
+                destino_cidade: d.destination?.shipping_address?.city?.name || d.receiver_address?.city?.name || null,
+              };
+            } catch (e) {
+              item.erro_shipment = { status: e.response?.status, error: e.response?.data || e.message };
+            }
+          }
+          envios.push(item);
+        }
+        r.devolucoes.push({
+          claim_id: cl.id, order_id: cl.resource_id, claim_status: cl.status, claim_stage: cl.stage,
+          motivo: cl.reason_id, criado: cl.date_created,
+          return_id: ret.id, return_status: ret.status, return_subtype: ret.subtype,
+          status_dinheiro: ret.status_money, envios,
+        });
+      }));
+    }
+  }
+
+  res.json({ contas: saida, exemplo_raw: exemploRaw });
+});
+
 // Debug — shipment completo + lead_time a partir do order_id
 app.get('/api/ml/debug-prazo/:order_id', async (req, res) => {
   const data = loadData();
