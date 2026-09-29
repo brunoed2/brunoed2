@@ -7375,6 +7375,82 @@ app.get('/api/shopee/status', async (req, res) => {
   }
 });
 
+// Debug — devoluções da Shopee. Mesmo teste do /api/ml/debug-devolucoes (v918): lista
+// as devoluções atualizadas nos últimos 15 dias (limite de janela da Shopee) e, pras
+// que têm envio de volta, o rastreio reverso — pra ver se a Shopee mostra algo como
+// "saiu pra entrega" ou uma previsão confiável antes de montar o aviso.
+// ?conta=1 limita a uma loja; ?dias=N (máx 15).
+app.get('/api/shopee/debug-devolucoes', async (req, res) => {
+  const data   = loadData();
+  const contas = req.query.conta ? [String(req.query.conta)] : Object.keys(data.shopee_contas || {});
+  const dias   = Math.min(parseInt(req.query.dias) || 15, 15);
+  const agora  = Math.floor(Date.now() / 1000);
+  const saida  = {};
+  const exemplos = {};
+
+  async function chamar(sp, tok, rota, extra) {
+    await pausa(300);
+    const params = { ...shopeeParams(`/api/v2/${rota}`, sp.partner_key, sp.partner_id, tok, sp.shop_id), ...extra };
+    const r = await axios.get(`${SHOPEE_BASE}/${rota}`, { params, timeout: 15000 });
+    if (r.data?.error) throw new Error(`${r.data.error}: ${r.data.message || ''}`);
+    return r.data?.response;
+  }
+
+  for (const num of contas) {
+    const sp = shopeeConta(data, num);
+    const r  = saida[num] = { shop_id: sp.shop_id || null };
+    let tok;
+    try { tok = await getShopeeToken(data, num); } catch (e) { r.error = e.message; continue; }
+
+    const lista = [];
+    try {
+      for (let page = 0; page < 5; page++) {
+        const resp = await chamar(sp, tok, 'returns/get_return_list', {
+          page_no: page, page_size: 50, update_time_from: agora - dias * 86400, update_time_to: agora,
+        });
+        lista.push(...(resp?.return || []));
+        if (!resp?.more) break;
+      }
+    } catch (e) {
+      r.error_lista = e.response?.data || e.message;
+      continue;
+    }
+    r.total = lista.length;
+    if (lista[0] && !exemplos.return_list) exemplos.return_list = lista[0];
+
+    r.devolucoes = [];
+    for (const dv of lista) {
+      const item = {
+        return_sn: dv.return_sn, order_sn: dv.order_sn, status: dv.status,
+        precisa_envio: dv.needs_logistics, logistics_status: dv.logistics_status,
+        tracking_number: dv.tracking_number || null, motivo: dv.reason,
+        criado: dv.create_time ? new Date(dv.create_time * 1000).toISOString() : null,
+        atualizado: dv.update_time ? new Date(dv.update_time * 1000).toISOString() : null,
+        prazo_envio_comprador: dv.return_ship_due_date ? new Date(dv.return_ship_due_date * 1000).toISOString() : null,
+        produtos: (dv.item || []).map(i => `${i.name || i.item_id}${i.amount > 1 ? ` (${i.amount} un)` : ''}`).join(', '),
+      };
+      // Rastreio reverso só faz sentido se o produto volta
+      if (dv.needs_logistics !== false) {
+        try {
+          const t = await chamar(sp, tok, 'returns/get_reverse_tracking_info', { return_sn: dv.return_sn });
+          if (!exemplos.tracking) exemplos.tracking = t;
+          item.rastreio = {
+            status: t?.reverse_logistics_status, atualizado: t?.reverse_logistics_update_time ? new Date(t.reverse_logistics_update_time * 1000).toISOString() : null,
+            previsao_min: t?.estimated_delivery_date_min ? new Date(t.estimated_delivery_date_min * 1000).toISOString() : null,
+            previsao_max: t?.estimated_delivery_date_max ? new Date(t.estimated_delivery_date_max * 1000).toISOString() : null,
+            ultimos_eventos: (t?.tracking_info || []).slice(0, 4),
+          };
+        } catch (e) {
+          item.erro_rastreio = e.response?.data || e.message;
+        }
+      }
+      r.devolucoes.push(item);
+    }
+  }
+
+  res.json({ contas: saida, exemplos });
+});
+
 app.get('/api/shopee/orders', async (req, res) => {
   const num  = String(req.query.conta || '1');
   const data = loadData();
