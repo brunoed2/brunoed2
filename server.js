@@ -5462,9 +5462,24 @@ async function calcularVendaDevolvida(num, c, headers, o) {
       voltaram[x.item_id] = (voltaram[x.item_id] || 0) + (Number(x.return_quantity) || 0);
     }
   };
-  for (const m of (o.mediations || [])) {
+  // O pedido da BUSCA (orders/search) pode vir sem mediations — no v936 a lâmina
+  // 2000018505487152 voltou (envio de volta entregue) e o Lucro contou o custo das 3
+  // unidades. Pega as reclamações do pedido completo, e confere também o registro da
+  // aba Devoluções (envio de volta entregue lá = voltou, mesmo sem achar a reclamação).
+  let mediations = o.mediations;
+  if (!Array.isArray(mediations) || !mediations.length) {
+    try { mediations = (await mlGetDevolucao(`https://api.mercadolibre.com/orders/${o.id}`, headers))?.mediations || []; }
+    catch { mediations = []; }
+  }
+  for (const m of mediations) {
     try { somaVolta(await mlGetDevolucao(`https://api.mercadolibre.com/post-purchase/v2/claims/${m.id}/returns`, headers)); }
     catch { /* reclamação sem devolução */ }
+  }
+  if (!Object.keys(voltaram).length) {
+    const chegouNoRegistro = Object.values(loadDevolucoes().registro)
+      .some(dv => dv.canal !== 'shopee' && String(dv.order_id) === String(o.id) && dv.chegou_em);
+    // Sem saber quantas unidades: considera que voltou tudo (devolução é quase sempre total)
+    if (chegouNoRegistro) for (const i of (o.order_items || [])) voltaram[i.item?.id] = i.quantity || 1;
   }
   const r2 = n => Math.round(n * 100) / 100;
   return {
@@ -5489,11 +5504,11 @@ async function enriquecerVendasDevolvidas(num, c, headers, vendas, todasOrdens) 
     await Promise.all(alvos.slice(i, i + 5).map(async v => {
       const o = ordemPorId.get(String(v.orderId));
       const chave = String(o.id);
-      let calc = cache[chave]?.last_updated === o.last_updated ? cache[chave].calc : null;
+      let calc = cache[chave]?.last_updated === o.last_updated && cache[chave]?.v === 2 ? cache[chave].calc : null;
       if (!calc) {
         try {
           calc = await calcularVendaDevolvida(num, c, headers, o);
-          cache[chave] = { last_updated: o.last_updated, calc };
+          cache[chave] = { last_updated: o.last_updated, v: 2, calc };
           mudou = true;
         } catch (e) {
           addLog(`[lucro] venda devolvida ${chave}: ${e.response?.status || e.message}`, 'warn');
