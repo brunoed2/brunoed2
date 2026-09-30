@@ -6552,6 +6552,79 @@ app.post('/api/devolucoes/nf', (req, res) => {
 // vendedor (retorno ao remetente, no envio da própria venda) não passa por reclamação.
 // Mostra: se o pedido está no registro, o envio da venda (status + histórico), as
 // reclamações do pedido e a devolução de cada uma. ?conta=N (sem: tenta as duas).
+// Debug — números de uma venda devolvida, pra montar o prejuízo no Lucro. O detalhe da
+// venda no ML mostra "Preço dos produtos / Tarifa / Envios / Cancelamentos / Total"
+// (ex.: 2000018632569270: 88 − 10,56 − 38,40 − 70,39 = −31,35), mas a composição
+// não é óbvia (2 unidades, só 1 voltou). Junta: pedido (status, itens, sale_fee,
+// payments resumidos), cada pagamento no MP (reembolsos, tarifas, líquido), custo do
+// frete de ida e de cada envio de volta, e o que a fatura (billing-ml.json) atribuiu
+// ao pedido. ?conta=N (padrão 1).
+app.get('/api/lucro/debug-venda-devolvida/:order_id', async (req, res) => {
+  const data    = loadData();
+  const num     = String(req.query.conta || '1');
+  const c       = data.contas[num];
+  const orderId = String(req.params.order_id);
+  let tok;
+  try { tok = await getToken(data, num); } catch (e) { return res.json({ erro: e.message }); }
+  const headers = { Authorization: `Bearer ${tok}` };
+  const out = {};
+  const tenta = async (rotulo, fn) => { try { out[rotulo] = await fn(); } catch (e) { out[rotulo] = { status: e.response?.status, erro: e.response?.data || e.message }; } };
+
+  let o = null;
+  await tenta('pedido', async () => {
+    o = await mlGetDevolucao(`https://api.mercadolibre.com/orders/${orderId}`, headers);
+    return {
+      status: o.status, status_detail: o.status_detail, tags: o.tags, pack_id: o.pack_id,
+      total_amount: o.total_amount, paid_amount: o.paid_amount, date_closed: o.date_closed,
+      itens: (o.order_items || []).map(i => ({ titulo: i.item?.title, qtd: i.quantity, unit_price: i.unit_price, sale_fee: i.sale_fee })),
+      payments: (o.payments || []).map(p => ({ id: p.id, status: p.status, status_detail: p.status_detail, transaction_amount: p.transaction_amount,
+        transaction_amount_refunded: p.transaction_amount_refunded, shipping_cost: p.shipping_cost, marketplace_fee: p.marketplace_fee, total_paid_amount: p.total_paid_amount })),
+      shipping_id: o.shipping?.id,
+    };
+  });
+  out.pagamentos_mp = [];
+  for (const p of (o?.payments || [])) {
+    try {
+      const r = (await axios.get(`https://api.mercadopago.com/v1/payments/${p.id}`, { headers, timeout: 10000 })).data;
+      out.pagamentos_mp.push({
+        id: r.id, status: r.status, status_detail: r.status_detail, transaction_amount: r.transaction_amount,
+        transaction_amount_refunded: r.transaction_amount_refunded, shipping_amount: r.shipping_amount,
+        net_received_amount: r.transaction_details?.net_received_amount, fee_details: r.fee_details, charges_details: r.charges_details,
+        refunds: (r.refunds || []).map(x => ({ id: x.id, amount: x.amount, status: x.status, date_created: x.date_created, reason: x.reason, source: x.source })),
+        money_release_status: r.money_release_status,
+      });
+    } catch (e) { out.pagamentos_mp.push({ id: p.id, erro: e.response?.data || e.message }); }
+  }
+  if (o?.shipping?.id) await tenta('frete_ida', () => mlGetDevolucao(`https://api.mercadolibre.com/shipments/${o.shipping.id}/costs`, headers));
+  out.devolucoes = [];
+  try {
+    const s = await mlGetDevolucao('https://api.mercadolibre.com/post-purchase/v1/claims/search', headers, { resource_id: orderId });
+    for (const cl of (s?.data || [])) {
+      const item = { claim_id: cl.id, status: cl.status, stage: cl.stage };
+      try {
+        const ret = await mlGetDevolucao(`https://api.mercadolibre.com/post-purchase/v2/claims/${cl.id}/returns`, headers);
+        item.devolucao = { status: ret.status, subtype: ret.subtype, status_money: ret.status_money, refund_at: ret.refund_at, orders: ret.orders };
+        item.envios_volta = [];
+        for (const sh of (ret.shipments || [])) {
+          let custo = null;
+          try { custo = await mlGetDevolucao(`https://api.mercadolibre.com/shipments/${sh.shipment_id}/costs`, headers); } catch (e) { custo = { erro: e.response?.status || e.message }; }
+          item.envios_volta.push({ id: sh.shipment_id, status: sh.status, destino: sh.destination?.name, custo });
+        }
+      } catch (e) { item.devolucao = { erro: e.response?.status || e.message }; }
+      out.devolucoes.push(item);
+    }
+  } catch (e) { out.devolucoes = { erro: e.response?.status || e.message }; }
+  // O que a fatura atribuiu ao pedido (comissão c / frete f), por mês de venda
+  const cc = loadBillingML()[num] || { periodos: {} };
+  out.fatura = [];
+  for (const [per, p] of Object.entries(cc.periodos || {})) {
+    for (const [mes, pedidos] of Object.entries(p.pedidos || {})) {
+      if (pedidos[orderId]) out.fatura.push({ periodo: per, mes_venda: mes, ...pedidos[orderId] });
+    }
+  }
+  res.json(out);
+});
+
 app.get('/api/ml/debug-devolucao-pedido/:order_id', async (req, res) => {
   const data    = loadData();
   const orderId = String(req.params.order_id);
