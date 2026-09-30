@@ -6261,6 +6261,12 @@ async function verificarDevolucoes({ notificarChegando = true } = {}) {
 }
 
 // Shopee: devoluções com produto voltando (needs_logistics), sem aviso — só pra aba.
+// Só conta como devolução (pra NF) a que termina com reembolso: status ACCEPTED, ou
+// ainda em andamento. CLOSED = vendedor contestou e ganhou, venda continua valendo
+// (v924: 260910MEDD5B67 voltou, foi contestada por uso e a venda ficou concluída);
+// CANCELLED = comprador desistiu. Esses dois saem do registro. Troca combinada por
+// fora da Shopee (2609178X190BFX: pedido de devolução cancelado em 17 min, produto
+// voltou mesmo assim) não deixa rastro na API — não tem como pegar automático.
 // A lista da Shopee só aceita janela de 15 dias; a primeira carga varre 12 meses em
 // janelas de 15 (por update_time). Chave do registro: shopee-<return_sn>, pra não
 // colidir com o shipment_id do ML. Cada devolução descoberta é reconsultada pelo
@@ -6280,6 +6286,7 @@ async function shopeeGetDevolucao(sp, tok, rota, extra) {
   }
 }
 
+const SHOPEE_DEVOLUCAO_SEM_REEMBOLSO = new Set(['CANCELLED', 'CLOSED']);
 async function verificarDevolucoesShopee(estado, nfs, erros, data) {
   const DIA_S = 86400;
   for (const num of Object.keys(data.shopee_contas || {})) {
@@ -6304,7 +6311,7 @@ async function verificarDevolucoesShopee(estado, nfs, erros, data) {
           leuAlguma = true;
           for (const dv of (resp?.return || [])) {
             const id = 'shopee-' + dv.return_sn;
-            const semProduto = dv.needs_logistics === false || dv.status === 'CANCELLED';
+            const semProduto = dv.needs_logistics === false || SHOPEE_DEVOLUCAO_SEM_REEMBOLSO.has(dv.status);
             if (semProduto) { if (!nfs[id]) delete estado.registro[id]; continue; }
             const reg = estado.registro[id] || {};
             const itens = dv.item || [];
@@ -6316,6 +6323,7 @@ async function verificarDevolucoesShopee(estado, nfs, erros, data) {
               devolucao_em: reg.devolucao_em || (dv.create_time ? new Date(dv.create_time * 1000).toISOString() : null),
               tracking: dv.tracking_number || reg.tracking || null,
               status: reg.status || 'ready_to_ship',
+              status_devolucao: dv.status,
             });
             estado.registro[id] = reg;
           }
@@ -6326,7 +6334,18 @@ async function verificarDevolucoesShopee(estado, nfs, erros, data) {
     if (backfill && leuAlguma) estado.backfill_feito[chaveBackfill] = Date.now();
 
     for (const [id, dv] of Object.entries(estado.registro)) {
-      if (dv.canal !== 'shopee' || dv.conta !== num || dv.chegou_em) continue;
+      if (dv.canal !== 'shopee' || dv.conta !== num) continue;
+      // Status da devolução até ficar final (a lista só traz as mexidas nos últimos
+      // 15 dias; uma contestação pode fechar depois disso)
+      if (dv.status_devolucao !== 'ACCEPTED') {
+        devolucoesProgresso = `Shopee ${num}: conferindo devoluções`;
+        try {
+          const det = await shopeeGetDevolucao(sp, tok, 'returns/get_return_detail', { return_sn: dv.return_sn });
+          if (det?.status) dv.status_devolucao = det.status;
+          if (SHOPEE_DEVOLUCAO_SEM_REEMBOLSO.has(det?.status) && !nfs[id]) { delete estado.registro[id]; continue; }
+        } catch (e) { erros.push(`shopee ${dv.return_sn} detalhe: ${e.response?.status || e.message}`); }
+      }
+      if (dv.chegou_em) continue;
       devolucoesProgresso = `Shopee ${num}: atualizando rastreios`;
       try {
         const t = await shopeeGetDevolucao(sp, tok, 'returns/get_reverse_tracking_info', { return_sn: dv.return_sn });
@@ -6344,6 +6363,24 @@ async function verificarDevolucoesShopee(estado, nfs, erros, data) {
           dv.status = 'shipped';
         }
       } catch (e) { erros.push(`shopee ${dv.return_sn}: ${e.response?.status || e.message}`); }
+    }
+
+    // NF da venda: vem no próprio pedido da Shopee (invoice_data), 50 pedidos por chamada
+    const semNf = Object.values(estado.registro).filter(dv => dv.canal === 'shopee' && dv.conta === num && !dv.nf_venda?.numero && !dv.nf_shopee_tentado);
+    for (let i = 0; i < semNf.length; i += 50) {
+      const lote = semNf.slice(i, i + 50);
+      devolucoesProgresso = `Shopee ${num}: buscando número das NFs`;
+      try {
+        const r = await shopeeGetDevolucao(sp, tok, 'order/get_order_detail', {
+          order_sn_list: lote.map(dv => dv.order_id).join(','), response_optional_fields: 'invoice_data',
+        });
+        const porSn = new Map((r?.order_list || []).map(o => [o.order_sn, o.invoice_data]));
+        for (const dv of lote) {
+          const inv = porSn.get(dv.order_id);
+          if (inv?.number) dv.nf_venda = { numero: inv.number, serie: inv.series_number ?? null, emitida_em: inv.issue_date ? new Date(inv.issue_date * 1000).toISOString() : null, fonte: 'shopee' };
+          dv.nf_shopee_tentado = true; // sem nota na Shopee → cai pro Bling
+        }
+      } catch (e) { erros.push(`shopee ${num} NFs: ${e.response?.status || e.message}`); }
     }
   }
 }
@@ -6385,7 +6422,7 @@ async function blingNfDoPedido(conta, numeroLoja, debug) {
 async function buscarNfVendaDevolucoes(estado, erros) {
   const DIA = 24 * 60 * 60 * 1000;
   const pendentes = Object.values(estado.registro).filter(dv =>
-    !dv.nf_venda?.numero && (dv.nf_venda_tentativas || 0) < 3 && (!dv.nf_venda_busca || Date.now() - dv.nf_venda_busca > DIA));
+    !dv.nf_venda?.numero && (dv.canal !== 'shopee' || dv.nf_shopee_tentado) && (dv.nf_venda_tentativas || 0) < 3 && (!dv.nf_venda_busca || Date.now() - dv.nf_venda_busca > DIA));
   let feitos = 0;
   for (const dv of pendentes) {
     if (++feitos > 60) break;
@@ -6496,6 +6533,38 @@ app.get('/api/ml/debug-devolucao-pedido/:order_id', async (req, res) => {
         }
       } catch (e) { r.reclamacoes.push({ recurso, erro_busca: e.response?.status || e.message }); }
     }
+  }
+  res.json(saida);
+});
+
+// Debug — onde o ML guarda o número da NF de um pedido. A NF fica referenciada no
+// pedido tanto quando é emitida pelo Bling quanto pelo emissor do próprio ML, e o
+// Bling só acha as emitidas por ele. Testa os lugares possíveis e mostra o que cada
+// um devolve, pra escolher a fonte. ?conta=N (sem: tenta as duas).
+app.get('/api/ml/debug-nf-pedido/:order_id', async (req, res) => {
+  const data    = loadData();
+  const orderId = String(req.params.order_id);
+  const contas  = req.query.conta ? [String(req.query.conta)] : Object.keys(data.contas || {});
+  const saida   = {};
+  for (const num of contas) {
+    const c = data.contas[num];
+    let tok;
+    try { tok = await getToken(data, num); } catch (e) { saida[`conta_${num}`] = { erro: e.message }; continue; }
+    const headers = { Authorization: `Bearer ${tok}` };
+    let o;
+    try { o = await mlGetDevolucao(`https://api.mercadolibre.com/orders/${orderId}`, headers); }
+    catch (e) { saida[`conta_${num}`] = { erro_pedido: e.response?.status || e.message }; continue; }
+    const r = saida[`conta_${num}`] = {
+      pedido_campos_fiscais: Object.fromEntries(Object.entries(o).filter(([k]) => /invoice|fiscal|nf|billing|tax/i.test(k))),
+      pedido_tags: o.tags, pack_id: o.pack_id, shipping_id: o.shipping?.id,
+    };
+    const tentar = async (rotulo, url, params) => {
+      try { r[rotulo] = await mlGetDevolucao(url, headers, params); }
+      catch (e) { r[rotulo] = { status: e.response?.status, erro: e.response?.data || e.message }; }
+    };
+    await tentar('users_invoices_orders', `https://api.mercadolibre.com/users/${c.user_id}/invoices/orders/${orderId}`);
+    if (o.shipping?.id) await tentar('shipment_invoice_data', `https://api.mercadolibre.com/shipments/${o.shipping.id}/invoice_data`, { siteId: 'MLB' });
+    await tentar('packs_fiscal_documents', `https://api.mercadolibre.com/packs/${o.pack_id || orderId}/fiscal_documents`);
   }
   res.json(saida);
 });

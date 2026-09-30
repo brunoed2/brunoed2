@@ -89,6 +89,12 @@ function devSetFiltro(campo, valor) {
 
 // Situação a partir do envio de volta
 function devSituacao(i) {
+  // Chegou mas o reembolso não saiu (ainda): na Shopee a contestação pode estar em
+  // análise; no ML o dinheiro ficou retido. Se não houver reembolso a venda vale.
+  if (i.chegou_em && i.canal === 'shopee' && i.status_devolucao && i.status_devolucao !== 'ACCEPTED')
+                                           return { txt: 'Chegou · reembolso em análise', cls: 'badge-pausado' };
+  if (i.chegou_em && i.canal !== 'shopee' && i.reembolso === 'retained')
+                                           return { txt: 'Chegou · sem reembolso', cls: 'badge-pausado' };
   if (i.chegou_em)                         return { txt: 'Chegou', cls: 'badge-ativo' };
   if (i.status === 'cancelled')            return { txt: 'Cancelada', cls: 'badge-encerrado' };
   if (i.status === 'not_delivered')        return { txt: 'Não entregue', cls: 'badge-encerrado' };
