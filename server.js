@@ -6330,6 +6330,7 @@ async function verificarDevolucoesShopee(estado, nfs, erros, data) {
               tracking: dv.tracking_number || reg.tracking || null,
               status: reg.status || 'ready_to_ship',
               status_devolucao: dv.status,
+              atualizada_em: dv.update_time ? new Date(dv.update_time * 1000).toISOString() : reg.atualizada_em || null,
             });
             estado.registro[id] = reg;
           }
@@ -6348,6 +6349,7 @@ async function verificarDevolucoesShopee(estado, nfs, erros, data) {
         try {
           const det = await shopeeGetDevolucao(sp, tok, 'returns/get_return_detail', { return_sn: dv.return_sn });
           if (det?.status) dv.status_devolucao = det.status;
+          if (det?.update_time) dv.atualizada_em = new Date(det.update_time * 1000).toISOString();
           if (det?.status === 'CANCELLED' && !nfs[id]) { delete estado.registro[id]; continue; }
         } catch (e) { erros.push(`shopee ${dv.return_sn} detalhe: ${e.response?.status || e.message}`); }
       }
@@ -6369,7 +6371,30 @@ async function verificarDevolucoesShopee(estado, nfs, erros, data) {
         } else if (st === 'LOGISTICS_PICKUP_DONE') {
           dv.status = 'shipped';
         }
-      } catch (e) { erros.push(`shopee ${dv.return_sn}: ${e.response?.status || e.message}`); }
+      } catch (e) {
+        // Devolução sem logística reversa da Shopee (comprador mandou por conta própria,
+        // comum nas antigas): "does not have reverse logistics status" / "Failed to get
+        // reverse logistics tracking info". Não tem rastreio pra esperar — se já está
+        // finalizada, entra como chegada na data da finalização pra conferir e marcar a
+        // NF; se não, só espera o status fechar, sem contar como erro a cada rodada.
+        if (/error_reverse_logistics/.test(e.message || '')) {
+          dv.sem_rastreio = true;
+          // Registros de antes do v928 não têm a data da última atualização da devolução
+          if (!dv.atualizada_em) {
+            try {
+              const det = await shopeeGetDevolucao(sp, tok, 'returns/get_return_detail', { return_sn: dv.return_sn });
+              if (det?.status) dv.status_devolucao = det.status;
+              if (det?.update_time) dv.atualizada_em = new Date(det.update_time * 1000).toISOString();
+            } catch { /* fica com a data de hoje */ }
+          }
+          if (dv.status_devolucao === 'ACCEPTED' || dv.status_devolucao === 'CLOSED') {
+            dv.status = 'delivered';
+            dv.chegou_em = dv.atualizada_em || new Date().toISOString();
+          }
+        } else {
+          erros.push(`shopee ${dv.return_sn}: ${e.response?.status || e.message}`);
+        }
+      }
     }
 
     // NF da venda: vem no próprio pedido da Shopee (invoice_data), 50 pedidos por chamada

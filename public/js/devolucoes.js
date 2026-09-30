@@ -55,12 +55,21 @@ function devRenderStatus(d) {
   if (d.carregando_historico) txt += ' · primeira carga (últimos 12 meses) em andamento — pode levar mais de meia hora';
   el.textContent = txt;
   devErros = d.erros || [];
+  const box = document.getElementById('dev-erros-box');
+  if (box && !devErros.length) box.style.display = 'none';
+  else if (box) box.textContent = devErros.join('\n');
   if (devErros.length) {
     const a = document.createElement('a');
     a.href = '#'; a.className = 'dev-erros-link';
     a.textContent = ` · ⚠️ ${devErros.length} erro(s) na última leitura`;
     a.title = devErros.join('\n');
-    a.onclick = (ev) => { ev.preventDefault(); alert('Erros na última leitura:\n\n' + devErros.join('\n')); };
+    a.onclick = (ev) => {
+      ev.preventDefault();
+      const box = document.getElementById('dev-erros-box');
+      if (!box) return;
+      box.textContent = devErros.join('\n');
+      box.style.display = box.style.display === 'none' ? '' : 'none';
+    };
     el.appendChild(a);
   }
 }
@@ -91,6 +100,7 @@ function devSetFiltro(campo, valor) {
 
 // Situação a partir do envio de volta
 function devSituacao(i) {
+  if (i.chegou_em && i.sem_rastreio)        return { txt: 'Finalizada · sem rastreio', cls: 'badge-outro' };
   // Chegou sem reembolso (contestação ganha / dinheiro retido): a venda continua
   // valendo, mas o produto voltou e a NF de devolução precisa ser emitida do mesmo jeito.
   if (i.chegou_em && i.canal === 'shopee' && i.status_devolucao === 'CLOSED')

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Painel</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📦</text></svg>">
-  <link rel="stylesheet" href="/css/style.css?v=25">
+  <link rel="stylesheet" href="/css/style.css?v=26">
   <link rel="manifest" href="/manifest.json">
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
   <meta name="theme-color" content="#2563eb">
@@ -1650,6 +1650,7 @@
               <button class="btn-sm" id="dev-btn-atualizar" onclick="devolucoesAtualizar()">🔄 Atualizar</button>
             </span>
           </div>
+          <pre id="dev-erros-box" class="dev-erros-box" style="display:none"></pre>
           <table class="tabela">
             <thead><tr>
               <th>Canal</th><th>Conta</th><th>Pedido</th><th>Produto</th><th>NF venda</th><th class="col-num">Valor</th><th>Situação</th><th>Chegou em</th><th style="text-align:center">NF devolução</th>
@@ -1762,7 +1763,7 @@
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
   <script src="/js/scanner.js?v=7"></script>
   <script src="/js/codigo-recebimento.js?v=1"></script>
-  <script src="/js/devolucoes.js?v=6"></script>
+  <script src="/js/devolucoes.js?v=7"></script>
   <script>
   // ── Gerenciamento de Usuários ─────────────────────────────────
 
@@ -2087,6 +2088,6 @@
   </div>
 
   <script src="/js/busca-pagina.js?v=1"></script>
-  <div id="version-badge">v927</div>
+  <div id="version-badge">v928</div>
 </body>
 </html>
