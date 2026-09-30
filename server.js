@@ -6397,8 +6397,10 @@ async function verificarDevolucoesShopee(estado, nfs, erros, data) {
       }
     }
 
-    // NF da venda: vem no próprio pedido da Shopee (invoice_data), 50 pedidos por chamada
-    const semNf = Object.values(estado.registro).filter(dv => dv.canal === 'shopee' && dv.conta === num && !dv.nf_venda?.numero && !dv.nf_shopee_tentado);
+    // NF e data da venda: vêm no próprio pedido da Shopee (invoice_data, create_time),
+    // 50 pedidos por chamada. A data entrou no v929 — registros antigos buscam uma vez.
+    const semNf = Object.values(estado.registro).filter(dv => dv.canal === 'shopee' && dv.conta === num &&
+      ((!dv.nf_venda?.numero && !dv.nf_shopee_tentado) || (!dv.venda_em && !dv.venda_em_tentado)));
     for (let i = 0; i < semNf.length; i += 50) {
       const lote = semNf.slice(i, i + 50);
       devolucoesProgresso = `Shopee ${num}: buscando número das NFs`;
@@ -6406,10 +6408,13 @@ async function verificarDevolucoesShopee(estado, nfs, erros, data) {
         const r = await shopeeGetDevolucao(sp, tok, 'order/get_order_detail', {
           order_sn_list: lote.map(dv => dv.order_id).join(','), response_optional_fields: 'invoice_data',
         });
-        const porSn = new Map((r?.order_list || []).map(o => [o.order_sn, o.invoice_data]));
+        const porSn = new Map((r?.order_list || []).map(o => [o.order_sn, o]));
         for (const dv of lote) {
-          const inv = porSn.get(dv.order_id);
-          if (inv?.number) dv.nf_venda = { numero: inv.number, serie: inv.series_number ?? null, emitida_em: inv.issue_date ? new Date(inv.issue_date * 1000).toISOString() : null, fonte: 'shopee' };
+          const o = porSn.get(dv.order_id);
+          if (o?.create_time) dv.venda_em = new Date(o.create_time * 1000).toISOString();
+          dv.venda_em_tentado = true;
+          const inv = o?.invoice_data;
+          if (inv?.number && !dv.nf_venda?.numero) dv.nf_venda = { numero: inv.number, serie: inv.series_number ?? null, emitida_em: inv.issue_date ? new Date(inv.issue_date * 1000).toISOString() : null, fonte: 'shopee' };
           dv.nf_shopee_tentado = true; // sem nota na Shopee → cai pro Bling
         }
       } catch (e) { erros.push(`shopee ${num} NFs: ${e.response?.status || e.message}`); }
