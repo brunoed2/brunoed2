@@ -6228,6 +6228,7 @@ async function verificarDevolucoes({ notificarChegando = true } = {}) {
     }
 
     await verificarDevolucoesShopee(estado, nfs, erros, data);
+    await buscarNfVendaDevolucoes(estado, erros);
 
     // Limpeza: reclamações vistas há mais de 120 dias, devoluções que chegaram há
     // mais de 1 ano e avisos de dias anteriores
@@ -6308,7 +6309,7 @@ async function verificarDevolucoesShopee(estado, nfs, erros, data) {
             const reg = estado.registro[id] || {};
             const itens = dv.item || [];
             Object.assign(reg, {
-              canal: 'shopee', conta: num, nickname: `Shopee ${num}`, order_id: dv.order_sn, return_sn: dv.return_sn,
+              canal: 'shopee', conta: num, nickname: data.contas?.[num]?.nickname || `Shopee ${num}`, order_id: dv.order_sn, return_sn: dv.return_sn,
               comprador: dv.user?.username || null,
               titulo: itens.map(i => `${i.name || i.item_id}${i.amount > 1 ? ` (${i.amount} un)` : ''}`).join(', ') || null,
               valor: Math.round(itens.reduce((s, i) => s + (Number(i.item_price) || 0) * (Number(i.amount) || 1), 0) * 100) / 100,
@@ -6347,6 +6348,58 @@ async function verificarDevolucoesShopee(estado, nfs, erros, data) {
   }
 }
 
+// Número da NF da venda, pra achar no Bling e emitir a de devolução. Busca o pedido
+// no Bling da mesma conta (Bling N = conta ML N = loja Shopee N) pelo número do
+// marketplace (numeroLoja: order_id do ML / order_sn da Shopee), e dele a nota.
+// Confere se o pedido devolvido pelo Bling é mesmo o do número pedido — se o filtro
+// numerosLojas for ignorado, o Bling devolveria os últimos pedidos e a nota seria
+// de outra venda.
+async function blingGetDevolucao(conta, url, params) {
+  for (let tentativa = 0; ; tentativa++) {
+    await pausa(400);
+    try {
+      const token = await getBlingToken(conta);
+      return (await axios.get(url, { headers: { Authorization: `Bearer ${token}` }, params, timeout: 15000 })).data;
+    } catch (e) {
+      if (e.response?.status === 429 && tentativa < 4) { await pausa(3000 * 2 ** tentativa); continue; }
+      throw e;
+    }
+  }
+}
+async function blingNfDoPedido(conta, numeroLoja, debug) {
+  const lista = await blingGetDevolucao(conta, 'https://api.bling.com.br/Api/v3/pedidos/vendas', { 'numerosLojas[]': String(numeroLoja), limite: 5 });
+  if (debug) debug.lista = (lista?.data || []).map(p => ({ id: p.id, numero: p.numero, numeroLoja: p.numeroLoja, data: p.data }));
+  const pedido = (lista?.data || []).find(p => String(p.numeroLoja) === String(numeroLoja));
+  if (!pedido) return null;
+  const det = (await blingGetDevolucao(conta, `https://api.bling.com.br/Api/v3/pedidos/vendas/${pedido.id}`))?.data || {};
+  if (debug) debug.pedido = { id: det.id, numero: det.numero, numeroLoja: det.numeroLoja, notaFiscal: det.notaFiscal, situacao: det.situacao };
+  const nfId = det.notaFiscal?.id;
+  if (!nfId) return { pedido_bling: det.numero || pedido.numero, numero: null };
+  const nf = (await blingGetDevolucao(conta, `https://api.bling.com.br/Api/v3/nfe/${nfId}`))?.data || {};
+  if (debug) debug.nf = { id: nf.id, numero: nf.numero, serie: nf.serie, situacao: nf.situacao, dataEmissao: nf.dataEmissao, chaveAcesso: nf.chaveAcesso };
+  return { pedido_bling: det.numero || pedido.numero, numero: nf.numero || null, serie: nf.serie ?? null, emitida_em: nf.dataEmissao || null };
+}
+
+// Até 60 por rodada (a primeira carga tem centenas — vai completando a cada 30 min).
+// Quem não achou a nota tenta de novo depois de 1 dia, até 3 vezes.
+async function buscarNfVendaDevolucoes(estado, erros) {
+  const DIA = 24 * 60 * 60 * 1000;
+  const pendentes = Object.values(estado.registro).filter(dv =>
+    !dv.nf_venda?.numero && (dv.nf_venda_tentativas || 0) < 3 && (!dv.nf_venda_busca || Date.now() - dv.nf_venda_busca > DIA));
+  let feitos = 0;
+  for (const dv of pendentes) {
+    if (++feitos > 60) break;
+    devolucoesProgresso = `buscando número da NF no Bling (${feitos} de ${Math.min(pendentes.length, 60)})`;
+    try {
+      dv.nf_venda = await blingNfDoPedido(dv.conta, dv.order_id);
+    } catch (e) {
+      erros.push(`Bling conta ${dv.conta} pedido ${dv.order_id}: ${e.response?.status || e.message}`);
+    }
+    dv.nf_venda_busca = Date.now();
+    dv.nf_venda_tentativas = (dv.nf_venda_tentativas || 0) + 1;
+  }
+}
+
 // A cada 30 min (o aviso só sai das 7h às 19h de Brasília, dentro da função). Avisa
 // só as novas de cada rodada, então quem sair pra entrega no meio do dia gera um
 // aviso separado. Roda também 1 min depois de subir, senão cada deploy deixaria
@@ -6370,7 +6423,9 @@ app.get('/api/devolucoes', (req, res) => {
     ultima_execucao: estado.ultima_execucao || null,
     carregando_historico: contas.some(n => !estado.backfill_feito[n]),
     erros: estado.ultimo_erro || null,
-    itens: Object.entries(estado.registro).map(([id, dv]) => ({ id, ...dv, nf: nfs[id] || null })),
+    // Loja Shopee N é a mesma empresa da conta ML N (1 = F COMERCIO, 2 = OLÍVIOS) —
+    // mostra o nome da empresa, não "Shopee N" (registros antigos ainda têm esse nome)
+    itens: Object.entries(estado.registro).map(([id, dv]) => ({ id, ...dv, nickname: data.contas?.[dv.conta]?.nickname || dv.nickname, nf: nfs[id] || null })),
   });
 });
 
@@ -7617,6 +7672,63 @@ app.get('/api/shopee/status', async (req, res) => {
   } catch (err) {
     res.json({ connected: false, error: err.message });
   }
+});
+
+// Debug — um pedido da Shopee de ponta a ponta, pra entender o que é devolução de
+// verdade: no v921, o 260910MEDD5B67 (venda concluída, entregue) apareceu como
+// devolução "chegou" (return CLOSED com rastreio reverso DELIVERY_DONE), e o
+// 2609178X190BFX, que voltou de fato, ficou de fora (return CANCELLED 20 min depois
+// de aberto). Mostra o pedido (status, pacote, NF), o rastreio da ida, todas as
+// devoluções do pedido nos últimos 90 dias com o detalhe e o rastreio reverso, e a
+// NF da venda no Bling. ?conta=N (padrão 1).
+app.get('/api/shopee/debug-devolucao-pedido/:order_sn', async (req, res) => {
+  const data = loadData();
+  const num  = String(req.query.conta || '1');
+  const sp   = shopeeConta(data, num);
+  const sn   = String(req.params.order_sn);
+  const out  = {};
+  let tok;
+  try { tok = await getShopeeToken(data, num); } catch (e) { return res.json({ erro: e.message }); }
+  const tenta = async (rotulo, fn) => { try { out[rotulo] = await fn(); } catch (e) { out[rotulo] = { erro: e.response?.data || e.message }; } };
+
+  await tenta('pedido', async () => (await shopeeGetDevolucao(sp, tok, 'order/get_order_detail', {
+    order_sn_list: sn,
+    response_optional_fields: 'buyer_username,item_list,package_list,shipping_carrier,invoice_data,cancel_by,cancel_reason,buyer_cancel_reason,pickup_done_time,total_amount',
+  }))?.order_list?.[0]);
+  await tenta('rastreio_ida', () => shopeeGetDevolucao(sp, tok, 'logistics/get_tracking_info', { order_sn: sn }));
+
+  const agora = Math.floor(Date.now() / 1000);
+  const devolucoes = [];
+  for (let j = 0; j < 6; j++) {
+    const ate = agora - j * 15 * 86400, de = ate - 15 * 86400 + 1;
+    try {
+      for (let page = 0; page < 20; page++) {
+        const r = await shopeeGetDevolucao(sp, tok, 'returns/get_return_list', { page_no: page, page_size: 50, create_time_from: de, create_time_to: ate });
+        devolucoes.push(...(r?.return || []).filter(x => x.order_sn === sn));
+        if (!r?.more) break;
+      }
+    } catch (e) { out.erro_lista_devolucoes = e.response?.data || e.message; break; }
+  }
+  out.devolucoes = [];
+  for (const dv of devolucoes) {
+    const item = { lista: dv };
+    try { item.detalhe = await shopeeGetDevolucao(sp, tok, 'returns/get_return_detail', { return_sn: dv.return_sn }); } catch (e) { item.detalhe = { erro: e.response?.data || e.message }; }
+    try { item.rastreio_volta = await shopeeGetDevolucao(sp, tok, 'returns/get_reverse_tracking_info', { return_sn: dv.return_sn }); } catch (e) { item.rastreio_volta = { erro: e.response?.data || e.message }; }
+    out.devolucoes.push(item);
+  }
+  const dbg = {};
+  await tenta('nf_bling', async () => ({ resultado: await blingNfDoPedido(num, sn, dbg), passos: dbg }));
+  res.json(out);
+});
+
+// NF da venda no Bling a partir do número do pedido no marketplace (ML ou Shopee) —
+// pra conferir se a busca da aba Devoluções acha a nota certa. ?conta=N (padrão 1).
+app.get('/api/bling/debug-nf-pedido/:numero_loja', async (req, res) => {
+  const dbg = {};
+  try {
+    const resultado = await blingNfDoPedido(String(req.query.conta || '1'), req.params.numero_loja, dbg);
+    res.json({ resultado, passos: dbg });
+  } catch (e) { res.json({ erro: e.response?.data || e.message, passos: dbg }); }
 });
 
 // Debug — devoluções da Shopee. Mesmo teste do /api/ml/debug-devolucoes (v918): lista

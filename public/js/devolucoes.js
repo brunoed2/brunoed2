@@ -6,6 +6,7 @@
 let devItens = [];
 let devFiltro = { situacao: 'todas', nf: 'pendente', conta: 'todas', canal: 'todos', busca: '' };
 let devPollTimer = null;
+let devErros = [];
 
 function devEsc(str) {
   return String(str ?? '')
@@ -50,8 +51,16 @@ function devRenderStatus(d) {
   if (d.rodando) txt = `🔄 Atualizando${d.progresso ? ' — ' + d.progresso : '...'}`;
   else if (d.ultima_execucao) txt = `Atualizado às ${new Date(d.ultima_execucao).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' })}`;
   if (d.carregando_historico) txt += ' · primeira carga (últimos 12 meses) em andamento — pode levar mais de meia hora';
-  if (d.erros?.length) txt += ` · ⚠️ ${d.erros.length} erro(s) na última leitura`;
   el.textContent = txt;
+  devErros = d.erros || [];
+  if (devErros.length) {
+    const a = document.createElement('a');
+    a.href = '#'; a.className = 'dev-erros-link';
+    a.textContent = ` · ⚠️ ${devErros.length} erro(s) na última leitura`;
+    a.title = devErros.join('\n');
+    a.onclick = (ev) => { ev.preventDefault(); alert('Erros na última leitura:\n\n' + devErros.join('\n')); };
+    el.appendChild(a);
+  }
 }
 
 async function devolucoesAtualizar() {
@@ -64,14 +73,12 @@ async function devolucoesAtualizar() {
 function devRenderContas() {
   const box = document.getElementById('dev-filtro-conta');
   if (!box) return;
-  // Chave canal:conta — a conta '1' do ML e a loja '1' da Shopee são coisas diferentes
-  const contas = [...new Map(devItens.map(i => [devChaveConta(i), i.nickname || 'Conta ' + i.conta])).entries()].sort();
+  // Conta = empresa: loja Shopee N é a mesma empresa da conta ML N
+  const contas = [...new Map(devItens.map(i => [String(i.conta), i.nickname || 'Conta ' + i.conta])).entries()].sort();
   box.innerHTML = [['todas', 'Todas'], ...contas].map(([id, nome]) =>
     `<button class="filtro-btn${devFiltro.conta === id ? ' active' : ''}" onclick="devSetFiltro('conta','${devEsc(id)}')">${devEsc(nome)}</button>`
   ).join('');
 }
-
-function devChaveConta(i) { return (i.canal || 'ml') + ':' + i.conta; }
 
 function devSetFiltro(campo, valor) {
   devFiltro[campo] = valor;
@@ -97,9 +104,9 @@ function devFiltrar() {
     if (devFiltro.situacao === 'chegou' && !i.chegou_em) return false;
     if (devFiltro.nf === 'pendente' && i.nf) return false;
     if (devFiltro.nf === 'emitida' && !i.nf) return false;
-    if (devFiltro.conta !== 'todas' && devChaveConta(i) !== devFiltro.conta) return false;
+    if (devFiltro.conta !== 'todas' && String(i.conta) !== devFiltro.conta) return false;
     if (devFiltro.canal !== 'todos' && (i.canal || 'ml') !== devFiltro.canal) return false;
-    if (busca && !`${i.order_id} ${i.comprador || ''} ${i.titulo || ''} ${i.tracking || ''}`.toLowerCase().includes(busca)) return false;
+    if (busca && !`${i.order_id} ${i.comprador || ''} ${i.titulo || ''} ${i.tracking || ''} ${i.nf_venda?.numero || ''}`.toLowerCase().includes(busca)) return false;
     return true;
   }).sort((a, b) => {
     // Chegadas primeiro (mais recentes no topo), depois as que estão a caminho
@@ -125,7 +132,7 @@ function devRender() {
   const lista = devFiltrar();
   set('dev-contagem', `${lista.length} devolução(ões)`);
   if (!lista.length) {
-    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:#94a3b8;padding:28px">Nenhuma devolução com esses filtros.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;color:#94a3b8;padding:28px">Nenhuma devolução com esses filtros.</td></tr>`;
     return;
   }
   tbody.innerHTML = lista.map(i => {
@@ -140,6 +147,8 @@ function devRender() {
       <td>${devEsc(i.nickname || 'Conta ' + i.conta)}</td>
       <td>${pedido}${i.comprador ? `<div class="dev-comprador">${devEsc(i.comprador)}</div>` : ''}${i.venda_em ? `<div class="dev-sub">venda ${devData(i.venda_em)}</div>` : ''}</td>
       <td class="td-titulo" title="${devEsc(i.titulo)}">${devEsc(i.titulo || '—')}</td>
+      <td>${i.nf_venda?.numero ? `<b>${devEsc(i.nf_venda.numero)}</b>${i.nf_venda.serie != null ? `<div class="dev-sub">série ${devEsc(i.nf_venda.serie)}</div>` : ''}`
+        : `<span class="dev-sub">${i.nf_venda_busca ? 'não achada no Bling' : 'buscando...'}</span>`}</td>
       <td class="col-num">${devMoeda(i.valor)}</td>
       <td><span class="badge-deposito ${sit.cls}">${sit.txt}</span>
         ${i.tracking ? `<div class="dev-sub">${devEsc(i.tracking)}</div>` : ''}</td>
