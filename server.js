@@ -6076,12 +6076,18 @@ function loadDevolucoes() {
   try { d = JSON.parse(fs.readFileSync(DEVOLUCOES_FILE, 'utf8')); } catch {}
   // v919 só guardava as devoluções a caminho do galpão (acompanhando) e marcou como
   // vistas reclamações cujas devoluções já tinham chegado — recomeça a descoberta.
-  if (d.versao !== 2 && d.versao !== 3) {
-    d = { versao: 3, registro: d.acompanhando || {}, claims_vistos: {}, avisados: d.avisados || {}, backfill_feito: {} };
+  if (![2, 3, 4].includes(d.versao)) {
+    d = { versao: 4, registro: d.acompanhando || {}, claims_vistos: {}, avisados: d.avisados || {}, backfill_feito: {} };
   }
   // v922: primeira carga passou de 90 dias pra 12 meses e o registro ganhou o
   // comprador — refaz a descoberta (mantém o registro; as NFs ficam em outro arquivo).
   if (d.versao === 2) { d.versao = 3; d.claims_vistos = {}; d.backfill_feito = {}; }
+  // v926: o v925 tirava do registro as devoluções da Shopee contestadas e ganhas
+  // (CLOSED), que voltaram e precisam de NF — refaz a primeira carga só da Shopee.
+  if (d.versao === 3) {
+    d.versao = 4;
+    for (const k of Object.keys(d.backfill_feito || {})) if (k.startsWith('shopee-')) delete d.backfill_feito[k];
+  }
   d.registro = d.registro || {}; d.claims_vistos = d.claims_vistos || {};
   d.avisados = d.avisados || {}; d.backfill_feito = d.backfill_feito || {};
   return d;
@@ -6261,12 +6267,12 @@ async function verificarDevolucoes({ notificarChegando = true } = {}) {
 }
 
 // Shopee: devoluções com produto voltando (needs_logistics), sem aviso — só pra aba.
-// Só conta como devolução (pra NF) a que termina com reembolso: status ACCEPTED, ou
-// ainda em andamento. CLOSED = vendedor contestou e ganhou, venda continua valendo
-// (v924: 260910MEDD5B67 voltou, foi contestada por uso e a venda ficou concluída);
-// CANCELLED = comprador desistiu. Esses dois saem do registro. Troca combinada por
-// fora da Shopee (2609178X190BFX: pedido de devolução cancelado em 17 min, produto
-// voltou mesmo assim) não deixa rastro na API — não tem como pegar automático.
+// O que decide a NF de devolução é o produto ter voltado, não o reembolso: mesmo
+// ganhando a contestação (status CLOSED, venda continua valendo — caso 260910MEDD5B67,
+// voltou usado), o produto chegou e a NF precisa ser emitida. Sai do registro só o
+// que nunca voltou: CANCELLED (comprador desistiu) e CLOSED sem o pacote ter sido
+// postado. Troca combinada por fora da Shopee (2609178X190BFX: pedido de devolução
+// cancelado em 17 min, produto voltou mesmo assim) não deixa rastro na API.
 // A lista da Shopee só aceita janela de 15 dias; a primeira carga varre 12 meses em
 // janelas de 15 (por update_time). Chave do registro: shopee-<return_sn>, pra não
 // colidir com o shipment_id do ML. Cada devolução descoberta é reconsultada pelo
@@ -6286,7 +6292,7 @@ async function shopeeGetDevolucao(sp, tok, rota, extra) {
   }
 }
 
-const SHOPEE_DEVOLUCAO_SEM_REEMBOLSO = new Set(['CANCELLED', 'CLOSED']);
+const SHOPEE_DEVOLUCAO_FINAL = new Set(['ACCEPTED', 'CLOSED', 'CANCELLED']);
 async function verificarDevolucoesShopee(estado, nfs, erros, data) {
   const DIA_S = 86400;
   for (const num of Object.keys(data.shopee_contas || {})) {
@@ -6311,7 +6317,7 @@ async function verificarDevolucoesShopee(estado, nfs, erros, data) {
           leuAlguma = true;
           for (const dv of (resp?.return || [])) {
             const id = 'shopee-' + dv.return_sn;
-            const semProduto = dv.needs_logistics === false || SHOPEE_DEVOLUCAO_SEM_REEMBOLSO.has(dv.status);
+            const semProduto = dv.needs_logistics === false || dv.status === 'CANCELLED';
             if (semProduto) { if (!nfs[id]) delete estado.registro[id]; continue; }
             const reg = estado.registro[id] || {};
             const itens = dv.item || [];
@@ -6337,12 +6343,12 @@ async function verificarDevolucoesShopee(estado, nfs, erros, data) {
       if (dv.canal !== 'shopee' || dv.conta !== num) continue;
       // Status da devolução até ficar final (a lista só traz as mexidas nos últimos
       // 15 dias; uma contestação pode fechar depois disso)
-      if (dv.status_devolucao !== 'ACCEPTED') {
+      if (!SHOPEE_DEVOLUCAO_FINAL.has(dv.status_devolucao)) {
         devolucoesProgresso = `Shopee ${num}: conferindo devoluções`;
         try {
           const det = await shopeeGetDevolucao(sp, tok, 'returns/get_return_detail', { return_sn: dv.return_sn });
           if (det?.status) dv.status_devolucao = det.status;
-          if (SHOPEE_DEVOLUCAO_SEM_REEMBOLSO.has(det?.status) && !nfs[id]) { delete estado.registro[id]; continue; }
+          if (det?.status === 'CANCELLED' && !nfs[id]) { delete estado.registro[id]; continue; }
         } catch (e) { erros.push(`shopee ${dv.return_sn} detalhe: ${e.response?.status || e.message}`); }
       }
       if (dv.chegou_em) continue;
@@ -6355,7 +6361,8 @@ async function verificarDevolucoesShopee(estado, nfs, erros, data) {
         if (st === 'LOGISTICS_DELIVERY_DONE') {
           dv.status = 'delivered';
           dv.chegou_em = new Date((t.reverse_logistics_update_time || Math.floor(Date.now() / 1000)) * 1000).toISOString();
-        } else if (st === 'LOGISTICS_REQUEST_CANCELED') {
+        } else if (st === 'LOGISTICS_REQUEST_CANCELED' || (dv.status_devolucao === 'CLOSED' && st !== 'LOGISTICS_PICKUP_DONE')) {
+          // Fechada sem o comprador ter postado — o produto não volta
           if (!nfs[id]) delete estado.registro[id]; else dv.status = 'cancelled';
         } else if (/FAILED|LOST/.test(st)) {
           dv.status = 'not_delivered';
