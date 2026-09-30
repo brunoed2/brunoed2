@@ -6614,6 +6614,15 @@ app.get('/api/lucro/debug-venda-devolvida/:order_id', async (req, res) => {
       out.devolucoes.push(item);
     }
   } catch (e) { out.devolucoes = { erro: e.response?.status || e.message }; }
+  // A busca de reclamações por resource_id deu 400 no v931 — o envio de volta vem
+  // do registro da aba Devoluções (chave = shipment_id do envio de volta)
+  out.envios_volta_registro = [];
+  for (const [sid, dv] of Object.entries(loadDevolucoes().registro)) {
+    if (dv.canal === 'shopee' || String(dv.order_id) !== orderId) continue;
+    let custo = null;
+    try { custo = await mlGetDevolucao(`https://api.mercadolibre.com/shipments/${sid}/costs`, headers); } catch (e) { custo = { erro: e.response?.status || e.message }; }
+    out.envios_volta_registro.push({ shipment_id: sid, status: dv.status, reembolso: dv.reembolso, valor: dv.valor, custo });
+  }
   // O que a fatura atribuiu ao pedido (comissão c / frete f), por mês de venda
   const cc = loadBillingML()[num] || { periodos: {} };
   out.fatura = [];
