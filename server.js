@@ -6552,6 +6552,101 @@ app.post('/api/devolucoes/nf', (req, res) => {
 // vendedor (retorno ao remetente, no envio da própria venda) não passa por reclamação.
 // Mostra: se o pedido está no registro, o envio da venda (status + histórico), as
 // reclamações do pedido e a devolução de cada uma. ?conta=N (sem: tenta as duas).
+// Comparação — regra proposta pro resultado de venda devolvida/reembolsada no Lucro,
+// aplicada a vários pedidos de uma vez pra conferir com o "Detalhe da venda" do ML
+// antes de mexer no Lucro de verdade. Cada valor vem de uma fonte só (sem duplicar):
+//   receita    = pago − reembolsado ao comprador            (pagamentos no MP)
+//   tarifas    = Σ tarifas cobradas − estornadas            (charges_details type fee)
+//   frete ida  = Σ frete cobrado − estornado                (charges_details type shipping)
+//   frete volta = custo do envio de volta que cai pro vendedor (shipments/{volta}/costs)
+//   resultado (antes do custo do produto) = receita − tarifas − frete ida − frete volta
+// Custo do produto: conta só se o produto não voltou (sem envio de volta entregue).
+// Ressarcimento do ML (avaria, reclamação) vem por fora da venda — não entra aqui.
+// ?ids=pedido1,pedido2,... (acha a conta sozinho)
+app.get('/api/lucro/comparar-devolucoes', async (req, res) => {
+  const data = loadData();
+  const ids  = String(req.query.ids || '').split(',').map(s => s.trim()).filter(Boolean).slice(0, 15);
+  const r2   = n => Math.round(n * 100) / 100;
+  const saida = [];
+  for (const orderId of ids) {
+    const item = { pedido: orderId };
+    saida.push(item);
+    let o = null, num = null, headers = null;
+    for (const n of Object.keys(data.contas || {})) {
+      try {
+        const h = { Authorization: `Bearer ${await getToken(data, n)}` };
+        o = await mlGetDevolucao(`https://api.mercadolibre.com/orders/${orderId}`, h);
+        num = n; headers = h; break;
+      } catch { /* pedido de outra conta */ }
+    }
+    if (!o) { item.erro = 'pedido não encontrado em nenhuma conta'; continue; }
+    const c = data.contas[num];
+    item.conta = c.nickname || num;
+    item.status_pedido = o.status;
+    item.hoje_no_lucro = o.status === 'paid' ? 'conta como venda normal (receita cheia)'
+      : o.status === 'cancelled' ? 'fora da conta (cancelado)' : `provavelmente fora da conta (status ${o.status})`;
+    item.itens = (o.order_items || []).map(i => `${i.item?.title} x${i.quantity} @ ${i.unit_price}`);
+
+    // Pagamentos no MP
+    let pago = 0, reemb = 0, tarifas = 0, tarifasEstorno = 0, freteIda = 0, freteIdaEstorno = 0;
+    item.pagamentos = [];
+    for (const p of (o.payments || [])) {
+      try {
+        const mp = (await axios.get(`https://api.mercadopago.com/v1/payments/${p.id}`, { headers, timeout: 10000 })).data;
+        pago  += Number(mp.transaction_amount) || 0;
+        reemb += Number(mp.transaction_amount_refunded) || 0;
+        for (const ch of (mp.charges_details || [])) {
+          if (ch.accounts?.from !== 'collector') continue;
+          const orig = Number(ch.amounts?.original) || 0, est = Number(ch.amounts?.refunded) || 0;
+          if (ch.type === 'fee')      { tarifas += orig; tarifasEstorno += est; }
+          if (ch.type === 'shipping') { freteIda += orig; freteIdaEstorno += est; }
+        }
+        item.pagamentos.push({ id: mp.id, status: mp.status, detalhe: mp.status_detail, valor: mp.transaction_amount, reembolsado: mp.transaction_amount_refunded, liquido_recebido: mp.transaction_details?.net_received_amount });
+      } catch (e) { item.pagamentos.push({ id: p.id, erro: e.response?.status || e.message }); }
+    }
+
+    // Envio(s) de volta: registro da aba Devoluções + reclamações do pedido (mediations)
+    const voltas = new Map();
+    for (const [sid, dv] of Object.entries(loadDevolucoes().registro)) {
+      if (dv.canal !== 'shopee' && String(dv.order_id) === orderId) voltas.set(sid, dv.status);
+    }
+    for (const m of (o.mediations || [])) {
+      try {
+        const ret = await mlGetDevolucao(`https://api.mercadolibre.com/post-purchase/v2/claims/${m.id}/returns`, headers);
+        for (const sh of (ret?.shipments || [])) if (sh.shipment_id) voltas.set(String(sh.shipment_id), sh.status);
+      } catch { /* reclamação sem devolução */ }
+    }
+    let freteVolta = 0, voltou = false;
+    item.envios_volta = [];
+    for (const [sid, st] of voltas) {
+      let custo = 0;
+      try {
+        const k = await mlGetDevolucao(`https://api.mercadolibre.com/shipments/${sid}/costs`, headers);
+        const eu = String(c.user_id);
+        if (String(k?.receiver?.user_id) === eu) custo += Number(k.receiver.cost) || 0;
+        for (const s of (k?.senders || [])) if (String(s.user_id) === eu) custo += Number(s.cost) || 0;
+      } catch { /* sem custo */ }
+      let status = st;
+      try { status = (await mlGetDevolucao(`https://api.mercadolibre.com/shipments/${sid}`, headers))?.status || st; } catch {}
+      if (status === 'delivered') voltou = true;
+      freteVolta += custo;
+      item.envios_volta.push({ envio: sid, status, custo_pra_voce: r2(custo) });
+    }
+
+    const receita = pago - reemb, tarifaLiq = tarifas - tarifasEstorno, freteIdaLiq = freteIda - freteIdaEstorno;
+    item.calculo = {
+      pago: r2(pago), reembolsado_ao_comprador: r2(reemb), receita: r2(receita),
+      tarifas: r2(tarifas), tarifas_estornadas: r2(tarifasEstorno), tarifa_liquida: r2(tarifaLiq),
+      frete_ida: r2(freteIda), frete_ida_estornado: r2(freteIdaEstorno), frete_ida_liquido: r2(freteIdaLiq),
+      frete_volta: r2(freteVolta),
+      resultado_antes_do_custo_do_produto: r2(receita - tarifaLiq - freteIdaLiq - freteVolta),
+      produto_voltou: voltou,
+      custo_do_produto: voltou ? 'não conta (voltou pro estoque)' : 'conta (produto ficou com o comprador)',
+    };
+  }
+  res.json(saida);
+});
+
 // Debug — números de uma venda devolvida, pra montar o prejuízo no Lucro. O detalhe da
 // venda no ML mostra "Preço dos produtos / Tarifa / Envios / Cancelamentos / Total"
 // (ex.: 2000018632569270: 88 − 10,56 − 38,40 − 70,39 = −31,35), mas a composição
