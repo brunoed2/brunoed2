@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Painel</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📦</text></svg>">
-  <link rel="stylesheet" href="/css/style.css?v=27">
+  <link rel="stylesheet" href="/css/style.css?v=28">
   <link rel="manifest" href="/manifest.json">
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
   <meta name="theme-color" content="#2563eb">
@@ -168,6 +168,9 @@
                 <button class="btn-secondary" onclick="lucroAtualizarAmbos()" id="btn-atualizar-lucro">↻ Atualizar</button>
               </div>
               <input type="text" id="lucro-filtro-sku" class="filtro-sku-input" placeholder="Filtrar por SKU (ML + Shopee)..." oninput="lucroFiltrarSkuInput(this.value)">
+              <label class="lucro-fora-normal" title="Mostra só vendas canceladas, devolvidas/reembolsadas e com reclamação — os totais do topo continuam do período inteiro">
+                <input type="checkbox" onchange="lucroToggleForaNormal(this.checked)"> Só vendas fora do normal <span id="lucro-fora-normal-qtd"></span>
+              </label>
             </div>
 
             <div id="lucro-loading" class="loading" style="display:none">Carregando vendas...</div>
@@ -1743,7 +1746,7 @@
   </div>
 
   <script src="/js/compartilhar.js?v=1"></script>
-  <script src="/js/lucro.js?v=11"></script>
+  <script src="/js/lucro.js?v=12"></script>
   <script src="/js/app-v2.js?v=8"></script>
   <script src="/js/operacoes.js?v=21"></script>
   <script src="/js/shopee.js?v=2"></script>
@@ -2088,6 +2091,6 @@
   </div>
 
   <script src="/js/busca-pagina.js?v=1"></script>
-  <div id="version-badge">v936</div>
+  <div id="version-badge">v937</div>
 </body>
 </html>

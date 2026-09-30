@@ -5414,6 +5414,8 @@ function montarVendas(todasOrdens, fretePorShipment, pedidosPorShipment) {
       freteReal,
       shipmentId: sid || null,
       cancelado: order.status === 'cancelled',
+      // Pedido com reclamação (aberta ou já resolvida) — pro filtro "fora do normal" do Lucro
+      reclamacao: (order.mediations || []).length > 0,
     };
   });
 }

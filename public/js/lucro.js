@@ -17,6 +17,21 @@ let gastosFixosTravados = new Set(); // nomes dos fixos com cadeado ativo
 
 let lucroSortState  = { campo: null, direcao: 'asc' };
 let lucroFiltroSku  = '';
+// Filtro "só vendas fora do normal": canceladas, devolvidas/reembolsadas e com reclamação
+let lucroSoForaNormal = false;
+function lucroForaNormalML(v)     { return !!(v.cancelado || v.devolvida || v.reclamacao); }
+function lucroForaNormalShopee(v) { return !!v.cancelado; }
+function lucroToggleForaNormal(marcado) {
+  lucroSoForaNormal = marcado;
+  lucroRenderizarTabelaComFiltro();
+  if (lucroShopeeVendasCalc.length) lucroShopeeRenderizarComFiltro();
+}
+function lucroAtualizarContagemForaNormal() {
+  const el = document.getElementById('lucro-fora-normal-qtd');
+  if (!el) return;
+  const n = (lucroVendasCalc || []).filter(lucroForaNormalML).length + (lucroShopeeVendasCalc || []).filter(lucroForaNormalShopee).length;
+  el.textContent = n ? `(${n})` : '';
+}
 let lucroVendasCalc = []; // último cálculo ML, pra reordenar/filtrar sem recarregar
 let lucroShopeeSortState  = { campo: null, direcao: 'asc' };
 let lucroShopeeVendasCalc = []; // último cálculo Shopee, pra aplicar o mesmo filtro sem recarregar
@@ -389,6 +404,8 @@ function lucroValorOrdenacao(v, campo) {
 
 function lucroRenderizarTabelaComFiltro() {
   let vendas = lucroVendasCalc;
+  if (lucroSoForaNormal) vendas = vendas.filter(lucroForaNormalML);
+  lucroAtualizarContagemForaNormal();
 
   const termo = lucroFiltroSku.trim().toLowerCase();
   if (termo) {
@@ -448,6 +465,8 @@ function lucroShopeeValorOrdenacao(v, campo) {
 
 function lucroShopeeRenderizarComFiltro() {
   let vendas = lucroShopeeVendasCalc;
+  if (lucroSoForaNormal) vendas = vendas.filter(lucroForaNormalShopee);
+  lucroAtualizarContagemForaNormal();
 
   const termo = lucroFiltroSku.trim().toLowerCase();
   if (termo) {
@@ -643,12 +662,15 @@ function lucroRenderizarTabela(vendas) {
     const tagDev = v.devolvida
       ? `<span class="lucro-tag-devolvida" title="${v.devolvida === 'parcial' ? 'Reembolso parcial' : 'Reembolsada'} — R$ ${(v.reembolsado || 0).toFixed(2).replace('.', ',')} devolvidos ao comprador. ${v.voltou ? 'Produto voltou (custo só do que ficou com o comprador).' : 'Produto não voltou (custo conta).'} Frete de volta fica em Outros custos do ML.">↩ ${v.devolvida === 'parcial' ? 'reembolso parcial' : 'devolvida'}</span>`
       : '';
+    const tagRecl = !v.devolvida && v.reclamacao
+      ? `<span class="lucro-tag-reclamacao" title="Esse pedido teve reclamação (aberta ou já resolvida). Se virou reembolso, o pedido muda de status e passa a aparecer como devolvida.">⚠ reclamação</span>`
+      : '';
 
     const tr = document.createElement('tr');
     const fmtCusto = (val) => val > 0 ? lucroFmt(val) : '—';
     tr.innerHTML = `
       <td class="lucro-td-data">${new Date(v.data).toLocaleDateString('pt-BR')}</td>
-      <td class="lucro-td-pedido" onclick="lucroCopiarPedido(this, '${v.orderId}')" title="Clique para copiar">${v.orderId || '—'}${lucroBtnPagamento(v.orderId)}${tagDev}</td>
+      <td class="lucro-td-pedido" onclick="lucroCopiarPedido(this, '${v.orderId}')" title="Clique para copiar">${v.orderId || '—'}${lucroBtnPagamento(v.orderId)}${tagDev}${tagRecl}</td>
       <td class="td-titulo">${item0.titulo || '—'}${multi ? `<span class="lucro-multi"> +${v.itens.length - 1}</span>` : ''}</td>
       <td class="lucro-td-mlb">${chave0 || '—'}</td>
       <td class="col-num">${qtdTotal}</td>
