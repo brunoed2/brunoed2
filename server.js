@@ -6640,9 +6640,29 @@ app.get('/api/lucro/comparar-devolucoes', async (req, res) => {
       let status = st;
       try { status = (await mlGetDevolucao(`https://api.mercadolibre.com/shipments/${sid}`, headers))?.status || st; } catch {}
       if (status === 'delivered') voltou = true;
-      freteVolta += custo;
-      item.envios_volta.push({ envio: sid, status, custo_pra_voce: r2(custo) });
+      // Envio de volta cancelado (devolução abortada — 2000018477287790 no v934) não
+      // custa nada: o custo que /costs mostra é o valor nominal do envio
+      const conta = status !== 'cancelled';
+      if (conta) freteVolta += custo;
+      item.envios_volta.push({ envio: sid, status, custo_nominal: r2(custo), contado: conta });
     }
+
+    // O que a fatura do ML cobrou desse pedido (comissão c / frete f, já com estornos),
+    // somando os períodos lidos (billing-ml.json guarda os 4 mais recentes). Frete
+    // aqui é o cobrado de fato — no v934, "ML bancou" tinha frete de volta nominal de
+    // R$ 12 no /costs sem cobrança nenhuma na fatura.
+    const fat = { comissao: 0, frete: 0, lancamentos: [] };
+    for (const [per, p] of Object.entries((loadBillingML()[num] || {}).periodos || {})) {
+      for (const [mes, pedidos] of Object.entries(p.pedidos || {})) {
+        const v = pedidos[String(o.id)];
+        if (!v) continue;
+        fat.comissao += v.c; fat.frete += v.f;
+        fat.lancamentos.push({ periodo: per, mes_venda: mes, comissao: r2(v.c), frete: r2(v.f) });
+      }
+    }
+    item.fatura = fat.lancamentos.length
+      ? { comissao_liquida: r2(fat.comissao), frete_liquido: r2(fat.frete), lancamentos: fat.lancamentos }
+      : 'pedido não aparece nos períodos da fatura já lidos';
 
     const receita = pago - reemb, tarifaLiq = tarifas - tarifasEstorno, freteIdaLiq = freteIda - freteIdaEstorno;
     item.calculo = {
