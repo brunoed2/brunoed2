@@ -6572,12 +6572,23 @@ app.get('/api/lucro/comparar-devolucoes', async (req, res) => {
     const item = { pedido: orderId };
     saida.push(item);
     let o = null, num = null, headers = null;
+    // O número que aparece no topo do "Detalhe da venda" do ML costuma ser o do pacote
+    // (2000015... no v933 não achou como pedido) — tenta como pacote e pega o pedido dele
     for (const n of Object.keys(data.contas || {})) {
       try {
         const h = { Authorization: `Bearer ${await getToken(data, n)}` };
-        o = await mlGetDevolucao(`https://api.mercadolibre.com/orders/${orderId}`, h);
+        try {
+          o = await mlGetDevolucao(`https://api.mercadolibre.com/orders/${orderId}`, h);
+        } catch {
+          const pk = await mlGetDevolucao(`https://api.mercadolibre.com/packs/${orderId}`, h);
+          const oid = pk?.orders?.[0]?.id;
+          if (!oid) throw new Error('pacote sem pedido');
+          o = await mlGetDevolucao(`https://api.mercadolibre.com/orders/${oid}`, h);
+          item.pacote = orderId; item.pedido = String(oid);
+          if ((pk.orders || []).length > 1) item.aviso = `pacote tem ${pk.orders.length} pedidos — mostrando só o primeiro`;
+        }
         num = n; headers = h; break;
-      } catch { /* pedido de outra conta */ }
+      } catch { o = null; /* pedido/pacote de outra conta */ }
     }
     if (!o) { item.erro = 'pedido não encontrado em nenhuma conta'; continue; }
     const c = data.contas[num];
@@ -6608,7 +6619,7 @@ app.get('/api/lucro/comparar-devolucoes', async (req, res) => {
     // Envio(s) de volta: registro da aba Devoluções + reclamações do pedido (mediations)
     const voltas = new Map();
     for (const [sid, dv] of Object.entries(loadDevolucoes().registro)) {
-      if (dv.canal !== 'shopee' && String(dv.order_id) === orderId) voltas.set(sid, dv.status);
+      if (dv.canal !== 'shopee' && String(dv.order_id) === String(o.id)) voltas.set(sid, dv.status);
     }
     for (const m of (o.mediations || [])) {
       try {
