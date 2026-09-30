@@ -307,7 +307,8 @@ function lucroCalcular(raw) {
   return raw.map(v => {
     const mes     = (v.data || '').slice(0, 7);
     const taxa    = mes in taxa_imposto_por_mes ? taxa_imposto_por_mes[mes] : taxa_imposto;
-    const custo   = v.itens.reduce((s, i) => s + lucroCustoNaData(i.sku || i.mlb, v.data) * i.quantidade, 0);
+    // Venda devolvida: custo só das unidades que não voltaram (quantidadeCusto, v936)
+    const custo   = v.itens.reduce((s, i) => s + lucroCustoNaData(i.sku || i.mlb, v.data) * (i.quantidadeCusto ?? i.quantidade), 0);
     const frete   = v.freteReal ?? 0;
     const imposto = v.receita * (taxa / 100);
     const lucro   = v.receita - v.taxaML - frete - custo - imposto;
@@ -637,12 +638,17 @@ function lucroRenderizarTabela(vendas) {
 
     const custoSalvo = lucroCustoNaData(chave0, v.data) || 0;
     const margemCls  = v.margem >= 10 ? 'lucro-val-pos' : v.margem < 0 ? 'lucro-val-neg' : '';
+    const qtdCusto   = v.itens[0] ? (v.itens[0].quantidadeCusto ?? v.itens[0].quantidade) : qtdTotal;
+    // Venda devolvida/reembolsada (v936): entra no total com o resultado real
+    const tagDev = v.devolvida
+      ? `<span class="lucro-tag-devolvida" title="${v.devolvida === 'parcial' ? 'Reembolso parcial' : 'Reembolsada'} — R$ ${(v.reembolsado || 0).toFixed(2).replace('.', ',')} devolvidos ao comprador. ${v.voltou ? 'Produto voltou (custo só do que ficou com o comprador).' : 'Produto não voltou (custo conta).'} Frete de volta fica em Outros custos do ML.">↩ ${v.devolvida === 'parcial' ? 'reembolso parcial' : 'devolvida'}</span>`
+      : '';
 
     const tr = document.createElement('tr');
     const fmtCusto = (val) => val > 0 ? lucroFmt(val) : '—';
     tr.innerHTML = `
       <td class="lucro-td-data">${new Date(v.data).toLocaleDateString('pt-BR')}</td>
-      <td class="lucro-td-pedido" onclick="lucroCopiarPedido(this, '${v.orderId}')" title="Clique para copiar">${v.orderId || '—'}${lucroBtnPagamento(v.orderId)}</td>
+      <td class="lucro-td-pedido" onclick="lucroCopiarPedido(this, '${v.orderId}')" title="Clique para copiar">${v.orderId || '—'}${lucroBtnPagamento(v.orderId)}${tagDev}</td>
       <td class="td-titulo">${item0.titulo || '—'}${multi ? `<span class="lucro-multi"> +${v.itens.length - 1}</span>` : ''}</td>
       <td class="lucro-td-mlb">${chave0 || '—'}</td>
       <td class="col-num">${qtdTotal}</td>
@@ -651,7 +657,7 @@ function lucroRenderizarTabela(vendas) {
       <td class="col-num lucro-neg-leve">${fmtCusto(v.frete)}</td>
       <td class="col-num">
         ${chave0
-          ? `${custoSalvo > 0 ? `<span class="lucro-custo-total">${fmtCusto(custoSalvo * qtdTotal)}</span>` : ''}
+          ? `${custoSalvo > 0 ? `<span class="lucro-custo-total">${fmtCusto(custoSalvo * (multi ? qtdTotal : qtdCusto))}</span>` : ''}
              <input type="number" class="lucro-custo-input" data-sku="${chave0}" data-vdata="${(v.data || '').slice(0,10)}"
               value="${custoSalvo || ''}" placeholder="unit."
               step="0.01" min="0">

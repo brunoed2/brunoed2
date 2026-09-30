@@ -2472,3 +2472,6 @@ tr.lucro-sub-item td {
 .dev-badge-shopee { background: #ffedd5; color: #c2410c; }
 .dev-linha-ok td { opacity: .6; }
 .dev-linha-ok td:last-child { opacity: 1; }
+
+/* Lucro: venda devolvida/reembolsada (v936) */
+.lucro-tag-devolvida { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 10px; background: #fee2e2; color: #b91c1c; font-size: 11px; font-weight: 600; white-space: nowrap; cursor: help; }

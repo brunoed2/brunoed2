@@ -5305,26 +5305,39 @@ app.get('/api/lucro/ads-shopee', async (req, res) => {
 
 // Busca pedidos pagos no período + custo de frete real por shipment (dividido entre pedidos
 // do mesmo pack). Compartilhado entre /api/lucro/vendas e /api/lucro/desvios.
-async function buscarVendasComCustos(c, headers, dateFrom, dateTo) {
+async function buscarVendasComCustos(c, headers, dateFrom, dateTo, { incluirReembolsoParcial = false } = {}) {
   let todasOrdens = [];
   let offset = 0;
-  while (offset < 5000) {
-    // Filtra por date_closed (data em que o pedido fechou como pago), não date_created —
-    // um pedido pode nascer com um pagamento recusado e só ser aprovado dias depois com
-    // outro cartão; date_created fica preso na tentativa recusada, então filtrar por ela
-    // faz a venda "sumir" do dia em que ela realmente aconteceu (o que o próprio ML mostra).
-    const params = { seller: c.user_id, 'order.status': 'paid', sort: 'date_desc', limit: 50, offset };
-    if (dateFrom) params['order.date_closed.from'] = dateFrom + 'T00:00:00.000-03:00';
-    if (dateTo)   params['order.date_closed.to']   = dateTo   + 'T23:59:59.000-03:00';
-    const resp = await axios.get('https://api.mercadolibre.com/orders/search', { params, headers, timeout: 15000 });
-    const results = resp.data.results || [];
-    todasOrdens = todasOrdens.concat(results);
-    if (results.length < 50) break;
-    offset += 50;
+  // Parcialmente reembolsado (ex.: 1 de 2 unidades devolvida) não vem na busca por
+  // "paid" — sumia do Lucro inteiro, inclusive a unidade que ficou com o comprador
+  for (const statusBusca of incluirReembolsoParcial ? ['paid', 'partially_refunded'] : ['paid']) {
+    offset = 0;
+    try {
+      while (offset < 5000) {
+        // Filtra por date_closed (data em que o pedido fechou como pago), não date_created —
+        // um pedido pode nascer com um pagamento recusado e só ser aprovado dias depois com
+        // outro cartão; date_created fica preso na tentativa recusada, então filtrar por ela
+        // faz a venda "sumir" do dia em que ela realmente aconteceu (o que o próprio ML mostra).
+        const params = { seller: c.user_id, 'order.status': statusBusca, sort: 'date_desc', limit: 50, offset };
+        if (dateFrom) params['order.date_closed.from'] = dateFrom + 'T00:00:00.000-03:00';
+        if (dateTo)   params['order.date_closed.to']   = dateTo   + 'T23:59:59.000-03:00';
+        const resp = await axios.get('https://api.mercadolibre.com/orders/search', { params, headers, timeout: 15000 });
+        const results = resp.data.results || [];
+        todasOrdens = todasOrdens.concat(results);
+        if (results.length < 50) break;
+        offset += 50;
+      }
+    } catch (e) {
+      // Busca de "paid" falhando continua derrubando (como antes); a de reembolso
+      // parcial é extra — se o ML recusar, o Lucro segue sem ela
+      if (statusBusca === 'paid') throw e;
+      addLog(`[lucro] busca de pedidos parcialmente reembolsados falhou: ${e.response?.status || e.message}`, 'warn');
+    }
   }
 
-  // Pedidos cancelados no mesmo período — trazidos só pra exibição (marcados
-  // com cancelado:true em montarVendas), nunca somados no lucro.
+  // Pedidos cancelados no mesmo período — marcados com cancelado:true em montarVendas,
+  // fora da soma. Exceção (v936): cancelado depois de entregue é venda reembolsada e
+  // entra com o resultado real (enriquecerVendasDevolvidas, só no /api/lucro/vendas).
   offset = 0;
   while (offset < 5000) {
     const params = { seller: c.user_id, 'order.status': 'cancelled', sort: 'date_desc', limit: 50, offset };
@@ -5405,6 +5418,99 @@ function montarVendas(todasOrdens, fretePorShipment, pedidosPorShipment) {
   });
 }
 
+// ── Venda devolvida/reembolsada no Lucro (v936) ──
+// Antes: pedido "cancelado" (é como o ML deixa venda reembolsada por inteiro, mesmo
+// depois de entregue) saía da conta como se desse zero, e reembolso parcial nem era
+// buscado — o Lucro mostrava mais do que o real. Agora, pra pedido cancelado ou
+// parcialmente reembolsado que CHEGOU A SER ENTREGUE, o resultado vem do dinheiro
+// que se moveu no MP, conferido contra a fatura em 6 casos reais (v935):
+//   receita = pago − reembolsado ao comprador
+//   tarifa / frete de ida = cobrado − estornado (charges_details do pagamento)
+//   custo do produto = só das unidades que não voltaram (envio de volta entregue
+//   devolve ao estoque; reembolso sem devolução = produto ficou com o comprador)
+// Frete de volta NÃO entra aqui: a fatura cobra ele num código próprio (CXDED "Tarifa
+// de devolução por envio externo") que já está em "Outros custos do ML" no Lucro
+// mensal — somar na venda duplicaria. Quando o ML banca a devolução, ele estorna o
+// frete de ida e não cobra o de volta (o custo que /shipments/{id}/costs mostra é
+// nominal). Cancelado sem ter sido entregue continua fora da conta, como antes.
+// Resultado guardado por pedido + last_updated (lucro-devolvidas.json, arquivo próprio,
+// é cache): o Lucro não refaz as consultas enquanto o pedido não mudar.
+const LUCRO_DEVOLVIDAS_FILE = path.join(DATA_DIR, 'lucro-devolvidas.json');
+async function calcularVendaDevolvida(num, c, headers, o) {
+  let pago = 0, reemb = 0, tarifa = 0, frete = 0;
+  for (const p of (o.payments || [])) {
+    if (p.status === 'rejected' || p.status === 'cancelled') continue;
+    const mp = (await axios.get(`https://api.mercadopago.com/v1/payments/${p.id}`, { headers, timeout: 10000 })).data;
+    pago  += Number(mp.transaction_amount) || 0;
+    reemb += Number(mp.transaction_amount_refunded) || 0;
+    for (const ch of (mp.charges_details || [])) {
+      if (ch.accounts?.from !== 'collector') continue;
+      const liq = (Number(ch.amounts?.original) || 0) - (Number(ch.amounts?.refunded) || 0);
+      if (ch.type === 'fee') tarifa += liq;
+      if (ch.type === 'shipping') frete += liq;
+    }
+  }
+  // Unidades que voltaram (envio de volta entregue), por item
+  const voltaram = {};
+  const somaVolta = (ret) => {
+    const entregue = (ret?.shipments || []).some(sh => sh.status === 'delivered');
+    if (!entregue) return;
+    for (const x of (ret.orders || [])) {
+      if (String(x.order_id || o.id) !== String(o.id)) continue;
+      voltaram[x.item_id] = (voltaram[x.item_id] || 0) + (Number(x.return_quantity) || 0);
+    }
+  };
+  for (const m of (o.mediations || [])) {
+    try { somaVolta(await mlGetDevolucao(`https://api.mercadolibre.com/post-purchase/v2/claims/${m.id}/returns`, headers)); }
+    catch { /* reclamação sem devolução */ }
+  }
+  const r2 = n => Math.round(n * 100) / 100;
+  return {
+    receita: r2(pago - reemb), taxaML: r2(tarifa), freteReal: r2(frete), reembolsado: r2(reemb),
+    parcial: reemb > 0 && reemb < pago,
+    qtdCusto: Object.fromEntries((o.order_items || []).map(i => [i.item?.id, Math.max(0, (i.quantity || 1) - (voltaram[i.item?.id] || 0))])),
+    voltou: Object.values(voltaram).some(q => q > 0),
+  };
+}
+
+async function enriquecerVendasDevolvidas(num, c, headers, vendas, todasOrdens) {
+  let cache = {};
+  try { cache = JSON.parse(fs.readFileSync(LUCRO_DEVOLVIDAS_FILE, 'utf8')); } catch {}
+  const ordemPorId = new Map(todasOrdens.map(o => [String(o.id), o]));
+  const alvos = vendas.filter(v => {
+    const o = ordemPorId.get(String(v.orderId));
+    // Reembolso parcial sempre (a receita cheia estaria errada); cancelado só se foi entregue
+    return o && (o.status === 'partially_refunded' || (o.status === 'cancelled' && (o.tags || []).includes('delivered')));
+  });
+  let mudou = false;
+  for (let i = 0; i < alvos.length; i += 5) {
+    await Promise.all(alvos.slice(i, i + 5).map(async v => {
+      const o = ordemPorId.get(String(v.orderId));
+      const chave = String(o.id);
+      let calc = cache[chave]?.last_updated === o.last_updated ? cache[chave].calc : null;
+      if (!calc) {
+        try {
+          calc = await calcularVendaDevolvida(num, c, headers, o);
+          cache[chave] = { last_updated: o.last_updated, calc };
+          mudou = true;
+        } catch (e) {
+          addLog(`[lucro] venda devolvida ${chave}: ${e.response?.status || e.message}`, 'warn');
+          return; // fica como antes (cancelado fora da conta / reembolso parcial cheio)
+        }
+      }
+      v.cancelado  = false;
+      v.devolvida  = calc.parcial ? 'parcial' : 'total';
+      v.voltou     = calc.voltou;
+      v.reembolsado = calc.reembolsado;
+      v.receita    = calc.receita;
+      v.taxaML     = calc.taxaML;
+      v.freteReal  = calc.freteReal;
+      for (const it of v.itens) it.quantidadeCusto = calc.qtdCusto[it.mlb] ?? it.quantidade;
+    }));
+  }
+  if (mudou) { try { fs.writeFileSync(LUCRO_DEVOLVIDAS_FILE, JSON.stringify(cache)); } catch {} }
+}
+
 app.get('/api/lucro/vendas', async (req, res) => {
   const data    = loadData();
   const num     = req.query.conta || data.conta_ativa;
@@ -5419,7 +5525,7 @@ app.get('/api/lucro/vendas', async (req, res) => {
     const dateTo   = req.query.date_to;   // YYYY-MM-DD (opcional)
 
     const { todasOrdens, fretePorShipment, pedidosPorShipment, shipmentIds } =
-      await buscarVendasComCustos(c, headers, dateFrom, dateTo);
+      await buscarVendasComCustos(c, headers, dateFrom, dateTo, { incluirReembolsoParcial: true });
 
     // Modo debug: mostra campo shipping dos pedidos + estrutura de custo dos shipments
     if (req.query.debug === '1') {
@@ -5440,6 +5546,7 @@ app.get('/api/lucro/vendas', async (req, res) => {
     }
 
     const vendas = montarVendas(todasOrdens, fretePorShipment, pedidosPorShipment);
+    await enriquecerVendasDevolvidas(num, c, headers, vendas, todasOrdens);
     res.json({ vendas });
   } catch (err) {
     addLog(`Lucro: erro ao buscar vendas — ${err.message}`, 'erro');
