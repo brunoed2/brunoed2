@@ -6535,8 +6535,9 @@ app.post('/api/devolucoes/atualizar', (req, res) => {
 app.post('/api/devolucoes/nf', (req, res) => {
   const { id, emitida, senha } = req.body || {};
   const usuario = loadData().usuarios?.[senha];
-  if (!usuario || !(senha === '199412' || (usuario.abas || []).includes('devolucoes'))) {
-    return res.status(403).json({ error: 'Sem permissão pra marcar NF de devolução' });
+  if (!usuario) return res.status(403).json({ error: 'Login não reconhecido — clique em Sair e entre de novo com sua senha' });
+  if (!(senha === '199412' || (usuario.abas || []).includes('devolucoes'))) {
+    return res.status(403).json({ error: 'Seu usuário não tem a aba Devoluções liberada' });
   }
   if (!id) return res.status(400).json({ error: 'id obrigatório' });
   const nfs = loadDevolucoesNf();

@@ -183,6 +183,13 @@ function devRender() {
 
 async function devMarcarNf(id, checkbox) {
   const emitida = checkbox.checked;
+  // Login antigo (de antes de a senha ficar salva no navegador, comum no app
+  // instalado que nunca desloga): o painel abre, mas o servidor não sabe quem marcou.
+  if (!localStorage.getItem('usuarioSenha')) {
+    alert('Esta janela está com um login antigo. Clique em Sair e entre de novo com sua senha pra poder marcar a NF.');
+    checkbox.checked = !emitida;
+    return;
+  }
   checkbox.disabled = true;
   try {
     const resp = await fetch('/api/devolucoes/nf', {
