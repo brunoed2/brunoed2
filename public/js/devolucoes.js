@@ -18,6 +18,8 @@ function devData(iso) {
   if (isNaN(d)) return '—';
   return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', timeZone: 'America/Sao_Paulo' });
 }
+// Bling devolve "006961", ML/Shopee "6961" — mostra sem zeros à esquerda
+function devNumNf(n) { return /^\d+$/.test(String(n)) ? String(Number(n)) : String(n); }
 function devMoeda(v) {
   return v == null ? '—' : Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
@@ -114,7 +116,7 @@ function devFiltrar() {
     if (devFiltro.nf === 'emitida' && !i.nf) return false;
     if (devFiltro.conta !== 'todas' && String(i.conta) !== devFiltro.conta) return false;
     if (devFiltro.canal !== 'todos' && (i.canal || 'ml') !== devFiltro.canal) return false;
-    if (busca && !`${i.order_id} ${i.comprador || ''} ${i.titulo || ''} ${i.tracking || ''} ${i.nf_venda?.numero || ''}`.toLowerCase().includes(busca)) return false;
+    if (busca && !`${i.order_id} ${i.comprador || ''} ${i.titulo || ''} ${i.tracking || ''} ${i.nf_venda?.numero ? devNumNf(i.nf_venda.numero) : ''}`.toLowerCase().includes(busca)) return false;
     return true;
   }).sort((a, b) => {
     // Chegadas primeiro (mais recentes no topo), depois as que estão a caminho
@@ -155,8 +157,8 @@ function devRender() {
       <td>${devEsc(i.nickname || 'Conta ' + i.conta)}</td>
       <td>${pedido}${i.comprador ? `<div class="dev-comprador">${devEsc(i.comprador)}</div>` : ''}${i.venda_em ? `<div class="dev-sub">venda ${devData(i.venda_em)}</div>` : ''}</td>
       <td class="td-titulo" title="${devEsc(i.titulo)}">${devEsc(i.titulo || '—')}</td>
-      <td>${i.nf_venda?.numero ? `<b>${devEsc(i.nf_venda.numero)}</b>${i.nf_venda.serie != null ? `<div class="dev-sub">série ${devEsc(i.nf_venda.serie)}</div>` : ''}`
-        : `<span class="dev-sub">${i.nf_venda_busca ? 'não achada no Bling' : 'buscando...'}</span>`}</td>
+      <td>${i.nf_venda?.numero ? `<b>${devEsc(devNumNf(i.nf_venda.numero))}</b>${i.nf_venda.serie != null ? `<div class="dev-sub">série ${devEsc(i.nf_venda.serie)}</div>` : ''}`
+        : `<span class="dev-sub">${(i.nf_busca && (i.nf_tentativas || 0) >= 3) ? 'NF não encontrada' : 'buscando...'}</span>`}</td>
       <td class="col-num">${devMoeda(i.valor)}</td>
       <td><span class="badge-deposito ${sit.cls}">${sit.txt}</span>
         ${i.tracking ? `<div class="dev-sub">${devEsc(i.tracking)}</div>` : ''}</td>

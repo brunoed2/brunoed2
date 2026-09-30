@@ -6234,7 +6234,7 @@ async function verificarDevolucoes({ notificarChegando = true } = {}) {
     }
 
     await verificarDevolucoesShopee(estado, nfs, erros, data);
-    await buscarNfVendaDevolucoes(estado, erros);
+    await buscarNfVendaDevolucoes(estado, erros, data);
 
     // Limpeza: reclamações vistas há mais de 120 dias, devoluções que chegaram há
     // mais de 1 ano e avisos de dias anteriores
@@ -6426,21 +6426,45 @@ async function blingNfDoPedido(conta, numeroLoja, debug) {
 
 // Até 60 por rodada (a primeira carga tem centenas — vai completando a cada 30 min).
 // Quem não achou a nota tenta de novo depois de 1 dia, até 3 vezes.
-async function buscarNfVendaDevolucoes(estado, erros) {
+// NF do ML direto da API do ML (v927): o faturamento do ML (users/{id}/invoices/orders)
+// tem a nota tanto emitida pelo emissor do ML quanto importada do Bling
+// (invoice_source "imported"); o Bling só acha as dele. Reserva: dados da NF no envio
+// da venda (shipments/{id}/invoice_data), e por último o Bling.
+async function nfVendaMl(data, dv) {
+  const c = data.contas?.[dv.conta];
+  const headers = { Authorization: `Bearer ${await getToken(data, dv.conta)}` };
+  try {
+    const inv = await mlGetDevolucao(`https://api.mercadolibre.com/users/${c.user_id}/invoices/orders/${dv.order_id}`, headers);
+    if (inv?.invoice_number) return { numero: String(inv.invoice_number), serie: inv.invoice_series ?? null, emitida_em: inv.issued_date || null, fonte: 'ml' };
+  } catch (e) { if (e.response?.status !== 404) throw e; }
+  const o = await mlGetDevolucao(`https://api.mercadolibre.com/orders/${dv.order_id}`, headers);
+  if (o?.shipping?.id) {
+    try {
+      const inv = await mlGetDevolucao(`https://api.mercadolibre.com/shipments/${o.shipping.id}/invoice_data`, headers, { siteId: 'MLB' });
+      if (inv?.invoice_number) return { numero: String(inv.invoice_number), serie: inv.invoice_serie ?? null, emitida_em: inv.invoice_date || null, fonte: 'ml-envio' };
+    } catch (e) { if (e.response?.status !== 404) throw e; }
+  }
+  return null;
+}
+
+// Até 150 por rodada (a primeira carga tem centenas — vai completando a cada 30 min).
+// Quem não achou a nota tenta de novo depois de 1 dia, até 3 vezes. As do ML que o
+// Bling não tinha achado (antes do v927) contam do zero pela API do ML.
+async function buscarNfVendaDevolucoes(estado, erros, data) {
   const DIA = 24 * 60 * 60 * 1000;
   const pendentes = Object.values(estado.registro).filter(dv =>
-    !dv.nf_venda?.numero && (dv.canal !== 'shopee' || dv.nf_shopee_tentado) && (dv.nf_venda_tentativas || 0) < 3 && (!dv.nf_venda_busca || Date.now() - dv.nf_venda_busca > DIA));
+    !dv.nf_venda?.numero && (dv.canal !== 'shopee' || dv.nf_shopee_tentado) && (dv.nf_tentativas || 0) < 3 && (!dv.nf_busca || Date.now() - dv.nf_busca > DIA));
   let feitos = 0;
   for (const dv of pendentes) {
-    if (++feitos > 60) break;
-    devolucoesProgresso = `buscando número da NF no Bling (${feitos} de ${Math.min(pendentes.length, 60)})`;
+    if (++feitos > 150) break;
+    devolucoesProgresso = `buscando número das NFs (${feitos} de ${Math.min(pendentes.length, 150)})`;
     try {
-      dv.nf_venda = await blingNfDoPedido(dv.conta, dv.order_id);
+      dv.nf_venda = (dv.canal !== 'shopee' ? await nfVendaMl(data, dv) : null) || await blingNfDoPedido(dv.conta, dv.order_id);
     } catch (e) {
-      erros.push(`Bling conta ${dv.conta} pedido ${dv.order_id}: ${e.response?.status || e.message}`);
+      erros.push(`NF conta ${dv.conta} pedido ${dv.order_id}: ${e.response?.status || e.message}`);
     }
-    dv.nf_venda_busca = Date.now();
-    dv.nf_venda_tentativas = (dv.nf_venda_tentativas || 0) + 1;
+    dv.nf_busca = Date.now();
+    dv.nf_tentativas = (dv.nf_tentativas || 0) + 1;
   }
 }
 
