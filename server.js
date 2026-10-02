@@ -6884,6 +6884,52 @@ app.get('/api/lucro/debug-venda-devolvida/:order_id', async (req, res) => {
   res.json(out);
 });
 
+// Debug — como o Bling devolve a NF de devolução (gerada pelo botão "gerar devolução"
+// a partir da NF da venda) e onde ela cita a nota original, pra ligar a devolução à
+// aba Devoluções sem o tique manual. ?numeros=6994,7577 (NFs da venda e da devolução)
+// &conta=N (sem: tenta as duas). Procura cada número na listagem de saída e de entrada
+// (o filtro "numero" pode ser ignorado pelo Bling — confere o número antes de usar) e
+// devolve o detalhe completo; mais o resumo das últimas notas de entrada.
+app.get('/api/bling/debug-nf-devolucao', async (req, res) => {
+  const numeros = String(req.query.numeros || '').split(',').map(s => s.trim()).filter(Boolean);
+  const contas  = req.query.conta ? [String(req.query.conta)] : ['1', '2'];
+  const out = {};
+  for (const conta of contas) {
+    const r = out[conta] = { notas: {}, ultimas_entrada: null };
+    try {
+      for (const numero of numeros) {
+        let achada = null;
+        const tentativas = [];
+        for (const tipo of [1, 0]) {
+          const direta = await blingGetDevolucao(conta, 'https://api.bling.com.br/Api/v3/nfe', { numero, tipo, limite: 100 });
+          tentativas.push({ tipo, filtro_numero: true, vieram: (direta?.data || []).length });
+          achada = (direta?.data || []).find(n => String(n.numero).replace(/^0+/, '') === numero.replace(/^0+/, ''));
+          for (let pagina = 1; !achada && pagina <= 10; pagina++) {
+            const lista = (await blingGetDevolucao(conta, 'https://api.bling.com.br/Api/v3/nfe', { tipo, pagina, limite: 100 }))?.data || [];
+            tentativas.push({ tipo, pagina, vieram: lista.length, numeros: lista.length ? `${lista[lista.length - 1].numero}..${lista[0].numero}` : null });
+            achada = lista.find(n => String(n.numero).replace(/^0+/, '') === numero.replace(/^0+/, ''));
+            if (lista.length < 100) break;
+          }
+          if (achada) break;
+        }
+        r.notas[numero] = achada
+          ? { resumo_lista: achada, detalhe: (await blingGetDevolucao(conta, `https://api.bling.com.br/Api/v3/nfe/${achada.id}`))?.data || null }
+          : { nao_encontrada: true, tentativas };
+      }
+      const ent = (await blingGetDevolucao(conta, 'https://api.bling.com.br/Api/v3/nfe', { tipo: 0, limite: 10 }))?.data || [];
+      r.ultimas_entrada = ent.map(n => ({ id: n.id, numero: n.numero, serie: n.serie, situacao: n.situacao, dataEmissao: n.dataEmissao, contato: n.contato?.nome, tipo: n.tipo }));
+    } catch (e) {
+      r.erro = e.response ? `HTTP ${e.response.status}: ${JSON.stringify(e.response.data).slice(0, 300)}` : e.message;
+    }
+  }
+  // O que a aba Devoluções tem guardado pra essas NFs da venda
+  const estado = loadDevolucoes();
+  out.registro_aba = Object.entries(estado.registro)
+    .filter(([, dv]) => numeros.includes(String(dv.nf_venda?.numero || '')))
+    .map(([id, dv]) => ({ id, ...dv }));
+  res.json(out);
+});
+
 app.get('/api/ml/debug-devolucao-pedido/:order_id', async (req, res) => {
   const data    = loadData();
   const orderId = String(req.params.order_id);
