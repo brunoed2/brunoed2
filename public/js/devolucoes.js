@@ -20,6 +20,8 @@ function devData(iso) {
 }
 // Bling devolve "006961", ML/Shopee "6961" — mostra sem zeros à esquerda
 function devNumNf(n) { return /^\d+$/.test(String(n)) ? String(Number(n)) : String(n); }
+// NF de devolução: marcada à mão ou achada sozinha no Bling (nf_devolucao, v940)
+function devTemNf(i) { return !!(i.nf || i.nf_devolucao); }
 function devMoeda(v) {
   return v == null ? '—' : Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
@@ -122,8 +124,8 @@ function devFiltrar() {
   return devItens.filter(i => {
     if (devFiltro.situacao === 'caminho' && i.chegou_em) return false;
     if (devFiltro.situacao === 'chegou' && !i.chegou_em) return false;
-    if (devFiltro.nf === 'pendente' && i.nf) return false;
-    if (devFiltro.nf === 'emitida' && !i.nf) return false;
+    if (devFiltro.nf === 'pendente' && devTemNf(i)) return false;
+    if (devFiltro.nf === 'emitida' && !devTemNf(i)) return false;
     if (devFiltro.conta !== 'todas' && String(i.conta) !== devFiltro.conta) return false;
     if (devFiltro.canal !== 'todos' && (i.canal || 'ml') !== devFiltro.canal) return false;
     if (busca && !`${i.order_id} ${i.comprador || ''} ${i.titulo || ''} ${i.tracking || ''} ${i.nf_venda?.numero ? devNumNf(i.nf_venda.numero) : ''}`.toLowerCase().includes(busca)) return false;
@@ -139,8 +141,8 @@ function devFiltrar() {
 function devRender() {
   // Cartões de resumo (sobre tudo, ignorando os filtros)
   const aCaminho   = devItens.filter(i => !i.chegou_em);
-  const semNf      = devItens.filter(i => i.chegou_em && !i.nf);
-  const comNf      = devItens.filter(i => i.nf);
+  const semNf      = devItens.filter(i => i.chegou_em && !devTemNf(i));
+  const comNf      = devItens.filter(devTemNf);
   const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
   set('dev-card-caminho', aCaminho.length);
   set('dev-card-semnf', semNf.length);
@@ -157,12 +159,15 @@ function devRender() {
   }
   tbody.innerHTML = lista.map(i => {
     const sit = devSituacao(i);
-    const nfInfo = i.nf ? `<div class="dev-nf-info">${devData(i.nf.em)} · ${devEsc(i.nf.por)}</div>` : '';
+    const auto = i.nf_devolucao;
+    const nfInfo = auto
+      ? `<div class="dev-nf-info" title="${auto.fonte === 'comprador' ? 'Ligada pelo comprador (a venda ainda não tem o número da NF)' : 'A NF de devolução do Bling cita a NF da venda'}">NF ${devEsc(devNumNf(auto.numero))} · ${devData(auto.emitida_em)} · Bling</div>`
+      : i.nf ? `<div class="dev-nf-info">${devData(i.nf.em)} · ${devEsc(i.nf.por)}</div>` : '';
     const shopee = i.canal === 'shopee';
     const pedido = shopee
       ? `<span class="td-mlb">${devEsc(i.order_id)}</span>`
       : `<a class="td-mlb" href="https://www.mercadolivre.com.br/vendas/${devEsc(i.order_id)}/detalhe" target="_blank" rel="noopener">${devEsc(i.order_id)}</a>`;
-    return `<tr class="${i.nf ? 'dev-linha-ok' : ''}">
+    return `<tr class="${devTemNf(i) ? 'dev-linha-ok' : ''}">
       <td><span class="badge-deposito ${shopee ? 'dev-badge-shopee' : 'dev-badge-ml'}">${shopee ? 'Shopee' : 'Mercado Livre'}</span></td>
       <td>${devEsc(i.nickname || 'Conta ' + i.conta)}</td>
       <td>${pedido}${i.comprador ? `<div class="dev-comprador">${devEsc(i.comprador)}</div>` : ''}${i.venda_em ? `<div class="dev-sub">venda ${devData(i.venda_em)}</div>` : ''}</td>
@@ -174,7 +179,7 @@ function devRender() {
         ${i.tracking ? `<div class="dev-sub">${devEsc(i.tracking)}</div>` : ''}</td>
       <td>${i.chegou_em ? devData(i.chegou_em) : `<span class="dev-sub">devolução aberta ${devData(i.devolucao_em)}</span>`}</td>
       <td style="text-align:center">
-        <label class="dev-nf-check"><input type="checkbox" ${i.nf ? 'checked' : ''} onchange="devMarcarNf('${devEsc(i.id)}', this)"> NF emitida</label>
+        <label class="dev-nf-check"><input type="checkbox" ${devTemNf(i) ? 'checked' : ''} ${auto ? 'disabled title="Achada sozinha no Bling"' : ''} onchange="devMarcarNf('${devEsc(i.id)}', this)"> NF emitida</label>
         ${nfInfo}
       </td>
     </tr>`;

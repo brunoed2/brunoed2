@@ -6359,6 +6359,7 @@ async function verificarDevolucoes({ notificarChegando = true } = {}) {
 
     await verificarDevolucoesShopee(estado, nfs, erros, data);
     await buscarNfVendaDevolucoes(estado, erros, data);
+    await buscarNfDevolucaoBling(estado, erros);
 
     // Limpeza: reclamações vistas há mais de 120 dias, devoluções que chegaram há
     // mais de 1 ano e avisos de dias anteriores
@@ -6619,6 +6620,101 @@ async function buscarNfVendaDevolucoes(estado, erros, data) {
     }
     dv.nf_busca = Date.now();
     dv.nf_tentativas = (dv.nf_tentativas || 0) + 1;
+  }
+}
+
+// NF de devolução emitida no Bling (v940) — liga sozinha à devolução, sem o tique.
+// O botão "gerar devolução" do Bling cria uma nota de entrada (tipo 0) com finalidade
+// 4 e a chave da NF da venda em <refNFe>. A API do Bling não traz essa referência no
+// JSON, só no XML da nota (conferido com a 7577 → 6994 no v939). A chave tem a série
+// (posições 23-25) e o número (26-34) da NF da venda, que a aba já guarda em nf_venda.
+// Bling N = conta ML N = loja Shopee N. Cada nota de entrada é lida uma vez e fica em
+// estado.nf_entrada; a primeira carga volta até a devolução mais antiga do registro,
+// as seguintes param na primeira página que não tem nota nova.
+// Reserva: nota de devolução sem <refNFe> que bata com a nota da venda (venda sem
+// nf_venda ainda) liga pelo comprador — o Bling põe o apelido entre parênteses no nome
+// do contato — se for a única devolução sem NF desse comprador na conta.
+const NF_BLING_AUTORIZADA = new Set([5, 6, 7]);
+async function buscarNfDevolucaoBling(estado, erros) {
+  const DIA = 24 * 60 * 60 * 1000;
+  estado.nf_entrada = estado.nf_entrada || {};
+  estado.nf_entrada_backfill = estado.nf_entrada_backfill || {};
+  const tokens = loadBlingTokens();
+  for (const conta of ['1', '2']) {
+    if (!tokens[conta]?.access_token) continue;
+    const cache = estado.nf_entrada[conta] = estado.nf_entrada[conta] || {};
+    const backfill = !estado.nf_entrada_backfill[conta];
+    const desde = Math.min(Date.now() - 30 * DIA, ...Object.values(estado.registro)
+      .filter(dv => dv.conta === conta).map(dv => Date.parse(dv.devolucao_em || '') || Date.now()));
+    let completo = true;
+    try {
+      for (let pagina = 1; pagina <= 30; pagina++) {
+        devolucoesProgresso = `Bling ${conta}: procurando NFs de devolução (página ${pagina})`;
+        const lista = (await blingGetDevolucao(conta, 'https://api.bling.com.br/Api/v3/nfe', { tipo: 0, pagina, limite: 100 }))?.data || [];
+        let novas = 0;
+        for (const n of lista) {
+          // Já lida, ou ainda pendente/rejeitada (relê quando aparecer autorizada)
+          const c = cache[n.id];
+          if (c && (c.lida || !NF_BLING_AUTORIZADA.has(n.situacao))) { c.situacao = n.situacao; continue; }
+          if (!c) novas++;
+          const reg = cache[n.id] = { numero: n.numero, emitida_em: n.dataEmissao || null, situacao: n.situacao, contato: n.contato?.nome || null };
+          if (!NF_BLING_AUTORIZADA.has(n.situacao)) continue;
+          const det = (await blingGetDevolucao(conta, `https://api.bling.com.br/Api/v3/nfe/${n.id}`))?.data || {};
+          reg.serie = det.serie ?? null;
+          if (det.xml) {
+            const xml = String((await axios.get(det.xml, { responseType: 'text', timeout: 15000 })).data || '');
+            reg.devolucao = /<finNFe>4<\/finNFe>/.test(xml);
+            reg.ref = [...xml.matchAll(/<refNFe>(\d{44})<\/refNFe>/g)].map(m => m[1]);
+          }
+          reg.lida = true;
+        }
+        const maisAntiga = Math.min(...lista.map(n => Date.parse((n.dataEmissao || '').replace(' ', 'T') + '-03:00') || Date.now()));
+        if (lista.length < 100) break;
+        if (!backfill && !novas) break;
+        if (maisAntiga < desde) break;
+        if (pagina === 30) completo = false;
+      }
+      if (backfill && completo) estado.nf_entrada_backfill[conta] = Date.now();
+    } catch (e) {
+      erros.push(`Bling ${conta} NFs de devolução: ${e.response?.status || e.message}`);
+    }
+    // Esquece notas com mais de 13 meses (a devolução sai do registro com 1 ano)
+    for (const [id, n] of Object.entries(cache)) {
+      if (Date.parse((n.emitida_em || '').replace(' ', 'T') + '-03:00') < Date.now() - 400 * DIA) delete cache[id];
+    }
+
+    // Liga as notas às devoluções desta conta
+    const notas = Object.entries(cache).filter(([, n]) => n.lida && n.devolucao && NF_BLING_AUTORIZADA.has(n.situacao));
+    const usadas = new Set();
+    const ligar = (dv, id, n, fonte) => {
+      dv.nf_devolucao = { numero: n.numero, serie: n.serie ?? null, emitida_em: n.emitida_em ? n.emitida_em.replace(' ', 'T') + '-03:00' : null, bling_id: id, fonte };
+      usadas.add(id);
+    };
+    const daConta = Object.values(estado.registro).filter(dv => dv.conta === conta);
+    for (const dv of daConta) {
+      // Nota já ligada que foi cancelada depois → desliga
+      if (dv.nf_devolucao && !notas.some(([id]) => String(id) === String(dv.nf_devolucao.bling_id))) {
+        if (cache[dv.nf_devolucao.bling_id]) delete dv.nf_devolucao;
+      }
+      if (dv.nf_devolucao) { usadas.add(String(dv.nf_devolucao.bling_id)); continue; }
+      const numVenda = Number(dv.nf_venda?.numero);
+      if (!numVenda) continue;
+      const serieVenda = dv.nf_venda?.serie != null && dv.nf_venda.serie !== '' ? Number(dv.nf_venda.serie) : null;
+      const achada = notas.find(([, n]) => (n.ref || []).some(ch =>
+        Number(ch.slice(25, 34)) === numVenda && (serieVenda == null || Number(ch.slice(22, 25)) === serieVenda)));
+      if (achada) ligar(dv, achada[0], achada[1], 'chave');
+    }
+    const apelido = nome => (String(nome || '').match(/\(([^()]+)\)\s*$/) || [])[1]?.trim().toLowerCase() || null;
+    const refsDaConta = new Set(daConta.map(dv => Number(dv.nf_venda?.numero)).filter(Boolean));
+    for (const dv of daConta) {
+      if (dv.nf_devolucao || !dv.comprador || dv.nf_venda?.numero) continue;
+      const comp = dv.comprador.toLowerCase();
+      const outras = daConta.filter(o => o !== dv && !o.nf_devolucao && (o.comprador || '').toLowerCase() === comp);
+      if (outras.length) continue;
+      const cand = notas.filter(([id, n]) => !usadas.has(String(id)) && apelido(n.contato) === comp &&
+        !(n.ref || []).some(ch => refsDaConta.has(Number(ch.slice(25, 34)))));
+      if (cand.length === 1) ligar(dv, cand[0][0], cand[0][1], 'comprador');
+    }
   }
 }
 
@@ -6923,9 +7019,10 @@ app.get('/api/bling/debug-nf-devolucao', async (req, res) => {
     }
   }
   // O que a aba Devoluções tem guardado pra essas NFs da venda
+  const pedidos = new Set(contas.flatMap(ct => Object.values(out[ct]?.notas || {}).map(n => n.detalhe?.numeroPedidoLoja).filter(Boolean)));
   const estado = loadDevolucoes();
   out.registro_aba = Object.entries(estado.registro)
-    .filter(([, dv]) => numeros.includes(String(dv.nf_venda?.numero || '')))
+    .filter(([, dv]) => numeros.includes(String(Number(dv.nf_venda?.numero) || '')) || pedidos.has(String(dv.order_id)))
     .map(([id, dv]) => ({ id, ...dv }));
   res.json(out);
 });
