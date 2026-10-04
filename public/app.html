@@ -167,7 +167,7 @@
                 <button class="filtro-btn" onclick="lucroSetMesAtual()">Mês</button>
                 <button class="btn-secondary" onclick="lucroAtualizarAmbos()" id="btn-atualizar-lucro">↻ Atualizar</button>
               </div>
-              <input type="text" id="lucro-filtro-sku" class="filtro-sku-input" placeholder="Filtrar por SKU (ML + Shopee)..." oninput="lucroFiltrarSkuInput(this.value)">
+              <input type="text" id="lucro-filtro-sku" class="filtro-sku-input" placeholder="Filtrar por SKU (ML + Shopee + TikTok)..." oninput="lucroFiltrarSkuInput(this.value)">
               <label class="lucro-fora-normal" title="Mostra só vendas canceladas, devolvidas/reembolsadas e com reclamação — os totais do topo continuam do período inteiro">
                 <input type="checkbox" onchange="lucroToggleForaNormal(this.checked)"> Só vendas fora do normal <span id="lucro-fora-normal-qtd"></span>
               </label>
@@ -223,6 +223,35 @@
                 </tr>
               </thead>
               <tbody id="tabela-lucro-shopee-body"></tbody>
+            </table>
+          </div>
+
+          <!-- Bloco separado: vendas TikTok Shop (pedidos do Bling, taxas estimadas) -->
+          <div class="tabela-container" style="margin-top:20px">
+            <div class="tabela-topo">
+              <span id="lucro-tiktok-total"></span>
+            </div>
+            <div id="lucro-tiktok-loading" class="loading" style="display:none">Carregando vendas TikTok...</div>
+            <div id="lucro-tiktok-erro" class="estoque-erro" style="display:none"></div>
+            <h2 style="font-size:14px;font-weight:600;margin:4px 0 8px;color:#64748b">🎵 TikTok Shop <span style="font-weight:400;font-size:12px">— taxas estimadas: 6% comissão + 6% SFP + 9,5% afiliado + R$ 6 por item</span></h2>
+            <table class="tabela" id="tabela-lucro-tiktok" style="display:none">
+              <thead>
+                <tr>
+                  <th class="th-sort" onclick="lucroTiktokOrdenar('data')">Data <span class="sort-icon" data-sort="data"></span></th>
+                  <th class="th-sort" onclick="lucroTiktokOrdenar('pedido')">Pedido <span class="sort-icon" data-sort="pedido"></span></th>
+                  <th class="th-sort" onclick="lucroTiktokOrdenar('produto')">Produto <span class="sort-icon" data-sort="produto"></span></th>
+                  <th class="th-sort" onclick="lucroTiktokOrdenar('sku')">SKU <span class="sort-icon" data-sort="sku"></span></th>
+                  <th class="th-sort col-num" onclick="lucroTiktokOrdenar('qtd')">Qtd <span class="sort-icon" data-sort="qtd"></span></th>
+                  <th class="th-sort col-num" onclick="lucroTiktokOrdenar('receita')">Receita <span class="sort-icon" data-sort="receita"></span></th>
+                  <th class="th-sort col-num" onclick="lucroTiktokOrdenar('taxaML')" title="Estimado: 6% comissão + 6% taxa SFP + 9,5% afiliado + R$ 6 por item">Taxas TikTok* <span class="sort-icon" data-sort="taxaML"></span></th>
+                  <th class="th-sort col-num" onclick="lucroTiktokOrdenar('frete')">Frete <span class="sort-icon" data-sort="frete"></span></th>
+                  <th class="th-sort col-num" onclick="lucroTiktokOrdenar('custo')">Custo <span class="sort-icon" data-sort="custo"></span></th>
+                  <th class="th-sort col-num" onclick="lucroTiktokOrdenar('imposto')">Imposto <span class="sort-icon" data-sort="imposto"></span></th>
+                  <th class="th-sort col-num" onclick="lucroTiktokOrdenar('lucro')">Lucro <span class="sort-icon" data-sort="lucro"></span></th>
+                  <th class="th-sort col-num" onclick="lucroTiktokOrdenar('margem')">Margem <span class="sort-icon" data-sort="margem"></span></th>
+                </tr>
+              </thead>
+              <tbody id="tabela-lucro-tiktok-body"></tbody>
             </table>
           </div>
         </div>
@@ -1746,7 +1775,7 @@
   </div>
 
   <script src="/js/compartilhar.js?v=1"></script>
-  <script src="/js/lucro.js?v=12"></script>
+  <script src="/js/lucro.js?v=13"></script>
   <script src="/js/app-v2.js?v=8"></script>
   <script src="/js/operacoes.js?v=22"></script>
   <script src="/js/shopee.js?v=2"></script>
@@ -2091,6 +2120,6 @@
   </div>
 
   <script src="/js/busca-pagina.js?v=1"></script>
-  <div id="version-badge">v945</div>
+  <div id="version-badge">v946</div>
 </body>
 </html>

@@ -9404,6 +9404,86 @@ app.get('/api/shopee/etiquetas', async (req, res) => {
   }
 });
 
+// ── Lucro: vendas TikTok Shop (via Bling) ──
+// Não usamos a API do TikTok (o cadastro de desenvolvedor exige e-mail de domínio
+// próprio). Os pedidos já entram no Bling pela integração, mas o Bling não traz as
+// taxas do TikTok (campo "taxas" vem zerado) — então elas são estimadas pela regra
+// tirada do detalhamento de liquidação real do pedido 586380227803645553 (R$ 69,20):
+// comissão da plataforma 6% + taxa de serviço SFP 6% + comissão de afiliado 9,5%
+// (a maioria das vendas tem afiliado) + R$ 6 fixos por item vendido. Sem frete à
+// parte: o envio é pela plataforma e já está nas taxas.
+// Receita = preço cheio (totalProdutos): desconto do pedido no Bling é bancado pelo
+// TikTok, o vendedor recebe sobre o preço cheio (confirmado no mesmo pedido).
+const TIKTOK_TAXA_PCT            = 6 + 6 + 9.5;
+const TIKTOK_TAXA_FIXA_POR_ITEM  = 6;
+// Loja do TikTok Shop no Bling, por conta — o número do pedido (18 dígitos) confunde
+// com o ML, a loja não. Visto via /api/bling/debug-pedido.
+const TIKTOK_LOJAS_BLING = { '1': [206298582] };
+const BLING_SITUACAO_CANCELADO_ID = 12;
+// Itens do pedido só vêm no detalhe (1 chamada por pedido) e não mudam — cache em
+// arquivo pra não refazer a cada vez que o Lucro abre.
+const LUCRO_TIKTOK_ITENS_FILE = path.join(DATA_DIR, 'lucro-tiktok-itens.json');
+function carregarLucroTiktokItens() {
+  try { return JSON.parse(fs.readFileSync(LUCRO_TIKTOK_ITENS_FILE, 'utf8')); } catch { return {}; }
+}
+
+app.get('/api/lucro/vendas-tiktok', async (req, res) => {
+  const conta  = String(req.query.conta || '1');
+  const lojas  = TIKTOK_LOJAS_BLING[conta] || [];
+  const de     = req.query.date_from;
+  const ate    = req.query.date_to;
+  if (!lojas.length) return res.json({ vendas: [] });
+  if (!getBlingDataConta(loadData(), conta)?.access_token) return res.json({ vendas: [] });
+  try {
+    const pedidos = [];
+    for (const idLoja of lojas) {
+      for (let pagina = 1; pagina <= 30; pagina++) {
+        const params = { pagina, limite: 100, idLoja };
+        if (de)  params.dataInicial = de;
+        if (ate) params.dataFinal   = ate;
+        const lista = (await blingGetDevolucao(conta, 'https://api.bling.com.br/Api/v3/pedidos/vendas', params))?.data || [];
+        // Confere a loja e a data aqui também — se o Bling ignorar algum filtro, não mistura canal/período
+        pedidos.push(...lista.filter(p => p.loja?.id === idLoja && (!de || p.data >= de) && (!ate || p.data <= ate)));
+        if (lista.length < 100) break;
+      }
+    }
+
+    const cache = carregarLucroTiktokItens();
+    let cacheMudou = false;
+    for (const p of pedidos) {
+      if (cache[p.id]) continue;
+      const det = (await blingGetDevolucao(conta, `https://api.bling.com.br/Api/v3/pedidos/vendas/${p.id}`))?.data;
+      if (!det) continue;
+      cache[p.id] = (det.itens || []).map(i => ({ sku: i.codigo || '', titulo: i.descricao || '', quantidade: Number(i.quantidade) || 1, precoUnit: Number(i.valor) || 0 }));
+      cacheMudou = true;
+    }
+    if (cacheMudou) fs.writeFileSync(LUCRO_TIKTOK_ITENS_FILE, JSON.stringify(cache));
+
+    const vendas = pedidos.filter(p => cache[p.id]).map(p => {
+      const itens   = cache[p.id].map(i => ({ ...i, mlb: '' }));
+      const qtd     = itens.reduce((s, i) => s + i.quantidade, 0);
+      const receita = itens.reduce((s, i) => s + i.precoUnit * i.quantidade, 0) || Number(p.totalProdutos) || 0;
+      return {
+        orderId:     p.numeroLoja || String(p.numero),
+        pedidoBling: p.numero,
+        canal:       'tiktok',
+        // Bling só dá a data (sem hora) — meio-dia de Brasília pra não virar o dia anterior no navegador
+        data:        `${p.data}T12:00:00-03:00`,
+        itens,
+        receita,
+        taxaML:      receita * TIKTOK_TAXA_PCT / 100 + TIKTOK_TAXA_FIXA_POR_ITEM * qtd,
+        freteReal:   0,
+        cancelado:   p.situacao?.id === BLING_SITUACAO_CANCELADO_ID,
+      };
+    });
+    res.json({ vendas, regra: { pct: TIKTOK_TAXA_PCT, fixoPorItem: TIKTOK_TAXA_FIXA_POR_ITEM } });
+  } catch (err) {
+    const detail = err.response ? `HTTP ${err.response.status}: ${JSON.stringify(err.response.data).slice(0, 200)}` : err.message;
+    addLog(`[lucro-tiktok] conta ${conta}: ${detail}`, 'warn');
+    res.json({ error: `Erro ao buscar vendas TikTok: ${detail}` });
+  }
+});
+
 app.get('/api/lucro/vendas-shopee', async (req, res) => {
   const num  = String(req.query.conta || '1');
   const data = loadData();

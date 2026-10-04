@@ -10,6 +10,11 @@ let lucroCarregado    = false; // evita recarregar ao trocar de aba sem trocar c
 let lucroShopeeConfig    = { taxa_imposto: 0, taxa_imposto_por_mes: {}, custos: {}, custos_historico: {} };
 let lucroShopeeVendasRaw = [];
 let lucroShopeeCarregado = false;
+// TikTok Shop: pedidos vêm do Bling, taxas estimadas no servidor (/api/lucro/vendas-tiktok).
+// Mesmo formato da venda ML (taxaML = taxas do TikTok, custo pelo SKU) — reusa cálculo e tabela do ML.
+let lucroTiktokVendasRaw  = [];
+let lucroTiktokVendasCalc = [];
+let lucroTiktokSortState  = { campo: null, direcao: 'asc' };
 let gastosLista       = []; // gastos carregados para o mês atual
 let gastosVendasRaw   = []; // vendas do mês completo (exclusivo para aba Gastos)
 let gastosAuto        = { ads_cost: null }; // detectados automaticamente
@@ -25,11 +30,13 @@ function lucroToggleForaNormal(marcado) {
   lucroSoForaNormal = marcado;
   lucroRenderizarTabelaComFiltro();
   if (lucroShopeeVendasCalc.length) lucroShopeeRenderizarComFiltro();
+  if (lucroTiktokVendasCalc.length) lucroTiktokRenderizarComFiltro();
 }
 function lucroAtualizarContagemForaNormal() {
   const el = document.getElementById('lucro-fora-normal-qtd');
   if (!el) return;
-  const n = (lucroVendasCalc || []).filter(lucroForaNormalML).length + (lucroShopeeVendasCalc || []).filter(lucroForaNormalShopee).length;
+  const n = (lucroVendasCalc || []).filter(lucroForaNormalML).length + (lucroShopeeVendasCalc || []).filter(lucroForaNormalShopee).length
+    + (lucroTiktokVendasCalc || []).filter(v => v.cancelado).length;
   el.textContent = n ? `(${n})` : '';
 }
 let lucroVendasCalc = []; // último cálculo ML, pra reordenar/filtrar sem recarregar
@@ -124,7 +131,7 @@ async function lucroCarregarConfig() {
     const cfg = await fetch(`/api/lucro/config?conta=${conta}`).then(r => r.json());
     if (contaGen !== gen) return; // resposta de conta antiga — descarta
     lucroConfig = { taxa_imposto: 0, taxa_imposto_por_mes: {}, frete_medio: 0, custos: {}, ...cfg };
-    if (lucroVendasRaw.length || lucroShopeeVendasRaw.length) lucroRecalcularERenderizar();
+    if (lucroVendasRaw.length || lucroShopeeVendasRaw.length || lucroTiktokVendasRaw.length) lucroRecalcularERenderizar();
   } catch {}
 }
 
@@ -142,7 +149,7 @@ async function dreSetTaxaMes(input, mes) {
     lucroConfig.taxa_imposto_por_mes = lucroConfig.taxa_imposto_por_mes || {};
     if (val !== null) lucroConfig.taxa_imposto_por_mes[mes] = val;
     else delete lucroConfig.taxa_imposto_por_mes[mes];
-    if (lucroVendasRaw.length || lucroShopeeVendasRaw.length) lucroRecalcularERenderizar();
+    if (lucroVendasRaw.length || lucroShopeeVendasRaw.length || lucroTiktokVendasRaw.length) lucroRecalcularERenderizar();
     input.style.borderColor = '#86efac';
     setTimeout(() => { input.style.borderColor = ''; }, 1200);
   } catch {
@@ -349,27 +356,30 @@ function lucroTotais(vendas) {
 // ── Renderização ──────────────────────────────────────────────
 
 function lucroRecalcularERenderizar() {
-  if (!lucroVendasRaw.length && !lucroShopeeVendasRaw.length) return;
+  if (!lucroVendasRaw.length && !lucroShopeeVendasRaw.length && !lucroTiktokVendasRaw.length) return;
 
   const vendasML     = lucroVendasRaw.length     ? lucroCalcular(lucroVendasRaw)             : [];
   const vendasShopee = lucroShopeeVendasRaw.length ? lucroShopeeCalcular(lucroShopeeVendasRaw) : [];
+  const vendasTiktok = lucroTiktokVendasRaw.length ? lucroCalcular(lucroTiktokVendasRaw)     : [];
   const ativasML      = vendasML.filter(v => !v.cancelado);
   const ativasShopee  = vendasShopee.filter(v => !v.cancelado);
+  const ativasTiktok  = vendasTiktok.filter(v => !v.cancelado);
   const totalML       = lucroTotais(ativasML);
   const totalShopee   = lucroShopeeTotais(ativasShopee);
+  const totalTiktok   = lucroTotais(ativasTiktok);
 
-  // Totalizador do topo soma os dois canais; as tabelas ficam em blocos separados.
+  // Totalizador do topo soma os canais; as tabelas ficam em blocos separados.
   const totalCombinado = {
-    receita: totalML.receita + totalShopee.receita,
-    taxaML:  totalML.taxaML  + totalShopee.taxaShopee,
-    frete:   totalML.frete   + totalShopee.frete,
-    custo:   totalML.custo   + totalShopee.custo,
-    imposto: totalML.imposto + totalShopee.imposto,
-    lucro:   totalML.lucro   + totalShopee.lucro,
+    receita: totalML.receita + totalShopee.receita    + totalTiktok.receita,
+    taxaML:  totalML.taxaML  + totalShopee.taxaShopee + totalTiktok.taxaML,
+    frete:   totalML.frete   + totalShopee.frete      + totalTiktok.frete,
+    custo:   totalML.custo   + totalShopee.custo      + totalTiktok.custo,
+    imposto: totalML.imposto + totalShopee.imposto    + totalTiktok.imposto,
+    lucro:   totalML.lucro   + totalShopee.lucro      + totalTiktok.lucro,
   };
   totalCombinado.margem = totalCombinado.receita > 0 ? (totalCombinado.lucro / totalCombinado.receita) * 100 : 0;
 
-  lucroRenderizarCards(totalCombinado, ativasML.length + ativasShopee.length);
+  lucroRenderizarCards(totalCombinado, ativasML.length + ativasShopee.length + ativasTiktok.length);
   if (lucroVendasRaw.length) {
     lucroVendasCalc = vendasML; // inclui canceladas, mostradas em vermelho sem somar
     lucroRenderizarTabelaComFiltro();
@@ -378,6 +388,8 @@ function lucroRecalcularERenderizar() {
     lucroShopeeVendasCalc = vendasShopee;
     lucroShopeeRenderizarComFiltro();
   }
+  lucroTiktokVendasCalc = vendasTiktok;
+  lucroTiktokRenderizarComFiltro();
   lucroAbcRenderizar();
 }
 
@@ -440,6 +452,39 @@ function lucroFiltrarSkuInput(valor) {
   lucroFiltroSku = valor;
   lucroRenderizarTabelaComFiltro();
   if (lucroShopeeVendasCalc.length) lucroShopeeRenderizarComFiltro();
+  if (lucroTiktokVendasCalc.length) lucroTiktokRenderizarComFiltro();
+}
+
+// ── Ordenação e filtro por SKU (tabela TikTok — mesmo formato da ML) ──
+
+function lucroTiktokRenderizarComFiltro() {
+  let vendas = lucroTiktokVendasCalc;
+  if (lucroSoForaNormal) vendas = vendas.filter(v => v.cancelado);
+  lucroAtualizarContagemForaNormal();
+  const termo = lucroFiltroSku.trim().toLowerCase();
+  if (termo) vendas = vendas.filter(v => v.itens.some(i => (i.sku || '').toLowerCase().includes(termo)));
+  const { campo, direcao } = lucroTiktokSortState;
+  if (campo) {
+    const mult = direcao === 'asc' ? 1 : -1;
+    vendas = [...vendas].sort((a, b) => {
+      const va = lucroValorOrdenacao(a, campo);
+      const vb = lucroValorOrdenacao(b, campo);
+      if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * mult;
+      return String(va).localeCompare(String(vb), 'pt-BR', { numeric: true }) * mult;
+    });
+  }
+  lucroRenderizarTabela(vendas, 'tabela-lucro-tiktok');
+  const totalEl = document.getElementById('lucro-tiktok-total');
+  if (totalEl) totalEl.textContent = lucroTiktokVendasCalc.length ? `${lucroTiktokVendasCalc.filter(v => !v.cancelado).length} vendas` : '';
+  document.querySelectorAll('#tabela-lucro-tiktok .sort-icon[data-sort]').forEach(ic => {
+    ic.textContent = ic.dataset.sort === campo ? (direcao === 'asc' ? ' ▲' : ' ▼') : '';
+  });
+}
+
+function lucroTiktokOrdenar(campo) {
+  lucroTiktokSortState.direcao = lucroTiktokSortState.campo === campo && lucroTiktokSortState.direcao === 'asc' ? 'desc' : 'asc';
+  lucroTiktokSortState.campo   = campo;
+  lucroTiktokRenderizarComFiltro();
 }
 
 // ── Ordenação e filtro por SKU (tabela Shopee) ──────────────────
@@ -506,7 +551,7 @@ function lucroShopeeOrdenar(campo) {
 function lucroAbcAcumular(mapa, vendas, canal) {
   for (const v of vendas) {
     if (v.cancelado) continue;
-    const taxaCanal = canal === 'ML' ? (v.taxaML || 0) : (v.taxaShopee || 0);
+    const taxaCanal = canal === 'Shopee' ? (v.taxaShopee || 0) : (v.taxaML || 0);
     const descontos = taxaCanal + (v.frete || 0) + (v.imposto || 0);
     const receitaPedido = v.itens.reduce((s, i) => s + i.precoUnit * i.quantidade, 0) || v.receita || 0;
 
@@ -514,9 +559,9 @@ function lucroAbcAcumular(mapa, vendas, canal) {
       const chave     = item.sku || item.mlb || (item.itemId != null ? String(item.itemId) : '') || '—';
       const itemReceita = item.precoUnit * item.quantidade;
       const fatia       = receitaPedido > 0 ? itemReceita / receitaPedido : (1 / v.itens.length);
-      const itemCusto   = canal === 'ML'
-        ? lucroCustoNaData(item.sku || item.mlb, v.data) * item.quantidade
-        : lucroShopeeCustoNaData(item.itemId, item.modelId, v.data) * item.quantidade;
+      const itemCusto   = canal === 'Shopee'
+        ? lucroShopeeCustoNaData(item.itemId, item.modelId, v.data) * item.quantidade
+        : lucroCustoNaData(item.sku || item.mlb, v.data) * item.quantidade;
       const itemLucro   = itemReceita - itemCusto - fatia * descontos;
 
       if (!mapa[chave]) {
@@ -553,6 +598,7 @@ function lucroAbcRenderizar() {
   const mapa = {};
   lucroAbcAcumular(mapa, lucroVendasCalc, 'ML');
   lucroAbcAcumular(mapa, lucroShopeeVendasCalc, 'Shopee');
+  lucroAbcAcumular(mapa, lucroTiktokVendasCalc, 'TikTok');
 
   let linhas = Object.values(mapa);
 
@@ -624,9 +670,10 @@ function lucroRenderizarCards(t, qtd) {
   if (totalEl) totalEl.textContent = `${qtd} venda${qtd !== 1 ? 's' : ''}`;
 }
 
-function lucroRenderizarTabela(vendas) {
-  const tbody  = document.getElementById('tabela-lucro-body');
-  const tabela = document.getElementById('tabela-lucro');
+function lucroRenderizarTabela(vendas, tabelaId = 'tabela-lucro') {
+  const tbody  = document.getElementById(`${tabelaId}-body`);
+  const tabela = document.getElementById(tabelaId);
+  if (!tbody || !tabela) return;
   tbody.innerHTML = '';
 
   if (!vendas.length) {
@@ -670,7 +717,7 @@ function lucroRenderizarTabela(vendas) {
     const fmtCusto = (val) => val > 0 ? lucroFmt(val) : '—';
     tr.innerHTML = `
       <td class="lucro-td-data">${new Date(v.data).toLocaleDateString('pt-BR')}</td>
-      <td class="lucro-td-pedido" onclick="lucroCopiarPedido(this, '${v.orderId}')" title="Clique para copiar">${v.orderId || '—'}${lucroBtnPagamento(v.orderId)}${tagDev}${tagRecl}</td>
+      <td class="lucro-td-pedido" onclick="lucroCopiarPedido(this, '${v.orderId}')" title="Clique para copiar">${v.orderId || '—'}${v.canal === 'tiktok' ? '' : lucroBtnPagamento(v.orderId)}${tagDev}${tagRecl}</td>
       <td class="td-titulo">${item0.titulo || '—'}${multi ? `<span class="lucro-multi"> +${v.itens.length - 1}</span>` : ''}</td>
       <td class="lucro-td-mlb">${chave0 || '—'}</td>
       <td class="col-num">${qtdTotal}</td>
@@ -967,6 +1014,7 @@ function lucroSetPeriodoRapido(dias) {
 function lucroAtualizarAmbos() {
   lucroCarregarVendas();
   lucroShopeeCarregarVendas();
+  lucroTiktokCarregarVendas();
 }
 
 // ── Carregamento ──────────────────────────────────────────────
@@ -1030,6 +1078,33 @@ async function lucroShopeeCarregarVendas() {
   } catch {
     if (loading) loading.style.display = 'none';
     if (erroEl) { erroEl.textContent = 'Erro ao carregar vendas Shopee.'; erroEl.style.display = 'block'; }
+  }
+}
+
+async function lucroTiktokCarregarVendas() {
+  const loading = document.getElementById('lucro-tiktok-loading');
+  const erroEl  = document.getElementById('lucro-tiktok-erro');
+  const tabela  = document.getElementById('tabela-lucro-tiktok');
+  if (!tabela) return;
+  if (loading) loading.style.display = 'block';
+  if (erroEl)  erroEl.style.display  = 'none';
+  tabela.style.display = 'none';
+  try {
+    const de  = document.getElementById('lucro-data-de')?.value  || '';
+    const ate = document.getElementById('lucro-data-ate')?.value || '';
+    const qs  = new URLSearchParams({ date_from: de, date_to: ate, conta: lucroContaAtual() });
+    const d = await fetch(`/api/lucro/vendas-tiktok?${qs}`).then(r => r.json());
+    if (loading) loading.style.display = 'none';
+    if (d.error) {
+      if (erroEl) { erroEl.textContent = d.error; erroEl.style.display = 'block'; }
+      return;
+    }
+    lucroTiktokVendasRaw = d.vendas || [];
+    if (lucroTiktokVendasRaw.length) lucroRecalcularERenderizar();
+    else { lucroTiktokVendasCalc = []; lucroTiktokRenderizarComFiltro(); lucroRecalcularERenderizar(); }
+  } catch {
+    if (loading) loading.style.display = 'none';
+    if (erroEl) { erroEl.textContent = 'Erro ao carregar vendas TikTok.'; erroEl.style.display = 'block'; }
   }
 }
 
@@ -1509,6 +1584,7 @@ async function lucroInit() {
   if (!lucroShopeeCarregado) {
     await lucroShopeeCarregarVendas();
   }
+  if (!lucroTiktokVendasCalc.length) await lucroTiktokCarregarVendas();
   // Recarrega tudo ao trocar o mês
   const mesEl = document.getElementById('gastos-mes');
   if (mesEl && !mesEl._listenerOk) {
@@ -1525,6 +1601,7 @@ document.addEventListener('contaMudou', () => {
     lucroShopeeCarregado = false;
     lucroCarregarConfig().then(() => lucroCarregarVendas());
     lucroShopeeCarregarConfig().then(() => lucroShopeeCarregarVendas());
+    lucroTiktokCarregarVendas();
   }
 });
 
