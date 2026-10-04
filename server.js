@@ -170,7 +170,15 @@ function loadData() {
   // Fornecedor BRA-INDÚSTRIA — monitora vendas do SKU 406 (ML + Shopee, conta 1),
   // ao contrário do HANDDRY que é por lista de anúncios (mlbs)
   if (!raw.fornecedores_por_conta['1'].find(f => f.id === 'bra-industria')) {
-    raw.fornecedores_por_conta['1'].push({ id: 'bra-industria', nome: 'BRA-INDÚSTRIA', leadTimeDias: 30, skus: ['406'], mlbs: [], canais: ['ml', 'shopee'] });
+    raw.fornecedores_por_conta['1'].push({ id: 'bra-industria', nome: 'BRA-INDÚSTRIA', leadTimeDias: 30, skus: ['406'], mlbs: [], canais: ['ml', 'shopee', 'tiktok'] });
+  }
+  {
+    // TikTok Shop (pedidos via Bling) também vende o SKU dele — v947
+    const braForn = raw.fornecedores_por_conta['1'].find(f => f.id === 'bra-industria');
+    if (braForn && Array.isArray(braForn.canais) && !braForn.canais.includes('tiktok') && !braForn.tiktok_adicionado) {
+      braForn.canais.push('tiktok');
+      braForn.tiktok_adicionado = true;
+    }
   }
   {
     // Pedidos ML #2000014914150799 e #2000018329688420 (07/09/2026) venderam o SKU
@@ -9427,44 +9435,56 @@ function carregarLucroTiktokItens() {
   try { return JSON.parse(fs.readFileSync(LUCRO_TIKTOK_ITENS_FILE, 'utf8')); } catch { return {}; }
 }
 
+// Pedidos do TikTok Shop no Bling no período (datas 'YYYY-MM-DD' do Bling), com os
+// itens (do cache ou do detalhe). Usado pelo Lucro e pelo painel do fornecedor.
+async function buscarPedidosTiktokBling(conta, de, ate) {
+  const lojas = TIKTOK_LOJAS_BLING[conta] || [];
+  if (!lojas.length || !getBlingDataConta(loadData(), conta)?.access_token) return [];
+  const pedidos = [];
+  for (const idLoja of lojas) {
+    for (let pagina = 1; pagina <= 30; pagina++) {
+      const params = { pagina, limite: 100, idLoja };
+      if (de)  params.dataInicial = de;
+      if (ate) params.dataFinal   = ate;
+      const lista = (await blingGetDevolucao(conta, 'https://api.bling.com.br/Api/v3/pedidos/vendas', params))?.data || [];
+      // Confere a loja e a data aqui também — se o Bling ignorar algum filtro, não mistura canal/período
+      pedidos.push(...lista.filter(p => p.loja?.id === idLoja && (!de || p.data >= de) && (!ate || p.data <= ate)));
+      if (lista.length < 100) break;
+    }
+  }
+
+  const cache = carregarLucroTiktokItens();
+  let cacheMudou = false;
+  for (const p of pedidos) {
+    if (cache[p.id]) continue;
+    const det = (await blingGetDevolucao(conta, `https://api.bling.com.br/Api/v3/pedidos/vendas/${p.id}`))?.data;
+    if (!det) continue;
+    cache[p.id] = (det.itens || []).map(i => ({ sku: i.codigo || '', titulo: i.descricao || '', quantidade: Number(i.quantidade) || 1, precoUnit: Number(i.valor) || 0 }));
+    cacheMudou = true;
+  }
+  if (cacheMudou) fs.writeFileSync(LUCRO_TIKTOK_ITENS_FILE, JSON.stringify(cache));
+
+  return pedidos.filter(p => cache[p.id]).map(p => ({
+    blingId:   p.id,
+    numero:    p.numero,
+    orderId:   p.numeroLoja || String(p.numero),
+    data:      p.data,
+    totalProdutos: Number(p.totalProdutos) || 0,
+    cancelado: p.situacao?.id === BLING_SITUACAO_CANCELADO_ID,
+    itens:     cache[p.id],
+  }));
+}
+
 app.get('/api/lucro/vendas-tiktok', async (req, res) => {
   const conta  = String(req.query.conta || '1');
-  const lojas  = TIKTOK_LOJAS_BLING[conta] || [];
-  const de     = req.query.date_from;
-  const ate    = req.query.date_to;
-  if (!lojas.length) return res.json({ vendas: [] });
-  if (!getBlingDataConta(loadData(), conta)?.access_token) return res.json({ vendas: [] });
   try {
-    const pedidos = [];
-    for (const idLoja of lojas) {
-      for (let pagina = 1; pagina <= 30; pagina++) {
-        const params = { pagina, limite: 100, idLoja };
-        if (de)  params.dataInicial = de;
-        if (ate) params.dataFinal   = ate;
-        const lista = (await blingGetDevolucao(conta, 'https://api.bling.com.br/Api/v3/pedidos/vendas', params))?.data || [];
-        // Confere a loja e a data aqui também — se o Bling ignorar algum filtro, não mistura canal/período
-        pedidos.push(...lista.filter(p => p.loja?.id === idLoja && (!de || p.data >= de) && (!ate || p.data <= ate)));
-        if (lista.length < 100) break;
-      }
-    }
-
-    const cache = carregarLucroTiktokItens();
-    let cacheMudou = false;
-    for (const p of pedidos) {
-      if (cache[p.id]) continue;
-      const det = (await blingGetDevolucao(conta, `https://api.bling.com.br/Api/v3/pedidos/vendas/${p.id}`))?.data;
-      if (!det) continue;
-      cache[p.id] = (det.itens || []).map(i => ({ sku: i.codigo || '', titulo: i.descricao || '', quantidade: Number(i.quantidade) || 1, precoUnit: Number(i.valor) || 0 }));
-      cacheMudou = true;
-    }
-    if (cacheMudou) fs.writeFileSync(LUCRO_TIKTOK_ITENS_FILE, JSON.stringify(cache));
-
-    const vendas = pedidos.filter(p => cache[p.id]).map(p => {
-      const itens   = cache[p.id].map(i => ({ ...i, mlb: '' }));
+    const pedidos = await buscarPedidosTiktokBling(conta, req.query.date_from, req.query.date_to);
+    const vendas = pedidos.map(p => {
+      const itens   = p.itens.map(i => ({ ...i, mlb: '' }));
       const qtd     = itens.reduce((s, i) => s + i.quantidade, 0);
-      const receita = itens.reduce((s, i) => s + i.precoUnit * i.quantidade, 0) || Number(p.totalProdutos) || 0;
+      const receita = itens.reduce((s, i) => s + i.precoUnit * i.quantidade, 0) || p.totalProdutos;
       return {
-        orderId:     p.numeroLoja || String(p.numero),
+        orderId:     p.orderId,
         pedidoBling: p.numero,
         canal:       'tiktok',
         // Bling só dá a data (sem hora) — meio-dia de Brasília pra não virar o dia anterior no navegador
@@ -9473,7 +9493,7 @@ app.get('/api/lucro/vendas-tiktok', async (req, res) => {
         receita,
         taxaML:      receita * TIKTOK_TAXA_PCT / 100 + TIKTOK_TAXA_FIXA_POR_ITEM * qtd,
         freteReal:   0,
-        cancelado:   p.situacao?.id === BLING_SITUACAO_CANCELADO_ID,
+        cancelado:   p.cancelado,
       };
     });
     res.json({ vendas, regra: { pct: TIKTOK_TAXA_PCT, fixoPorItem: TIKTOK_TAXA_FIXA_POR_ITEM } });
@@ -12783,6 +12803,23 @@ async function buscarDashboardFornecedorPorSku(data, contaNum, skusAlvo, canais,
     }
   }
 
+  if (canais.includes('tiktok')) {
+    const pedidosTiktok = await buscarPedidosTiktokBling(contaNum, de, ate);
+    for (const p of pedidosTiktok) {
+      if (p.cancelado) continue;
+      for (const it of p.itens) {
+        const skuNorm = String(it.sku).trim().toUpperCase();
+        if (!skuSet.has(skuNorm)) continue;
+        const skuOriginal = skusAlvo.find(s => s.toUpperCase() === skuNorm);
+        vendasDiarias[skuOriginal][p.data] = (vendasDiarias[skuOriginal][p.data] || 0) + (it.quantidade || 1);
+        if (!produtosInfo[skuOriginal]) {
+          const local = (data.estoque_local || {})[skuOriginal];
+          produtosInfo[skuOriginal] = { titulo: it.titulo, thumbnail: null, estoque: local !== undefined ? local : 0 };
+        }
+      }
+    }
+  }
+
   // Ajuste manual: pedidos antigos que venderam o SKU mas o vendedor não tinha
   // vinculado o SKU na variação na hora da venda — o ML não deixa vincular depois,
   // então esse pedido nunca vai aparecer no oi.item.seller_sku e ficaria de fora
@@ -12938,6 +12975,56 @@ async function verificarVendasFornecedoresPorSku() {
       } catch (err) {
         addLog(`[fornecedor-venda] Erro Shopee conta ${forn.contaNum} (${forn.id}): ${err.message}`, 'warn');
       }
+    }
+  }
+
+  // TikTok Shop (pedidos via Bling): mesmo esquema da Shopee — avisa e desconta do
+  // estoque local (envio sai do galpão, não há Full). Olha hoje e ontem: a data do
+  // pedido no Bling é a da compra, e um pedido da madrugada pode chegar ao Bling depois.
+  // Primeira rodada só marca o que já existe como visto, sem descontar nem avisar —
+  // essas vendas antigas nunca foram descontadas e o estoque já foi ajustado à mão.
+  for (const forn of fornecedoresSku) {
+    const canais = (forn.canais && forn.canais.length) ? forn.canais : ['ml'];
+    if (!canais.includes('tiktok')) continue;
+    const skuSet    = new Set(forn.skus.map(s => String(s).trim().toUpperCase()));
+    const categoria = `fornecedor_venda_${forn.id}`;
+    const semear    = !(data.fornecedor_tiktok_semeado || {})[forn.id];
+    try {
+      const hoje = hojeSP();
+      const ontem = new Date(Date.parse(hoje + 'T12:00:00Z') - 86400_000).toISOString().slice(0, 10);
+      const pedidos = await buscarPedidosTiktokBling(forn.contaNum, ontem, hoje);
+      for (const p of pedidos) {
+        const chave = `${categoria}:tiktok:${p.orderId}`;
+        if (fornecedorVendasNotificadas.has(chave) || p.cancelado) continue;
+        fornecedorVendasNotificadas.add(chave);
+        algumaMudanca = true;
+        if (semear) continue;
+        const itensMatch = p.itens.filter(it => skuSet.has(String(it.sku).trim().toUpperCase()));
+        if (!itensMatch.length) continue;
+        for (const it of itensMatch) {
+          const skuNorm     = String(it.sku).trim().toUpperCase();
+          const skuOriginal = forn.skus.find(s => String(s).trim().toUpperCase() === skuNorm);
+          if (skuOriginal && data.estoque_local[skuOriginal] !== undefined) {
+            const anterior = data.estoque_local[skuOriginal];
+            data.estoque_local[skuOriginal] = anterior - (it.quantidade || 1);
+            addEstoqueHistorico(data, {
+              sku: skuOriginal, anterior, novo: data.estoque_local[skuOriginal],
+              tipo: 'venda', pedido_id: p.orderId, usuario: 'Automático (TikTok)',
+            });
+          }
+        }
+        const qtd = itensMatch.reduce((s, i) => s + (i.quantidade || 1), 0);
+        const texto = `🛍️ <b>Nova venda — ${forn.nome}</b>\n\nPedido TikTok ${p.orderId}\n${qtd} unidade(s) do seu produto`;
+        registrarNotificacaoHistorico(texto, categoria);
+        await enviarPush(texto, categoria, '/fornecedor.html');
+      }
+      if (semear) {
+        data.fornecedor_tiktok_semeado = { ...(data.fornecedor_tiktok_semeado || {}), [forn.id]: Date.now() };
+        algumaMudanca = true;
+        addLog(`[fornecedor-venda] TikTok ${forn.id}: ${pedidos.length} pedidos antigos marcados como vistos (sem descontar)`, 'info');
+      }
+    } catch (err) {
+      addLog(`[fornecedor-venda] Erro TikTok conta ${forn.contaNum} (${forn.id}): ${err.message}`, 'warn');
     }
   }
 
