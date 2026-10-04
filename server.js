@@ -3850,7 +3850,10 @@ app.get('/api/ml/pedidos-futuros', async (req, res) => {
     const dataStrBR = (iso) => new Date(new Date(iso).getTime() - OFFSET_BRASILIA_MS).toISOString().slice(0, 10);
     const hojeBR = dataStrBR(new Date().toISOString());
 
-    const pedidos = [];
+    // Agrupa por shipmentId, igual à lista normal da aba Vendas: carrinho no ML vira um
+    // pedido por produto dividindo o mesmo envio, e aparecia como vendas soltas aqui
+    // em vez de uma linha com "↳ mesmo pedido" embaixo.
+    const porShipment = new Map();
     for (const { order, shipment } of filtradas) {
       const bufferingDate = shipment.shipping_option?.buffering?.date;
       const scheduleLimit = shipment.shipping_option?.estimated_schedule_limit?.date;
@@ -3889,7 +3892,19 @@ app.get('/api/ml/pedidos-futuros', async (req, res) => {
 
       if (dataStrBR(dataLiberacao) <= hojeBR) continue; // hoje ou atrasado não é "futuro"
 
-      const itensLista = [];
+      const sid = String(shipment.id);
+      if (!porShipment.has(sid)) {
+        porShipment.set(sid, {
+          orderId:       order.id,
+          data:          order.date_created,
+          comprador:     order.buyer?.nickname || order.buyer?.first_name || 'Desconhecido',
+          shipmentId:    shipment.id,
+          conta:         num,
+          dataLiberacao,
+          itensLista:    [],
+        });
+      }
+      const itensLista = porShipment.get(sid).itensLista;
       for (const i of (order.order_items || [])) {
         const extra = itemMap[i.item.id] || {};
         let variacaoNome = null;
@@ -3908,17 +3923,9 @@ app.get('/api/ml/pedidos-futuros', async (req, res) => {
         });
       }
 
-      pedidos.push({
-        orderId:       order.id,
-        data:          order.date_created,
-        comprador:     order.buyer?.nickname || order.buyer?.first_name || 'Desconhecido',
-        shipmentId:    shipment.id,
-        conta:         num,
-        dataLiberacao,
-        itensLista,
-      });
     }
 
+    const pedidos = [...porShipment.values()];
     pedidos.sort((a, b) => a.dataLiberacao.localeCompare(b.dataLiberacao));
     // Instrução é por anúncio+SKU+variação, não por pedido — o admin pode cadastrar
     // aqui, no pedido ainda futuro, que ela já aparece depois quando o pedido cair
