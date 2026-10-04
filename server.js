@@ -12853,6 +12853,11 @@ function carregarFornecedorVendasNotificadas() {
 const fornecedorVendasNotificadas = carregarFornecedorVendasNotificadas();
 
 async function verificarVendasFornecedoresPorSku() {
+  // Acerto TikTok (v948): a 1ª leitura do histórico no Bling é demorada — faz antes de
+  // carregar data.json (enche o cache de itens), pra não segurar uma cópia velha por minutos
+  if (!loadData().tiktok_acerto_estoque) {
+    for (const conta of Object.keys(TIKTOK_LOJAS_BLING)) await buscarPedidosTiktokBling(conta, null, null).catch(() => {});
+  }
   const data = loadData();
   const fornecedoresSku = [];
   for (const num of Object.keys(data.fornecedores_por_conta || {})) {
@@ -13025,6 +13030,58 @@ async function verificarVendasFornecedoresPorSku() {
       }
     } catch (err) {
       addLog(`[fornecedor-venda] Erro TikTok conta ${forn.contaNum} (${forn.id}): ${err.message}`, 'warn');
+    }
+  }
+
+  // Acerto único (v948): até o v947 as vendas do TikTok nunca descontaram o estoque
+  // local e o usuário não acertou à mão — pediu pra pegar o estoque atual e subtrair
+  // todas as vendas do TikTok dos SKUs de fornecedor. Roda aqui dentro (mesmo `data` e
+  // mesmo save do polling) pra não haver dois saves concorrentes apagando um ao outro.
+  // Pula cancelado e o que o polling já descontou (histórico "Automático (TikTok)").
+  if (!data.tiktok_acerto_estoque) {
+    try {
+      const jaDescontados = new Set((data.estoque_local_historico || [])
+        .filter(h => h.usuario === 'Automático (TikTok)').map(h => String(h.pedido_id)));
+      const limiteVistos = new Date(Date.now() - 4 * 86400_000).toISOString().slice(0, 10);
+      const pedidosPorConta = {};
+      const resumo = {};
+      let lidos = 0;
+      for (const forn of fornecedoresSku) {
+        const canais = (forn.canais && forn.canais.length) ? forn.canais : ['ml'];
+        if (!canais.includes('tiktok')) continue;
+        pedidosPorConta[forn.contaNum] ||= await buscarPedidosTiktokBling(forn.contaNum, null, null);
+        const skuSet    = new Set(forn.skus.map(s => String(s).trim().toUpperCase()));
+        const categoria = `fornecedor_venda_${forn.id}`;
+        for (const p of pedidosPorConta[forn.contaNum]) {
+          lidos++;
+          // Só os recentes viram "vistos" (o polling só olha ontem/hoje) — marcar todos
+          // empurraria pra fora da lista de 2000 os pedidos ML já avisados
+          if (p.data >= limiteVistos) fornecedorVendasNotificadas.add(`${categoria}:tiktok:${p.orderId}`);
+          if (p.cancelado || jaDescontados.has(String(p.orderId))) continue;
+          for (const it of p.itens) {
+            const skuNorm     = String(it.sku).trim().toUpperCase();
+            if (!skuSet.has(skuNorm)) continue;
+            const skuOriginal = forn.skus.find(s => String(s).trim().toUpperCase() === skuNorm);
+            if (data.estoque_local[skuOriginal] === undefined) continue;
+            const r = resumo[skuOriginal] ||= { antes: data.estoque_local[skuOriginal], unidades: 0, pedidos: 0, de: p.data, ate: p.data };
+            r.unidades += it.quantidade || 1;
+            r.pedidos  += 1;
+            if (p.data < r.de) r.de = p.data;
+            if (p.data > r.ate) r.ate = p.data;
+          }
+        }
+      }
+      for (const [sku, r] of Object.entries(resumo)) {
+        // Só mexe no estoque depois de ler tudo — se a busca falhar no meio, nada foi descontado
+        r.depois = r.antes - r.unidades;
+        data.estoque_local[sku] = r.depois;
+        addEstoqueHistorico(data, { sku, anterior: r.antes, novo: r.depois, tipo: 'venda', pedido_id: `TikTok ${r.de} a ${r.ate}: ${r.pedidos} pedidos`, usuario: 'Acerto TikTok (vendas antigas)' });
+      }
+      data.tiktok_acerto_estoque = { feito: new Date().toISOString(), resumo };
+      algumaMudanca = true;
+      addLog(`[acerto-tiktok] estoque acertado: ${JSON.stringify(resumo)} (${lidos} pedidos TikTok lidos)`, 'ok');
+    } catch (err) {
+      addLog(`[acerto-tiktok] erro (tenta de novo na próxima rodada): ${err.message}`, 'warn');
     }
   }
 
