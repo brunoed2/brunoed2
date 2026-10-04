@@ -5307,6 +5307,17 @@ app.get('/api/lucro/ads-shopee', async (req, res) => {
 // do mesmo pack). Compartilhado entre /api/lucro/vendas e /api/lucro/desvios.
 async function buscarVendasComCustos(c, headers, dateFrom, dateTo, { incluirReembolsoParcial = false } = {}) {
   let todasOrdens = [];
+  // O ML não respeita direito o fuso do filtro de data: pedindo até 03/10 23:59:59-03:00
+  // ele devolvia venda fechada 04/10 de madrugada (horário de Brasília). Busca com 1 dia de
+  // folga de cada lado e recorta aqui pela data de Brasília — a mesma que a tela mostra.
+  const umDia = 24 * 60 * 60 * 1000;
+  const buscaDe  = dateFrom ? new Date(Date.parse(dateFrom + 'T12:00:00Z') - umDia).toISOString().slice(0, 10) : '';
+  const buscaAte = dateTo   ? new Date(Date.parse(dateTo   + 'T12:00:00Z') + umDia).toISOString().slice(0, 10) : '';
+  const dentroDoPeriodo = iso => {
+    if (!iso) return true;
+    const dia = dataBRDeTimestamp(new Date(iso).getTime());
+    return (!dateFrom || dia >= dateFrom) && (!dateTo || dia <= dateTo);
+  };
   let offset = 0;
   // Parcialmente reembolsado (ex.: 1 de 2 unidades devolvida) não vem na busca por
   // "paid" — sumia do Lucro inteiro, inclusive a unidade que ficou com o comprador
@@ -5319,11 +5330,11 @@ async function buscarVendasComCustos(c, headers, dateFrom, dateTo, { incluirReem
         // outro cartão; date_created fica preso na tentativa recusada, então filtrar por ela
         // faz a venda "sumir" do dia em que ela realmente aconteceu (o que o próprio ML mostra).
         const params = { seller: c.user_id, 'order.status': statusBusca, sort: 'date_desc', limit: 50, offset };
-        if (dateFrom) params['order.date_closed.from'] = dateFrom + 'T00:00:00.000-03:00';
-        if (dateTo)   params['order.date_closed.to']   = dateTo   + 'T23:59:59.000-03:00';
+        if (buscaDe)  params['order.date_closed.from'] = buscaDe  + 'T00:00:00.000-03:00';
+        if (buscaAte) params['order.date_closed.to']   = buscaAte + 'T23:59:59.000-03:00';
         const resp = await axios.get('https://api.mercadolibre.com/orders/search', { params, headers, timeout: 15000 });
         const results = resp.data.results || [];
-        todasOrdens = todasOrdens.concat(results);
+        todasOrdens = todasOrdens.concat(results.filter(o => dentroDoPeriodo(o.date_closed || o.date_created)));
         if (results.length < 50) break;
         offset += 50;
       }
@@ -5341,11 +5352,11 @@ async function buscarVendasComCustos(c, headers, dateFrom, dateTo, { incluirReem
   offset = 0;
   while (offset < 5000) {
     const params = { seller: c.user_id, 'order.status': 'cancelled', sort: 'date_desc', limit: 50, offset };
-    if (dateFrom) params['order.date_created.from'] = dateFrom + 'T00:00:00.000-03:00';
-    if (dateTo)   params['order.date_created.to']   = dateTo   + 'T23:59:59.000-03:00';
+    if (buscaDe)  params['order.date_created.from'] = buscaDe  + 'T00:00:00.000-03:00';
+    if (buscaAte) params['order.date_created.to']   = buscaAte + 'T23:59:59.000-03:00';
     const resp = await axios.get('https://api.mercadolibre.com/orders/search', { params, headers, timeout: 15000 });
     const results = resp.data.results || [];
-    todasOrdens = todasOrdens.concat(results);
+    todasOrdens = todasOrdens.concat(results.filter(o => dentroDoPeriodo(o.date_created)));
     if (results.length < 50) break;
     offset += 50;
   }
