@@ -1786,6 +1786,10 @@ async function checarMunicipioEtiqueta(etiqueta) {
 // aparecendo normalmente — nunca some da lista sem confirmação de sucesso do Bling.
 const BLING_SITUACAO_CANCELADO = 12;
 
+// Pedidos Shopee ainda em aberto (sem NF) no Bling, por conta — a vistoria do XML usa pra
+// separar "esperando a emissão" (normal) de "pronto na Shopee sem NF e já fora do Bling"
+const blingPendentesShopeeCache = {};
+
 async function fetchBlingPedidosPendentes(conta) {
   const token = await getBlingToken(conta);
   const resp = await axios.get('https://api.bling.com.br/Api/v3/pedidos/vendas', {
@@ -1888,6 +1892,7 @@ async function fetchBlingPedidosPendentes(conta) {
   }
 
   blingPedidosCache[conta] = { count: idsComEtiqueta.size, ts: Date.now() };
+  blingPendentesShopeeCache[conta] = { sns: new Set(itensDetalhados.filter(p => p.isShopee && p.numeroLoja).map(p => String(p.numeroLoja))), ts: Date.now() };
 
   // Verifica na Shopee se o pedido já foi liberado pra NF/etiqueta — pedidos recém-pagos
   // por certos métodos ficam um tempo em "Em processamento" na Shopee antes de aceitar
@@ -2771,9 +2776,10 @@ async function blingShopeeSuperHelper(pedidoId, conta, opts = {}) {
     catch { return err.message || 'erro'; }
   };
   let etapa = nfIdExistente ? 'enviar-sefaz' : 'gerar-nf';
+  let nfId = nfIdExistente;
+  let nf = null;
   try {
     addLog(`[bling] shopee-super pedido ${pedidoId}`, 'info');
-    let nfId = nfIdExistente;
     if (!nfId) {
       nfId = await blingEmitirNFHelper(pedidoId, conta);
       if (onNfGerada) await onNfGerada(nfId);
@@ -2785,7 +2791,7 @@ async function blingShopeeSuperHelper(pedidoId, conta, opts = {}) {
 
     etapa = 'aguardar-autorizacao';
     const token = await getBlingToken(conta);
-    const nf = await blingAguardarAutorizacaoNF(nfId, token);
+    nf = await blingAguardarAutorizacaoNF(nfId, token);
 
     etapa = 'enviar-shopee';
     const orderSn = await shopeeEnviarNotaHelper(nf, conta);
@@ -2795,6 +2801,13 @@ async function blingShopeeSuperHelper(pedidoId, conta, opts = {}) {
   } catch (err) {
     const detail = blingErrDetail(err);
     addLog(`[bling] shopee-super [${etapa}] pedido ${pedidoId}: ${detail}`, 'warn');
+    // NF já existe (autorizada ou ainda na SEFAZ) mas o XML não chegou na Shopee: o pedido
+    // sai da lista de "em aberto" do Bling e ninguém mais tentava — foi o que deixou o
+    // 261001GC71F5DC 2 dias sem aparecer pra despachar. Entra na fila de reenvio.
+    if (nfId && (etapa === 'enviar-shopee' || etapa === 'aguardar-autorizacao')) {
+      await shopeeXmlFilaAdicionar({ conta, nfId, orderSn: nf?.numeroPedidoLoja || null, pedidoBling: pedidoId, erro: detail })
+        .catch(e => addLog(`[vistoria-xml] falha ao pôr NF ${nfId} na fila: ${e.message}`, 'warn'));
+    }
     const erro = new Error(`[${etapa}] ${detail}`);
     erro.etapa = etapa;
     throw erro;
@@ -3006,7 +3019,10 @@ async function autoSuperJobCiclo() {
           pendenciaNotificada[chave] = Date.now();
           await marcarAutoSuperFlag('auto_super_pendencia_notificada', chave);
           const detail = err.response ? JSON.stringify(err.response.data).slice(0, 200) : err.message;
-          notificar(`❌ Falha ao emitir NF automaticamente\n\n#${p.numero} — ${p.comprador}\nConta ${conta}${p.isShopee ? ' · Shopee' : ''}\n\n${detail}`, 'bling_pendencia').catch(() => {});
+          const nfJaExiste = p.isShopee && (err.etapa === 'enviar-shopee' || err.etapa === 'aguardar-autorizacao');
+          const titulo = nfJaExiste ? '⚠️ NF emitida, mas o XML não chegou na Shopee' : '❌ Falha ao emitir NF automaticamente';
+          const rodape = nfJaExiste ? '\n\nO sistema vai reenviar o XML sozinho a cada 5 min — avisa quando resolver, ou se em 30 min continuar travado.' : '';
+          notificar(`${titulo}\n\n#${p.numero} — ${p.comprador}\nConta ${conta}${p.isShopee ? ' · Shopee' : ''}\n\n${detail}${rodape}`, 'bling_pendencia').catch(() => {});
         }
         addLog(`[auto-super] erro ao emitir pedido ${p.numero} conta ${conta}: ${err.message}`, 'warn');
       }
@@ -3014,6 +3030,220 @@ async function autoSuperJobCiclo() {
     }
   }
 }
+
+// ── Vistoria do XML da Shopee ──
+// O pedido só aparece pra despachar quando a Shopee aceita a NF (invoice_data 'valid').
+// Se a NF é autorizada no Bling mas o XML não sobe (ex.: "This order cannot accept
+// invoices yet" — a Shopee recusa nos primeiros segundos depois de virar READY_TO_SHIP),
+// o pedido sai da lista de "em aberto" do Bling e nada mais olhava pra ele. Duas camadas:
+//  1) fila (data.shopee_xml_pendente): NF que o Super/auto-super gerou e não subiu —
+//     tenta reenviar a cada 5 min até a Shopee aceitar; avisa quando resolve, ou uma vez
+//     se passar de 30 min travado.
+//  2) varredura: pedido READY_TO_SHIP na Shopee sem NF aceita há mais de 30 min, que não
+//     está mais em aberto no Bling — procura a NF dele no Bling (NF emitida por fora, à
+//     mão etc.); achou autorizada → entra na fila; não achou → avisa uma vez.
+const SHOPEE_XML_AVISO_MIN      = 30;
+const SHOPEE_VISTORIA_IDADE_MIN = 30;
+const BLING_NF_SITUACOES_AUTORIZADA = new Set([5, 6]); // 5 = Autorizada, 6 = Emitida DANFE (autorizada e já impressa)
+const vistoriaBlingConsultado = new Map(); // orderSn → última vez que procurou a NF no Bling
+let vistoriaXmlEmExecucao = false;
+let vistoriaXmlUltima = null;
+
+async function shopeeXmlFilaAdicionar({ conta, nfId, orderSn, pedidoBling, erro, origem = 'super' }) {
+  let novo = false;
+  await withDataLock(() => {
+    const d = loadData();
+    d.shopee_xml_pendente ||= {};
+    const chave = `${conta}_${nfId}`;
+    if (d.shopee_xml_pendente[chave]) return;
+    d.shopee_xml_pendente[chave] = { conta, nfId, orderSn, pedidoBling, origem, desde: Date.now(), tentativas: 0, ultimoErro: erro || null, avisado: false };
+    saveData(d);
+    novo = true;
+  });
+  if (novo) addLog(`[vistoria-xml] NF ${nfId} (pedido Shopee ${orderSn || '?'}, conta ${conta}) na fila de reenvio do XML`, 'warn');
+}
+
+async function shopeeXmlFilaAtualizar(chave, patch) {
+  await withDataLock(() => {
+    const d = loadData();
+    if (!d.shopee_xml_pendente?.[chave]) return;
+    if (patch === null) delete d.shopee_xml_pendente[chave];
+    else Object.assign(d.shopee_xml_pendente[chave], patch);
+    saveData(d);
+  });
+}
+
+async function shopeeDetalhePedidos(conta, orderSns) {
+  const dataApp = loadData();
+  const sp = shopeeConta(dataApp, conta);
+  if (!sp.access_token || !orderSns.length) return [];
+  const accessToken = await getShopeeToken(dataApp, conta);
+  const out = [];
+  for (let i = 0; i < orderSns.length; i += 50) {
+    const pathD   = '/api/v2/order/get_order_detail';
+    const paramsD = shopeeParams(pathD, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
+    paramsD.order_sn_list = orderSns.slice(i, i + 50).join(',');
+    paramsD.response_optional_fields = 'order_status,invoice_data';
+    const rd = await axios.get(`${SHOPEE_BASE}/order/get_order_detail`, { params: paramsD, timeout: 15000 });
+    if (rd.data.error) throw new Error(`Shopee get_order_detail: ${rd.data.message || rd.data.error}`);
+    out.push(...(rd.data.response?.order_list || []));
+  }
+  return out;
+}
+
+async function shopeeListarProntosParaEnvio(conta) {
+  const dataApp = loadData();
+  const sp = shopeeConta(dataApp, conta);
+  if (!sp.access_token) return [];
+  const accessToken = await getShopeeToken(dataApp, conta);
+  const sns = [];
+  let cursor = '';
+  for (let pagina = 0; pagina < 10; pagina++) {
+    const path   = '/api/v2/order/get_order_list';
+    const params = shopeeParams(path, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
+    Object.assign(params, {
+      order_status: 'READY_TO_SHIP', page_size: 50, cursor, time_range_field: 'create_time',
+      time_from: Math.floor(Date.now() / 1000) - 15 * 24 * 60 * 60, time_to: Math.floor(Date.now() / 1000),
+    });
+    const r = await axios.get(`${SHOPEE_BASE}/order/get_order_list`, { params, timeout: 15000 });
+    if (r.data.error) throw new Error(`Shopee get_order_list: ${r.data.message || r.data.error}`);
+    sns.push(...(r.data.response?.order_list || []).map(o => o.order_sn));
+    if (!r.data.response?.more) break;
+    cursor = r.data.response.next_cursor || '';
+  }
+  return [...new Set(sns)];
+}
+
+// Pedido do Bling pelo order_sn (numerosLojas) → NF dele, se tiver
+async function blingNfPorOrderSnShopee(conta, orderSn) {
+  const lista = await blingGetDevolucao(conta, 'https://api.bling.com.br/Api/v3/pedidos/vendas', { 'numerosLojas[]': String(orderSn), limite: 5 });
+  const pedido = (lista?.data || []).find(p => String(p.numeroLoja) === String(orderSn));
+  if (!pedido) return { pedido: null, nf: null };
+  const det = (await blingGetDevolucao(conta, `https://api.bling.com.br/Api/v3/pedidos/vendas/${pedido.id}`))?.data || {};
+  const nfId = det.notaFiscal?.id;
+  if (!nfId) return { pedido: det, nf: null };
+  const nf = (await blingGetDevolucao(conta, `https://api.bling.com.br/Api/v3/nfe/${nfId}`))?.data || null;
+  return { pedido: det, nf };
+}
+
+async function vistoriaXmlShopee() {
+  if (vistoriaXmlEmExecucao) return vistoriaXmlUltima;
+  vistoriaXmlEmExecucao = true;
+  const resumo = { inicio: Date.now(), reenviados: [], continuamNaFila: [], achadosNoBling: [], avisados: [], erros: [] };
+  try {
+    const agora = Date.now();
+    const contas = ['1', '2'].filter(c => !!(getBlingDataConta(loadData(), c)?.access_token));
+
+    // 1) Varredura
+    for (const conta of contas) {
+      try {
+        const pend = blingPendentesShopeeCache[conta];
+        // Sem foto recente da lista "em aberto" do Bling (tirada pelo auto-super a cada 5 min,
+        // menos domingo) não dá pra separar "esperando emissão" de "travado" — pula
+        if (!pend || agora - pend.ts > 20 * 60_000) continue;
+        const fila = loadData().shopee_xml_pendente || {};
+        const snsNaFila = new Set(Object.values(fila).map(i => String(i.orderSn)));
+        const detalhes = await shopeeDetalhePedidos(conta, await shopeeListarProntosParaEnvio(conta));
+        for (const o of detalhes) {
+          const sn = String(o.order_sn);
+          if (o.order_status !== 'READY_TO_SHIP' || o.invoice_data?.status === 'valid') continue;
+          if (!o.create_time || agora - o.create_time * 1000 < SHOPEE_VISTORIA_IDADE_MIN * 60_000) continue;
+          if (snsNaFila.has(sn) || pend.sns.has(sn)) continue; // já na fila, ou ainda em aberto no Bling (a emissão cuida)
+          if (agora - (vistoriaBlingConsultado.get(sn) || 0) < 30 * 60_000) continue;
+          vistoriaBlingConsultado.set(sn, agora);
+
+          const { pedido, nf } = await blingNfPorOrderSnShopee(conta, sn);
+          if (nf && BLING_NF_SITUACOES_AUTORIZADA.has(nf.situacao)) {
+            await shopeeXmlFilaAdicionar({ conta, nfId: nf.id, orderSn: sn, pedidoBling: pedido?.id, erro: 'achada pela varredura: NF autorizada no Bling, Shopee sem NF', origem: 'varredura' });
+            resumo.achadosNoBling.push(sn);
+            continue;
+          }
+          if ((loadData().shopee_vistoria_avisados || {})[sn]) continue;
+          const motivo = !pedido ? 'Pedido não encontrado no Bling.'
+            : !nf ? `Pedido #${pedido.numero} no Bling está sem NF e fora da lista de em aberto (situação: ${pedido.situacao?.valor ?? pedido.situacao?.id ?? '?'}).`
+            : `NF ${nf.numero} no Bling não está autorizada (situação ${nf.situacao}).`;
+          notificar(`🔎 Pedido Shopee pronto pra enviar, mas sem NF aceita\n\n#${sn} — Conta ${conta}\n\n${motivo}\nEnquanto isso ele não aparece pra despachar.`, 'bling_pendencia').catch(() => {});
+          addLog(`[vistoria-xml] ${sn} conta ${conta}: pronto na Shopee sem NF aceita — ${motivo}`, 'warn');
+          await withDataLock(() => {
+            const d = loadData();
+            d.shopee_vistoria_avisados ||= {};
+            d.shopee_vistoria_avisados[sn] = agora;
+            for (const [k, ts] of Object.entries(d.shopee_vistoria_avisados)) if (agora - ts > 20 * 86400_000) delete d.shopee_vistoria_avisados[k];
+            saveData(d);
+          });
+          resumo.avisados.push(sn);
+        }
+      } catch (err) {
+        resumo.erros.push(`varredura conta ${conta}: ${err.message}`);
+        addLog(`[vistoria-xml] varredura conta ${conta}: ${err.message}`, 'warn');
+      }
+    }
+
+    // 2) Fila de reenvio
+    const fila = loadData().shopee_xml_pendente || {};
+    for (const [chave, item] of Object.entries(fila)) {
+      const idadeMin = Math.round((agora - item.desde) / 60_000);
+      const registrarFalha = async (motivo) => {
+        resumo.continuamNaFila.push(item.orderSn || chave);
+        await shopeeXmlFilaAtualizar(chave, { tentativas: (item.tentativas || 0) + 1, ultimoErro: motivo });
+        if (item.avisado || idadeMin < SHOPEE_XML_AVISO_MIN) return;
+        await shopeeXmlFilaAtualizar(chave, { avisado: true });
+        notificar(`⚠️ XML da NF continua sem chegar na Shopee (${idadeMin} min)\n\n#${item.orderSn || '?'} — Conta ${item.conta}\n\n${motivo}\n\nPrecisa de você: o pedido não aparece pra despachar até isso resolver. O sistema segue tentando a cada 5 min.`, 'bling_pendencia').catch(() => {});
+        resumo.avisados.push(item.orderSn || chave);
+      };
+      try {
+        const token = await getBlingToken(item.conta);
+        const nf = (await axios.get(`https://api.bling.com.br/Api/v3/nfe/${item.nfId}`, { headers: { Authorization: `Bearer ${token}` }, timeout: 10000 })).data?.data;
+        const orderSn = item.orderSn || nf?.numeroPedidoLoja;
+        if (!orderSn) { await registrarFalha('NF sem o número do pedido da Shopee no Bling.'); continue; }
+        if (!item.orderSn) await shopeeXmlFilaAtualizar(chave, { orderSn });
+        if (nf?.situacao === 2) { // cancelada no Bling — nada a reenviar
+          await shopeeXmlFilaAtualizar(chave, null);
+          addLog(`[vistoria-xml] NF ${item.nfId} (${orderSn}) cancelada no Bling — saiu da fila`, 'info');
+          continue;
+        }
+        const [det] = await shopeeDetalhePedidos(item.conta, [orderSn]);
+        if (det?.invoice_data?.status === 'valid') {
+          await shopeeXmlFilaAtualizar(chave, null);
+          addLog(`[vistoria-xml] ${orderSn}: Shopee já tem a NF (subida por fora) — saiu da fila`, 'ok');
+          continue;
+        }
+        if (det && SHOPEE_STATUS_CANCELADO.includes(det.order_status)) {
+          await shopeeXmlFilaAtualizar(chave, null);
+          addLog(`[vistoria-xml] ${orderSn}: pedido ${det.order_status} na Shopee — saiu da fila`, 'info');
+          continue;
+        }
+        if (!BLING_NF_SITUACOES_AUTORIZADA.has(nf?.situacao)) { await registrarFalha(`NF ainda não autorizada no Bling (situação ${nf?.situacao ?? '?'}).`); continue; }
+        await shopeeEnviarNotaHelper({ ...nf, numeroPedidoLoja: orderSn }, item.conta);
+        await shopeeXmlFilaAtualizar(chave, null);
+        resumo.reenviados.push(orderSn);
+        addLog(`[vistoria-xml] ${orderSn}: XML da NF ${nf.numero} reenviado pra Shopee (${idadeMin} min depois)`, 'ok');
+        notificar(`✅ XML da NF reenviado pra Shopee\n\n#${orderSn} — NF ${nf.numero} — Conta ${item.conta}\nFicou ${idadeMin} min parado; o pedido já deve aparecer pra despachar.`, 'nf_emitida').catch(() => {});
+      } catch (err) {
+        const detail = err.response ? `HTTP ${err.response.status}: ${JSON.stringify(err.response.data ?? null).slice(0, 200)}` : err.message;
+        addLog(`[vistoria-xml] ${item.orderSn || chave}: reenvio falhou — ${detail}`, 'warn');
+        await registrarFalha(detail);
+      }
+      await new Promise(r => setTimeout(r, 1500));
+    }
+  } finally {
+    resumo.fim = Date.now();
+    vistoriaXmlUltima = resumo;
+    vistoriaXmlEmExecucao = false;
+  }
+  return resumo;
+}
+
+setInterval(() => vistoriaXmlShopee().catch(err => addLog(`[vistoria-xml] erro no job: ${err.message}`, 'warn')), 5 * 60 * 1000);
+
+// Estado da vistoria (fila + última rodada) e rodada manual
+app.get('/api/shopee/vistoria-xml', (req, res) => {
+  res.json({ fila: loadData().shopee_xml_pendente || {}, ultima: vistoriaXmlUltima, emExecucao: vistoriaXmlEmExecucao });
+});
+app.post('/api/shopee/vistoria-xml/rodar', async (req, res) => {
+  try { res.json({ ok: true, resumo: await vistoriaXmlShopee() }); }
+  catch (err) { res.json({ ok: false, erro: err.message }); }
+});
 
 app.get('/api/ml/estoque', async (req, res) => {
   const data = loadData();
@@ -9821,8 +10051,6 @@ async function verificarAnunciosPausados() {
 
 // ── Polling em background: NFs autorizadas travadas na sincronização com o ML ──
 async function verificarNotasTravadasML(opts = {}) {
-  const temCanal = CALLMEBOT_PHONE && CALLMEBOT_APIKEY;
-  if (!temCanal) return { temCanal: false, encontradas: 0, notificadas: 0, contasAtivas: [] };
   const data = loadData();
   if (!data.notas_travadas_notificadas) data.notas_travadas_notificadas = {};
   if (opts.forcar) data.notas_travadas_notificadas = {};
@@ -12055,13 +12283,12 @@ app.listen(PORT, () => {
       setInterval(() => verificarCatalogosML().catch(() => {}), 15 * 60_000);
     }, 120_000);
   }
-  // Notas travadas no ML: NF autorizada mas o Mercado Livre recusou os dados
-  if (CALLMEBOT_PHONE && CALLMEBOT_APIKEY) {
-    setTimeout(() => {
-      verificarNotasTravadasML().catch(() => {});
-      setInterval(() => verificarNotasTravadasML().catch(() => {}), 2 * 60_000);
-    }, 30_000);
-  }
+  // Notas travadas no ML: NF autorizada mas o Mercado Livre recusou os dados. Não depende
+  // do WhatsApp (CallMeBot inativo) — notificar() manda pelo push também.
+  setTimeout(() => {
+    verificarNotasTravadasML().catch(() => {});
+    setInterval(() => verificarNotasTravadasML().catch(() => {}), 2 * 60_000);
+  }, 30_000);
 });
 
 // ── Fornecedores (Previsão de Compra) — por conta ─────────────
