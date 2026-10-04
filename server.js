@@ -7234,6 +7234,32 @@ app.get('/api/lucro/debug-venda-devolvida/:order_id', async (req, res) => {
 // &conta=N (sem: tenta as duas). Procura cada número na listagem de saída e de entrada
 // (o filtro "numero" pode ser ignorado pelo Bling — confere o número antes de usar) e
 // devolve o detalhe completo; mais o resumo das últimas notas de entrada.
+// Debug: pedido cru do Bling pelo número do marketplace (numeroLoja) — pra ver o que a
+// integração do TikTok Shop preenche (taxas de comissão/frete, loja, itens) antes de
+// montar o Lucro do TikTok em cima do Bling. Ex.: ?numerosLoja=586395605987198807
+app.get('/api/bling/debug-pedido', async (req, res) => {
+  const numeros = String(req.query.numerosLoja || '').split(',').map(s => s.trim()).filter(Boolean);
+  const contas  = req.query.conta ? [String(req.query.conta)] : ['1', '2'];
+  const out = {};
+  for (const conta of contas) {
+    out[conta] = {};
+    for (const numeroLoja of numeros) {
+      try {
+        const lista = await blingGetDevolucao(conta, 'https://api.bling.com.br/Api/v3/pedidos/vendas', { 'numerosLojas[]': numeroLoja, limite: 5 });
+        const pedido = (lista?.data || []).find(p => String(p.numeroLoja) === numeroLoja);
+        if (!pedido) { out[conta][numeroLoja] = { nao_encontrado: true }; continue; }
+        const det = (await blingGetDevolucao(conta, `https://api.bling.com.br/Api/v3/pedidos/vendas/${pedido.id}`))?.data || null;
+        const lojaId = det?.loja?.id;
+        const loja = lojaId ? (await blingGetDevolucao(conta, `https://api.bling.com.br/Api/v3/lojas/${lojaId}`).catch(e => ({ erro: e.response?.status || e.message })))?.data ?? null : null;
+        out[conta][numeroLoja] = { pedido: det, loja };
+      } catch (err) {
+        out[conta][numeroLoja] = { erro: err.response ? `HTTP ${err.response.status}: ${JSON.stringify(err.response.data).slice(0, 300)}` : err.message };
+      }
+    }
+  }
+  res.json(out);
+});
+
 app.get('/api/bling/debug-nf-devolucao', async (req, res) => {
   const numeros = String(req.query.numeros || '').split(',').map(s => s.trim()).filter(Boolean);
   const contas  = req.query.conta ? [String(req.query.conta)] : ['1', '2'];
