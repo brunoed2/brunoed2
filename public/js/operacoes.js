@@ -725,7 +725,7 @@ async function carregarVendas() {
         trSub.innerHTML = `
           <td class="venda-sub-indent"></td>
           <td class="td-thumb">${imgHtml}</td>
-          <td colspan="2" class="venda-sub-mais">↳ mesmo pedido</td>
+          <td colspan="2" class="venda-sub-mais">mesmo pedido</td>
           <td class="col-num venda-qtd">${item.quantidade ?? ''}</td>
           <td class="td-sku">${item.sku || '—'}</td>
           <td class="td-titulo" title="${item.titulo || ''}${item.variacao ? ` (${item.variacao})` : ''}">${item.titulo || '—'}${item.variacao ? `<span class="venda-variacao"> — ${item.variacao}</span>` : ''}${instrucaoHtmlSub ? `<br>${instrucaoHtmlSub}` : ''}</td>
@@ -895,7 +895,7 @@ async function carregarFuturos() {
         const instrucaoHtmlSub = btnInstrucaoHtml(item, p.shipmentId, i, isAdminInstrucao);
         trSub.innerHTML = `
           <td class="td-thumb">${imgHtml}</td>
-          <td colspan="2" class="venda-sub-mais">↳ mesmo pedido</td>
+          <td colspan="2" class="venda-sub-mais">mesmo pedido</td>
           <td class="col-num venda-qtd">${item.quantidade ?? ''}</td>
           <td class="td-sku">${item.sku || '—'}</td>
           <td class="td-titulo" title="${item.titulo || ''}${item.variacao ? ` (${item.variacao})` : ''}">${item.titulo || '—'}${item.variacao ? `<span class="venda-variacao"> — ${item.variacao}</span>` : ''}${instrucaoHtmlSub ? `<br>${instrucaoHtmlSub}` : ''}</td>
