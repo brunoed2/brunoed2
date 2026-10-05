@@ -6611,6 +6611,55 @@ async function verificarDevolucoes({ notificarChegando = true } = {}) {
       }
       if (backfill && buscaOk) estado.backfill_feito[num] = Date.now();
 
+      // 2b. Entrega que falhou e volta pelo próprio envio de ida (v951) — não tem
+      // reclamação nem envio de volta, então a busca de reclamações não acha. O ML deixa
+      // o envio de ida not_delivered com substatus returning_to_sender (voltando) e
+      // returned (chegou); o pedido vira cancelled/not_paid. Full (returned_to_warehouse)
+      // fica de fora como nas devoluções. Busca os pedidos dos últimos 40 dias com envio
+      // not_delivered a cada rodada (são poucos); a chave do registro é o envio de ida.
+      // Perdido/roubado não entra (o produto não volta); outro substatus confere de novo
+      // na próxima rodada.
+      try {
+        estado.ida_ml_ignorar = estado.ida_ml_ignorar || {};
+        const desde = new Date(Date.now() - 40 * DIA).toISOString().replace('Z', '-00:00');
+        const porEnvio = new Map();
+        for (let offset = 0; offset < 200; offset += 50) {
+          devolucoesProgresso = `conta ${num}: procurando entregas que voltaram`;
+          const r = await mlGetDevolucao('https://api.mercadolibre.com/orders/search', headers, {
+            seller: c.user_id, 'shipping.status': 'not_delivered', 'order.date_created.from': desde, sort: 'date_desc', offset, limit: 50,
+          });
+          for (const o of (r?.results || [])) {
+            const sid = o.shipping?.id && String(o.shipping.id);
+            if (!sid || estado.ida_ml_ignorar[sid]) continue;
+            if (!porEnvio.has(sid)) porEnvio.set(sid, []);
+            porEnvio.get(sid).push(o);
+          }
+          if ((r?.results || []).length < 50) break;
+        }
+        for (const [sid, ordens] of porEnvio) {
+          if (estado.registro[sid]) continue;
+          const d = await mlGetDevolucao(`https://api.mercadolibre.com/shipments/${sid}`, headers);
+          if (d.logistic_type === 'fulfillment' || d.substatus === 'returned_to_warehouse') { estado.ida_ml_ignorar[sid] = Date.now(); continue; }
+          if (!['returning_to_sender', 'returned'].includes(d.substatus)) continue;
+          const itens = ordens.flatMap(o => o.order_items || []);
+          estado.registro[sid] = {
+            canal: 'ml', conta: num, nickname: c.nickname || null, order_id: ordens[0].id, volta_ida: true,
+            titulo: itens.map(it => `${it.item?.title || it.item?.id}${it.quantity > 1 ? ` (${it.quantity} un)` : ''}`).join(', ') || null,
+            valor: Math.round(itens.reduce((s2, it) => s2 + (Number(it.unit_price) || 0) * (it.quantity || 1), 0) * 100) / 100,
+            venda_em: ordens[0].date_closed || ordens[0].date_created || null,
+            comprador: ordens[0].buyer?.nickname || null,
+            devolucao_em: d.status_history?.date_not_delivered || d.last_updated || null,
+            tracking: d.tracking_number || null, metodo: d.tracking_method || null,
+            status: d.status, substatus: d.substatus,
+            // O ML não preenche date_returned — a chegada é a última atualização do envio
+            // quando ele vira returned (o 30 min da rotina pega perto disso)
+            chegou_em: d.substatus === 'returned' ? (d.last_updated || new Date().toISOString()) : undefined,
+          };
+          if (!estado.registro[sid].chegou_em) delete estado.registro[sid].chegou_em;
+        }
+        for (const [sid, t] of Object.entries(estado.ida_ml_ignorar)) if (t < Date.now() - 60 * DIA) delete estado.ida_ml_ignorar[sid];
+      } catch (e) { erros.push(`conta ${num} entregas que voltaram: ${e.response?.status || e.message}`); }
+
       // 3. Atualiza o envio de cada devolução desta conta que ainda não chegou
       for (const [sid, dv] of Object.entries(estado.registro)) {
         if (dv.canal === 'shopee' || dv.conta !== num || dv.chegou_em) continue;
@@ -6619,6 +6668,10 @@ async function verificarDevolucoes({ notificarChegando = true } = {}) {
           const d = await mlGetDevolucao(`https://api.mercadolibre.com/shipments/${sid}`, headers);
           dv.status = d.status; dv.substatus = d.substatus || null;
           dv.tracking = d.tracking_number || dv.tracking; dv.metodo = d.tracking_method || dv.metodo || null;
+          if (dv.volta_ida) {
+            if (d.substatus === 'returned') dv.chegou_em = d.last_updated || new Date().toISOString();
+            continue;
+          }
           if (d.status === 'delivered') dv.chegou_em = d.status_history?.date_delivered || new Date().toISOString();
           if (DEVOLUCAO_SEM_PRODUTO.has(d.status) && !nfs[sid]) delete estado.registro[sid];
         } catch (e) {

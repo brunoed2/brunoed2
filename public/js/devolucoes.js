@@ -112,6 +112,7 @@ function devSituacao(i) {
   if (i.chegou_em && i.canal !== 'shopee' && i.reembolso === 'retained')
                                            return { txt: 'Chegou · sem reembolso', cls: 'badge-pausado' };
   if (i.chegou_em)                         return { txt: 'Chegou', cls: 'badge-ativo' };
+  if (i.volta_ida)                         return { txt: 'Voltando', cls: 'badge-full' };
   if (i.status === 'cancelled')            return { txt: 'Cancelada', cls: 'badge-encerrado' };
   if (i.status === 'not_delivered')        return { txt: 'Não entregue', cls: 'badge-encerrado' };
   if (i.substatus === 'out_for_delivery')  return { txt: 'Saiu pra entrega', cls: 'badge-pausado' };
@@ -176,7 +177,7 @@ function devRender() {
         : `<span class="dev-sub">${(i.nf_busca && (i.nf_tentativas || 0) >= 3) ? 'NF não encontrada' : 'buscando...'}</span>`}</td>
       <td class="col-num">${devMoeda(i.valor)}</td>
       <td><span class="badge-deposito ${sit.cls}">${sit.txt}</span>
-        ${i.volta_ida ? `<div class="dev-sub" title="A entrega falhou e o pacote voltou pelo envio de ida — a Shopee reembolsou o comprador pelo &quot;não recebi&quot;">entrega falhou · voltou na ida</div>` : ''}
+        ${i.volta_ida ? `<div class="dev-sub" title="A entrega falhou e o pacote volta pelo próprio envio de ida — não foi devolução do comprador">entrega falhou · volta pelo envio de ida</div>` : ''}
         ${i.tracking ? `<div class="dev-sub">${devEsc(i.tracking)}</div>` : ''}</td>
       <td>${i.chegou_em ? devData(i.chegou_em) : `<span class="dev-sub">devolução aberta ${devData(i.devolucao_em)}</span>`}</td>
       <td style="text-align:center">
