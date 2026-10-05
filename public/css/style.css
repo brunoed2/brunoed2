@@ -2465,6 +2465,8 @@ tr.lucro-sub-item td {
 .dev-comprador { font-size: 12px; font-weight: 600; color: #475569; margin-top: 2px; }
 .dev-card-click { cursor: pointer; transition: border-color .15s; }
 .dev-card-click:hover { border-color: #6366f1; }
+.dev-th-sort { cursor: pointer; user-select: none; }
+.dev-th-sort:hover { color: #444; }
 .dev-nf-check { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-size: 13px; white-space: nowrap; }
 .dev-nf-check input { width: 16px; height: 16px; cursor: pointer; }
 .dev-nf-info { font-size: 11px; color: #16a34a; margin-top: 3px; white-space: nowrap; }

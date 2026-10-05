@@ -5,6 +5,16 @@
 
 let devItens = [];
 let devFiltro = { situacao: 'todas', nf: 'pendente', conta: 'todas', canal: 'todos', busca: '' };
+// Ordenação pelo cabeçalho (v952) — sem coluna escolhida, fica a ordem padrão
+// (chegadas mais recentes no topo, depois as a caminho)
+let devOrdem = { campo: null, dir: 'asc' };
+const DEV_ORDEM_VALOR = {
+  pedido:   i => String(i.order_id || ''),
+  nf_venda: i => Number(i.nf_venda?.numero) || null,
+  valor:    i => i.valor ?? null,
+  chegou:   i => i.chegou_em || null,
+  nf_dev:   i => Number(i.nf_devolucao?.numero) || null,
+};
 let devPollTimer = null;
 let devErros = [];
 
@@ -132,6 +142,16 @@ function devFiltrar() {
     if (busca && !`${i.order_id} ${i.comprador || ''} ${i.titulo || ''} ${i.tracking || ''} ${i.nf_venda?.numero ? devNumNf(i.nf_venda.numero) : ''}`.toLowerCase().includes(busca)) return false;
     return true;
   }).sort((a, b) => {
+    if (devOrdem.campo) {
+      // Sem valor (NF ainda não achada, não chegou) vai sempre pro fim
+      const fn = DEV_ORDEM_VALOR[devOrdem.campo];
+      const va = fn(a), vb = fn(b);
+      if (va == null || vb == null) { if (va != null) return -1; if (vb != null) return 1; }
+      else {
+        const c = typeof va === 'string' ? va.localeCompare(vb) : va - vb;
+        if (c) return devOrdem.dir === 'asc' ? c : -c;
+      }
+    }
     // Chegadas primeiro (mais recentes no topo), depois as que estão a caminho
     if (!!a.chegou_em !== !!b.chegou_em) return a.chegou_em ? -1 : 1;
     const da = a.chegou_em || a.devolucao_em || '', db = b.chegou_em || b.devolucao_em || '';
@@ -139,7 +159,18 @@ function devFiltrar() {
   });
 }
 
+function devOrdenar(campo) {
+  if (devOrdem.campo === campo) devOrdem.dir = devOrdem.dir === 'asc' ? 'desc' : 'asc';
+  else devOrdem = { campo, dir: 'asc' };
+  devRender();
+}
+
 function devRender() {
+  document.querySelectorAll('[data-dev-sort]').forEach(el => {
+    const ativo = el.dataset.devSort === devOrdem.campo;
+    el.textContent = ativo ? (devOrdem.dir === 'asc' ? ' ▲' : ' ▼') : '';
+    el.closest('th')?.classList.toggle('th-ativo', ativo);
+  });
   // Cartões de resumo (sobre tudo, ignorando os filtros)
   const aCaminho   = devItens.filter(i => !i.chegou_em);
   const semNf      = devItens.filter(i => i.chegou_em && !devTemNf(i));

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Painel</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📦</text></svg>">
-  <link rel="stylesheet" href="/css/style.css?v=28">
+  <link rel="stylesheet" href="/css/style.css?v=29">
   <link rel="manifest" href="/manifest.json">
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
   <meta name="theme-color" content="#2563eb">
@@ -1685,7 +1685,7 @@
           <pre id="dev-erros-box" class="dev-erros-box" style="display:none"></pre>
           <table class="tabela">
             <thead><tr>
-              <th>Canal</th><th>Conta</th><th>Pedido</th><th>Produto</th><th>NF venda</th><th class="col-num">Valor</th><th>Situação</th><th>Chegou em</th><th style="text-align:center">NF devolução</th>
+              <th>Canal</th><th>Conta</th><th class="dev-th-sort" onclick="devOrdenar('pedido')">Pedido<span class="sort-icon" data-dev-sort="pedido"></span></th><th>Produto</th><th class="dev-th-sort" onclick="devOrdenar('nf_venda')">NF venda<span class="sort-icon" data-dev-sort="nf_venda"></span></th><th class="col-num dev-th-sort" onclick="devOrdenar('valor')">Valor<span class="sort-icon" data-dev-sort="valor"></span></th><th>Situação</th><th class="dev-th-sort" onclick="devOrdenar('chegou')">Chegou em<span class="sort-icon" data-dev-sort="chegou"></span></th><th class="dev-th-sort" style="text-align:center" onclick="devOrdenar('nf_dev')">NF devolução<span class="sort-icon" data-dev-sort="nf_dev"></span></th>
             </tr></thead>
             <tbody id="dev-tbody"><tr><td colspan="9" style="text-align:center;color:#94a3b8;padding:28px">Carregando...</td></tr></tbody>
           </table>
@@ -1795,7 +1795,7 @@
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
   <script src="/js/scanner.js?v=7"></script>
   <script src="/js/codigo-recebimento.js?v=1"></script>
-  <script src="/js/devolucoes.js?v=11"></script>
+  <script src="/js/devolucoes.js?v=12"></script>
   <script>
   // ── Gerenciamento de Usuários ─────────────────────────────────
 
@@ -2120,6 +2120,6 @@
   </div>
 
   <script src="/js/busca-pagina.js?v=1"></script>
-  <div id="version-badge">v951</div>
+  <div id="version-badge">v952</div>
 </body>
 </html>
