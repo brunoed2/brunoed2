@@ -6456,8 +6456,8 @@ function loadDevolucoes() {
   try { d = JSON.parse(fs.readFileSync(DEVOLUCOES_FILE, 'utf8')); } catch {}
   // v919 só guardava as devoluções a caminho do galpão (acompanhando) e marcou como
   // vistas reclamações cujas devoluções já tinham chegado — recomeça a descoberta.
-  if (![2, 3, 4, 5].includes(d.versao)) {
-    d = { versao: 5, registro: d.acompanhando || {}, claims_vistos: {}, avisados: d.avisados || {}, backfill_feito: {} };
+  if (![2, 3, 4, 5, 6].includes(d.versao)) {
+    d = { versao: 6, registro: d.acompanhando || {}, claims_vistos: {}, avisados: d.avisados || {}, backfill_feito: {} };
   }
   // v922: primeira carga passou de 90 dias pra 12 meses e o registro ganhou o
   // comprador — refaz a descoberta (mantém o registro; as NFs ficam em outro arquivo).
@@ -6473,6 +6473,15 @@ function loadDevolucoes() {
   if (d.versao === 4) {
     d.versao = 5;
     for (const k of Object.keys(d.backfill_feito || {})) if (k.startsWith('shopee-')) delete d.backfill_feito[k];
+  }
+  // v950: o usuário pediu a recarga do v949 só do último mês — quem ainda não terminou
+  // a de 12 meses volta pra rotina normal, com uma rodada de 30 dias (recarga_30d).
+  if (d.versao === 5) {
+    d.versao = 6;
+    d.recarga_30d = {};
+    for (const k of ['shopee-1', 'shopee-2']) {
+      if (!d.backfill_feito?.[k]) { d.backfill_feito = d.backfill_feito || {}; d.backfill_feito[k] = Date.now(); d.recarga_30d[k] = true; }
+    }
   }
   d.registro = d.registro || {}; d.claims_vistos = d.claims_vistos || {};
   d.avisados = d.avisados || {}; d.backfill_feito = d.backfill_feito || {};
@@ -6690,7 +6699,8 @@ async function verificarDevolucoesShopee(estado, nfs, erros, data) {
     const chaveBackfill = 'shopee-' + num;
     const backfill = !estado.backfill_feito[chaveBackfill];
     const agora = Math.floor(Date.now() / 1000);
-    const janelas = backfill ? 25 : 1;
+    const recarga = !backfill && estado.recarga_30d?.[chaveBackfill];
+    const janelas = backfill ? 25 : recarga ? 2 : 1;
 
     let leuAlguma = false;
     const idaConferir = new Map();
@@ -6739,6 +6749,7 @@ async function verificarDevolucoesShopee(estado, nfs, erros, data) {
       } catch (e) { erros.push(`shopee ${num} lista: ${e.response?.status || e.message}`); }
     }
     if (backfill && leuAlguma) estado.backfill_feito[chaveBackfill] = Date.now();
+    if (recarga && leuAlguma) delete estado.recarga_30d[chaveBackfill];
 
     // Entrega que falhou: a Shopee abre o "não recebi" e reembolsa como se o produto
     // ficasse com o comprador, mas o pacote volta pelo envio de ida (RETURN_STARTED →
@@ -7437,6 +7448,57 @@ app.get('/api/ml/debug-nf-pedido/:order_id', async (req, res) => {
 
 // Situação da rotina (debug). ?rodar=1 roda agora em segundo plano; ?rodar=1&avisar=0
 // roda sem mandar notificação.
+// Debug — entrega do ML que falhou e está voltando pro vendedor (o equivalente do
+// 260911P0RW60YK da Shopee). Antes de pôr na aba Devoluções, ver como o ML mostra:
+// pedidos com envio not_delivered nos últimos ?dias=30, fora do Full, com status e
+// substatus do envio, o histórico dele e se a aba já tem a devolução (pela reclamação).
+// ?conta=N (sem: todas).
+app.get('/api/ml/debug-entregas-falhas', async (req, res) => {
+  const data   = loadData();
+  const contas = req.query.conta ? [String(req.query.conta)] : Object.keys(data.contas || {});
+  const dias   = Math.min(parseInt(req.query.dias) || 30, 90);
+  const desde  = new Date(Date.now() - dias * 86400000).toISOString().replace('Z', '-00:00');
+  const registro = loadDevolucoes().registro;
+  const out = {};
+  for (const num of contas) {
+    const c = data.contas[num];
+    const r = out[num] = { nickname: c?.nickname, pedidos: [] };
+    try {
+      const headers = { Authorization: `Bearer ${await getToken(data, num)}` };
+      const ordens = [];
+      for (let offset = 0; offset < 500; offset += 50) {
+        const resp = await mlGetDevolucao('https://api.mercadolibre.com/orders/search', headers, {
+          seller: c.user_id, 'shipping.status': 'not_delivered', 'order.date_created.from': desde, sort: 'date_desc', offset, limit: 50,
+        });
+        ordens.push(...(resp?.results || []));
+        if ((resp?.results || []).length < 50) break;
+      }
+      r.total = ordens.length;
+      const vistos = new Set();
+      for (const o of ordens.slice(0, 40)) {
+        const sid = o.shipping?.id;
+        if (!sid || vistos.has(sid)) continue;
+        vistos.add(sid);
+        const item = {
+          order_id: o.id, pack_id: o.pack_id || null, status_pedido: o.status, criado: o.date_created,
+          titulo: (o.order_items || []).map(i => i.item?.title).join(', '), comprador: o.buyer?.nickname,
+          tags: o.tags, mediations: o.mediations, shipment_id: sid,
+          na_aba: Object.entries(registro).filter(([, dv]) => String(dv.order_id) === String(o.id)).map(([id, dv]) => ({ id, status: dv.status, chegou_em: dv.chegou_em || null })),
+        };
+        try {
+          const sh = await mlGetDevolucao(`https://api.mercadolibre.com/shipments/${sid}`, { ...headers, 'x-format-new': 'true' });
+          item.envio = { status: sh.status, substatus: sh.substatus, logistic_type: sh.logistic?.type || sh.logistic_type, mode: sh.logistic?.mode || sh.mode,
+            tracking: sh.tracking_number, last_updated: sh.last_updated, status_history: sh.status_history, substatus_history: sh.substatus_history };
+        } catch (e) { item.envio = { erro: e.response?.status || e.message }; }
+        try { item.historico = await mlGetDevolucao(`https://api.mercadolibre.com/shipments/${sid}/history`, headers); }
+        catch (e) { item.historico = { erro: e.response?.status || e.message }; }
+        r.pedidos.push(item);
+      }
+    } catch (e) { r.erro = e.response ? `HTTP ${e.response.status}: ${JSON.stringify(e.response.data).slice(0, 300)}` : e.message; }
+  }
+  res.json(out);
+});
+
 app.get('/api/ml/debug-devolucoes', (req, res) => {
   if (req.query.rodar === '1' && !devolucoesRodando) {
     verificarDevolucoes({ notificarChegando: req.query.avisar !== '0' }).catch(e => addLog(`[devolucoes] ${e.message}`, 'warn'));
