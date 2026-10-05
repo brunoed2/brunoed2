@@ -6456,8 +6456,8 @@ function loadDevolucoes() {
   try { d = JSON.parse(fs.readFileSync(DEVOLUCOES_FILE, 'utf8')); } catch {}
   // v919 só guardava as devoluções a caminho do galpão (acompanhando) e marcou como
   // vistas reclamações cujas devoluções já tinham chegado — recomeça a descoberta.
-  if (![2, 3, 4].includes(d.versao)) {
-    d = { versao: 4, registro: d.acompanhando || {}, claims_vistos: {}, avisados: d.avisados || {}, backfill_feito: {} };
+  if (![2, 3, 4, 5].includes(d.versao)) {
+    d = { versao: 5, registro: d.acompanhando || {}, claims_vistos: {}, avisados: d.avisados || {}, backfill_feito: {} };
   }
   // v922: primeira carga passou de 90 dias pra 12 meses e o registro ganhou o
   // comprador — refaz a descoberta (mantém o registro; as NFs ficam em outro arquivo).
@@ -6466,6 +6466,12 @@ function loadDevolucoes() {
   // (CLOSED), que voltaram e precisam de NF — refaz a primeira carga só da Shopee.
   if (d.versao === 3) {
     d.versao = 4;
+    for (const k of Object.keys(d.backfill_feito || {})) if (k.startsWith('shopee-')) delete d.backfill_feito[k];
+  }
+  // v949: entrega que falhou e voltou pelo envio de ida (reembolso "sem o produto
+  // voltar") era descartada — refaz a primeira carga só da Shopee pra achar as antigas.
+  if (d.versao === 4) {
+    d.versao = 5;
     for (const k of Object.keys(d.backfill_feito || {})) if (k.startsWith('shopee-')) delete d.backfill_feito[k];
   }
   d.registro = d.registro || {}; d.claims_vistos = d.claims_vistos || {};
@@ -6687,6 +6693,25 @@ async function verificarDevolucoesShopee(estado, nfs, erros, data) {
     const janelas = backfill ? 25 : 1;
 
     let leuAlguma = false;
+    const idaConferir = new Map();
+    const registrar = (dv, extra) => {
+      const id = 'shopee-' + dv.return_sn;
+      const reg = estado.registro[id] || {};
+      const itens = dv.item || [];
+      Object.assign(reg, {
+        canal: 'shopee', conta: num, nickname: data.contas?.[num]?.nickname || `Shopee ${num}`, order_id: dv.order_sn, return_sn: dv.return_sn,
+        comprador: dv.user?.username || null,
+        titulo: itens.map(i => `${i.name || i.item_id}${i.amount > 1 ? ` (${i.amount} un)` : ''}`).join(', ') || null,
+        valor: Math.round(itens.reduce((s, i) => s + (Number(i.item_price) || 0) * (Number(i.amount) || 1), 0) * 100) / 100,
+        devolucao_em: reg.devolucao_em || (dv.create_time ? new Date(dv.create_time * 1000).toISOString() : null),
+        tracking: dv.tracking_number || reg.tracking || null,
+        status: reg.status || 'ready_to_ship',
+        status_devolucao: dv.status,
+        atualizada_em: dv.update_time ? new Date(dv.update_time * 1000).toISOString() : reg.atualizada_em || null,
+        ...extra,
+      });
+      estado.registro[id] = reg;
+    };
     for (let j = 0; j < janelas; j++) {
       const ate = agora - j * 15 * DIA_S, de = ate - 15 * DIA_S + 1;
       try {
@@ -6698,28 +6723,40 @@ async function verificarDevolucoesShopee(estado, nfs, erros, data) {
           leuAlguma = true;
           for (const dv of (resp?.return || [])) {
             const id = 'shopee-' + dv.return_sn;
+            // "Não recebi" com reembolso sem o produto voltar pode ser entrega que falhou
+            // e voltou pelo envio de ida (260911P0RW60YK no v949) — confere o rastreio
+            if (dv.needs_logistics === false && dv.status !== 'CANCELLED' && dv.reason === 'NOT_RECEIPT') {
+              if (estado.registro[id]) registrar(dv);
+              else idaConferir.set(dv.return_sn, dv);
+              continue;
+            }
             const semProduto = dv.needs_logistics === false || dv.status === 'CANCELLED';
             if (semProduto) { if (!nfs[id]) delete estado.registro[id]; continue; }
-            const reg = estado.registro[id] || {};
-            const itens = dv.item || [];
-            Object.assign(reg, {
-              canal: 'shopee', conta: num, nickname: data.contas?.[num]?.nickname || `Shopee ${num}`, order_id: dv.order_sn, return_sn: dv.return_sn,
-              comprador: dv.user?.username || null,
-              titulo: itens.map(i => `${i.name || i.item_id}${i.amount > 1 ? ` (${i.amount} un)` : ''}`).join(', ') || null,
-              valor: Math.round(itens.reduce((s, i) => s + (Number(i.item_price) || 0) * (Number(i.amount) || 1), 0) * 100) / 100,
-              devolucao_em: reg.devolucao_em || (dv.create_time ? new Date(dv.create_time * 1000).toISOString() : null),
-              tracking: dv.tracking_number || reg.tracking || null,
-              status: reg.status || 'ready_to_ship',
-              status_devolucao: dv.status,
-              atualizada_em: dv.update_time ? new Date(dv.update_time * 1000).toISOString() : reg.atualizada_em || null,
-            });
-            estado.registro[id] = reg;
+            registrar(dv);
           }
           if (!resp?.more) break;
         }
       } catch (e) { erros.push(`shopee ${num} lista: ${e.response?.status || e.message}`); }
     }
     if (backfill && leuAlguma) estado.backfill_feito[chaveBackfill] = Date.now();
+
+    // Entrega que falhou: a Shopee abre o "não recebi" e reembolsa como se o produto
+    // ficasse com o comprador, mas o pacote volta pelo envio de ida (RETURN_STARTED →
+    // RETURNED, "Pedido devolvido"). Entra na aba com volta_ida; a chegada é o
+    // RETURNED. Sem sinal de volta (extravio, ou ainda não decidiu) não entra — confere
+    // de novo nas próximas rodadas até 45 dias depois de aberto o "não recebi".
+    estado.shopee_ida = estado.shopee_ida || {};
+    for (const [sn, dv] of idaConferir) {
+      const visto = estado.shopee_ida[sn];
+      if (visto && (dv.create_time || 0) * 1000 < Date.now() - 45 * DIA_S * 1000) continue;
+      devolucoesProgresso = `Shopee ${num}: conferindo entregas que voltaram`;
+      try {
+        const t = await shopeeGetDevolucao(sp, tok, 'logistics/get_tracking_info', { order_sn: dv.order_sn });
+        estado.shopee_ida[sn] = { visto: Date.now() };
+        if ((t?.tracking_info || []).some(x => /^RETURN/.test(x.logistics_status || ''))) registrar(dv, { volta_ida: true });
+      } catch (e) { erros.push(`shopee ${dv.order_sn} rastreio ida: ${e.response?.status || e.message}`); }
+    }
+    for (const [sn, v] of Object.entries(estado.shopee_ida)) if (v.visto < Date.now() - 400 * DIA_S * 1000) delete estado.shopee_ida[sn];
 
     for (const [id, dv] of Object.entries(estado.registro)) {
       if (dv.canal !== 'shopee' || dv.conta !== num) continue;
@@ -6736,6 +6773,16 @@ async function verificarDevolucoesShopee(estado, nfs, erros, data) {
       }
       if (dv.chegou_em) continue;
       devolucoesProgresso = `Shopee ${num}: atualizando rastreios`;
+      if (dv.volta_ida) {
+        try {
+          const t = await shopeeGetDevolucao(sp, tok, 'logistics/get_tracking_info', { order_sn: dv.order_id });
+          const voltou = (t?.tracking_info || []).find(x => x.logistics_status === 'RETURNED');
+          dv.status_shopee = t?.logistics_status || dv.status_shopee;
+          if (voltou) { dv.status = 'delivered'; dv.chegou_em = new Date(voltou.update_time * 1000).toISOString(); }
+          else dv.status = 'shipped';
+        } catch (e) { erros.push(`shopee ${dv.order_id} rastreio ida: ${e.response?.status || e.message}`); }
+        continue;
+      }
       try {
         const t = await shopeeGetDevolucao(sp, tok, 'returns/get_reverse_tracking_info', { return_sn: dv.return_sn });
         const st = t?.reverse_logistics_status || '';
