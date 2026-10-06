@@ -2297,12 +2297,20 @@ app.get('/api/bling/nfs-shopee-marketplace', async (req, res) => {
 
 // ── Bling: NFs autorizadas mas travadas na sincronização com o ML ──
 // A API do Bling não expõe o motivo de recusa do Mercado Livre (isso só aparece na
-// UI do Bling, via sessão logada). Detectamos indiretamente: quando o Bling consegue
-// repassar a NF com sucesso, o envio (shipment) do pedido no ML sai do substatus
+// UI do Bling, via sessão logada) nem um jeito de pedir pro Bling reenviar. Detectamos
+// indiretamente: quando a NF chega no ML, o envio (shipment) sai do substatus
 // "invoice_pending". Se a NF já está autorizada há um tempo e o shipment continua
-// parado em ready_to_ship/invoice_pending, é sinal de que o ML recusou os dados
-// (normalmente por valor ou produto divergente do pedido).
+// parado em ready_to_ship/invoice_pending, a NF não chegou — às vezes é falha
+// momentânea (reenviar resolve), às vezes o ML recusou os dados. O vigia
+// (verificarNotasTravadasML) sobe o XML uma vez e só avisa se o ML não aceitar.
+// numeroPedidoLoja pode ser um pedido ou um carrinho (pack_id) — o Bling grava o pack
+// quando a venda tem mais de um item; /orders dá 404 nesse caso, então tenta /packs.
 const NOTA_TRAVADA_MIN_MINUTOS = 5;
+// nfId → motivo: notas que não precisam mais ser olhadas (não são do ML, ou o ML já
+// recebeu a NF). Evita reconsultar Bling e ML a cada 2 min pelas mesmas notas (ex.: NF
+// de remessa/balcão, TikTok — número só de dígitos, mas o ML não conhece).
+const notasTravadasDescartadas = new Map();
+const SHIP_STATUS_NF_RESOLVIDA = new Set(['shipped', 'delivered', 'not_delivered', 'cancelled']);
 
 async function fetchBlingNotasTravadasML(conta) {
   const token = await getBlingToken(conta);
@@ -2311,12 +2319,14 @@ async function fetchBlingNotasTravadasML(conta) {
     params: { pagina: 1, limite: 100 },
     timeout: 15000,
   });
-  const nfsAutorizadas = (resp.data?.data || []).filter(n => n.situacao === 5);
+  const nfsAutorizadas = (resp.data?.data || []).filter(n => BLING_NF_SITUACOES_AUTORIZADA.has(n.situacao));
+  if (notasTravadasDescartadas.size > 3000) notasTravadasDescartadas.clear();
 
   // Filtra por idade antes de buscar detalhe (dataEmissao vem em horário de Brasília,
   // sem offset — precisamos fixar -03:00 pra não depender do timezone do container)
   const candidatasIdade = nfsAutorizadas
     .map(nf => {
+      if (notasTravadasDescartadas.has(String(nf.id))) return null;
       const dataEmissao = nf.dataEmissao ? new Date(nf.dataEmissao.replace(' ', 'T') + '-03:00') : null;
       if (!dataEmissao || (Date.now() - dataEmissao.getTime()) < NOTA_TRAVADA_MIN_MINUTOS * 60_000) return null;
       return { nf, dataEmissao };
@@ -2335,10 +2345,13 @@ async function fetchBlingNotasTravadasML(conta) {
         headers: { Authorization: `Bearer ${token}` }, timeout: 10000,
       }).then(r => r.data?.data || null).catch(() => null);
     }
-    const numeroPedidoLoja = det?.numeroPedidoLoja || nf.numeroPedidoLoja || '';
-    const valorNota        = det?.valorNota ?? nf.totalProdutos ?? 0;
-    if (/^\d{10,}$/.test(numeroPedidoLoja)) candidatas.push({ nf, numeroPedidoLoja, dataEmissao, valorNota });
     await new Promise(r => setTimeout(r, 350));
+    if (!det) continue; // Bling falhou — tenta no próximo ciclo
+    const numeroPedidoLoja = det.numeroPedidoLoja || nf.numeroPedidoLoja || '';
+    const valorNota        = det.valorNota ?? nf.totalProdutos ?? 0;
+    // Sem número de pedido de loja (remessa, balcão...) ou com letras (Shopee): não é do ML
+    if (!/^\d{10,}$/.test(numeroPedidoLoja)) { notasTravadasDescartadas.set(String(nf.id), 'sem pedido ML'); continue; }
+    candidatas.push({ nf, numeroPedidoLoja, dataEmissao, valorNota, xmlLink: det.xml || nf.xml || null });
   }
   if (!candidatas.length) return [];
 
@@ -2349,39 +2362,70 @@ async function fetchBlingNotasTravadasML(conta) {
   if (!mlTokens.length) return [];
   const tokensOrdenados = [...mlTokens].sort((a, b) => (a.conta === conta ? -1 : 0) - (b.conta === conta ? -1 : 0));
 
-  const resultados = await Promise.all(candidatas.map(async ({ nf, numeroPedidoLoja, dataEmissao, valorNota }) => {
-    for (const { tok } of tokensOrdenados) {
-      try {
-        const order = await axios.get(`https://api.mercadolibre.com/orders/${numeroPedidoLoja}`, {
-          headers: { Authorization: `Bearer ${tok}` }, timeout: 8000,
-        }).then(r => r.data).catch(e => { throw e; });
-        const sid = order?.shipping?.id;
-        if (!sid) continue;
-        const ship = await axios.get(`https://api.mercadolibre.com/shipments/${sid}`, {
-          headers: { Authorization: `Bearer ${tok}` }, timeout: 8000,
-        }).then(r => r.data).catch(() => null);
-        if (!ship) return null;
-        if (ship.status === 'ready_to_ship' && ship.substatus === 'invoice_pending') {
-          return {
-            nfId:             nf.id,
-            numero:           nf.numero,
-            destinatario:     nf.contato?.nome || '—',
-            valor_total:      valorNota,
-            numeroPedidoLoja,
-            dataEmissao:      nf.dataEmissao,
-            horasParada:      Math.round((Date.now() - dataEmissao.getTime()) / 3_600_000 * 10) / 10,
-            conta,
-          };
-        }
-        return null;
-      } catch (e) {
-        if (e.response && e.response.status !== 404 && e.response.status !== 403) continue;
+  // 403/404 = não é dessa conta (ou não existe) → tenta a próxima; outro erro = falha momentânea
+  const mlGet = (url, tok) => axios.get(url, { headers: { Authorization: `Bearer ${tok}` }, timeout: 8000 })
+    .then(r => ({ data: r.data }))
+    .catch(e => ({ naoAchou: e.response?.status === 404 || e.response?.status === 403 }));
+
+  const resultados = await Promise.all(candidatas.map(async ({ nf, numeroPedidoLoja, dataEmissao, valorNota, xmlLink }) => {
+    let falhaMomentanea = false;
+    for (const { tok, conta: contaML } of tokensOrdenados) {
+      let sid = null, packId = null;
+      const rOrder = await mlGet(`https://api.mercadolibre.com/orders/${numeroPedidoLoja}`, tok);
+      if (rOrder.data) {
+        sid    = rOrder.data.shipping?.id;
+        packId = rOrder.data.pack_id || rOrder.data.id; // pedido sem carrinho: o ML usa o próprio order_id como pack
+      } else if (rOrder.naoAchou) {
+        const rPack = await mlGet(`https://api.mercadolibre.com/packs/${numeroPedidoLoja}`, tok);
+        if (rPack.data) { sid = rPack.data.shipment?.id; packId = numeroPedidoLoja; }
+        else if (!rPack.naoAchou) { falhaMomentanea = true; continue; }
+        else continue;
+      } else { falhaMomentanea = true; continue; }
+      if (!sid) return null; // achou, mas sem envio do ML (ex.: a combinar) — nada a fazer
+      const ship = (await mlGet(`https://api.mercadolibre.com/shipments/${sid}`, tok)).data;
+      if (!ship) return null;
+      if (ship.status === 'ready_to_ship' && ship.substatus === 'invoice_pending') {
+        return {
+          nfId:             nf.id,
+          numero:           nf.numero,
+          destinatario:     nf.contato?.nome || '—',
+          valor_total:      valorNota,
+          numeroPedidoLoja,
+          dataEmissao:      nf.dataEmissao,
+          horasParada:      Math.round((Date.now() - dataEmissao.getTime()) / 3_600_000 * 10) / 10,
+          conta,
+          contaML,
+          packId:           String(packId),
+          xmlLink,
+        };
       }
+      // NF já chegou no ML (envio andou) — não precisa mais olhar essa nota
+      if (ship.status === 'ready_to_ship' || SHIP_STATUS_NF_RESOLVIDA.has(ship.status)) {
+        notasTravadasDescartadas.set(String(nf.id), 'ML já recebeu');
+      }
+      return null;
     }
+    // Nenhuma conta do ML conhece esse número (ex.: TikTok) — não é do ML
+    if (!falhaMomentanea) notasTravadasDescartadas.set(String(nf.id), 'não é do ML');
     return null;
   }));
 
   return resultados.filter(Boolean);
+}
+
+// Sobe o XML da NF (baixado do Bling) direto no ML — a API do Bling não tem como pedir
+// pro próprio Bling reenviar. pack = carrinho, ou o order_id quando não tem carrinho.
+async function mlEnviarNotaFiscal({ contaML, packId, xmlLink }) {
+  if (!xmlLink) throw new Error('NF sem link do XML no Bling');
+  const xmlResp = await axios.get(xmlLink, { responseType: 'arraybuffer', timeout: 20000 });
+  const tok = await getToken(loadData(), contaML);
+  const FormDataNode = require('form-data');
+  const form = new FormDataNode();
+  form.append('fiscal_document', Buffer.from(xmlResp.data), { filename: 'nfe.xml', contentType: 'text/xml' });
+  const r = await axios.post(`https://api.mercadolibre.com/packs/${packId}/fiscal_documents`, form, {
+    headers: { ...form.getHeaders(), Authorization: `Bearer ${tok}` }, timeout: 30000,
+  });
+  return r.data;
 }
 
 app.get('/api/bling/notas-travadas-ml', async (req, res) => {
@@ -10338,37 +10382,95 @@ async function verificarAnunciosPausados() {
 }
 
 // ── Polling em background: NFs autorizadas travadas na sincronização com o ML ──
-async function verificarNotasTravadasML(opts = {}) {
-  const data = loadData();
-  if (!data.notas_travadas_notificadas) data.notas_travadas_notificadas = {};
-  if (opts.forcar) data.notas_travadas_notificadas = {};
-  let changed = false;
-  let encontradas = 0, notificadas = 0;
-  const erros = [];
+// Achou NF parada (o Bling já tentou entregar e não conseguiu): o sistema sobe o XML no
+// ML uma única vez. ML aceitou → ✅; recusou → ⚠️ na hora, com o motivo que o ML deu, e
+// não tenta mais. Se aceitou mas o envio continua esperando NF depois de
+// NOTA_TRAVADA_POS_REENVIO_MIN, avisa também.
+// data.notas_travadas_reenviadas[chave] = quando subiu o XML; data.notas_travadas_notificadas[chave] = já avisou (fim).
+const NOTA_TRAVADA_POS_REENVIO_MIN = 15;
+let verificarNotasTravadasEmExecucao = false;
 
-  const contasAtivas = ['1', '2'].filter(c => !!(getBlingDataConta(data, c)?.access_token));
-  for (const conta of contasAtivas) {
-    let notas = [];
-    try { notas = await fetchBlingNotasTravadasML(conta); } catch (err) {
-      addLog(`[notas-travadas-ml] erro conta ${conta}: ${err.message}`, 'warn');
-      erros.push(`conta ${conta}: ${err.message}`);
-      continue;
+function mlErroTexto(err) {
+  const d = err.response?.data;
+  if (!d) return err.message;
+  const causas = Array.isArray(d.cause) ? d.cause.map(c => c?.message || c?.code || JSON.stringify(c)) : [];
+  const texto = [d.message, d.error, ...causas].filter(Boolean).join(' — ');
+  return `HTTP ${err.response.status}: ${texto || JSON.stringify(d).slice(0, 300)}`;
+}
+
+async function marcarNotaTravada(campo, chave) {
+  await withDataLock(() => {
+    const d = loadData();
+    d[campo] ||= {};
+    d[campo][chave] = Date.now();
+    for (const [k, ts] of Object.entries(d[campo])) if (Date.now() - ts > 30 * 86400_000) delete d[campo][k];
+    saveData(d);
+  });
+}
+
+async function verificarNotasTravadasML(opts = {}) {
+  if (verificarNotasTravadasEmExecucao) return { emExecucao: true };
+  verificarNotasTravadasEmExecucao = true;
+  try {
+    if (opts.forcar) await withDataLock(() => { const d = loadData(); d.notas_travadas_notificadas = {}; saveData(d); });
+    const data = loadData();
+    const notificadasAntes = data.notas_travadas_notificadas || {};
+    const reenviadasAntes  = data.notas_travadas_reenviadas || {};
+    let encontradas = 0, notificadas = 0, reenviadas = 0;
+    const erros = [];
+
+    const contasAtivas = ['1', '2'].filter(c => !!(getBlingDataConta(data, c)?.access_token));
+    for (const conta of contasAtivas) {
+      let notas = [];
+      try { notas = await fetchBlingNotasTravadasML(conta); } catch (err) {
+        addLog(`[notas-travadas-ml] erro conta ${conta}: ${err.message}`, 'warn');
+        erros.push(`conta ${conta}: ${err.message}`);
+        continue;
+      }
+      encontradas += notas.length;
+      for (const n of notas) {
+        const chave = `${n.nfId}_${conta}`;
+        if (notificadasAntes[chave]) continue;
+        const valor = (n.valor_total || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        const cab = `Nota #${n.numero} — ${n.destinatario} — ${valor}\nConta ${conta} · autorizada há ${n.horasParada}h\nPedido ML: ${n.numeroPedidoLoja}`;
+
+        // Já subiu o XML antes: só confere se o ML liberou
+        const reenviadaEm = reenviadasAntes[chave];
+        if (reenviadaEm) {
+          const min = Math.round((Date.now() - reenviadaEm) / 60_000);
+          if (min < NOTA_TRAVADA_POS_REENVIO_MIN) continue;
+          await marcarNotaTravada('notas_travadas_notificadas', chave);
+          notificadas++;
+          notificar(`⚠️ <b>NF travada — reenviada, mas o ML não liberou</b>\n\n${cab}\n\nO sistema subiu o XML no ML há ${min} min, mas o envio continua esperando a NF. Confira no Bling/ML o que está acontecendo.`, 'nf_travada').catch(() => {});
+          addLog(`[notas-travadas-ml] NF #${n.numero} conta ${conta}: reenviada há ${min} min e o ML ainda espera NF — avisado`, 'warn');
+          continue;
+        }
+
+        try {
+          await mlEnviarNotaFiscal(n);
+          await marcarNotaTravada('notas_travadas_reenviadas', chave);
+          reenviadas++;
+          notificar(`✅ <b>NF reenviada pro Mercado Livre</b>\n\n${cab}\n\nO Bling não tinha conseguido entregar a nota; o sistema subiu o XML e o ML aceitou.`, 'nf_emitida').catch(() => {});
+          addLog(`[notas-travadas-ml] NF #${n.numero} conta ${conta}: XML reenviado pro ML (pack ${n.packId})`, 'ok');
+        } catch (err) {
+          const motivo = mlErroTexto(err);
+          if (err.response && /already|exist|duplicad/i.test(motivo)) {
+            // ML diz que já tem a nota — confere de novo depois, sem tentar outra vez
+            await marcarNotaTravada('notas_travadas_reenviadas', chave);
+            addLog(`[notas-travadas-ml] NF #${n.numero} conta ${conta}: ML diz que já tem a NF (${motivo})`, 'info');
+            continue;
+          }
+          await marcarNotaTravada('notas_travadas_notificadas', chave);
+          notificadas++;
+          notificar(`⚠️ <b>NF travada — Mercado Livre não aceitou a nota</b>\n\n${cab}\n\nO Bling não conseguiu entregar e o sistema tentou subir o XML de novo, mas o ML recusou:\n${motivo}\n\nConfira o motivo. Se for divergência de valor ou produto, cancele a nota no Bling e emita uma nova.`, 'nf_travada').catch(() => {});
+          addLog(`[notas-travadas-ml] NF #${n.numero} conta ${conta}: reenvio recusado — ${motivo}`, 'warn');
+        }
+      }
     }
-    encontradas += notas.length;
-    for (const n of notas) {
-      const chave = `${n.nfId}_${conta}`;
-      if (data.notas_travadas_notificadas[chave]) continue;
-      notificadas++;
-      data.notas_travadas_notificadas[chave] = Date.now();
-      changed = true;
-      const valor = (n.valor_total || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-      const texto = `⚠️ <b>NF travada — Mercado Livre recusou os dados</b>\n\nNota #${n.numero} — ${n.destinatario} — ${valor}\nConta ${conta} · autorizada há ${n.horasParada}h\nPedido ML: ${n.numeroPedidoLoja}\n\nA nota foi autorizada mas o ML não recebeu os dados corretos (provável divergência de valor ou produto). Cancele a nota errada no Bling e emita uma nova.`;
-      notificar(texto, 'nf_travada').catch(() => {});
-      addLog(`[notas-travadas-ml] notificado NF #${n.numero} conta ${conta}`, 'warn');
-    }
+    return { temCanal: true, contasAtivas, encontradas, reenviadas, notificadas, erros };
+  } finally {
+    verificarNotasTravadasEmExecucao = false;
   }
-  if (changed) saveData(data);
-  return { temCanal: true, contasAtivas, encontradas, notificadas, erros };
 }
 
 // ── Polling em background: detecção de anúncios que viraram catálogo ─
