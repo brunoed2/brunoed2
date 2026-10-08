@@ -7525,6 +7525,70 @@ app.get('/api/ml/debug-nf-pedido/:order_id', async (req, res) => {
   res.json(saida);
 });
 
+// Teste (uma chamada por vez, manual) — o sistema consegue gravar a NF no envio do ML
+// pelo mesmo caminho que a integração do Bling usa (POST /shipments/{id}/invoice_data)?
+// /packs/{pack}/fiscal_documents dá 403 "you must use the biller of MercadoLibre" (v953).
+// POST /api/ml/teste-nf-shipment/:order_id?conta=1&nfId=<id da NF no Bling>&blingConta=1&modo=xml|json
+//   xml  → manda o XML da NF baixado do Bling (Content-Type application/xml)
+//   json → manda chave, número, série, data e valor da NF
+// Devolve a resposta crua do ML e o status do envio depois.
+app.post('/api/ml/teste-nf-shipment/:order_id', async (req, res) => {
+  const orderId = String(req.params.order_id);
+  const conta = String(req.query.conta || '1');
+  const blingConta = String(req.query.blingConta || conta);
+  const modo = req.query.modo === 'json' ? 'json' : 'xml';
+  if (!req.query.nfId) return res.status(400).json({ erro: 'nfId obrigatório' });
+  const saida = { orderId, conta, modo };
+  try {
+    const tok = await getToken(loadData(), conta);
+    const headers = { Authorization: `Bearer ${tok}` };
+    const o = (await axios.get(`https://api.mercadolibre.com/orders/${orderId}`, { headers, timeout: 10000 })).data;
+    const sid = o.shipping?.id;
+    if (!sid) return res.json({ ...saida, erro: 'pedido sem envio' });
+    saida.shipmentId = sid;
+    const shipAntes = (await axios.get(`https://api.mercadolibre.com/shipments/${sid}`, { headers, timeout: 10000 })).data;
+    saida.antes = { status: shipAntes.status, substatus: shipAntes.substatus };
+    if (shipAntes.substatus !== 'invoice_pending') return res.json({ ...saida, erro: 'envio não está esperando NF — teste não feito' });
+
+    const btok = await getBlingToken(blingConta);
+    const nf = (await axios.get(`https://api.bling.com.br/Api/v3/nfe/${req.query.nfId}`, { headers: { Authorization: `Bearer ${btok}` }, timeout: 10000 })).data?.data;
+    if (String(nf?.numeroPedidoLoja) !== orderId) return res.json({ ...saida, erro: `NF ${req.query.nfId} é do pedido ${nf?.numeroPedidoLoja}, não deste` });
+    saida.nf = { numero: nf.numero, serie: nf.serie, chave: nf.chaveAcesso, valor: nf.valorNota, situacao: nf.situacao };
+
+    let body, ctype;
+    if (modo === 'xml') {
+      body = (await axios.get(nf.xml, { responseType: 'arraybuffer', timeout: 20000 })).data;
+      ctype = 'application/xml';
+    } else {
+      body = {
+        fiscal_key:     nf.chaveAcesso,
+        invoice_number: String(Number(nf.numero)),
+        invoice_serie:  String(nf.serie),
+        invoice_date:   nf.dataEmissao.replace(' ', 'T') + '.000-03:00',
+        invoice_amount: nf.valorNota,
+      };
+      ctype = 'application/json';
+      saida.enviado = body;
+    }
+    try {
+      const r = await axios.post(`https://api.mercadolibre.com/shipments/${sid}/invoice_data/`, body, {
+        params: { siteId: 'MLB' }, headers: { ...headers, 'Content-Type': ctype }, timeout: 30000,
+      });
+      saida.resposta = { status: r.status, data: r.data };
+      addLog(`[teste-nf-shipment] ${orderId} (${modo}): ML aceitou — HTTP ${r.status}`, 'ok');
+    } catch (e) {
+      saida.resposta = { status: e.response?.status, data: e.response?.data ?? e.message };
+      addLog(`[teste-nf-shipment] ${orderId} (${modo}): ML recusou — HTTP ${e.response?.status}`, 'warn');
+    }
+    await new Promise(r => setTimeout(r, 3000));
+    const shipDepois = (await axios.get(`https://api.mercadolibre.com/shipments/${sid}`, { headers, timeout: 10000 })).data;
+    saida.depois = { status: shipDepois.status, substatus: shipDepois.substatus };
+    res.json(saida);
+  } catch (e) {
+    res.json({ ...saida, erro: e.response ? `HTTP ${e.response.status}: ${JSON.stringify(e.response.data).slice(0, 300)}` : e.message });
+  }
+});
+
 // Situação da rotina (debug). ?rodar=1 roda agora em segundo plano; ?rodar=1&avisar=0
 // roda sem mandar notificação.
 // Debug — entrega do ML que falhou e está voltando pro vendedor (o equivalente do
