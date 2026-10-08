@@ -7525,6 +7525,14 @@ app.get('/api/ml/debug-nf-pedido/:order_id', async (req, res) => {
     await tentar('users_invoices_orders', `https://api.mercadolibre.com/users/${c.user_id}/invoices/orders/${orderId}`);
     if (o.shipping?.id) await tentar('shipment_invoice_data', `https://api.mercadolibre.com/shipments/${o.shipping.id}/invoice_data`, { siteId: 'MLB' });
     await tentar('packs_fiscal_documents', `https://api.mercadolibre.com/packs/${o.pack_id || orderId}/fiscal_documents`);
+    // Só a estrutura (sem CPF/endereço): o reenvio de NF falhou com "unexpected_error_get_billing_info"
+    try {
+      const bi = await mlGetDevolucao(`https://api.mercadolibre.com/orders/${orderId}/billing_info`, headers);
+      const campos = (v, p = '') => v && typeof v === 'object'
+        ? Object.entries(v).flatMap(([k, x]) => campos(x, p ? `${p}.${k}` : k))
+        : [`${p}${v == null || v === '' ? ' (vazio)' : ''}`];
+      r.billing_info_campos = campos(bi);
+    } catch (e) { r.billing_info_campos = { status: e.response?.status, erro: e.response?.data || e.message }; }
   }
   res.json(saida);
 });
