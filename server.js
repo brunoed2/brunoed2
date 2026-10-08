@@ -7546,8 +7546,14 @@ app.post('/api/ml/teste-nf-shipment/:order_id', async (req, res) => {
   try {
     const tok = await getToken(loadData(), conta);
     const headers = { Authorization: `Bearer ${tok}` };
-    const o = (await axios.get(`https://api.mercadolibre.com/orders/${orderId}`, { headers, timeout: 10000 })).data;
-    const sid = o.shipping?.id;
+    // orderId pode ser um carrinho (pack_id) — o envio é um só pros pedidos dele
+    const sid = await axios.get(`https://api.mercadolibre.com/orders/${orderId}`, { headers, timeout: 10000 })
+      .then(r => r.data.shipping?.id)
+      .catch(async e => {
+        if (e.response?.status !== 404) throw e;
+        saida.carrinho = true;
+        return (await axios.get(`https://api.mercadolibre.com/packs/${orderId}`, { headers, timeout: 10000 })).data.shipment?.id;
+      });
     if (!sid) return res.json({ ...saida, erro: 'pedido sem envio' });
     saida.shipmentId = sid;
     const shipAntes = (await axios.get(`https://api.mercadolibre.com/shipments/${sid}`, { headers, timeout: 10000 })).data;
