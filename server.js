@@ -2301,9 +2301,10 @@ app.get('/api/bling/nfs-shopee-marketplace', async (req, res) => {
 // indiretamente: quando a NF chega no ML, o envio (shipment) sai do substatus
 // "invoice_pending". Se a NF já está autorizada há um tempo e o shipment continua
 // parado em ready_to_ship/invoice_pending, a NF não chegou — às vezes é falha
-// momentânea (reenviar pelo Bling resolve), às vezes o ML recusou os dados. O sistema
-// não consegue subir o XML no lugar do Bling: o ML responde 403 "you must use the biller
-// of MercadoLibre" (só o emissor integrado pode mandar NF). Então o vigia só avisa.
+// momentânea (reenviar resolve), às vezes o ML recusou os dados. O vigia
+// (verificarNotasTravadasML) manda o XML uma vez por POST /shipments/{id}/invoice_data
+// (o mesmo caminho da integração do Bling — testado no v955); /packs/{pack}/fiscal_documents
+// NÃO serve: dá 403 "you must use the biller of MercadoLibre" (v953).
 // numeroPedidoLoja pode ser um pedido ou um carrinho (pack_id) — o Bling grava o pack
 // quando a venda tem mais de um item; /orders dá 404 nesse caso, então tenta /packs.
 const NOTA_TRAVADA_MIN_MINUTOS = 5;
@@ -2352,7 +2353,7 @@ async function fetchBlingNotasTravadasML(conta) {
     const valorNota        = det.valorNota ?? nf.totalProdutos ?? 0;
     // Sem número de pedido de loja (remessa, balcão...) ou com letras (Shopee): não é do ML
     if (!/^\d{10,}$/.test(numeroPedidoLoja)) { notasTravadasDescartadas.set(String(nf.id), 'sem pedido ML'); continue; }
-    candidatas.push({ nf, numeroPedidoLoja, dataEmissao, valorNota });
+    candidatas.push({ nf, numeroPedidoLoja, dataEmissao, valorNota, xmlLink: det.xml || nf.xml || null });
   }
   if (!candidatas.length) return [];
 
@@ -2368,9 +2369,9 @@ async function fetchBlingNotasTravadasML(conta) {
     .then(r => ({ data: r.data }))
     .catch(e => ({ naoAchou: e.response?.status === 404 || e.response?.status === 403 }));
 
-  const resultados = await Promise.all(candidatas.map(async ({ nf, numeroPedidoLoja, dataEmissao, valorNota }) => {
+  const resultados = await Promise.all(candidatas.map(async ({ nf, numeroPedidoLoja, dataEmissao, valorNota, xmlLink }) => {
     let falhaMomentanea = false;
-    for (const { tok } of tokensOrdenados) {
+    for (const { tok, conta: contaML } of tokensOrdenados) {
       let sid = null;
       const rOrder = await mlGet(`https://api.mercadolibre.com/orders/${numeroPedidoLoja}`, tok);
       if (rOrder.data) {
@@ -2394,6 +2395,9 @@ async function fetchBlingNotasTravadasML(conta) {
           dataEmissao:      nf.dataEmissao,
           horasParada:      Math.round((Date.now() - dataEmissao.getTime()) / 3_600_000 * 10) / 10,
           conta,
+          contaML,
+          shipmentId:       sid, // carrinho: um envio só pra todos os pedidos
+          xmlLink,
         };
       }
       // NF já chegou no ML (envio andou) — não precisa mais olhar essa nota
@@ -9799,7 +9803,7 @@ const NOTIF_CATEGORIAS = {
   anuncio_pausado:  '⏸️ Anúncio pausado',
   anuncio_catalogo: '📦 Anúncio virou catálogo',
   nf_emitida:       '✅ NF emitida automaticamente',
-  nf_travada:       '⚠️ NF travada (recusada pelo ML)',
+  nf_travada:       '⚠️ NF não chegou no ML',
   auto_super:       '⚡ Pedido pronto pra NF',
   bling_pendencia:  '⚠️ Pendência bloqueando emissão automática',
   contas_pagar:     '📅 Contas a pagar vencendo',
@@ -10428,10 +10432,46 @@ async function verificarAnunciosPausados() {
 }
 
 // ── Polling em background: NFs autorizadas travadas na sincronização com o ML ──
-// Achou NF parada: avisa uma vez pra reenviar pelo Bling (o sistema não consegue subir
-// a NF no ML — ver fetchBlingNotasTravadasML). Na maioria das vezes é falha momentânea
-// e reenviar resolve; só é divergência se o Bling mostrar erro ao reenviar.
+// Achou NF parada (o Bling já tentou entregar e não conseguiu): o sistema manda o XML no
+// envio do ML uma única vez. ML aceitou → ✅; recusou → ⚠️ na hora com o motivo, pra
+// reenviar pelo Bling. Se aceitou mas o envio continua esperando NF depois de
+// NOTA_TRAVADA_POS_REENVIO_MIN, avisa também.
+// data.notas_travadas_reenvio[chave] = quando tentou (uma tentativa por nota — separado
+// do aviso, pra nota que só foi avisada no v954 ainda ganhar a tentativa);
+// data.notas_travadas_notificadas[chave] = já avisou (fim).
+const NOTA_TRAVADA_POS_REENVIO_MIN = 15;
 let verificarNotasTravadasEmExecucao = false;
+
+async function mlEnviarNotaFiscal({ contaML, shipmentId, xmlLink }) {
+  if (!xmlLink) throw new Error('NF sem link do XML no Bling');
+  const xml = (await axios.get(xmlLink, { responseType: 'arraybuffer', timeout: 20000 })).data;
+  const tok = await getToken(loadData(), contaML);
+  const r = await axios.post(`https://api.mercadolibre.com/shipments/${shipmentId}/invoice_data/`, xml, {
+    params: { siteId: 'MLB' },
+    headers: { Authorization: `Bearer ${tok}`, 'Content-Type': 'application/xml' },
+    timeout: 30000,
+  });
+  return r.data;
+}
+
+function mlErroTexto(err) {
+  const d = err.response?.data;
+  if (!d) return err.message;
+  const causas = Array.isArray(d.cause) ? d.cause.map(c => c?.message || c?.code || JSON.stringify(c)) : [];
+  const texto = [d.message, d.error, ...causas].filter(Boolean).join(' — ');
+  return `HTTP ${err.response.status}: ${texto || JSON.stringify(d).slice(0, 300)}`;
+}
+
+async function marcarNotaTravada(campo, chave) {
+  await withDataLock(() => {
+    const d = loadData();
+    d[campo] ||= {};
+    d[campo][chave] = Date.now();
+    for (const [k, ts] of Object.entries(d[campo])) if (Date.now() - ts > 30 * 86400_000) delete d[campo][k];
+    delete d.notas_travadas_reenviadas; // sobra do v953
+    saveData(d);
+  });
+}
 
 async function verificarNotasTravadasML(opts = {}) {
   if (verificarNotasTravadasEmExecucao) return { emExecucao: true };
@@ -10440,7 +10480,8 @@ async function verificarNotasTravadasML(opts = {}) {
     if (opts.forcar) await withDataLock(() => { const d = loadData(); d.notas_travadas_notificadas = {}; saveData(d); });
     const data = loadData();
     const notificadasAntes = data.notas_travadas_notificadas || {};
-    let encontradas = 0, notificadas = 0;
+    const tentadasAntes    = data.notas_travadas_reenvio || {};
+    let encontradas = 0, notificadas = 0, reenviadas = 0;
     const erros = [];
 
     const contasAtivas = ['1', '2'].filter(c => !!(getBlingDataConta(data, c)?.access_token));
@@ -10452,24 +10493,45 @@ async function verificarNotasTravadasML(opts = {}) {
         continue;
       }
       encontradas += notas.length;
-      const novas = notas.filter(n => !notificadasAntes[`${n.nfId}_${conta}`]);
-      if (!novas.length) continue;
-      await withDataLock(() => {
-        const d = loadData();
-        d.notas_travadas_notificadas ||= {};
-        for (const n of novas) d.notas_travadas_notificadas[`${n.nfId}_${conta}`] = Date.now();
-        for (const [k, ts] of Object.entries(d.notas_travadas_notificadas)) if (Date.now() - ts > 30 * 86400_000) delete d.notas_travadas_notificadas[k];
-        delete d.notas_travadas_reenviadas; // sobra do v953 (reenvio pelo sistema, que o ML bloqueia)
-        saveData(d);
-      });
-      for (const n of novas) {
-        notificadas++;
+      for (const n of notas) {
+        const chave = `${n.nfId}_${conta}`;
         const valor = (n.valor_total || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-        notificar(`⚠️ <b>NF não chegou no Mercado Livre</b>\n\nNota #${n.numero} — ${n.destinatario} — ${valor}\nConta ${conta} · autorizada há ${n.horasParada}h\nPedido ML: ${n.numeroPedidoLoja}\n\nA nota foi autorizada, mas o ML continua esperando a NF. Reenvie pelo Bling. Só cancele e emita outra se o Bling mostrar erro de divergência de valor ou produto.`, 'nf_travada').catch(() => {});
-        addLog(`[notas-travadas-ml] notificado NF #${n.numero} conta ${conta}`, 'warn');
+        const cab = `Nota #${n.numero} — ${n.destinatario} — ${valor}\nConta ${conta} · autorizada há ${n.horasParada}h\nPedido ML: ${n.numeroPedidoLoja}`;
+
+        // Já tentou: só confere se o ML liberou
+        const tentadaEm = tentadasAntes[chave];
+        if (tentadaEm) {
+          if (notificadasAntes[chave]) continue;
+          const min = Math.round((Date.now() - tentadaEm) / 60_000);
+          if (min < NOTA_TRAVADA_POS_REENVIO_MIN) continue;
+          await marcarNotaTravada('notas_travadas_notificadas', chave);
+          notificadas++;
+          notificar(`⚠️ <b>NF reenviada, mas o ML não liberou</b>\n\n${cab}\n\nO sistema mandou a NF pro ML há ${min} min, mas o envio continua esperando a NF. Reenvie pelo Bling e confira se aparece algum erro.`, 'nf_travada').catch(() => {});
+          addLog(`[notas-travadas-ml] NF #${n.numero} conta ${conta}: reenviada há ${min} min e o ML ainda espera NF — avisado`, 'warn');
+          continue;
+        }
+
+        await marcarNotaTravada('notas_travadas_reenvio', chave);
+        try {
+          await mlEnviarNotaFiscal(n);
+          reenviadas++;
+          notificar(`✅ <b>NF reenviada pro Mercado Livre</b>\n\n${cab}\n\nO Bling não tinha conseguido entregar a nota; o sistema mandou e o ML aceitou. Não precisa fazer nada.`, 'nf_emitida').catch(() => {});
+          addLog(`[notas-travadas-ml] NF #${n.numero} conta ${conta}: reenviada pro ML (envio ${n.shipmentId})`, 'ok');
+        } catch (err) {
+          const motivo = mlErroTexto(err);
+          if (err.response && /already|exist|duplicad/i.test(motivo)) {
+            // ML diz que já tem a nota — a conferência dos 15 min avisa se não liberar
+            addLog(`[notas-travadas-ml] NF #${n.numero} conta ${conta}: ML diz que já tem a NF (${motivo})`, 'info');
+            continue;
+          }
+          await marcarNotaTravada('notas_travadas_notificadas', chave);
+          notificadas++;
+          notificar(`⚠️ <b>NF não chegou no Mercado Livre</b>\n\n${cab}\n\nO Bling não conseguiu entregar e o sistema tentou mandar de novo, mas o ML recusou:\n${motivo}\n\nReenvie pelo Bling. Só cancele e emita outra se o Bling mostrar erro de divergência de valor ou produto.`, 'nf_travada').catch(() => {});
+          addLog(`[notas-travadas-ml] NF #${n.numero} conta ${conta}: reenvio recusado — ${motivo}`, 'warn');
+        }
       }
     }
-    return { temCanal: true, contasAtivas, encontradas, notificadas, erros };
+    return { temCanal: true, contasAtivas, encontradas, reenviadas, notificadas, erros };
   } finally {
     verificarNotasTravadasEmExecucao = false;
   }
