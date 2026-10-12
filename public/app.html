@@ -1098,6 +1098,7 @@
           <button class="filtro-btn" id="subtab-btn-conexao" onclick="abrirSubConfig('conexao')">🔌 Conexão</button>
           <button class="filtro-btn" id="subtab-btn-usuarios" onclick="abrirSubConfig('usuarios')">👥 Usuários</button>
           <button class="filtro-btn" id="subtab-btn-acessos" onclick="abrirSubConfig('acessos')">🔒 Acessos</button>
+          <button class="filtro-btn" id="subtab-btn-feriados" onclick="abrirSubConfig('feriados')">📅 Feriados</button>
           <button class="filtro-btn" id="subtab-btn-backup" onclick="abrirSubConfig('backup')">💾 Backup</button>
         </div>
 
@@ -1337,6 +1338,21 @@
         </div><!-- /subtab-conexao -->
 
         <!-- Sub-aba: Backup -->
+        <div id="subtab-feriados" style="display:none">
+          <div style="max-width:600px">
+            <h2 style="font-size:16px;font-weight:600;margin-bottom:4px">Feriados (dias sem despacho)</h2>
+            <p style="font-size:13px;color:#64748b;margin-bottom:24px">Num dia cadastrado aqui o sistema age como se fosse domingo: não emite NF automática, não manda o aviso de "faltam 30 min" do ML, e os pedidos da Shopee que seriam postados nesse dia passam pro próximo dia de postagem.</p>
+            <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:20px;margin-bottom:16px">
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                <input type="date" id="feriado-data" style="font-size:14px;padding:6px 8px">
+                <button class="btn-primary" onclick="feriadoIncluir()">➕ Incluir</button>
+              </div>
+              <div id="feriados-msg" style="margin-top:8px;font-size:13px"></div>
+            </div>
+            <div id="feriados-lista" style="font-size:14px"></div>
+          </div>
+        </div>
+
         <div id="subtab-backup" style="display:none">
           <div style="max-width:600px">
             <h2 style="font-size:16px;font-weight:600;margin-bottom:4px">Backup dos dados</h2>
@@ -1776,7 +1792,7 @@
 
   <script src="/js/compartilhar.js?v=1"></script>
   <script src="/js/lucro.js?v=13"></script>
-  <script src="/js/app-v2.js?v=8"></script>
+  <script src="/js/app-v2.js?v=9"></script>
   <script src="/js/operacoes.js?v=22"></script>
   <script src="/js/shopee.js?v=2"></script>
   <script src="/js/conexao.js?v=2"></script>
@@ -1784,6 +1800,7 @@
   <script src="/js/contas-pagar.js?v=1"></script>
   <script src="/js/contas-receber.js?v=1"></script>
   <script src="/js/backup.js?v=1"></script>
+  <script src="/js/feriados.js?v=1"></script>
   <script src="/js/promocoes.js?v=9"></script>
   <script src="/js/bling.js?v=6"></script>
   <script src="/js/fiscal.js?v=1"></script>
@@ -2120,6 +2137,6 @@
   </div>
 
   <script src="/js/busca-pagina.js?v=1"></script>
-  <div id="version-badge">v958</div>
+  <div id="version-badge">v959</div>
 </body>
 </html>

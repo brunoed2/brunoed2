@@ -59,6 +59,7 @@ const FISCAL_FILE   = path.join(DATA_DIR, 'fiscal-notas.json');
 const NOTIF_HIST_FILE = path.join(DATA_DIR, 'notificacoes.json');
 const INSTRUCOES_DESPACHO_FILE = path.join(DATA_DIR, 'instrucoes-despacho.json');
 const CODIGOS_RECEBIMENTO_FILE = path.join(DATA_DIR, 'codigos-recebimento.json');
+const FERIADOS_FILE = path.join(DATA_DIR, 'feriados.json');
 const BLING_FILE    = path.join(DATA_DIR, 'bling-tokens.json');
 const ACESSOS_FILE  = path.join(DATA_DIR, 'acessos-log.json');
 const SESSAO_FILE   = path.join(DATA_DIR, 'sessao.json');
@@ -814,6 +815,43 @@ app.delete('/api/usuarios/:senha', (req, res) => {
   delete data.usuarios[senha];
   saveData(data);
   res.json({ ok: true });
+});
+
+// ── Feriados (Configurações → Feriados) ─────────────────────────
+// Dia sem despacho cadastrado pelo admin: o sistema trata como domingo — a emissão
+// automática não roda, o aviso de "faltam 30min" do ML não sai e a data de postagem
+// da Shopee pula pro próximo dia de postagem. Arquivo próprio (mesmo motivo do
+// codigos-recebimento.json) e cópia em memória, porque shopeeDataPostagemBR roda
+// por pedido. Lista de 'YYYY-MM-DD'.
+let feriadosCache = null;
+function loadFeriados() {
+  if (!feriadosCache) {
+    try { feriadosCache = JSON.parse(fs.readFileSync(FERIADOS_FILE, 'utf8')).filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d)); }
+    catch { feriadosCache = []; }
+  }
+  return feriadosCache;
+}
+function saveFeriados(lista) {
+  feriadosCache = [...new Set(lista)].sort();
+  fs.writeFileSync(FERIADOS_FILE, JSON.stringify(feriadosCache, null, 2));
+}
+function ehFeriado(diaISO) {
+  return loadFeriados().includes(diaISO);
+}
+
+app.get('/api/feriados', (req, res) => {
+  res.json({ feriados: loadFeriados() });
+});
+
+app.post('/api/feriados', (req, res) => {
+  const { data, acao, senha } = req.body || {};
+  if (senha !== '199412') return res.status(403).json({ error: 'Apenas o administrador pode editar feriados' });
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(data || ''))) return res.status(400).json({ error: 'Data inválida' });
+  const lista = loadFeriados().filter(d => d !== data);
+  if (acao !== 'remover') lista.push(data);
+  saveFeriados(lista);
+  addLog(`[feriados] ${acao === 'remover' ? 'removido' : 'incluído'}: ${data}`, 'info');
+  res.json({ ok: true, feriados: feriadosCache });
 });
 
 // ── Código de recebimento de mercadoria (aba "Código") ──────────
@@ -2895,12 +2933,17 @@ function shopeeFimHoraDoDia(diaSemana) {
 
 function ehDiaUtilHoje() {
   const diaSemana = diaSemanaBR();
-  return diaSemana >= 1 && diaSemana <= 5;
+  return diaSemana >= 1 && diaSemana <= 5 && !ehFeriado(hojeSP());
+}
+
+// Domingo ou feriado cadastrado: nenhum canal despacha.
+function semDespachoHoje() {
+  return diaSemanaBR() === 0 || ehFeriado(hojeSP());
 }
 
 function dentroDaJanelaShopeeAgora() {
   const diaSemana = diaSemanaBR();
-  if (diaSemana === 0) return false;
+  if (semDespachoHoje()) return false;
   const inicio = horaHojeParaData(`${String(AUTO_SUPER_INICIO_HORA).padStart(2, '0')}:00`);
   const fim    = horaHojeParaData(`${String(shopeeFimHoraDoDia(diaSemana)).padStart(2, '0')}:01`); // 13:00 ainda conta
   const agora  = Date.now();
@@ -2911,9 +2954,9 @@ function dentroDaJanelaShopeeAgora() {
 // não pela hora em que o job roda. O job roda a cada 5min e o pedido ainda demora a
 // chegar no Bling — pela janela do relógio, um pedido das 12:58 podia só ser visto
 // às 13:03 e ficar sem NF até o dia seguinte mesmo tendo que postar hoje. Aqui: a
-// partir das 7h (nunca domingo), emite tudo cuja data de postagem já é hoje ou antes.
+// partir das 7h (nunca domingo nem feriado), emite tudo cuja data de postagem já é hoje ou antes.
 function shopeeProntoPraEmitirAgora(criadoEmSec) {
-  if (diaSemanaBR() === 0) return false;
+  if (semDespachoHoje()) return false;
   const inicio = horaHojeParaData(`${String(AUTO_SUPER_INICIO_HORA).padStart(2, '0')}:00`);
   if (Date.now() < inicio.getTime()) return false;
   return shopeeDataPostagemBR(criadoEmSec) <= hojeSP();
@@ -2964,7 +3007,7 @@ let autoSuperEmExecucao = false;
 
 async function autoSuperJob() {
   if (autoSuperEmExecucao) return;
-  if (diaSemanaBR() === 0) return; // domingo — nada a fazer (sábado: janela 7h-8h)
+  if (semDespachoHoje()) return; // domingo ou feriado — nada a fazer (sábado: janela 7h-8h)
   autoSuperEmExecucao = true;
   try {
     await autoSuperJobCiclo();
@@ -9383,7 +9426,7 @@ app.get('/api/shopee/vendas-etiquetas', async (req, res) => {
 // ── Shopee: pedidos futuros (ainda sem NF, postagem só depois de hoje) ──
 // Regra da Shopee combinada com o usuário: pedido que cai até as 13:00 (sábado: 8:00),
 // inclusive o próprio minuto do corte, tem que ser postado no mesmo dia; depois disso fica pro dia seguinte (sábado
-// conta, domingo pula pra segunda). Não dá pra usar ship_by_date — é o prazo máximo da Shopee
+// conta, domingo e feriado cadastrado pulam pro próximo dia). Não dá pra usar ship_by_date — é o prazo máximo da Shopee
 // (ex: sexta 15h → segunda 23:59), não o dia em que o pedido vai ser postado.
 // Só entra pedido sem NF válida: com NF ele já aparece na aba Vendas.
 function shopeeDataPostagemBR(createTimeSec) {
@@ -9391,7 +9434,8 @@ function shopeeDataPostagemBR(createTimeSec) {
   // Corte inclusivo: pedido das 13:00 (sábado 8:00) ainda posta no mesmo dia, só a partir de 13:01 vira
   const corte = shopeeFimHoraDoDia(d.getUTCDay());
   if (d.getUTCHours() > corte || (d.getUTCHours() === corte && d.getUTCMinutes() >= 1)) d.setUTCDate(d.getUTCDate() + 1);
-  if (d.getUTCDay() === 0) d.setUTCDate(d.getUTCDate() + 1); // domingo → segunda
+  // domingo/feriado → próximo dia de postagem (o limite só evita loop se cadastrarem um mês inteiro)
+  for (let i = 0; i < 31 && (d.getUTCDay() === 0 || ehFeriado(d.toISOString().slice(0, 10))); i++) d.setUTCDate(d.getUTCDate() + 1);
   return d.toISOString().slice(0, 10);
 }
 
@@ -10325,6 +10369,7 @@ async function verificarNovosShipmentsShopee() {
 // Só notifica pelo push do site (categoria prazo_despacho).
 async function verificarPrazoDespachoPush() {
   if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) return;
+  if (ehFeriado(hojeSP())) return; // feriado cadastrado: não tem despacho, mesmo que a grade do ML diga que sim
   const data  = loadData();
   const hoje  = hojeSP();
   const cache = carregarPrazoDespachoCache();
