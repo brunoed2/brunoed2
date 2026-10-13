@@ -12859,6 +12859,8 @@ async function sefazDfeCiclo(num, { ignorarEspera = false } = {}) {
   let ultimoStatus = null;
   const novasNotas = [];
   let totalDocs = 0;
+  // Resumo do que veio: por schema e o que foi feito (ex: eventos de CT-e das próprias vendas são ignorados)
+  const resumo = { porSchema: {}, notasCompra: 0, jaExistiam: 0, ignorados: 0, cancelamentos: 0, erros: 0 };
 
   for (let lote = 0; lote < SEFAZ_DFE_MAX_LOTES; lote++) {
     let resp;
@@ -12888,13 +12890,16 @@ async function sefazDfeCiclo(num, { ignorarEspera = false } = {}) {
     const db = loadFiscalNotas();
     const cancelamentos = [];
     for (const doc of docs) {
+      const sch = (doc.schema || '?').replace(/_v?[d.]+.xsd$/i, '');
+      resumo.porSchema[sch] = (resumo.porSchema[sch] || 0) + 1;
       let r;
       try { r = sefazInterpretarDoc(doc, nc); }
-      catch (e) { addLog(`[sefaz-dfe] C${num} NSU ${doc.nsu}: erro ao ler doc (${doc.schema}) — ${e.message}`, 'warn'); continue; }
-      if (r.tipo === 'cancelamento') { if (r.chave) cancelamentos.push(r.chave); continue; }
-      if (r.tipo !== 'nota') continue;
+      catch (e) { addLog(`[sefaz-dfe] C${num} NSU ${doc.nsu}: erro ao ler doc (${doc.schema}) — ${e.message}`, 'warn'); resumo.erros++; continue; }
+      if (r.tipo === 'cancelamento') { if (r.chave) cancelamentos.push(r.chave); resumo.cancelamentos++; continue; }
+      if (r.tipo !== 'nota') { resumo.ignorados++; continue; }
+      resumo.notasCompra++;
       const atual = db[r.nota.chave];
-      if (!atual) novasNotas.push(r.nota);
+      if (!atual) novasNotas.push(r.nota); else resumo.jaExistiam++;
       if (r.resumo) {
         // Resumo nunca apaga o que a nota já tem (XML completo, natureza da operação)
         // Ciência NÃO é automática: o usuário escolhe na aba (POST /api/sefaz-dfe/ciencia)
@@ -12914,9 +12919,10 @@ async function sefazDfeCiclo(num, { ignorarEspera = false } = {}) {
   atualizarSefazDfe(num, s => {
     s.ultNSU = nsu; s.maxNSU = maxNSU; s.proximaConsulta = proxima;
     s.ultimaConsulta = Date.now(); s.ultimoStatus = ultimoStatus;
+    s.ultimoResumo = resumo;
     if (novasNotas.length) s.ultimasNovas = { ts: Date.now(), qtd: novasNotas.length };
   });
-  addLog(`[sefaz-dfe] C${num}: SEFAZ ${ultimoStatus?.cStat} — ${ultimoStatus?.xMotivo} | ${totalDocs} doc(s), ${novasNotas.length} nota(s) nova(s), NSU ${nsu}/${maxNSU}`, ultimoStatus?.cStat === '656' || ultimoStatus?.cStat === 'erro' ? 'warn' : 'info');
+  addLog(`[sefaz-dfe] C${num}: SEFAZ ${ultimoStatus?.cStat} — ${ultimoStatus?.xMotivo} | ${totalDocs} doc(s), ${novasNotas.length} nota(s) nova(s), NSU ${nsu}/${maxNSU} | ${JSON.stringify(resumo)}`, ultimoStatus?.cStat === '656' || ultimoStatus?.cStat === 'erro' ? 'warn' : 'info');
 
   await sefazDfeBuscarXmlPorChave(num, nc, pfx, cUF);
 
@@ -12929,7 +12935,7 @@ async function sefazDfeCiclo(num, { ignorarEspera = false } = {}) {
       for (const n of novasNotas) await notificar(`🧾 NF de compra: ${n.emitnome || n.emitid} — NF ${n.num} — ${fmt(n.valor)}`, 'nf_compra');
     }
   }
-  return { ok: true, novas: novasNotas.length, docs: totalDocs, status: ultimoStatus };
+  return { ok: true, novas: novasNotas.length, docs: totalDocs, status: ultimoStatus, resumo, ultNSU: nsu, maxNSU };
 }
 
 // Ciência da Operação — só quando o usuário escolhe a nota na aba (nunca automática).
@@ -13028,7 +13034,7 @@ app.get('/api/sefaz-dfe/status', (req, res) => {
     return {
       conta: num, cnpj: nc.cnpj || null, titular: nc.titular || null, temCert: !!nc.cert_b64,
       ultimaConsulta: s.ultimaConsulta || null, proximaConsulta: s.proximaConsulta || null,
-      ultimoStatus: s.ultimoStatus || null, ultimasNovas: s.ultimasNovas || null,
+      ultimoStatus: s.ultimoStatus || null, ultimasNovas: s.ultimasNovas || null, ultimoResumo: s.ultimoResumo || null,
       ultNSU: s.ultNSU || '0', maxNSU: s.maxNSU || '0',
       aguardandoCiencia: semXml.filter(n => !n.ciencia?.ok).length,
       aguardandoXml:     semXml.filter(n => n.ciencia?.ok).length,

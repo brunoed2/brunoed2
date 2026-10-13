@@ -61,6 +61,13 @@ function fiscalHora(ts) {
   return new Date(ts).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
 
+function fiscalResumoTexto(resumo, ultNSU, maxNSU) {
+  if (!resumo) return '';
+  const tipos = Object.entries(resumo.porSchema || {}).map(([k, v]) => `${k}: ${v}`).join(', ');
+  const falta = Math.max(0, parseInt(maxNSU || 0, 10) - parseInt(ultNSU || 0, 10));
+  return `Tipos: ${tipos || '—'}\nNotas de compra: ${resumo.notasCompra} (já existiam: ${resumo.jaExistiam}) · ignorados (vendas próprias/eventos): ${resumo.ignorados} · cancelamentos: ${resumo.cancelamentos}${resumo.erros ? ` · erros: ${resumo.erros}` : ''}\nNSU ${ultNSU}/${maxNSU}${falta ? ` — faltam ${falta} documento(s), continua sozinho em 5 min` : ' — em dia'}`;
+}
+
 async function fiscalCarregarSefazStatus() {
   const box = document.getElementById('fiscal-sefaz-status');
   if (!box) return;
@@ -73,7 +80,8 @@ async function fiscalCarregarSefazStatus() {
     const novas = c.ultimasNovas ? ` · últimas novas: ${c.ultimasNovas.qtd} em ${fiscalHora(c.ultimasNovas.ts)}` : '';
     const ciencia = c.aguardandoCiencia ? ` · sem XML, aguardando sua ciência: ${c.aguardandoCiencia}` : '';
     const recusada = c.aguardandoXml ? ` · ciência dada, aguardando XML: ${c.aguardandoXml}` : '';
-    return `🏛️ SEFAZ C${c.conta} (${c.titular || c.cnpj}): última consulta ${fiscalHora(c.ultimaConsulta)} [${st}] · próxima ${fiscalHora(c.proximaConsulta)}${novas}${ciencia}${recusada}
+    const resumo = c.ultimoResumo ? `<div style="margin-top:4px;white-space:pre-wrap;color:#64748b">${esc(fiscalResumoTexto(c.ultimoResumo, c.ultNSU, c.maxNSU))}</div>` : '';
+    return `🏛️ SEFAZ C${c.conta} (${c.titular || c.cnpj}): última consulta ${fiscalHora(c.ultimaConsulta)} [${st}] · próxima ${fiscalHora(c.proximaConsulta)}${novas}${ciencia}${recusada}${resumo}
       <button class="btn-sm" style="margin-left:8px" onclick="fiscalConsultarSefaz('${c.conta}', this)">Consultar SEFAZ agora</button>
       <button class="btn-sm" style="margin-left:4px" onclick="fiscalDiagnosticoSefaz('${c.conta}', this)">Diagnóstico</button>
       <pre id="fiscal-sefaz-diag-${c.conta}" style="display:none;white-space:pre-wrap;font-size:11px;margin:8px 0 0;color:#cbd5e1"></pre>`;
@@ -109,7 +117,7 @@ async function fiscalConsultarSefaz(conta, btn) {
     else if (r.pulou) alert('A SEFAZ ainda não liberou nova consulta (regra de 1h). Tente depois do horário de "próxima".');
     else {
       const st = r.status ? `${r.status.cStat} — ${r.status.xMotivo}` : '';
-      alert(`SEFAZ respondeu: ${st}\n\n${r.docs || 0} documento(s) recebido(s), ${r.novas || 0} nota(s) nova(s).`);
+      alert(`SEFAZ respondeu: ${st}\n\n${r.docs || 0} documento(s) recebido(s), ${r.novas || 0} nota(s) nova(s).\n\n${fiscalResumoTexto(r.resumo, r.ultNSU, r.maxNSU)}`);
       await fiscalCarregar();
     }
   } catch (err) {
