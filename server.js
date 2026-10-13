@@ -12843,11 +12843,12 @@ app.get('/api/sefaz-dfe/diagnostico', async (req, res) => {
   res.json({ ok: true, ...out });
 });
 
-async function sefazDfeCiclo(num) {
+async function sefazDfeCiclo(num, { ignorarEspera = false } = {}) {
   const nc = (loadData().notas_contas || {})[num] || {};
   if (!nc.cert_b64 || !nc.senha || !nc.cnpj) return { ok: false, erro: 'Certificado não configurado' };
   const estado = loadSefazDfe()[num] || {};
-  if (Date.now() < (estado.proximaConsulta || 0)) return { ok: true, pulou: true };
+  // ignorarEspera: só o botão "Consultar agora", depois de checar que o último erro não contou pro limite
+  if (!ignorarEspera && Date.now() < (estado.proximaConsulta || 0)) return { ok: true, pulou: true };
 
   const pfx = Buffer.from(nc.cert_b64, 'base64');
   const cUF = nc.cUF || '35';
@@ -13020,7 +13021,10 @@ app.get('/api/sefaz-dfe/status', (req, res) => {
     const s = st[num] || {};
     const nc = (data.notas_contas || {})[num] || {};
     const db = loadFiscalNotas();
-    const semXml = Object.values(db).filter(n => n.filial && n.filial === nc.cnpj && !n.zip && !n.cancelada);
+    // Só notas dos últimos 90 dias (o que a SEFAZ ainda entrega) — o histórico antigo do
+    // Fiscal.io sem XML não precisa de ciência
+    const corte = new Date(Date.now() - 90 * 86400_000).toISOString().slice(0, 10).replace(/-/g, '.');
+    const semXml = Object.values(db).filter(n => n.filial && n.filial === nc.cnpj && !n.zip && !n.cancelada && (n.dtemi || '') >= corte);
     return {
       conta: num, cnpj: nc.cnpj || null, titular: nc.titular || null, temCert: !!nc.cert_b64,
       ultimaConsulta: s.ultimaConsulta || null, proximaConsulta: s.proximaConsulta || null,
@@ -13047,7 +13051,7 @@ app.post('/api/sefaz-dfe/consultar', async (req, res) => {
     return res.json({ ok: false, erro: `A SEFAZ só deixa consultar de novo às ${hora} (regra de 1h sem notas novas)` });
   }
   sefazDfeEmExecucao = true;
-  try { res.json(await sefazDfeCiclo(num)); }
+  try { res.json(await sefazDfeCiclo(num, { ignorarEspera: naoContou })); }
   catch (err) { res.json({ ok: false, erro: err.message }); }
   finally { sefazDfeEmExecucao = false; }
 });

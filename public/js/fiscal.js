@@ -106,7 +106,12 @@ async function fiscalConsultarSefaz(conta, btn) {
       body: JSON.stringify({ conta }),
     }).then(r => r.json());
     if (!r.ok) alert(r.erro || 'Erro ao consultar SEFAZ');
-    else if (r.novas) await fiscalCarregar();
+    else if (r.pulou) alert('A SEFAZ ainda não liberou nova consulta (regra de 1h). Tente depois do horário de "próxima".');
+    else {
+      const st = r.status ? `${r.status.cStat} — ${r.status.xMotivo}` : '';
+      alert(`SEFAZ respondeu: ${st}\n\n${r.docs || 0} documento(s) recebido(s), ${r.novas || 0} nota(s) nova(s).`);
+      await fiscalCarregar();
+    }
   } catch (err) {
     alert('Erro: ' + err.message);
   }
@@ -146,7 +151,7 @@ function fiscalRenderGrupo(g) {
     const dlBtn    = n.chave ? `<button onclick="fiscalBaixarXml('${n.chave}', this)" style="background:none;border:1px solid #475569;color:#94a3b8;border-radius:4px;padding:1px 6px;font-size:10px;cursor:pointer" title="Baixar XML da SEFAZ">📥</button>` : '';
     // Ciência da Operação: só manual, nota a nota (libera o XML completo na SEFAZ)
     const cienciaErro = n.ciencia && !n.ciencia.ok ? `Última tentativa recusada: ${n.ciencia.cStat} ${n.ciencia.xMotivo || ''}`.replace(/"/g, "'") : '';
-    const cienciaCol = n.temXml || n.cancelada || !n.chave ? ''
+    const cienciaCol = n.temXml || n.cancelada || !n.chave || (n.dtemi || '') < fiscalDataCorte(3) ? ''
       : n.ciencia?.ok
         ? `<span title="Ciência dada em ${fiscalHora(n.ciencia.ts)} — o XML chega numa das próximas consultas" style="background:#475569;color:#fff;padding:1px 5px;border-radius:3px;font-size:10px;font-weight:600;margin-left:3px">Ciência ✓</span>`
         : `<button onclick="fiscalDarCiencia('${n.chave}', this)" style="background:none;border:1px solid ${cienciaErro ? '#dc2626' : '#d97706'};color:${cienciaErro ? '#dc2626' : '#d97706'};border-radius:4px;padding:1px 5px;font-size:10px;cursor:pointer;margin-left:3px" title="${cienciaErro || 'Dar Ciência da Operação na SEFAZ (libera o XML completo)'}">✋ Ciência</button>`;
