@@ -12890,7 +12890,7 @@ async function sefazDfeCiclo(num, { ignorarEspera = false } = {}) {
     const db = loadFiscalNotas();
     const cancelamentos = [];
     for (const doc of docs) {
-      const sch = (doc.schema || '?').replace(/_v?[d.]+.xsd$/i, '');
+      const sch = (doc.schema || '?').replace(/_v?[\d.]+\.xsd$/i, '');
       resumo.porSchema[sch] = (resumo.porSchema[sch] || 0) + 1;
       let r;
       try { r = sefazInterpretarDoc(doc, nc); }
