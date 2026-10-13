@@ -11046,7 +11046,9 @@ app.get('/api/fiscal/notas', (req, res) => {
   for (const n of Object.values(db)) {
     const cnpj = n.filial || '';
     if (!/^\d{14}$/.test(cnpj)) continue; // ignora entradas inválidas
-    if (!grupos[cnpj]) grupos[cnpj] = { cnpj, nome: n.tomanome || cnpj, notas: [] };
+    // Nome do certificado (vem certo da SEFAZ); o tomanome do Fiscal.io chega com acento quebrado ("Fus�o")
+    const titularCert = Object.values(data.notas_contas || {}).find(nc => nc.cnpj === cnpj && nc.titular)?.titular;
+    if (!grupos[cnpj]) grupos[cnpj] = { cnpj, nome: titularCert || n.tomanome || cnpj, notas: [] };
     grupos[cnpj].notas.push({
       ...n,
       zip: undefined,

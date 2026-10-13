@@ -2480,3 +2480,22 @@ tr.lucro-sub-item td {
 .lucro-tag-reclamacao { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 10px; background: #fef3c7; color: #92400e; font-size: 11px; font-weight: 600; white-space: nowrap; cursor: help; }
 .lucro-fora-normal { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: #475569; cursor: pointer; white-space: nowrap; }
 .lucro-fora-normal input { width: 15px; height: 15px; cursor: pointer; }
+
+/* NF Compras: status da SEFAZ e barra de ações (v968) */
+.fiscal-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 16px; }
+.fiscal-toolbar select { padding: 9px 12px; border-radius: 8px; border: 1.5px solid #ddd; font-size: 14px; background: #fff; font-family: inherit; }
+.fiscal-toolbar .btn-primary, .fiscal-toolbar .btn-secondary { padding: 9px 16px; }
+.fiscal-toolbar-msg { font-size: 13px; color: #475569; }
+.fiscal-card-sub { font-size: 12px; color: #64748b; margin-top: 4px; }
+.fiscal-card-ok   { color: #16a34a; }
+.fiscal-card-erro { color: #dc2626; }
+.fiscal-card-aviso .lucro-card-valor { color: #d97706; }
+.fiscal-progresso { height: 6px; background: #e5e7eb; border-radius: 3px; margin-top: 8px; overflow: hidden; }
+.fiscal-progresso > div { height: 100%; background: #2563eb; }
+.fiscal-painel { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 10px 16px; margin-bottom: 12px; }
+.fiscal-painel > summary { cursor: pointer; font-size: 13px; font-weight: 500; color: #475569; user-select: none; }
+.fiscal-painel pre { white-space: pre-wrap; font-size: 12px; color: #334155; background: #f8fafc; border-radius: 6px; padding: 10px 12px; margin: 10px 0 0; }
+.fiscal-painel input[type=text], .fiscal-painel input[type=password] { width: 100%; padding: 7px 10px; border-radius: 6px; border: 1.5px solid #ddd; font-size: 13px; box-sizing: border-box; margin-bottom: 6px; font-family: inherit; }
+.fiscal-cert-grid { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 12px; }
+.fiscal-cert-grid > div { flex: 1; min-width: 220px; }
+.fiscal-cert-titulo { font-size: 12px; font-weight: 600; color: #475569; margin-bottom: 6px; }

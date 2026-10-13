@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Painel</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📦</text></svg>">
-  <link rel="stylesheet" href="/css/style.css?v=29">
+  <link rel="stylesheet" href="/css/style.css?v=30">
   <link rel="manifest" href="/manifest.json">
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
   <meta name="theme-color" content="#2563eb">
@@ -1387,49 +1387,54 @@
       <!-- ── Aba: NF Compras ── -->
       <section id="tab-fiscal" class="tab">
         <h1>NF de Compras</h1>
-        <p class="subtitle">Notas fiscais de compra recebidas — buscadas automaticamente na SEFAZ e importadas do Fiscal.io.</p>
-        <div id="fiscal-sefaz-status" style="display:none;font-size:12px;color:#94a3b8;background:#1e293b;border-radius:8px;padding:8px 12px;margin-bottom:12px"></div>
-        <div style="display:flex;gap:8px;align-items:center;margin-bottom:16px;flex-wrap:wrap">
-          <button class="btn-primary" onclick="fiscalSincronizar()" id="btn-fiscal-sync">⬇️ Atualizar</button>
-          <select id="fiscal-periodo" onchange="fiscalFiltrar()" style="padding:6px 10px;border-radius:6px;border:1px solid #ddd;font-size:13px">
+        <p class="subtitle">Notas fiscais emitidas contra o seu CNPJ. O sistema consulta a SEFAZ sozinho, uma vez por hora.</p>
+        <div id="fiscal-sefaz-cards" class="lucro-cards" style="display:none"></div>
+        <div class="fiscal-toolbar">
+          <select id="fiscal-periodo" onchange="fiscalFiltrar()">
             <option value="1" selected>Último mês</option>
             <option value="3">Últimos 3 meses</option>
             <option value="6">Últimos 6 meses</option>
             <option value="12">Último ano</option>
             <option value="0">Tudo</option>
           </select>
-          <span id="fiscal-status" style="font-size:13px;color:#888"></span>
+          <button class="btn-primary" id="btn-fiscal-sefaz" onclick="fiscalConsultarSefaz(this)">🏛️ Consultar SEFAZ agora</button>
+          <button class="btn-secondary" onclick="fiscalSincronizar()" id="btn-fiscal-sync">⬇️ Importar do Fiscal.io</button>
+          <span id="fiscal-status" class="fiscal-toolbar-msg"></span>
         </div>
         <div id="fiscal-agente-erro" style="display:none;background:#fff3cd;color:#856404;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:13px">
-          ⚠️ Agente local não encontrado em <b>localhost:4001</b>. Abra o arquivo <b>C:\fiscal-agente\iniciar.bat</b> para iniciar.
+          ⚠️ Agente local não encontrado em <b>localhost:4001</b>. Abra o arquivo <b>C:iscal-agenteiniciar.bat</b> para iniciar.
         </div>
-        <!-- Configuração de certificado digital para download de XML -->
-        <details id="fiscal-cert-config" style="margin-bottom:16px;background:#1e293b;border-radius:8px;padding:12px 16px">
-          <summary style="cursor:pointer;font-size:13px;color:#94a3b8;user-select:none">🔐 Certificados digitais (para baixar XML da SEFAZ)</summary>
-          <div style="margin-top:12px;display:flex;flex-direction:column;gap:14px">
-            <div id="fiscal-cert-status" style="font-size:12px;color:#64748b"></div>
-            <div style="display:flex;gap:16px;flex-wrap:wrap">
-              <div style="flex:1;min-width:220px">
-                <div style="font-size:12px;color:#94a3b8;margin-bottom:6px">Conta 1</div>
-                <div id="fiscal-cert-info-1" style="font-size:12px;color:#4ade80;margin-bottom:6px;display:none"></div>
-                <input type="file" id="fiscal-cert-file-1" accept=".pfx,.p12" style="font-size:12px;color:#cbd5e1;display:block;margin-bottom:4px">
-                <input type="password" id="fiscal-cert-senha-1" placeholder="Senha do certificado" style="width:100%;padding:5px 8px;border-radius:5px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;font-size:12px;box-sizing:border-box;margin-bottom:4px">
-                <input type="text" id="fiscal-cert-cnpj-1" placeholder="CNPJ da empresa (só números)" style="width:100%;padding:5px 8px;border-radius:5px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;font-size:12px;box-sizing:border-box;margin-bottom:4px">
-                <input type="text" id="fiscal-cert-titular-1" placeholder="Nome da empresa (opcional)" style="width:100%;padding:5px 8px;border-radius:5px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;font-size:12px;box-sizing:border-box;margin-bottom:6px">
-                <button class="btn-sm" onclick="fiscalSalvarCert('1')">Salvar certificado C1</button>
+        <details id="fiscal-sefaz-detalhes" class="fiscal-painel">
+          <summary>🔧 Detalhes técnicos da SEFAZ</summary>
+          <pre id="fiscal-sefaz-tecnico">—</pre>
+          <button class="btn-secondary" style="padding:7px 14px;font-size:13px;margin-top:10px" onclick="fiscalDiagnosticoSefaz(this)">Testar conexão (diagnóstico)</button>
+          <pre id="fiscal-sefaz-diag" style="display:none"></pre>
+        </details>
+        <!-- Configuração de certificado digital (consulta automática e download de XML) -->
+        <details id="fiscal-cert-config" class="fiscal-painel">
+          <summary>🔐 Certificados digitais</summary>
+          <div id="fiscal-cert-status" style="font-size:12px;color:#64748b"></div>
+          <div class="fiscal-cert-grid">
+              <div>
+                <div class="fiscal-cert-titulo">Conta 1</div>
+                <div id="fiscal-cert-info-1" style="font-size:12px;color:#16a34a;margin-bottom:6px;display:none"></div>
+                <input type="file" id="fiscal-cert-file-1" accept=".pfx,.p12" style="font-size:12px;display:block;margin-bottom:6px">
+                <input type="password" id="fiscal-cert-senha-1" placeholder="Senha do certificado">
+                <input type="text" id="fiscal-cert-cnpj-1" placeholder="CNPJ da empresa (só números)">
+                <input type="text" id="fiscal-cert-titular-1" placeholder="Nome da empresa (opcional)">
+                <button class="btn-secondary" style="padding:7px 14px;font-size:13px" onclick="fiscalSalvarCert('1')">Salvar certificado C1</button>
               </div>
-              <div style="flex:1;min-width:220px">
-                <div style="font-size:12px;color:#94a3b8;margin-bottom:6px">Conta 2</div>
-                <div id="fiscal-cert-info-2" style="font-size:12px;color:#4ade80;margin-bottom:6px;display:none"></div>
-                <input type="file" id="fiscal-cert-file-2" accept=".pfx,.p12" style="font-size:12px;color:#cbd5e1;display:block;margin-bottom:4px">
-                <input type="password" id="fiscal-cert-senha-2" placeholder="Senha do certificado" style="width:100%;padding:5px 8px;border-radius:5px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;font-size:12px;box-sizing:border-box;margin-bottom:4px">
-                <input type="text" id="fiscal-cert-cnpj-2" placeholder="CNPJ da empresa (só números)" style="width:100%;padding:5px 8px;border-radius:5px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;font-size:12px;box-sizing:border-box;margin-bottom:4px">
-                <input type="text" id="fiscal-cert-titular-2" placeholder="Nome da empresa (opcional)" style="width:100%;padding:5px 8px;border-radius:5px;border:1px solid #334155;background:#0f172a;color:#e2e8f0;font-size:12px;box-sizing:border-box;margin-bottom:6px">
-                <button class="btn-sm" onclick="fiscalSalvarCert('2')">Salvar certificado C2</button>
+              <div>
+                <div class="fiscal-cert-titulo">Conta 2</div>
+                <div id="fiscal-cert-info-2" style="font-size:12px;color:#16a34a;margin-bottom:6px;display:none"></div>
+                <input type="file" id="fiscal-cert-file-2" accept=".pfx,.p12" style="font-size:12px;display:block;margin-bottom:6px">
+                <input type="password" id="fiscal-cert-senha-2" placeholder="Senha do certificado">
+                <input type="text" id="fiscal-cert-cnpj-2" placeholder="CNPJ da empresa (só números)">
+                <input type="text" id="fiscal-cert-titular-2" placeholder="Nome da empresa (opcional)">
+                <button class="btn-secondary" style="padding:7px 14px;font-size:13px" onclick="fiscalSalvarCert('2')">Salvar certificado C2</button>
               </div>
-            </div>
-            <div id="fiscal-cert-msg" style="font-size:12px;display:none"></div>
           </div>
+          <div id="fiscal-cert-msg" style="font-size:12px;display:none;margin-top:8px"></div>
         </details>
         <div id="fiscal-container"></div>
       </section>
@@ -1804,7 +1809,7 @@
   <script src="/js/feriados.js?v=1"></script>
   <script src="/js/promocoes.js?v=9"></script>
   <script src="/js/bling.js?v=6"></script>
-  <script src="/js/fiscal.js?v=6"></script>
+  <script src="/js/fiscal.js?v=7"></script>
   <script src="/js/compras.js?v=2"></script>
   <script src="/js/calculadora.js"></script>
   <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
@@ -2138,6 +2143,6 @@
   </div>
 
   <script src="/js/busca-pagina.js?v=1"></script>
-  <div id="version-badge">v967</div>
+  <div id="version-badge">v968</div>
 </body>
 </html>

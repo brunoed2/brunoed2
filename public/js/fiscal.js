@@ -8,7 +8,7 @@ async function fiscalSincronizar() {
   const erroEl = document.getElementById('fiscal-agente-erro');
 
   btn.disabled = true;
-  btn.textContent = '⏳ Sincronizando...';
+  btn.textContent = '⏳ Importando...';
   status.textContent = '';
   erroEl.style.display = 'none';
 
@@ -26,7 +26,7 @@ async function fiscalSincronizar() {
     status.textContent = '';
   } finally {
     btn.disabled = false;
-    btn.textContent = '⬇️ Atualizar';
+    btn.textContent = '⬇️ Importar do Fiscal.io';
   }
 }
 
@@ -65,34 +65,64 @@ function fiscalResumoTexto(resumo, ultNSU, maxNSU) {
   if (!resumo) return '';
   const tipos = Object.entries(resumo.porSchema || {}).map(([k, v]) => `${k}: ${v}`).join(', ');
   const falta = Math.max(0, parseInt(maxNSU || 0, 10) - parseInt(ultNSU || 0, 10));
-  return `Tipos: ${tipos || '—'}\nNotas de compra: ${resumo.notasCompra} (já existiam: ${resumo.jaExistiam}) · ignorados (vendas próprias/eventos): ${resumo.ignorados} · cancelamentos: ${resumo.cancelamentos}${resumo.erros ? ` · erros: ${resumo.erros}` : ''}\nNSU ${ultNSU}/${maxNSU}${falta ? ` — faltam ${falta} documento(s), continua sozinho em 5 min` : ' — em dia'}`;
+  return `Tipos: ${tipos || '—'}
+Notas de compra: ${resumo.notasCompra} (já existiam: ${resumo.jaExistiam}) · ignorados (vendas próprias/eventos): ${resumo.ignorados} · cancelamentos: ${resumo.cancelamentos}${resumo.erros ? ` · erros: ${resumo.erros}` : ''}
+NSU ${parseInt(ultNSU || 0, 10)}/${parseInt(maxNSU || 0, 10)}${falta ? ` — faltam ${falta} documento(s)` : ' — em dia'}`;
 }
 
+const fiscalEsc = s => String(s || '').replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+
+// Resposta da SEFAZ em linguagem simples (o código técnico fica nos detalhes)
+function fiscalStatusSefaz(st) {
+  if (!st) return { txt: 'Ainda não consultou', cls: '' };
+  if (st.cStat === '138') return { txt: 'Notas encontradas', cls: 'fiscal-card-ok' };
+  if (st.cStat === '137') return { txt: 'Nada novo', cls: 'fiscal-card-ok' };
+  if (st.cStat === '656') return { txt: 'SEFAZ pediu pra esperar 1h', cls: 'fiscal-card-erro' };
+  return { txt: `Erro ${st.cStat}`, cls: 'fiscal-card-erro' };
+}
+
+let fiscalSefazContas = [];
+
 async function fiscalCarregarSefazStatus() {
-  const box = document.getElementById('fiscal-sefaz-status');
+  const box = document.getElementById('fiscal-sefaz-cards');
   if (!box) return;
   const d = await fetch('/api/sefaz-dfe/status').then(r => r.json()).catch(() => null);
   if (!d || !d.contas) return;
+  fiscalSefazContas = d.contas;
+  const card = (label, valor, sub, extra = '') =>
+    `<div class="lucro-card ${extra}"><div class="lucro-card-label">${label}</div><div class="lucro-card-valor">${valor}</div>${sub ? `<div class="fiscal-card-sub">${sub}</div>` : ''}</div>`;
+  const hora = ts => ts ? new Date(ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '—';
+  const dia  = ts => ts ? new Date(ts).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : '';
+
   box.innerHTML = d.contas.map(c => {
-    if (!c.temCert) return `🔐 SEFAZ C${c.conta}: sem certificado — salve o certificado abaixo pra busca automática começar.`;
-    const esc = s => String(s || '').replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
-    const st = c.ultimoStatus ? esc(`${c.ultimoStatus.cStat} — ${c.ultimoStatus.xMotivo}`) : 'ainda não consultou';
-    const novas = c.ultimasNovas ? ` · últimas novas: ${c.ultimasNovas.qtd} em ${fiscalHora(c.ultimasNovas.ts)}` : '';
-    const ciencia = c.aguardandoCiencia ? ` · sem XML, aguardando sua ciência: ${c.aguardandoCiencia}` : '';
-    const recusada = c.aguardandoXml ? ` · ciência dada, aguardando XML: ${c.aguardandoXml}` : '';
-    const resumo = c.ultimoResumo ? `<div style="margin-top:4px;white-space:pre-wrap;color:#64748b">${esc(fiscalResumoTexto(c.ultimoResumo, c.ultNSU, c.maxNSU))}</div>` : '';
-    return `🏛️ SEFAZ C${c.conta} (${c.titular || c.cnpj}): última consulta ${fiscalHora(c.ultimaConsulta)} [${st}] · próxima ${fiscalHora(c.proximaConsulta)}${novas}${ciencia}${recusada}${resumo}
-      <button class="btn-sm" style="margin-left:8px" onclick="fiscalConsultarSefaz('${c.conta}', this)">Consultar SEFAZ agora</button>
-      <button class="btn-sm" style="margin-left:4px" onclick="fiscalDiagnosticoSefaz('${c.conta}', this)">Diagnóstico</button>
-      <pre id="fiscal-sefaz-diag-${c.conta}" style="display:none;white-space:pre-wrap;font-size:11px;margin:8px 0 0;color:#cbd5e1"></pre>`;
-  }).join('<br>');
-  box.style.display = 'block';
+    if (!c.temCert) return card(`SEFAZ C${c.conta}`, 'Sem certificado', 'Salve o certificado em 🔐 Certificados digitais');
+    const st = fiscalStatusSefaz(c.ultimoStatus);
+    const ult = parseInt(c.ultNSU || 0, 10), max = parseInt(c.maxNSU || 0, 10);
+    const falta = Math.max(0, max - ult);
+    const fila = !max ? card('Fila da SEFAZ', '—', 'ainda não consultou')
+      : falta
+        ? card('Carga inicial', `${Math.floor(ult / max * 100)}%`, `faltam ${falta.toLocaleString('pt-BR')} documentos<div class="fiscal-progresso"><div style="width:${Math.floor(ult / max * 100)}%"></div></div>`)
+        : card('Fila da SEFAZ', 'Em dia', c.ultimasNovas ? `últimas novas: ${c.ultimasNovas.qtd} em ${dia(c.ultimasNovas.ts)} ${hora(c.ultimasNovas.ts)}` : '');
+    return card('Última consulta', hora(c.ultimaConsulta), `<span class="${st.cls}">${st.txt}</span> · ${dia(c.ultimaConsulta)}`)
+      + card('Próxima consulta', hora(c.proximaConsulta), 'automática')
+      + card('Aguardando ciência', c.aguardandoCiencia || 0, c.aguardandoXml ? `+ ${c.aguardandoXml} com ciência, esperando XML` : 'notas sem XML (90 dias)', c.aguardandoCiencia ? 'fiscal-card-aviso' : '')
+      + fila;
+  }).join('');
+  box.style.display = 'flex';
+
+  const tec = document.getElementById('fiscal-sefaz-tecnico');
+  if (tec) tec.textContent = d.contas.map(c =>
+    `C${c.conta} — ${c.titular || ''} (${c.cnpj || 'sem CNPJ'})
+Última resposta: ${c.ultimoStatus ? `${c.ultimoStatus.cStat} — ${c.ultimoStatus.xMotivo}` : '—'}
+${fiscalResumoTexto(c.ultimoResumo, c.ultNSU, c.maxNSU)}`
+  ).join('\n\n');
 }
 
-async function fiscalDiagnosticoSefaz(conta, btn) {
+async function fiscalDiagnosticoSefaz(btn) {
+  const conta = fiscalSefazContas[0]?.conta || '1';
   btn.disabled = true;
   btn.textContent = '⏳ Testando...';
-  const out = document.getElementById(`fiscal-sefaz-diag-${conta}`);
+  const out = document.getElementById('fiscal-sefaz-diag');
   try {
     const r = await fetch(`/api/sefaz-dfe/diagnostico?conta=${conta}`).then(r => r.json());
     out.textContent = JSON.stringify(r, null, 2);
@@ -101,28 +131,34 @@ async function fiscalDiagnosticoSefaz(conta, btn) {
   }
   out.style.display = 'block';
   btn.disabled = false;
-  btn.textContent = 'Diagnóstico';
+  btn.textContent = 'Testar conexão (diagnóstico)';
 }
 
-async function fiscalConsultarSefaz(conta, btn) {
+async function fiscalConsultarSefaz(btn) {
+  const conta = fiscalSefazContas[0]?.conta || '1';
+  const msg = document.getElementById('fiscal-status');
+  const textoBtn = btn.textContent;
   btn.disabled = true;
   btn.textContent = '⏳ Consultando...';
+  msg.textContent = '';
   try {
     const r = await fetch('/api/sefaz-dfe/consultar', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ conta }),
     }).then(r => r.json());
-    if (!r.ok) alert(r.erro || 'Erro ao consultar SEFAZ');
-    else if (r.pulou) alert('A SEFAZ ainda não liberou nova consulta (regra de 1h). Tente depois do horário de "próxima".');
+    if (!r.ok) msg.textContent = '⚠️ ' + (r.erro || 'Erro ao consultar SEFAZ');
+    else if (r.pulou) msg.textContent = '⏳ A SEFAZ ainda não liberou nova consulta (regra de 1h).';
     else {
-      const st = r.status ? `${r.status.cStat} — ${r.status.xMotivo}` : '';
-      alert(`SEFAZ respondeu: ${st}\n\n${r.docs || 0} documento(s) recebido(s), ${r.novas || 0} nota(s) nova(s).\n\n${fiscalResumoTexto(r.resumo, r.ultNSU, r.maxNSU)}`);
+      const st = fiscalStatusSefaz(r.status);
+      msg.textContent = `${st.cls === 'fiscal-card-erro' ? '⚠️' : '✅'} ${st.txt} — ${r.docs || 0} documento(s) lido(s), ${r.novas || 0} nota(s) nova(s)`;
       await fiscalCarregar();
     }
   } catch (err) {
-    alert('Erro: ' + err.message);
+    msg.textContent = '⚠️ Erro: ' + err.message;
   }
+  btn.disabled = false;
+  btn.textContent = textoBtn;
   await fiscalCarregarSefazStatus();
 }
 
@@ -134,7 +170,7 @@ async function fiscalCarregar() {
     const grupos = await fetch(`/api/fiscal/notas?conta=${window.CONTA_ATIVA}`).then(r => r.json());
     fiscalGruposCache = grupos;
     if (!grupos.length) {
-      container.innerHTML = '<p style="color:#888;font-size:14px">Nenhuma nota importada ainda. Clique em Atualizar para sincronizar.</p>';
+      container.innerHTML = '<p style="color:#888;font-size:14px">Nenhuma nota ainda. A consulta automática da SEFAZ traz as notas sozinha.</p>';
       return;
     }
     fiscalFiltrar();
