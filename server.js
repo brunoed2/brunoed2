@@ -8260,6 +8260,11 @@ app.get('/api/ml/pedido-por-shipment/:id', async (req, res) => {
   res.status(404).json({ encontrado: false, erro: 'Shipment não encontrado em nenhuma conta' });
 });
 
+// Cache order_sn -> tracking_number (por conta). O rastreio não muda depois de gerado,
+// então cada pedido só precisa ser consultado uma vez — sem isso, cada scan refazia
+// centenas de chamadas get_tracking_number.
+const shopeeTrackingCache = { '1': new Map(), '2': new Map() };
+
 // Busca pedido Shopee pelo código de rastreio (usado pelo scanner de QR code —
 // as etiquetas Shopee não têm o order_sn no QR, só o tracking_number/código dos Correios)
 app.get('/api/shopee/pedido-por-tracking/:tracking', async (req, res) => {
@@ -8271,43 +8276,71 @@ app.get('/api/shopee/pedido-por-tracking/:tracking', async (req, res) => {
     if (!sp.access_token) continue;
     try {
       const accessToken = await getShopeeToken(data, num);
+      const cache       = shopeeTrackingCache[num];
 
-      // Inclui SHIPPED — assim que "organizar envio" roda, o pedido já pode avançar pra
-      // despachado, e o scanner costuma ser usado bem nesse momento (separando/despachando).
-      let orderSns = [];
-      for (const status of ['READY_TO_SHIP', 'PROCESSED', 'SHIPPED']) {
-        const path   = '/api/v2/order/get_order_list';
-        const params = shopeeParams(path, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
-        params.order_status     = status;
-        params.page_size        = 50;
-        params.cursor           = '';
-        params.time_range_field = 'create_time';
-        params.time_from        = Math.floor(Date.now() / 1000) - 15 * 24 * 60 * 60;
-        params.time_to          = Math.floor(Date.now() / 1000);
-        const r = await axios.get(`${SHOPEE_BASE}/order/get_order_list`, { params, timeout: 15000 });
-        if (r.data.error) continue;
-        orderSns = orderSns.concat((r.data.response?.order_list || []).map(o => o.order_sn));
-      }
-      orderSns = [...new Set(orderSns)];
-      if (!orderSns.length) continue;
+      // Em alguns pedidos o tracking_number vem com sufixo interno da Shopee
+      // concatenado (ex: "BR2670079771513SPXLM16286950"), enquanto o QR da etiqueta
+      // só mostra o código dos Correios puro — por isso includes, não igualdade exata.
+      const bate = tn => !!tn && tn.toUpperCase().includes(tracking);
+
+      // Todas as páginas do status — antes só a 1ª (50 pedidos) era lida, e com o volume
+      // maior o pedido escaneado ficava de fora ("Pedido não encontrado").
+      const listarStatus = async (status) => {
+        const sns = [];
+        let cursor = '';
+        for (let pagina = 0; pagina < 20; pagina++) {
+          const path   = '/api/v2/order/get_order_list';
+          const params = shopeeParams(path, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
+          params.order_status     = status;
+          params.page_size        = 100;
+          params.cursor           = cursor;
+          params.time_range_field = 'create_time';
+          params.time_from        = Math.floor(Date.now() / 1000) - 15 * 24 * 60 * 60;
+          params.time_to          = Math.floor(Date.now() / 1000);
+          const r = await axios.get(`${SHOPEE_BASE}/order/get_order_list`, { params, timeout: 15000 });
+          if (r.data.error) {
+            addLog(`[shopee] pedido-por-tracking conta ${num} ${status}: ${r.data.error} ${r.data.message || ''}`, 'warn');
+            break;
+          }
+          sns.push(...(r.data.response?.order_list || []).map(o => o.order_sn));
+          if (!r.data.response?.more) break;
+          cursor = r.data.response.next_cursor || '';
+          if (!cursor) break;
+        }
+        return sns;
+      };
 
       const pathT = '/api/v2/logistics/get_tracking_number';
+      const procurar = async (orderSns) => {
+        if (cache.size > 5000) cache.clear();
+        for (const sn of orderSns) if (bate(cache.get(sn))) return sn;
+        const faltam = orderSns.filter(sn => !cache.has(sn));
+        for (let i = 0; i < faltam.length; i += 10) {
+          const lote = faltam.slice(i, i + 10);
+          const resultados = await Promise.all(lote.map(async sn => {
+            try {
+              const paramsT = shopeeParams(pathT, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
+              paramsT.order_sn = sn;
+              const rT = await axios.get(`${SHOPEE_BASE}/logistics/get_tracking_number`, { params: paramsT, timeout: 8000 });
+              const tn = rT.data.response?.tracking_number;
+              if (tn) cache.set(sn, tn);
+              return bate(tn) ? sn : null;
+            } catch { return null; }
+          }));
+          const achou = resultados.find(Boolean);
+          if (achou) return achou;
+        }
+        return null;
+      };
+
+      // Primeiro os pedidos a despachar (onde o scan quase sempre está); SHIPPED só se não
+      // achar — assim que "organizar envio" roda o pedido pode já ter virado despachado.
       let orderSnEncontrado = null;
-      for (let i = 0; i < orderSns.length && !orderSnEncontrado; i += 10) {
-        const lote = orderSns.slice(i, i + 10);
-        const resultados = await Promise.all(lote.map(async sn => {
-          try {
-            const paramsT = shopeeParams(pathT, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
-            paramsT.order_sn = sn;
-            const rT = await axios.get(`${SHOPEE_BASE}/logistics/get_tracking_number`, { params: paramsT, timeout: 8000 });
-            // Em alguns pedidos o tracking_number vem com sufixo interno da Shopee
-            // concatenado (ex: "BR2670079771513SPXLM16286950"), enquanto o QR da etiqueta
-            // só mostra o código dos Correios puro — por isso includes, não igualdade exata.
-            const tn = rT.data.response?.tracking_number;
-            return tn && tn.toUpperCase().includes(tracking) ? sn : null;
-          } catch { return null; }
-        }));
-        orderSnEncontrado = resultados.find(Boolean) || null;
+      for (const grupo of [['READY_TO_SHIP', 'PROCESSED'], ['SHIPPED']]) {
+        let orderSns = [];
+        for (const status of grupo) orderSns = orderSns.concat(await listarStatus(status));
+        orderSnEncontrado = await procurar([...new Set(orderSns)]);
+        if (orderSnEncontrado) break;
       }
       if (!orderSnEncontrado) continue;
 
