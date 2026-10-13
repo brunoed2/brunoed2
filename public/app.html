@@ -1387,7 +1387,8 @@
       <!-- ── Aba: NF Compras ── -->
       <section id="tab-fiscal" class="tab">
         <h1>NF de Compras</h1>
-        <p class="subtitle">Notas fiscais de compra recebidas, importadas do Fiscal.io.</p>
+        <p class="subtitle">Notas fiscais de compra recebidas — buscadas automaticamente na SEFAZ e importadas do Fiscal.io.</p>
+        <div id="fiscal-sefaz-status" style="display:none;font-size:12px;color:#94a3b8;background:#1e293b;border-radius:8px;padding:8px 12px;margin-bottom:12px"></div>
         <div style="display:flex;gap:8px;align-items:center;margin-bottom:16px;flex-wrap:wrap">
           <button class="btn-primary" onclick="fiscalSincronizar()" id="btn-fiscal-sync">⬇️ Atualizar</button>
           <select id="fiscal-periodo" onchange="fiscalFiltrar()" style="padding:6px 10px;border-radius:6px;border:1px solid #ddd;font-size:13px">
@@ -1803,7 +1804,7 @@
   <script src="/js/feriados.js?v=1"></script>
   <script src="/js/promocoes.js?v=9"></script>
   <script src="/js/bling.js?v=6"></script>
-  <script src="/js/fiscal.js?v=1"></script>
+  <script src="/js/fiscal.js?v=2"></script>
   <script src="/js/compras.js?v=2"></script>
   <script src="/js/calculadora.js"></script>
   <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
@@ -2137,6 +2138,6 @@
   </div>
 
   <script src="/js/busca-pagina.js?v=1"></script>
-  <div id="version-badge">v961</div>
+  <div id="version-badge">v962</div>
 </body>
 </html>

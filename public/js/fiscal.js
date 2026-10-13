@@ -56,9 +56,49 @@ function fiscalFiltrar() {
   container.innerHTML = html || '<p style="color:#888;font-size:14px">Nenhuma nota no período selecionado.</p>';
 }
 
+function fiscalHora(ts) {
+  if (!ts) return '—';
+  return new Date(ts).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
+
+async function fiscalCarregarSefazStatus() {
+  const box = document.getElementById('fiscal-sefaz-status');
+  if (!box) return;
+  const d = await fetch('/api/sefaz-dfe/status').then(r => r.json()).catch(() => null);
+  if (!d || !d.contas) return;
+  box.innerHTML = d.contas.map(c => {
+    if (!c.temCert) return `🔐 SEFAZ C${c.conta}: sem certificado — salve o certificado abaixo pra busca automática começar.`;
+    const st = c.ultimoStatus ? `${c.ultimoStatus.cStat} — ${c.ultimoStatus.xMotivo}` : 'ainda não consultou';
+    const novas = c.ultimasNovas ? ` · últimas novas: ${c.ultimasNovas.qtd} em ${fiscalHora(c.ultimasNovas.ts)}` : '';
+    const ciencia = c.cienciaPendente ? ` · ciência pendente: ${c.cienciaPendente}` : '';
+    const recusada = c.cienciaRecusada ? ` · <span style="color:#f87171">ciência recusada: ${c.cienciaRecusada} (ver log)</span>` : '';
+    return `🏛️ SEFAZ C${c.conta} (${c.titular || c.cnpj}): última consulta ${fiscalHora(c.ultimaConsulta)} [${st}] · próxima ${fiscalHora(c.proximaConsulta)}${novas}${ciencia}${recusada}
+      <button class="btn-sm" style="margin-left:8px" onclick="fiscalConsultarSefaz('${c.conta}', this)">Consultar SEFAZ agora</button>`;
+  }).join('<br>');
+  box.style.display = 'block';
+}
+
+async function fiscalConsultarSefaz(conta, btn) {
+  btn.disabled = true;
+  btn.textContent = '⏳ Consultando...';
+  try {
+    const r = await fetch('/api/sefaz-dfe/consultar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ conta }),
+    }).then(r => r.json());
+    if (!r.ok) alert(r.erro || 'Erro ao consultar SEFAZ');
+    else if (r.novas) await fiscalCarregar();
+  } catch (err) {
+    alert('Erro: ' + err.message);
+  }
+  await fiscalCarregarSefazStatus();
+}
+
 async function fiscalCarregar() {
   const container = document.getElementById('fiscal-container');
   if (!container) return;
+  fiscalCarregarSefazStatus();
   try {
     const grupos = await fetch(`/api/fiscal/notas?conta=${window.CONTA_ATIVA}`).then(r => r.json());
     fiscalGruposCache = grupos;
@@ -94,7 +134,7 @@ function fiscalRenderGrupo(g) {
     return `<tr>
       <td>${data}</td>
       <td>${n.num || '—'}-${n.serie || ''}</td>
-      <td>${n.emitnome || '—'}</td>
+      <td>${n.emitnome || '—'}${n.cancelada ? ' <span style="background:#dc2626;color:#fff;padding:1px 5px;border-radius:3px;font-size:10px;font-weight:600">CANCELADA</span>' : ''}</td>
       <td style="font-size:11px;color:#888">${(n.emitid || '').replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5')}</td>
       <td style="text-align:right;font-weight:600">${vFmt}</td>
       <td style="font-size:11px;color:#888;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${n.natoper || ''}">${n.natoper || '—'}</td>

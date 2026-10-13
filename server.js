@@ -9878,6 +9878,7 @@ const NOTIF_CATEGORIAS = {
   prazo_despacho:   '⏰ Faltam 30min pro despacho',
   codigo_recebimento: '📝 Lembrete: código de recebimento',
   devolucao_chegando: '↩️ Devolução chega hoje no galpão',
+  nf_compra:        '🧾 Nova NF de compra (SEFAZ)',
   'fornecedor_venda_bra-industria': '🛍️ Venda BRA-INDÚSTRIA (SKU 406)',
 };
 
@@ -10987,7 +10988,9 @@ app.post('/api/fiscal/sync', (req, res) => {
     const key = n.chave || `${n.filial}-${n.emitid}-${n.num}-${n.serie}`;
     if (!key) continue;
     if (!db[key]) novas++;
-    db[key] = n;
+    // Mescla em vez de substituir: a nota pode já ter vindo da SEFAZ (sefazDfeCiclo) com o
+    // XML (zip) e a marca de cancelada — o agente do Fiscal.io não manda esses campos.
+    db[key] = { ...(db[key] || {}), ...n };
   }
   saveFiscalNotas(db);
   addLog(`Fiscal sync: ${notas.length} recebidas, ${novas} novas`, 'info');
@@ -12632,6 +12635,363 @@ app.get('/api/notas/buscar', async (req, res) => {
   }
 });
 
+// ── NF de compra direto da SEFAZ (substitui o agente local do Fiscal.io) ──────
+// Roda sozinho no servidor: consulta a Distribuição de DF-e (distNSU) com o certificado
+// da conta, grava as notas no mesmo fiscal-notas.json que a aba NF Compras já lê, e
+// manda a "Ciência da Operação" (evento 210210) pra nota que só veio como resumo
+// (resNFe) — sem a ciência a SEFAZ nunca libera o XML completo (foi o que travou a
+// tentativa antiga, v119-v192). Regras da SEFAZ contra consumo indevido (656):
+// sempre continuar do ultNSU devolvido, e esperar 1h quando não houver nada novo
+// (cStat 137) ou quando ultNSU == maxNSU.
+const SEFAZ_DFE_FILE   = path.join(DATA_DIR, 'sefaz-dfe.json');
+const SEFAZ_DFE_CONTAS = ['1']; // contas (slot do certificado em notas_contas) com busca automática
+const SEFAZ_DFE_ESPERA_MS = 65 * 60_000; // 1h + folga
+const SEFAZ_DFE_MAX_LOTES = 20; // por ciclo (50 docs por lote); o resto continua no próximo ciclo
+const SEFAZ_EVENTO_HOST = 'www.nfe.fazenda.gov.br';
+const SEFAZ_EVENTO_PATH = '/NFeRecepcaoEvento4/NFeRecepcaoEvento4.asmx';
+
+function loadSefazDfe() {
+  try { return JSON.parse(fs.readFileSync(SEFAZ_DFE_FILE, 'utf8')); } catch { return {}; }
+}
+function saveSefazDfe(st) {
+  fs.writeFileSync(SEFAZ_DFE_FILE, JSON.stringify(st, null, 2));
+}
+// Lê, altera e grava o estado de uma conta sem await no meio (atômico no Node)
+function atualizarSefazDfe(num, fn) {
+  const st = loadSefazDfe();
+  st[num] = st[num] || { ultNSU: '0', maxNSU: '0', proximaConsulta: 0, manifestacoes: {}, consultasChave: {} };
+  fn(st[num]);
+  saveSefazDfe(st);
+  return st[num];
+}
+
+// Chave de acesso: cUF(2) AAMM(4) CNPJ(14) mod(2) serie(3) nNF(9) tpEmis(1) cNF(8) DV(1)
+function sefazSerieNumDaChave(chave) {
+  return { serie: String(parseInt(chave.slice(22, 25), 10)), num: String(parseInt(chave.slice(25, 34), 10)) };
+}
+function sefazDtemi(dhEmi) {
+  return (dhEmi || '').slice(0, 10).replace(/-/g, '.'); // formato do Fiscal.io: YYYY.MM.DD
+}
+
+// Certificado: chave privada + certificado do titular (não o da cadeia) pra assinar evento
+const _sefazCertCache = {};
+function sefazCarregarCert(certB64, senha) {
+  const hash = crypto.createHash('sha1').update(certB64).digest('hex');
+  if (_sefazCertCache[hash]) return _sefazCertCache[hash];
+  const p12 = forge.pkcs12.pkcs12FromAsn1(forge.asn1.fromDer(Buffer.from(certB64, 'base64').toString('binary')), senha);
+  const oids = forge.pki.oids;
+  const keyBag = (p12.getBags({ bagType: oids.pkcs8ShroudedKeyBag })[oids.pkcs8ShroudedKeyBag] || [])[0]
+              || (p12.getBags({ bagType: oids.keyBag })[oids.keyBag] || [])[0];
+  if (!keyBag || !keyBag.key) throw new Error('Chave privada não encontrada no certificado');
+  const certs = (p12.getBags({ bagType: oids.certBag })[oids.certBag] || []).map(b => b.cert).filter(Boolean);
+  const cert = certs.find(c => c.publicKey && c.publicKey.n && c.publicKey.n.equals(keyBag.key.n)) || certs[0];
+  if (!cert) throw new Error('Certificado não encontrado no PFX');
+  const out = {
+    keyPem:  forge.pki.privateKeyToPem(keyBag.key),
+    certB64: forge.util.encode64(forge.asn1.toDer(forge.pki.certificateToAsn1(cert)).getBytes()),
+    validoAte: cert.validity.notAfter,
+  };
+  _sefazCertCache[hash] = out;
+  return out;
+}
+
+// Assinatura XMLDSig (RSA-SHA1, C14N) do infEvento. O XML é montado sem espaços e sem
+// caracteres especiais, então a forma canônica é o próprio texto + o xmlns herdado do
+// <evento> declarado no infEvento (C14N inclusivo põe o namespace antes do Id).
+function sefazAssinarInfEvento(infEventoXml, id, cert) {
+  const c14n = infEventoXml.replace('<infEvento ', '<infEvento xmlns="http://www.portalfiscal.inf.br/nfe" ');
+  const digest = crypto.createHash('sha1').update(c14n, 'utf8').digest('base64');
+  const signedInfo = `<SignedInfo xmlns="http://www.w3.org/2000/09/xmldsig#"><CanonicalizationMethod Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315"></CanonicalizationMethod><SignatureMethod Algorithm="http://www.w3.org/2000/09/xmldsig#rsa-sha1"></SignatureMethod><Reference URI="#${id}"><Transforms><Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature"></Transform><Transform Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315"></Transform></Transforms><DigestMethod Algorithm="http://www.w3.org/2000/09/xmldsig#sha1"></DigestMethod><DigestValue>${digest}</DigestValue></Reference></SignedInfo>`;
+  const valor = crypto.createSign('RSA-SHA1').update(signedInfo, 'utf8').sign(cert.keyPem, 'base64');
+  return `<Signature xmlns="http://www.w3.org/2000/09/xmldsig#">${signedInfo.replace(' xmlns="http://www.w3.org/2000/09/xmldsig#"', '')}<SignatureValue>${valor}</SignatureValue><KeyInfo><X509Data><X509Certificate>${cert.certB64}</X509Certificate></X509Data></KeyInfo></Signature>`;
+}
+
+// Manda a Ciência da Operação de até 20 chaves num lote. Devolve { chave: {cStat, xMotivo} }.
+async function sefazManifestarCiencia(nc, chaves) {
+  const cert = sefazCarregarCert(nc.cert_b64, nc.senha);
+  // Horário de Brasília (sem horário de verão), 1 min atrás pra não cair "no futuro" do relógio da SEFAZ
+  const dhEvento = new Date(Date.now() - 3 * 3600_000 - 60_000).toISOString().slice(0, 19) + '-03:00';
+  const eventos = chaves.map(ch => {
+    const id = `ID210210${ch}01`;
+    const inf = `<infEvento Id="${id}"><cOrgao>91</cOrgao><tpAmb>1</tpAmb><CNPJ>${nc.cnpj}</CNPJ><chNFe>${ch}</chNFe><dhEvento>${dhEvento}</dhEvento><tpEvento>210210</tpEvento><nSeqEvento>1</nSeqEvento><verEvento>1.00</verEvento><detEvento versao="1.00"><descEvento>Ciencia da Operacao</descEvento></detEvento></infEvento>`;
+    return `<evento xmlns="http://www.portalfiscal.inf.br/nfe" versao="1.00">${inf}${sefazAssinarInfEvento(inf, id, cert)}</evento>`;
+  }).join('');
+  const idLote = String(Date.now()).slice(-15);
+  const envEvento = `<envEvento xmlns="http://www.portalfiscal.inf.br/nfe" versao="1.00"><idLote>${idLote}</idLote>${eventos}</envEvento>`;
+  const soap = `<?xml version="1.0" encoding="utf-8"?><soap12:Envelope xmlns:soap12="http://www.w3.org/2003/05/soap-envelope"><soap12:Body><nfeDadosMsg xmlns="http://www.portalfiscal.inf.br/nfe/wsdl/NFeRecepcaoEvento4">${envEvento}</nfeDadosMsg></soap12:Body></soap12:Envelope>`;
+
+  const resp = await new Promise((resolve, reject) => {
+    const req = https.request({
+      hostname: SEFAZ_EVENTO_HOST, port: 443, path: SEFAZ_EVENTO_PATH, method: 'POST',
+      pfx: Buffer.from(nc.cert_b64, 'base64'), passphrase: nc.senha,
+      headers: {
+        'Content-Type': 'application/soap+xml; charset=utf-8; action="http://www.portalfiscal.inf.br/nfe/wsdl/NFeRecepcaoEvento4/nfeRecepcaoEvento"',
+        'Content-Length': Buffer.byteLength(soap, 'utf8'),
+      },
+      rejectUnauthorized: false, timeout: 30000,
+    }, (res) => { let d = ''; res.on('data', c => d += c); res.on('end', () => resolve(d)); });
+    req.on('error', reject);
+    req.on('timeout', () => { req.destroy(); reject(new Error('Timeout SEFAZ evento (30s)')); });
+    req.write(soap); req.end();
+  });
+
+  const resultado = {};
+  const re = /<retEvento[^>]*>([\s\S]*?)<\/retEvento>/g;
+  let m;
+  while ((m = re.exec(resp)) !== null) {
+    const ch = xmlVal(m[1], 'chNFe');
+    if (ch) resultado[ch] = { cStat: xmlVal(m[1], 'cStat'), xMotivo: xmlVal(m[1], 'xMotivo') };
+  }
+  if (!Object.keys(resultado).length) {
+    // Lote recusado inteiro (ex: 215 schema, 297 assinatura) — vem só o cStat do retEnvEvento
+    const cStat = xmlVal(resp, 'cStat') || 'sem-resposta';
+    const xMotivo = xmlVal(resp, 'xMotivo') || resp.replace(/\s+/g, ' ').slice(0, 200);
+    for (const ch of chaves) resultado[ch] = { cStat, xMotivo };
+  }
+  return resultado;
+}
+
+// Converte um docZip da SEFAZ numa entrada do fiscal-notas.json (formato do Fiscal.io).
+// Devolve { tipo: 'nota'|'cancelamento'|null, nota?, chave? }.
+function sefazInterpretarDoc(doc, nc) {
+  const xml = zlib.gunzipSync(Buffer.from(doc.zip, 'base64')).toString('utf8');
+  const schema = (doc.schema || '').toLowerCase();
+
+  if (schema.startsWith('procnfe') || schema.startsWith('nfe')) {
+    const emit = xmlBlock(xml, 'emit'), dest = xmlBlock(xml, 'dest'), ide = xmlBlock(xml, 'ide');
+    const chave = (xml.match(/Id="NFe(\d{44})"/) || [])[1] || xmlVal(xml, 'chNFe');
+    const emitCnpj = xmlVal(emit, 'CNPJ') || xmlVal(emit, 'CPF');
+    if (!chave || xmlVal(dest, 'CNPJ') !== nc.cnpj || emitCnpj === nc.cnpj) return { tipo: null };
+    return { tipo: 'nota', nota: {
+      chave, filial: nc.cnpj, tomanome: nc.titular || nc.cnpj,
+      emitid: emitCnpj, emitnome: xmlVal(emit, 'xNome'),
+      num: xmlVal(ide, 'nNF'), serie: xmlVal(ide, 'serie'),
+      dtemi: sefazDtemi(xmlVal(ide, 'dhEmi') || xmlVal(ide, 'dEmi')),
+      valor: xmlVal(xmlBlock(xml, 'ICMSTot'), 'vNF') || '0',
+      natoper: xmlVal(ide, 'natOp'),
+      zip: doc.zip, origem: 'sefaz', nsu: doc.nsu,
+    } };
+  }
+
+  if (schema.startsWith('resnfe')) {
+    const chave = xmlVal(xml, 'chNFe');
+    const emitCnpj = xmlVal(xml, 'CNPJ') || xmlVal(xml, 'CPF');
+    if (!chave || emitCnpj === nc.cnpj) return { tipo: null };
+    const { serie, num } = sefazSerieNumDaChave(chave);
+    return { tipo: 'nota', resumo: true, cSitNFe: xmlVal(xml, 'cSitNFe'), nota: {
+      chave, filial: nc.cnpj, tomanome: nc.titular || nc.cnpj,
+      emitid: emitCnpj, emitnome: xmlVal(xml, 'xNome'), num, serie,
+      dtemi: sefazDtemi(xmlVal(xml, 'dhEmi')), valor: xmlVal(xml, 'vNF') || '0',
+      origem: 'sefaz', nsu: doc.nsu,
+      ...(xmlVal(xml, 'cSitNFe') === '3' ? { cancelada: true } : {}),
+    } };
+  }
+
+  // Eventos: só interessa o cancelamento (110111) de uma nota de compra
+  if (schema.includes('evento') && (xmlVal(xml, 'tpEvento') === '110111')) {
+    return { tipo: 'cancelamento', chave: xmlVal(xml, 'chNFe') };
+  }
+  return { tipo: null };
+}
+
+let sefazDfeEmExecucao = false;
+
+async function sefazDfeCiclo(num) {
+  const nc = (loadData().notas_contas || {})[num] || {};
+  if (!nc.cert_b64 || !nc.senha || !nc.cnpj) return { ok: false, erro: 'Certificado não configurado' };
+  const estado = loadSefazDfe()[num] || {};
+  if (Date.now() < (estado.proximaConsulta || 0)) return { ok: true, pulou: true };
+
+  const pfx = Buffer.from(nc.cert_b64, 'base64');
+  const cUF = nc.cUF || '35';
+  const primeiraCarga = !estado.ultNSU || estado.ultNSU === '0';
+  let nsu = estado.ultNSU || '0';
+  let maxNSU = estado.maxNSU || '0';
+  let proxima = Date.now() + SEFAZ_DFE_ESPERA_MS;
+  let ultimoStatus = null;
+  const novasNotas = [];
+  let totalDocs = 0;
+
+  for (let lote = 0; lote < SEFAZ_DFE_MAX_LOTES; lote++) {
+    let resp;
+    try {
+      resp = await queryNFeDistribuicao(pfx, nc.senha, nc.cnpj, cUF, nsu);
+    } catch (err) {
+      ultimoStatus = { cStat: 'erro', xMotivo: err.message };
+      proxima = Date.now() + 15 * 60_000; // falha de rede: tenta de novo em 15 min
+      break;
+    }
+    const { cStat, xMotivo, ultNSU, maxNSU: max, docs } = parsearRespostaSefaz(resp);
+    ultimoStatus = { cStat: cStat || 'sem-resposta', xMotivo: xMotivo || resp.replace(/\s+/g, ' ').slice(0, 200) };
+    if (ultNSU && /^\d+$/.test(ultNSU)) nsu = ultNSU;
+    if (max && /^\d+$/.test(max)) maxNSU = max;
+
+    if (cStat !== '138') break; // 137 (nada novo), 656 (consumo indevido) ou erro: espera 1h
+
+    totalDocs += docs.length;
+    // Grava as notas do lote no fiscal-notas.json (load→modifica→save sem await no meio)
+    const db = loadFiscalNotas();
+    const cancelamentos = [];
+    for (const doc of docs) {
+      let r;
+      try { r = sefazInterpretarDoc(doc, nc); }
+      catch (e) { addLog(`[sefaz-dfe] C${num} NSU ${doc.nsu}: erro ao ler doc (${doc.schema}) — ${e.message}`, 'warn'); continue; }
+      if (r.tipo === 'cancelamento') { if (r.chave) cancelamentos.push(r.chave); continue; }
+      if (r.tipo !== 'nota') continue;
+      const atual = db[r.nota.chave];
+      if (!atual) novasNotas.push(r.nota);
+      if (r.resumo) {
+        // Resumo nunca apaga o que a nota já tem (XML completo, natureza da operação)
+        db[r.nota.chave] = { ...r.nota, ...(atual || {}), ...(r.nota.cancelada ? { cancelada: true } : {}) };
+        if (r.cSitNFe === '1' && !(atual && atual.zip)) {
+          atualizarSefazDfe(num, s => {
+            s.manifestacoes = s.manifestacoes || {};
+            if (!s.manifestacoes[r.nota.chave]) s.manifestacoes[r.nota.chave] = { pendente: true, desde: Date.now(), tentativas: 0 };
+          });
+        }
+      } else {
+        db[r.nota.chave] = { ...(atual || {}), ...r.nota };
+      }
+    }
+    for (const ch of cancelamentos) if (db[ch]) db[ch].cancelada = true;
+    saveFiscalNotas(db);
+    atualizarSefazDfe(num, s => { s.ultNSU = nsu; s.maxNSU = maxNSU; });
+
+    if (!docs.length || parseInt(nsu, 10) >= parseInt(maxNSU, 10)) break; // chegou ao fim: espera 1h
+    if (lote === SEFAZ_DFE_MAX_LOTES - 1) proxima = Date.now() + 5 * 60_000; // ainda tem lote: continua já
+  }
+
+  atualizarSefazDfe(num, s => {
+    s.ultNSU = nsu; s.maxNSU = maxNSU; s.proximaConsulta = proxima;
+    s.ultimaConsulta = Date.now(); s.ultimoStatus = ultimoStatus;
+    if (novasNotas.length) s.ultimasNovas = { ts: Date.now(), qtd: novasNotas.length };
+  });
+  addLog(`[sefaz-dfe] C${num}: SEFAZ ${ultimoStatus?.cStat} — ${ultimoStatus?.xMotivo} | ${totalDocs} doc(s), ${novasNotas.length} nota(s) nova(s), NSU ${nsu}/${maxNSU}`, ultimoStatus?.cStat === '656' || ultimoStatus?.cStat === 'erro' ? 'warn' : 'info');
+
+  await sefazDfeManifestarPendentes(num, nc);
+  await sefazDfeBuscarXmlPorChave(num, nc, pfx, cUF);
+
+  // Aviso de nota nova — na primeira carga (90 dias de uma vez) só um resumo
+  if (novasNotas.length) {
+    const fmt = v => parseFloat(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    if (primeiraCarga || novasNotas.length > 5) {
+      await notificar(`🧾 ${novasNotas.length} NF de compra nova(s) importada(s) da SEFAZ`, 'nf_compra');
+    } else {
+      for (const n of novasNotas) await notificar(`🧾 NF de compra: ${n.emitnome || n.emitid} — NF ${n.num} — ${fmt(n.valor)}`, 'nf_compra');
+    }
+  }
+  return { ok: true, novas: novasNotas.length, docs: totalDocs, status: ultimoStatus };
+}
+
+// Ciência da Operação pras notas que só vieram como resumo. Depois dela a SEFAZ manda o
+// XML completo (procNFe) numa próxima consulta distNSU. 573 = já tinha ciência (o
+// Fiscal.io pode ter mandado antes) — conta como feito.
+async function sefazDfeManifestarPendentes(num, nc) {
+  const st = loadSefazDfe()[num] || {};
+  const db = loadFiscalNotas();
+  const pendentes = Object.entries(st.manifestacoes || {})
+    .filter(([ch, m]) => m.pendente && (m.tentativas || 0) < 3 && !(db[ch] && (db[ch].zip || db[ch].cancelada)))
+    .map(([ch]) => ch)
+    .slice(0, 20);
+  if (!pendentes.length) return;
+  let res;
+  try { res = await sefazManifestarCiencia(nc, pendentes); }
+  catch (err) {
+    addLog(`[sefaz-dfe] C${num}: falha ao enviar ciência — ${err.message}`, 'warn');
+    atualizarSefazDfe(num, s => { for (const ch of pendentes) if (s.manifestacoes[ch]) s.manifestacoes[ch].tentativas = (s.manifestacoes[ch].tentativas || 0) + 1; });
+    return;
+  }
+  let ok = 0;
+  atualizarSefazDfe(num, s => {
+    for (const ch of pendentes) {
+      const m = s.manifestacoes[ch]; if (!m) continue;
+      const r = res[ch] || { cStat: 'sem-resposta', xMotivo: '' };
+      m.cStat = r.cStat; m.xMotivo = r.xMotivo; m.ts = Date.now();
+      if (['135', '136', '573'].includes(r.cStat)) { m.pendente = false; m.feitaEm = Date.now(); ok++; }
+      else m.tentativas = (m.tentativas || 0) + 1;
+    }
+  });
+  const erros = pendentes.filter(ch => !['135', '136', '573'].includes((res[ch] || {}).cStat));
+  addLog(`[sefaz-dfe] C${num}: ciência enviada — ${ok}/${pendentes.length} ok${erros.length ? ` | recusada: ${erros.slice(0, 3).map(ch => `${ch.slice(25, 34)} (${res[ch]?.cStat} ${res[ch]?.xMotivo})`).join('; ')}` : ''}`, erros.length ? 'warn' : 'ok');
+}
+
+// Reserva: ciência feita há mais de 3h e o XML completo ainda não veio pelo distNSU →
+// pede pela chave (consChNFe). No máximo 5 por ciclo e 2 tentativas por nota.
+async function sefazDfeBuscarXmlPorChave(num, nc, pfx, cUF) {
+  const st = loadSefazDfe()[num] || {};
+  const db = loadFiscalNotas();
+  const alvo = Object.entries(st.manifestacoes || {})
+    .filter(([ch, m]) => !m.pendente && m.feitaEm && Date.now() - m.feitaEm > 3 * 3600_000
+      && (m.consultasChave || 0) < 2 && db[ch] && !db[ch].zip && !db[ch].cancelada)
+    .map(([ch]) => ch)
+    .slice(0, 5);
+  for (const ch of alvo) {
+    let docs = [], cStat = '', xMotivo = '';
+    try { ({ cStat, xMotivo, docs } = parsearRespostaSefaz(await queryNFeByChave(pfx, nc.senha, nc.cnpj, cUF, ch))); }
+    catch (err) { cStat = 'erro'; xMotivo = err.message; }
+    atualizarSefazDfe(num, s => { if (s.manifestacoes[ch]) s.manifestacoes[ch].consultasChave = (s.manifestacoes[ch].consultasChave || 0) + 1; });
+    const doc = docs.find(d => (d.schema || '').toLowerCase().startsWith('procnfe'));
+    if (doc) {
+      const r = sefazInterpretarDoc(doc, nc);
+      if (r.tipo === 'nota') {
+        const db2 = loadFiscalNotas();
+        db2[ch] = { ...(db2[ch] || {}), ...r.nota };
+        saveFiscalNotas(db2);
+        addLog(`[sefaz-dfe] C${num}: XML da NF ${r.nota.num} baixado pela chave`, 'ok');
+      }
+    } else {
+      addLog(`[sefaz-dfe] C${num}: XML da chave ${ch.slice(0, 10)}... ainda indisponível (${cStat} ${xMotivo})`, 'warn');
+    }
+    if (cStat === '656') break;
+  }
+}
+
+async function sefazDfeJob() {
+  if (sefazDfeEmExecucao) return;
+  sefazDfeEmExecucao = true;
+  try {
+    for (const num of SEFAZ_DFE_CONTAS) {
+      try { await sefazDfeCiclo(num); }
+      catch (err) { addLog(`[sefaz-dfe] C${num}: erro no ciclo — ${err.message}`, 'warn'); }
+    }
+  } finally { sefazDfeEmExecucao = false; }
+}
+
+app.get('/api/sefaz-dfe/status', (req, res) => {
+  const st = loadSefazDfe();
+  const data = loadData();
+  const contas = SEFAZ_DFE_CONTAS.map(num => {
+    const s = st[num] || {};
+    const nc = (data.notas_contas || {})[num] || {};
+    const mans = Object.values(s.manifestacoes || {});
+    return {
+      conta: num, cnpj: nc.cnpj || null, titular: nc.titular || null, temCert: !!nc.cert_b64,
+      ultimaConsulta: s.ultimaConsulta || null, proximaConsulta: s.proximaConsulta || null,
+      ultimoStatus: s.ultimoStatus || null, ultimasNovas: s.ultimasNovas || null,
+      ultNSU: s.ultNSU || '0', maxNSU: s.maxNSU || '0',
+      cienciaPendente: mans.filter(m => m.pendente && (m.tentativas || 0) < 3).length,
+      cienciaRecusada: mans.filter(m => m.pendente && (m.tentativas || 0) >= 3).length,
+    };
+  });
+  res.json({ contas, emExecucao: sefazDfeEmExecucao });
+});
+
+// "Consultar agora": respeita a espera de 1h da SEFAZ (senão vem 656 e trava mais 1h)
+app.post('/api/sefaz-dfe/consultar', async (req, res) => {
+  if (sefazDfeEmExecucao) return res.json({ ok: false, erro: 'Já tem uma consulta em andamento' });
+  const num = String(req.body?.conta || SEFAZ_DFE_CONTAS[0]);
+  if (!SEFAZ_DFE_CONTAS.includes(num)) return res.json({ ok: false, erro: `Conta ${num} não tem busca automática` });
+  const prox = (loadSefazDfe()[num] || {}).proximaConsulta || 0;
+  if (Date.now() < prox) {
+    const hora = new Date(prox).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' });
+    return res.json({ ok: false, erro: `A SEFAZ só deixa consultar de novo às ${hora} (regra de 1h sem notas novas)` });
+  }
+  sefazDfeEmExecucao = true;
+  try { res.json(await sefazDfeCiclo(num)); }
+  catch (err) { res.json({ ok: false, erro: err.message }); }
+  finally { sefazDfeEmExecucao = false; }
+});
+
 // ── ZPL → PDF (via Labelary) ──────────────────────────────────
 function zplSplitLabels(zpl) {
   // Mantém junto de cada ^XA...^XZ qualquer comando ~DG (download de imagem)
@@ -12803,6 +13163,12 @@ app.listen(PORT, () => {
     verificarNotasTravadasML().catch(() => {});
     setInterval(() => verificarNotasTravadasML().catch(() => {}), 2 * 60_000);
   }, 30_000);
+  // NF de compra direto da SEFAZ: o job roda a cada 5 min, mas cada conta só consulta
+  // quando passa a espera de 1h que a SEFAZ exige (proximaConsulta em sefaz-dfe.json).
+  setTimeout(() => {
+    sefazDfeJob().catch(() => {});
+    setInterval(() => sefazDfeJob().catch(() => {}), 5 * 60_000);
+  }, 60_000);
 });
 
 // ── Fornecedores (Previsão de Compra) — por conta ─────────────
