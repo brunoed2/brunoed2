@@ -71,8 +71,8 @@ async function fiscalCarregarSefazStatus() {
     const esc = s => String(s || '').replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
     const st = c.ultimoStatus ? esc(`${c.ultimoStatus.cStat} — ${c.ultimoStatus.xMotivo}`) : 'ainda não consultou';
     const novas = c.ultimasNovas ? ` · últimas novas: ${c.ultimasNovas.qtd} em ${fiscalHora(c.ultimasNovas.ts)}` : '';
-    const ciencia = c.cienciaPendente ? ` · ciência pendente: ${c.cienciaPendente}` : '';
-    const recusada = c.cienciaRecusada ? ` · <span style="color:#f87171">ciência recusada: ${c.cienciaRecusada} (ver log)</span>` : '';
+    const ciencia = c.aguardandoCiencia ? ` · sem XML, aguardando sua ciência: ${c.aguardandoCiencia}` : '';
+    const recusada = c.aguardandoXml ? ` · ciência dada, aguardando XML: ${c.aguardandoXml}` : '';
     return `🏛️ SEFAZ C${c.conta} (${c.titular || c.cnpj}): última consulta ${fiscalHora(c.ultimaConsulta)} [${st}] · próxima ${fiscalHora(c.proximaConsulta)}${novas}${ciencia}${recusada}
       <button class="btn-sm" style="margin-left:8px" onclick="fiscalConsultarSefaz('${c.conta}', this)">Consultar SEFAZ agora</button>
       <button class="btn-sm" style="margin-left:4px" onclick="fiscalDiagnosticoSefaz('${c.conta}', this)">Diagnóstico</button>
@@ -144,11 +144,17 @@ function fiscalRenderGrupo(g) {
     const cpBadge  = `<span title="Contas a Pagar lançado" style="background:#1d4ed8;color:#fff;padding:1px 5px;border-radius:3px;font-size:10px;font-weight:600;margin-left:3px">CP✓</span>`;
     const cpBtn    = `<button onclick="fiscalLancarCP('${n.chave}', this)" style="background:none;border:1px solid #16a34a;color:#16a34a;border-radius:4px;padding:1px 5px;font-size:10px;cursor:pointer;margin-left:3px" title="Lançar Contas a Pagar">💰</button>`;
     const dlBtn    = n.chave ? `<button onclick="fiscalBaixarXml('${n.chave}', this)" style="background:none;border:1px solid #475569;color:#94a3b8;border-radius:4px;padding:1px 6px;font-size:10px;cursor:pointer" title="Baixar XML da SEFAZ">📥</button>` : '';
-    const xmlCol   = n.temXml
+    // Ciência da Operação: só manual, nota a nota (libera o XML completo na SEFAZ)
+    const cienciaErro = n.ciencia && !n.ciencia.ok ? `Última tentativa recusada: ${n.ciencia.cStat} ${n.ciencia.xMotivo || ''}`.replace(/"/g, "'") : '';
+    const cienciaCol = n.temXml || n.cancelada || !n.chave ? ''
+      : n.ciencia?.ok
+        ? `<span title="Ciência dada em ${fiscalHora(n.ciencia.ts)} — o XML chega numa das próximas consultas" style="background:#475569;color:#fff;padding:1px 5px;border-radius:3px;font-size:10px;font-weight:600;margin-left:3px">Ciência ✓</span>`
+        : `<button onclick="fiscalDarCiencia('${n.chave}', this)" style="background:none;border:1px solid ${cienciaErro ? '#dc2626' : '#d97706'};color:${cienciaErro ? '#dc2626' : '#d97706'};border-radius:4px;padding:1px 5px;font-size:10px;cursor:pointer;margin-left:3px" title="${cienciaErro || 'Dar Ciência da Operação na SEFAZ (libera o XML completo)'}">✋ Ciência</button>`;
+    const xmlCol   = (n.temXml
       ? xmlBadge + (n.cpLancado ? cpBadge : cpBtn)
       : n.cpLancado
         ? dlBtn + cpBadge
-        : dlBtn;
+        : dlBtn) + cienciaCol;
     return `<tr>
       <td>${data}</td>
       <td>${n.num || '—'}-${n.serie || ''}</td>
@@ -202,6 +208,26 @@ async function fiscalBaixarXml(chave, btn) {
     btn.textContent = '📥';
     alert('Erro: ' + err.message);
   }
+}
+
+async function fiscalDarCiencia(chave, btn) {
+  const nf = String(parseInt(chave.slice(25, 34), 10));
+  if (!confirm(`Dar Ciência da Operação na SEFAZ para a NF ${nf}?\n\nIsso registra na SEFAZ que a empresa tomou conhecimento da nota e libera o XML completo.`)) return;
+  btn.disabled = true;
+  btn.textContent = '⏳';
+  try {
+    const r = await fetch('/api/sefaz-dfe/ciencia', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chaves: [chave] }),
+    }).then(r => r.json());
+    const res = r.resultado?.[chave];
+    if (!r.ok) alert('Erro: ' + (r.erro || 'Erro desconhecido'));
+    else if (!['135', '136', '573'].includes(res?.cStat)) alert(`SEFAZ recusou: ${res?.cStat} — ${res?.xMotivo || ''}`);
+  } catch (err) {
+    alert('Erro: ' + err.message);
+  }
+  await fiscalCarregar();
 }
 
 function fiscalAbrirDanfe(chave) {

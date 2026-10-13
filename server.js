@@ -12896,13 +12896,8 @@ async function sefazDfeCiclo(num) {
       if (!atual) novasNotas.push(r.nota);
       if (r.resumo) {
         // Resumo nunca apaga o que a nota já tem (XML completo, natureza da operação)
+        // Ciência NÃO é automática: o usuário escolhe na aba (POST /api/sefaz-dfe/ciencia)
         db[r.nota.chave] = { ...r.nota, ...(atual || {}), ...(r.nota.cancelada ? { cancelada: true } : {}) };
-        if (r.cSitNFe === '1' && !(atual && atual.zip)) {
-          atualizarSefazDfe(num, s => {
-            s.manifestacoes = s.manifestacoes || {};
-            if (!s.manifestacoes[r.nota.chave]) s.manifestacoes[r.nota.chave] = { pendente: true, desde: Date.now(), tentativas: 0 };
-          });
-        }
       } else {
         db[r.nota.chave] = { ...(atual || {}), ...r.nota };
       }
@@ -12922,7 +12917,6 @@ async function sefazDfeCiclo(num) {
   });
   addLog(`[sefaz-dfe] C${num}: SEFAZ ${ultimoStatus?.cStat} — ${ultimoStatus?.xMotivo} | ${totalDocs} doc(s), ${novasNotas.length} nota(s) nova(s), NSU ${nsu}/${maxNSU}`, ultimoStatus?.cStat === '656' || ultimoStatus?.cStat === 'erro' ? 'warn' : 'info');
 
-  await sefazDfeManifestarPendentes(num, nc);
   await sefazDfeBuscarXmlPorChave(num, nc, pfx, cUF);
 
   // Aviso de nota nova — na primeira carga (90 dias de uma vez) só um resumo
@@ -12937,45 +12931,53 @@ async function sefazDfeCiclo(num) {
   return { ok: true, novas: novasNotas.length, docs: totalDocs, status: ultimoStatus };
 }
 
-// Ciência da Operação pras notas que só vieram como resumo. Depois dela a SEFAZ manda o
-// XML completo (procNFe) numa próxima consulta distNSU. 573 = já tinha ciência (o
-// Fiscal.io pode ter mandado antes) — conta como feito.
-async function sefazDfeManifestarPendentes(num, nc) {
-  const st = loadSefazDfe()[num] || {};
+// Ciência da Operação — só quando o usuário escolhe a nota na aba (nunca automática).
+// Depois dela a SEFAZ manda o XML completo (procNFe) numa próxima consulta distNSU.
+// 573 = já tinha ciência (o Fiscal.io pode ter mandado antes) — conta como feito.
+const SEFAZ_CIENCIA_OK = ['135', '136', '573'];
+app.post('/api/sefaz-dfe/ciencia', async (req, res) => {
+  const chaves = [...new Set((req.body?.chaves || []).map(String))].filter(ch => /^d{44}$/.test(ch));
+  if (!chaves.length) return res.json({ ok: false, erro: 'Nenhuma chave válida' });
+  if (chaves.length > 20) return res.json({ ok: false, erro: 'No máximo 20 notas por vez' });
   const db = loadFiscalNotas();
-  const pendentes = Object.entries(st.manifestacoes || {})
-    .filter(([ch, m]) => m.pendente && (m.tentativas || 0) < 3 && !(db[ch] && (db[ch].zip || db[ch].cancelada)))
-    .map(([ch]) => ch)
-    .slice(0, 20);
-  if (!pendentes.length) return;
-  let res;
-  try { res = await sefazManifestarCiencia(nc, pendentes); }
-  catch (err) {
-    addLog(`[sefaz-dfe] C${num}: falha ao enviar ciência — ${err.message}`, 'warn');
-    atualizarSefazDfe(num, s => { for (const ch of pendentes) if (s.manifestacoes[ch]) s.manifestacoes[ch].tentativas = (s.manifestacoes[ch].tentativas || 0) + 1; });
-    return;
+  const notasContas = loadData().notas_contas || {};
+  // Agrupa por conta do certificado (CNPJ destinatário = filial da nota)
+  const porConta = {};
+  for (const ch of chaves) {
+    const filial = db[ch]?.filial;
+    const num = Object.keys(notasContas).find(n => notasContas[n].cnpj && notasContas[n].cnpj === filial && notasContas[n].cert_b64);
+    if (!num) return res.json({ ok: false, erro: `Sem certificado pro CNPJ destinatário da nota ${ch.slice(25, 34)}` });
+    (porConta[num] = porConta[num] || []).push(ch);
   }
-  let ok = 0;
-  atualizarSefazDfe(num, s => {
-    for (const ch of pendentes) {
-      const m = s.manifestacoes[ch]; if (!m) continue;
-      const r = res[ch] || { cStat: 'sem-resposta', xMotivo: '' };
-      m.cStat = r.cStat; m.xMotivo = r.xMotivo; m.ts = Date.now();
-      if (['135', '136', '573'].includes(r.cStat)) { m.pendente = false; m.feitaEm = Date.now(); ok++; }
-      else m.tentativas = (m.tentativas || 0) + 1;
-    }
-  });
-  const erros = pendentes.filter(ch => !['135', '136', '573'].includes((res[ch] || {}).cStat));
-  addLog(`[sefaz-dfe] C${num}: ciência enviada — ${ok}/${pendentes.length} ok${erros.length ? ` | recusada: ${erros.slice(0, 3).map(ch => `${ch.slice(25, 34)} (${res[ch]?.cStat} ${res[ch]?.xMotivo})`).join('; ')}` : ''}`, erros.length ? 'warn' : 'ok');
-}
+  const resultado = {};
+  for (const [num, lista] of Object.entries(porConta)) {
+    let r;
+    try { r = await sefazManifestarCiencia(notasContas[num], lista); }
+    catch (err) { for (const ch of lista) resultado[ch] = { cStat: 'erro', xMotivo: err.message }; continue; }
+    Object.assign(resultado, r);
+    atualizarSefazDfe(num, s => {
+      s.manifestacoes = s.manifestacoes || {};
+      for (const ch of lista) if (SEFAZ_CIENCIA_OK.includes(r[ch]?.cStat)) s.manifestacoes[ch] = { feitaEm: Date.now(), cStat: r[ch].cStat };
+    });
+  }
+  const db2 = loadFiscalNotas();
+  for (const ch of chaves) {
+    const r = resultado[ch] || { cStat: 'sem-resposta', xMotivo: '' };
+    if (db2[ch]) db2[ch].ciencia = { ok: SEFAZ_CIENCIA_OK.includes(r.cStat), cStat: r.cStat, xMotivo: r.xMotivo, ts: Date.now() };
+  }
+  saveFiscalNotas(db2);
+  const ok = chaves.filter(ch => SEFAZ_CIENCIA_OK.includes(resultado[ch]?.cStat)).length;
+  addLog(`[sefaz-dfe] ciência manual: ${ok}/${chaves.length} ok — ${chaves.map(ch => `NF ${ch.slice(25, 34).replace(/^0+/, '')}: ${resultado[ch]?.cStat} ${resultado[ch]?.xMotivo || ''}`).join('; ')}`, ok === chaves.length ? 'ok' : 'warn');
+  res.json({ ok: true, resultado });
+});
 
-// Reserva: ciência feita há mais de 3h e o XML completo ainda não veio pelo distNSU →
+// Reserva: ciência feita há mais de 1h e o XML completo ainda não veio pelo distNSU →
 // pede pela chave (consChNFe). No máximo 5 por ciclo e 2 tentativas por nota.
 async function sefazDfeBuscarXmlPorChave(num, nc, pfx, cUF) {
   const st = loadSefazDfe()[num] || {};
   const db = loadFiscalNotas();
   const alvo = Object.entries(st.manifestacoes || {})
-    .filter(([ch, m]) => !m.pendente && m.feitaEm && Date.now() - m.feitaEm > 3 * 3600_000
+    .filter(([ch, m]) => m.feitaEm && Date.now() - m.feitaEm > 3600_000
       && (m.consultasChave || 0) < 2 && db[ch] && !db[ch].zip && !db[ch].cancelada)
     .map(([ch]) => ch)
     .slice(0, 5);
@@ -13017,14 +13019,15 @@ app.get('/api/sefaz-dfe/status', (req, res) => {
   const contas = SEFAZ_DFE_CONTAS.map(num => {
     const s = st[num] || {};
     const nc = (data.notas_contas || {})[num] || {};
-    const mans = Object.values(s.manifestacoes || {});
+    const db = loadFiscalNotas();
+    const semXml = Object.values(db).filter(n => n.filial && n.filial === nc.cnpj && !n.zip && !n.cancelada);
     return {
       conta: num, cnpj: nc.cnpj || null, titular: nc.titular || null, temCert: !!nc.cert_b64,
       ultimaConsulta: s.ultimaConsulta || null, proximaConsulta: s.proximaConsulta || null,
       ultimoStatus: s.ultimoStatus || null, ultimasNovas: s.ultimasNovas || null,
       ultNSU: s.ultNSU || '0', maxNSU: s.maxNSU || '0',
-      cienciaPendente: mans.filter(m => m.pendente && (m.tentativas || 0) < 3).length,
-      cienciaRecusada: mans.filter(m => m.pendente && (m.tentativas || 0) >= 3).length,
+      aguardandoCiencia: semXml.filter(n => !n.ciencia?.ok).length,
+      aguardandoXml:     semXml.filter(n => n.ciencia?.ok).length,
     };
   });
   res.json({ contas, emExecucao: sefazDfeEmExecucao });
