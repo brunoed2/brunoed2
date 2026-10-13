@@ -68,14 +68,32 @@ async function fiscalCarregarSefazStatus() {
   if (!d || !d.contas) return;
   box.innerHTML = d.contas.map(c => {
     if (!c.temCert) return `🔐 SEFAZ C${c.conta}: sem certificado — salve o certificado abaixo pra busca automática começar.`;
-    const st = c.ultimoStatus ? `${c.ultimoStatus.cStat} — ${c.ultimoStatus.xMotivo}` : 'ainda não consultou';
+    const esc = s => String(s || '').replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+    const st = c.ultimoStatus ? esc(`${c.ultimoStatus.cStat} — ${c.ultimoStatus.xMotivo}`) : 'ainda não consultou';
     const novas = c.ultimasNovas ? ` · últimas novas: ${c.ultimasNovas.qtd} em ${fiscalHora(c.ultimasNovas.ts)}` : '';
     const ciencia = c.cienciaPendente ? ` · ciência pendente: ${c.cienciaPendente}` : '';
     const recusada = c.cienciaRecusada ? ` · <span style="color:#f87171">ciência recusada: ${c.cienciaRecusada} (ver log)</span>` : '';
     return `🏛️ SEFAZ C${c.conta} (${c.titular || c.cnpj}): última consulta ${fiscalHora(c.ultimaConsulta)} [${st}] · próxima ${fiscalHora(c.proximaConsulta)}${novas}${ciencia}${recusada}
-      <button class="btn-sm" style="margin-left:8px" onclick="fiscalConsultarSefaz('${c.conta}', this)">Consultar SEFAZ agora</button>`;
+      <button class="btn-sm" style="margin-left:8px" onclick="fiscalConsultarSefaz('${c.conta}', this)">Consultar SEFAZ agora</button>
+      <button class="btn-sm" style="margin-left:4px" onclick="fiscalDiagnosticoSefaz('${c.conta}', this)">Diagnóstico</button>
+      <pre id="fiscal-sefaz-diag-${c.conta}" style="display:none;white-space:pre-wrap;font-size:11px;margin:8px 0 0;color:#cbd5e1"></pre>`;
   }).join('<br>');
   box.style.display = 'block';
+}
+
+async function fiscalDiagnosticoSefaz(conta, btn) {
+  btn.disabled = true;
+  btn.textContent = '⏳ Testando...';
+  const out = document.getElementById(`fiscal-sefaz-diag-${conta}`);
+  try {
+    const r = await fetch(`/api/sefaz-dfe/diagnostico?conta=${conta}`).then(r => r.json());
+    out.textContent = JSON.stringify(r, null, 2);
+  } catch (err) {
+    out.textContent = 'Erro: ' + err.message;
+  }
+  out.style.display = 'block';
+  btn.disabled = false;
+  btn.textContent = 'Diagnóstico';
 }
 
 async function fiscalConsultarSefaz(conta, btn) {

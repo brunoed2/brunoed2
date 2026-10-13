@@ -12394,7 +12394,7 @@ async function queryNFeDistribuicao(pfxBuffer, senha, cnpj, cUF, ultNSU) {
     }, (res) => {
       let data = '';
       res.on('data', c => data += c);
-      res.on('end', () => resolve(data));
+      res.on('end', () => { sefazUltimoHttpStatus = res.statusCode; resolve(data); });
     });
     req.on('error', reject);
     req.on('timeout', () => { req.destroy(); reject(new Error('Timeout ao consultar SEFAZ (30s)')); });
@@ -12795,6 +12795,53 @@ function sefazInterpretarDoc(doc, nc) {
 }
 
 let sefazDfeEmExecucao = false;
+let sefazUltimoHttpStatus = null; // status HTTP da última chamada distNSU (queryNFeDistribuicao)
+
+// Resposta que não é SOAP (página de erro do IIS): só o texto, sem tags
+function sefazTextoResposta(resp) {
+  const titulo = (String(resp).match(/<title>([^<]*)<\/title>/i) || [])[1];
+  const corpo = String(resp).replace(/<style[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  return (titulo ? titulo.trim() + ' | ' : '') + corpo.slice(-250);
+}
+
+// Teste de conexão com o certificado (GET na página do serviço, sem consulta — não gasta
+// o limite da SEFAZ). 200 = certificado aceito; 403 = recusado ou IP bloqueado.
+function sefazTestarConexao(host, caminho, nc) {
+  return new Promise((resolve) => {
+    const req = https.request({
+      hostname: host, port: 443, path: caminho, method: 'GET',
+      pfx: Buffer.from(nc.cert_b64, 'base64'), passphrase: nc.senha,
+      rejectUnauthorized: false, timeout: 20000,
+    }, (res) => {
+      let d = ''; res.on('data', c => d += c);
+      res.on('end', () => resolve({ host, http: res.statusCode, texto: sefazTextoResposta(d).slice(0, 200) }));
+    });
+    req.on('error', err => resolve({ host, erro: err.message }));
+    req.on('timeout', () => { req.destroy(); resolve({ host, erro: 'timeout 20s' }); });
+    req.end();
+  });
+}
+
+app.get('/api/sefaz-dfe/diagnostico', async (req, res) => {
+  const num = String(req.query.conta || SEFAZ_DFE_CONTAS[0]);
+  const nc = (loadData().notas_contas || {})[num] || {};
+  if (!nc.cert_b64) return res.json({ ok: false, erro: 'Certificado não configurado' });
+  const out = { conta: num, cnpj: nc.cnpj };
+  try {
+    const c = sefazCarregarCert(nc.cert_b64, nc.senha);
+    out.certValidoAte = c.validoAte;
+  } catch (err) { out.certErro = err.message; }
+  out.testes = await Promise.all([
+    sefazTestarConexao('www1.nfe.fazenda.gov.br', '/NFeDistribuicaoDFe/NFeDistribuicaoDFe.asmx', nc),
+    sefazTestarConexao(SEFAZ_EVENTO_HOST, SEFAZ_EVENTO_PATH, nc),
+  ]);
+  try {
+    const ip = await axios.get('https://ipinfo.io/json', { timeout: 10000 });
+    out.servidor = { ip: ip.data.ip, pais: ip.data.country, cidade: ip.data.city };
+  } catch (err) { out.servidor = { erro: err.message }; }
+  addLog(`[sefaz-dfe] diagnóstico C${num}: ${JSON.stringify(out)}`, 'info');
+  res.json({ ok: true, ...out });
+});
 
 async function sefazDfeCiclo(num) {
   const nc = (loadData().notas_contas || {})[num] || {};
@@ -12822,7 +12869,14 @@ async function sefazDfeCiclo(num) {
       break;
     }
     const { cStat, xMotivo, ultNSU, maxNSU: max, docs } = parsearRespostaSefaz(resp);
-    ultimoStatus = { cStat: cStat || 'sem-resposta', xMotivo: xMotivo || resp.replace(/\s+/g, ' ').slice(0, 200) };
+    if (!cStat) {
+      // Não chegou a ser processado pela SEFAZ (ex: 403 HTML do IIS) — não conta pro limite,
+      // então tenta de novo em 15 min em vez de 1h
+      ultimoStatus = { cStat: `HTTP ${sefazUltimoHttpStatus}`, xMotivo: sefazTextoResposta(resp) };
+      proxima = Date.now() + 15 * 60_000;
+      break;
+    }
+    ultimoStatus = { cStat, xMotivo: xMotivo || '' };
     if (ultNSU && /^\d+$/.test(ultNSU)) nsu = ultNSU;
     if (max && /^\d+$/.test(max)) maxNSU = max;
 
@@ -12981,8 +13035,11 @@ app.post('/api/sefaz-dfe/consultar', async (req, res) => {
   if (sefazDfeEmExecucao) return res.json({ ok: false, erro: 'Já tem uma consulta em andamento' });
   const num = String(req.body?.conta || SEFAZ_DFE_CONTAS[0]);
   if (!SEFAZ_DFE_CONTAS.includes(num)) return res.json({ ok: false, erro: `Conta ${num} não tem busca automática` });
-  const prox = (loadSefazDfe()[num] || {}).proximaConsulta || 0;
-  if (Date.now() < prox) {
+  const est = loadSefazDfe()[num] || {};
+  const prox = est.proximaConsulta || 0;
+  // Erro que não chegou a ser processado pela SEFAZ (HTTP/rede) não conta pro limite
+  const naoContou = /^(HTTP|sem-resposta|erro)/.test(est.ultimoStatus?.cStat || '');
+  if (Date.now() < prox && !naoContou) {
     const hora = new Date(prox).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' });
     return res.json({ ok: false, erro: `A SEFAZ só deixa consultar de novo às ${hora} (regra de 1h sem notas novas)` });
   }
