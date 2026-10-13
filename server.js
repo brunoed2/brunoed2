@@ -3172,6 +3172,29 @@ async function shopeeDetalhePedidos(conta, orderSns) {
   return out;
 }
 
+// order_sn de todos os pedidos num status (últimos 15 dias, limite da Shopee), lendo
+// todas as páginas. Várias rotas liam só a 1ª página (50) — com o volume maior a aba
+// Vendas mostrava só 50 pedidos e o scanner não achava o resto.
+async function shopeeListarOrderSns(sp, accessToken, status) {
+  const sns = [];
+  let cursor = '';
+  for (let pagina = 0; pagina < 20; pagina++) {
+    const path   = '/api/v2/order/get_order_list';
+    const params = shopeeParams(path, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
+    Object.assign(params, {
+      order_status: status, page_size: 100, cursor, time_range_field: 'create_time',
+      time_from: Math.floor(Date.now() / 1000) - 15 * 24 * 60 * 60, time_to: Math.floor(Date.now() / 1000),
+    });
+    const r = await axios.get(`${SHOPEE_BASE}/order/get_order_list`, { params, timeout: 15000 });
+    if (r.data.error) throw new Error(`Shopee get_order_list ${status}: ${r.data.message || r.data.error}`);
+    sns.push(...(r.data.response?.order_list || []).map(o => o.order_sn));
+    if (!r.data.response?.more) break;
+    cursor = r.data.response.next_cursor || '';
+    if (!cursor) break;
+  }
+  return [...new Set(sns)];
+}
+
 async function shopeeListarProntosParaEnvio(conta) {
   const dataApp = loadData();
   const sp = shopeeConta(dataApp, conta);
@@ -8283,31 +8306,9 @@ app.get('/api/shopee/pedido-por-tracking/:tracking', async (req, res) => {
       // só mostra o código dos Correios puro — por isso includes, não igualdade exata.
       const bate = tn => !!tn && tn.toUpperCase().includes(tracking);
 
-      // Todas as páginas do status — antes só a 1ª (50 pedidos) era lida, e com o volume
-      // maior o pedido escaneado ficava de fora ("Pedido não encontrado").
       const listarStatus = async (status) => {
-        const sns = [];
-        let cursor = '';
-        for (let pagina = 0; pagina < 20; pagina++) {
-          const path   = '/api/v2/order/get_order_list';
-          const params = shopeeParams(path, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
-          params.order_status     = status;
-          params.page_size        = 100;
-          params.cursor           = cursor;
-          params.time_range_field = 'create_time';
-          params.time_from        = Math.floor(Date.now() / 1000) - 15 * 24 * 60 * 60;
-          params.time_to          = Math.floor(Date.now() / 1000);
-          const r = await axios.get(`${SHOPEE_BASE}/order/get_order_list`, { params, timeout: 15000 });
-          if (r.data.error) {
-            addLog(`[shopee] pedido-por-tracking conta ${num} ${status}: ${r.data.error} ${r.data.message || ''}`, 'warn');
-            break;
-          }
-          sns.push(...(r.data.response?.order_list || []).map(o => o.order_sn));
-          if (!r.data.response?.more) break;
-          cursor = r.data.response.next_cursor || '';
-          if (!cursor) break;
-        }
-        return sns;
+        try { return await shopeeListarOrderSns(sp, accessToken, status); }
+        catch (e) { addLog(`[shopee] pedido-por-tracking conta ${num}: ${e.message}`, 'warn'); return []; }
       };
 
       const pathT = '/api/v2/logistics/get_tracking_number';
@@ -9048,28 +9049,19 @@ app.get('/api/shopee/orders', async (req, res) => {
   if (!sp.access_token) return res.json({ error: 'Shopee não conectada' });
   try {
     const accessToken = await getShopeeToken(data, num);
-    const path   = '/api/v2/order/get_order_list';
-    const params = shopeeParams(path, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
-    const agora  = Math.floor(Date.now() / 1000);
-    params.order_status     = 'READY_TO_SHIP';
-    params.page_size        = 50;
-    params.cursor           = '';
-    params.time_range_field = 'create_time';
-    params.time_from        = agora - 15 * 24 * 60 * 60; // Shopee limita a janela a 15 dias
-    params.time_to          = agora;
-    const r = await axios.get(`${SHOPEE_BASE}/order/get_order_list`, { params, timeout: 10000 });
-    if (r.data.error) return res.json({ error: r.data.message });
-    const orders = r.data.response?.order_list || [];
-    if (!orders.length) return res.json({ orders: [] });
+    const sns = await shopeeListarOrderSns(sp, accessToken, 'READY_TO_SHIP');
+    if (!sns.length) return res.json({ orders: [] });
 
-    // Busca detalhes dos pedidos
-    const sns = orders.map(o => o.order_sn);
-    const pathD   = '/api/v2/order/get_order_detail';
-    const paramsD = shopeeParams(pathD, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
-    paramsD.order_sn_list   = sns.join(',');
-    paramsD.response_optional_fields = 'buyer_username,item_list,recipient_address';
-    const rd = await axios.get(`${SHOPEE_BASE}/order/get_order_detail`, { params: paramsD, timeout: 10000 });
-    const detalhes = rd.data.response?.order_list || [];
+    // Busca detalhes dos pedidos (get_order_detail aceita no máx. 50 por chamada)
+    const detalhes = [];
+    for (let i = 0; i < sns.length; i += 50) {
+      const pathD   = '/api/v2/order/get_order_detail';
+      const paramsD = shopeeParams(pathD, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
+      paramsD.order_sn_list   = sns.slice(i, i + 50).join(',');
+      paramsD.response_optional_fields = 'buyer_username,item_list,recipient_address';
+      const rd = await axios.get(`${SHOPEE_BASE}/order/get_order_detail`, { params: paramsD, timeout: 10000 });
+      detalhes.push(...(rd.data.response?.order_list || []));
+    }
     res.json({ orders: detalhes });
   } catch (err) {
     res.json({ error: err.message });
@@ -9336,17 +9328,9 @@ app.get('/api/shopee/vendas-etiquetas', async (req, res) => {
 
     let orderSns = [];
     for (const status of ['READY_TO_SHIP', 'PROCESSED']) {
-      const path   = '/api/v2/order/get_order_list';
-      const params = shopeeParams(path, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
-      params.order_status     = status;
-      params.page_size        = 50;
-      params.cursor           = '';
-      params.time_range_field = 'create_time';
-      params.time_from        = Math.floor(Date.now() / 1000) - 15 * 24 * 60 * 60;
-      params.time_to          = Math.floor(Date.now() / 1000);
-      const r = await axios.get(`${SHOPEE_BASE}/order/get_order_list`, { params, timeout: 15000 });
-      if (r.data.error) continue;
-      orderSns = orderSns.concat((r.data.response?.order_list || []).map(o => o.order_sn));
+      try {
+        orderSns = orderSns.concat(await shopeeListarOrderSns(sp, accessToken, status));
+      } catch (e) { addLog(`[shopee] vendas-etiquetas conta ${num}: ${e.message}`, 'warn'); }
     }
     orderSns = [...new Set(orderSns)];
     if (!orderSns.length) return res.json({ vendas: [] });
@@ -9480,17 +9464,9 @@ app.get('/api/shopee/pedidos-futuros', async (req, res) => {
   try {
     const accessToken = await getShopeeToken(data, num);
 
-    const path   = '/api/v2/order/get_order_list';
-    const params = shopeeParams(path, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
-    params.order_status     = 'READY_TO_SHIP';
-    params.page_size        = 100;
-    params.cursor           = '';
-    params.time_range_field = 'create_time';
-    params.time_from        = Math.floor(Date.now() / 1000) - 15 * 24 * 60 * 60;
-    params.time_to          = Math.floor(Date.now() / 1000);
-    const r = await axios.get(`${SHOPEE_BASE}/order/get_order_list`, { params, timeout: 15000 });
-    if (r.data.error) return res.json({ error: r.data.message || r.data.error });
-    const orderSns = (r.data.response?.order_list || []).map(o => o.order_sn);
+    let orderSns;
+    try { orderSns = await shopeeListarOrderSns(sp, accessToken, 'READY_TO_SHIP'); }
+    catch (e) { return res.json({ error: e.message }); }
     if (!orderSns.length) return res.json({ pedidos: [] });
 
     const detalhes = [];
@@ -10346,17 +10322,9 @@ async function verificarNovosShipmentsShopee() {
 
       let orderSns = [];
       for (const status of ['READY_TO_SHIP', 'PROCESSED']) {
-        const path   = '/api/v2/order/get_order_list';
-        const params = shopeeParams(path, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
-        params.order_status     = status;
-        params.page_size        = 50;
-        params.cursor           = '';
-        params.time_range_field = 'create_time';
-        params.time_from        = Math.floor(Date.now() / 1000) - 15 * 24 * 60 * 60;
-        params.time_to          = Math.floor(Date.now() / 1000);
-        const r = await axios.get(`${SHOPEE_BASE}/order/get_order_list`, { params, timeout: 15000 });
-        if (r.data.error) continue;
-        orderSns = orderSns.concat((r.data.response?.order_list || []).map(o => o.order_sn));
+        try {
+          orderSns = orderSns.concat(await shopeeListarOrderSns(sp, accessToken, status));
+        } catch (e) { addLog(`[pedido-shopee] conta ${num}: ${e.message}`, 'warn'); }
       }
       orderSns = [...new Set(orderSns)].filter(sn => !shopeeOrdersNotificados.has(sn));
       if (!orderSns.length) continue;
