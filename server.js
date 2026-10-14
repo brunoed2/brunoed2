@@ -7475,6 +7475,38 @@ app.get('/api/bling/debug-pedido', async (req, res) => {
   res.json(out);
 });
 
+// Debug: dá pra levar o TikTok pra aba Vendas/scanner só com o Bling? Lista os pedidos
+// TikTok recentes com situação, NF e transporte (código de rastreio = o que o scanner
+// leria na etiqueta) e tenta baixar a etiqueta por /logisticas/etiquetas.
+// ?conta=1&dias=5&tentar=5 (quantos pedidos tentam a etiqueta)
+app.get('/api/bling/debug-tiktok-etiqueta', async (req, res) => {
+  const conta  = String(req.query.conta || '1');
+  const dias   = Math.min(Number(req.query.dias) || 5, 30);
+  const tentar = Math.min(Number(req.query.tentar) || 5, 15);
+  const out = { conta, lojas: TIKTOK_LOJAS_BLING[conta] || [], pedidos: [] };
+  try {
+    const de = new Date(Date.now() - dias * 86_400_000).toISOString().slice(0, 10);
+    for (const idLoja of out.lojas) {
+      const lista = (await blingGetDevolucao(conta, 'https://api.bling.com.br/Api/v3/pedidos/vendas', { idLoja, dataInicial: de, limite: 100 }))?.data || [];
+      for (const p of lista.filter(p => p.loja?.id === idLoja)) {
+        const item = { id: p.id, numero: p.numero, numeroLoja: p.numeroLoja, data: p.data, situacao: p.situacao };
+        if (out.pedidos.filter(x => x.detalhe).length < tentar) {
+          const det = (await blingGetDevolucao(conta, `https://api.bling.com.br/Api/v3/pedidos/vendas/${p.id}`))?.data || {};
+          item.detalhe = { notaFiscal: det.notaFiscal, transporte: det.transporte, itens: (det.itens || []).map(i => ({ codigo: i.codigo, descricao: i.descricao, quantidade: i.quantidade })) };
+          for (const formato of ['PDF', 'ZPL']) {
+            item[`etiqueta_${formato}`] = await blingGetDevolucao(conta, 'https://api.bling.com.br/Api/v3/logisticas/etiquetas', { formato, 'idsVendas[]': p.id })
+              .catch(e => ({ erro: e.response ? `HTTP ${e.response.status}: ${JSON.stringify(e.response.data).slice(0, 400)}` : e.message }));
+          }
+        }
+        out.pedidos.push(item);
+      }
+    }
+  } catch (err) {
+    out.erro = err.response ? `HTTP ${err.response.status}: ${JSON.stringify(err.response.data).slice(0, 300)}` : err.message;
+  }
+  res.json(out);
+});
+
 app.get('/api/bling/debug-nf-devolucao', async (req, res) => {
   const numeros = String(req.query.numeros || '').split(',').map(s => s.trim()).filter(Boolean);
   const contas  = req.query.conta ? [String(req.query.conta)] : ['1', '2'];
