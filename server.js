@@ -9950,18 +9950,57 @@ async function tiktokPedidosParaDespachar(conta, forcar) {
       tiktokDetalheCache.set(p.id, det);
     }
     if (!det.temNF) continue;
-    // Rastreio só aparece no objeto de postagem, e às vezes um pouco depois da NF
-    if (!det.rastreio) {
-      for (const vid of det.volumeIds) {
-        const obj = (await blingGetDevolucao(conta, `https://api.bling.com.br/Api/v3/logisticas/objetos/${vid}`).catch(() => null))?.data;
-        if (obj?.rastreamento?.codigo) { det.rastreio = obj.rastreamento.codigo; break; }
-      }
-    }
+    // "Atendido" sozinho não basta: pedido antigo já despachado pode ficar em 9 pra
+    // sempre (visto no v973). O objeto de postagem diz se o pacote já andou — sem
+    // movimentação (descrição vazia, data 0000-00-00) = ainda não saiu.
+    const rast = await tiktokRastreamento(conta, det.volumeIds);
+    if (rast.codigo) det.rastreio = rast.codigo;
+    if (rast.emMovimento) continue;
     pedidos.push({ blingId: p.id, numeroLoja: String(p.numeroLoja || p.numero), data: p.data, comprador: det.comprador, itens: det.itens, rastreio: det.rastreio });
   }
   tiktokVendasCache[conta] = { ts: Date.now(), pedidos };
   return pedidos;
 }
+
+// Rastreio do pedido pelos objetos de postagem — não fica em cache, porque é o que
+// diz se o pacote já foi despachado.
+async function tiktokRastreamento(conta, volumeIds) {
+  const out = { codigo: '', emMovimento: false, objetos: [] };
+  for (const vid of volumeIds) {
+    const obj = (await blingGetDevolucao(conta, `https://api.bling.com.br/Api/v3/logisticas/objetos/${vid}`).catch(() => null))?.data;
+    const r = obj?.rastreamento;
+    if (!r) continue;
+    out.objetos.push(r);
+    if (r.codigo && !out.codigo) out.codigo = r.codigo;
+    if (r.descricao || (r.ultimaAlteracao && !r.ultimaAlteracao.startsWith('0000'))) out.emMovimento = true;
+  }
+  return out;
+}
+
+// Debug: todos os pedidos TikTok dos últimos dias com situação, NF, rastreio e se a
+// etiqueta sai — pra conferir a regra de "pra despachar" da aba Vendas. ?conta=1&dias=10
+app.get('/api/tiktok/debug-vendas', async (req, res) => {
+  const conta = String(req.query.conta || '1');
+  const dias  = Math.min(Number(req.query.dias) || TIKTOK_VENDAS_DIAS, 30);
+  const de    = new Date(Date.now() - BR_OFFSET_MS - dias * 86_400_000).toISOString().slice(0, 10);
+  const out = { conta, de, pedidos: [] };
+  try {
+    for (const idLoja of TIKTOK_LOJAS_BLING[conta] || []) {
+      const lista = (await blingGetDevolucao(conta, 'https://api.bling.com.br/Api/v3/pedidos/vendas', { limite: 100, idLoja, dataInicial: de }))?.data || [];
+      for (const p of lista.filter(p => p.loja?.id === idLoja)) {
+        const d = (await blingGetDevolucao(conta, `https://api.bling.com.br/Api/v3/pedidos/vendas/${p.id}`).catch(() => null))?.data || {};
+        const rast = await tiktokRastreamento(conta, (d.transporte?.volumes || []).map(v => v.id).filter(Boolean));
+        const etq = d.notaFiscal?.id
+          ? await blingGetDevolucao(conta, 'https://api.bling.com.br/Api/v3/logisticas/etiquetas', { formato: 'PDF', 'idsVendas[]': p.id })
+              .then(r => ((r?.data || []).some(e => e.link) ? 'ok' : 'sem link')).catch(e => blingErroTexto(e))
+          : 'sem NF';
+        out.pedidos.push({ numero: p.numero, numeroLoja: p.numeroLoja, data: p.data, situacao: p.situacao?.id, nf: d.notaFiscal?.id || 0, rastreamento: rast.objetos, emMovimento: rast.emMovimento, etiqueta: etq });
+      }
+    }
+  } catch (err) { out.erro = blingErroTexto(err); }
+  out.na_aba_vendas = (await tiktokPedidosParaDespachar(conta, true).catch(e => [{ erro: e.message }])).map(p => p.numeroLoja || p);
+  res.json(out);
+});
 
 function tiktokItensLista(itens, fotos) {
   return anexarInstrucoesDespacho(itens.map(i => ({
