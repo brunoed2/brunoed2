@@ -117,23 +117,30 @@ async function blingCarregarPedidos() {
     for (const p of pedidos) {
       const tr = document.createElement('tr');
       const isShopee = /shopee/i.test(p.canal || '');
-      tr.dataset.canal     = isShopee ? 'shopee' : 'ml';
+      const isTiktok = !!p.isTiktok;
+      const canalChave = isTiktok ? 'tiktok' : isShopee ? 'shopee' : 'ml';
+      tr.dataset.canal     = canalChave;
       tr.dataset.pendencia = (p.pendencias || []).length > 0 ? '1' : '0';
       if (p.temEtiqueta && !isShopee) tr.style.background = 'rgba(34,197,94,0.07)';
       if (isShopee) tr.style.background = 'rgba(249,115,22,0.06)';
+      if (isTiktok) tr.style.background = 'rgba(236,72,153,0.06)';
       const valor    = (p.valor_total || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
       const data_str = p.data ? new Date(p.data).toLocaleDateString('pt-BR') : '—';
       const contaCor = p.conta === '1' ? '#2563eb' : '#7c3aed';
       const contaBadge = `<span style="background:${contaCor};color:#fff;padding:1px 7px;border-radius:4px;font-size:11px">C${p.conta}</span>`;
       const shopeeNaoLiberado = isShopee && p.shopeeLiberado === false;
-      const etqBadge = shopeeNaoLiberado
+      const etqBadge = isTiktok
+        ? `<span style="background:#111827;color:#fff;padding:2px 7px;border-radius:4px;font-size:11px;white-space:nowrap" title="Emitir NF: o Bling manda a nota pro TikTok e libera a etiqueta">TikTok</span>`
+        : shopeeNaoLiberado
         ? `<span style="background:#94a3b8;color:#fff;padding:2px 7px;border-radius:4px;font-size:11px;white-space:nowrap" title="Shopee: pedido ainda em processamento, aguardando liberação">Shopee: aguardando</span>`
         : isShopee
         ? `<span style="background:#f97316;color:#fff;padding:2px 7px;border-radius:4px;font-size:11px;white-space:nowrap">Shopee</span>`
         : p.temEtiqueta
           ? `<span style="background:#16a34a;color:#fff;padding:2px 7px;border-radius:4px;font-size:11px;white-space:nowrap" title="Emitir NF libera a etiqueta de envio">Emitir NF → Etiqueta</span>`
           : `<span style="color:#9ca3af;font-size:11px">Aguardando ML</span>`;
-      const btnSuper = shopeeNaoLiberado
+      const btnSuper = isTiktok
+        ? `<button class="btn-sm btn-super" data-bling-super-id="${p.id}" onclick="blingSuperEnvio('${p.id}', this, '${p.conta}')" style="background:#111827;color:#fff;margin-left:4px" title="Gerar NF e enviar pra SEFAZ — o Bling manda a nota pro TikTok">⚡ Super</button>`
+        : shopeeNaoLiberado
         ? `<button class="btn-sm btn-super" disabled style="background:#cbd5e1;color:#64748b;margin-left:4px;cursor:not-allowed" title="Shopee ainda não liberou este pedido pra NF/etiqueta">⚡ Super</button>`
         : isShopee
         ? `<button class="btn-sm btn-super" data-bling-super-id="${p.id}" onclick="blingShopeeSuper('${p.id}', this, '${p.conta}')" style="background:#f97316;color:#fff;margin-left:4px" title="Gerar NF, autorizar SEFAZ e enviar pra Shopee em um clique">⚡ Super</button>`
@@ -146,7 +153,7 @@ async function blingCarregarPedidos() {
         ? `<a href="${blingEditUrl}" target="_blank" rel="noopener" class="btn-sm" style="background:#f59e0b;color:#fff;margin-left:4px;text-decoration:none;display:inline-block" title="Pendências: ${escapeHtml(pendencias.join(' | '))}">⚠ Pendências</a>`
         : `<a href="${blingEditUrl}" target="_blank" rel="noopener" style="color:#64748b;margin-left:6px;font-size:13px;text-decoration:none" title="Editar pedido no Bling">✎</a>`;
       tr.innerHTML = `
-        <td><input type="checkbox" class="bling-check-pedido" data-id="${p.id}" data-conta="${p.conta}" data-tem-etiqueta="${p.temEtiqueta}" data-canal="${isShopee ? 'shopee' : 'ml'}" data-shopee-liberado="${shopeeNaoLiberado ? '0' : '1'}" onchange="blingAtualizarBotaoLote()"></td>
+        <td><input type="checkbox" class="bling-check-pedido" data-id="${p.id}" data-conta="${p.conta}" data-tem-etiqueta="${p.temEtiqueta || isTiktok}" data-canal="${canalChave}" data-shopee-liberado="${shopeeNaoLiberado ? '0' : '1'}" onchange="blingAtualizarBotaoLote()"></td>
         <td>${contaBadge}</td>
         <td>${escapeHtml(p.numero || String(p.id))}</td>
         <td>${escapeHtml(p.numeroPedidoLoja || '—')}</td>

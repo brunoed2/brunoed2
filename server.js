@@ -1876,10 +1876,12 @@ async function fetchBlingPedidosPendentes(conta) {
       if (pendMunicipio) pendencias.push(pendMunicipio);
     }
     const numeroLojaVal = detalhe?.numeroLoja || p.numeroLoja || '';
-    const isML     = /^\d{10,}$/.test(numeroLojaVal);
-    const isShopee = !!numeroLojaVal && !isML;
-    const canalNome = isShopee ? 'Shopee' : (isML ? 'Mercado Livre' : '');
-    return { ...p, numeroLoja: detalhe?.numeroLoja || p.numeroLoja, produtos, pendencias, canal: canalNome, isShopee, lojaId: detalhe?.loja?.id || null };
+    // TikTok: número de 18 dígitos parece ML — quem separa é a loja do Bling
+    const isTiktok = (TIKTOK_LOJAS_BLING[conta] || []).includes(detalhe?.loja?.id ?? p.loja?.id);
+    const isML     = !isTiktok && /^\d{10,}$/.test(numeroLojaVal);
+    const isShopee = !!numeroLojaVal && !isML && !isTiktok;
+    const canalNome = isTiktok ? 'TikTok' : isShopee ? 'Shopee' : (isML ? 'Mercado Livre' : '');
+    return { ...p, numeroLoja: detalhe?.numeroLoja || p.numeroLoja, produtos, pendencias, canal: canalNome, isShopee, isTiktok, lojaId: detalhe?.loja?.id || null };
   }));
 
   // Verifica no ML quais têm shipment ready_to_ship (etiqueta disponível ao emitir NF)
@@ -1892,7 +1894,7 @@ async function fetchBlingPedidosPendentes(conta) {
   if (mlTokens.length > 0) {
     const mlOrders = await Promise.all(
       itensDetalhados.map(async p => {
-        if (p.isShopee) return null;
+        if (p.isShopee || p.isTiktok) return null;
         if (!p.numeroLoja) {
           addLog(`[bling-etq] #${p.numero} sem numeroLoja — pulado`, 'warn');
           return null;
@@ -2012,8 +2014,11 @@ async function fetchBlingPedidosPendentes(conta) {
       produtos:         p.produtos || [],
       canal:            p.canal || null,
       isShopee:         !!p.isShopee,
+      // TikTok: sem API própria — o Super só emite a NF e o Bling manda pro TikTok (igual ML).
+      // temEtiqueta fica false de propósito: o auto-super não emite TikTok sozinho.
+      isTiktok:         !!p.isTiktok,
       lojaId:           p.lojaId || null,
-      temEtiqueta:      p.isShopee ? false : (mlTokens.length > 0 ? idsComEtiqueta.has(p.id) : true),
+      temEtiqueta:      (p.isShopee || p.isTiktok) ? false : (mlTokens.length > 0 ? idsComEtiqueta.has(p.id) : true),
       pendencias:       p.pendencias || [],
       // null = não conseguimos checar (falha de API) — não bloqueia, pra não travar por instabilidade
       shopeeLiberado:   shopeeStatus === null ? true : SHOPEE_STATUS_LIBERADO.has(shopeeStatus),
@@ -3044,6 +3049,7 @@ async function autoSuperJobCiclo() {
     for (const p of pedidos) {
       const chave = `${p.id}_${conta}`;
       if (emitidos[chave]) continue;
+      if (p.isTiktok) continue; // TikTok só pelo Super manual, por enquanto
 
       // Gate de "pronto pra NF" por canal: ML usa temEtiqueta (shipment já em
       // ready_to_ship/invoice_pending), Shopee usa shopeeLiberado (mesmo campo
