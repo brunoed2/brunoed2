@@ -1831,6 +1831,9 @@ async function checarMunicipioEtiqueta(etiqueta) {
 // em [bling-cancel], visível em /api/bling/log-cancelamento) e o pedido continua
 // aparecendo normalmente — nunca some da lista sem confirmação de sucesso do Bling.
 const BLING_SITUACAO_CANCELADO = 12;
+const BLING_SITUACAO_ATENDIDO  = 9;
+// blingId → 1 (corrigido pra Atendido) ou 2 (reabriu de novo, já avisado) — ver fetchBlingPedidosPendentes
+const tiktokReabertosCorrigidos = new Map();
 
 // Pedidos Shopee ainda em aberto (sem NF) no Bling, por conta — a vistoria do XML usa pra
 // separar "esperando a emissão" (normal) de "pronto na Shopee sem NF e já fora do Bling"
@@ -2001,6 +2004,28 @@ async function fetchBlingPedidosPendentes(conta) {
         addLog(`[bling-cancel] #${p.numero}: falha ao cancelar (Shopee: ${shopeeStatusPorOrderSn[p.numeroLoja]}) — HTTP ${err.response?.status || '?'} ${JSON.stringify(err.response?.data || err.message).slice(0, 200)}`, 'warn');
       }
     }));
+  }
+
+  // TikTok com NF voltando pra "Em aberto": o Bling põe em Atendido ao gerar a NF, mas
+  // a integração do TikTok reabriu o pedido depois (visto no 60986, v975). Devolve pra
+  // Atendido uma vez só por pedido — se o Bling reabrir de novo, só registra, pra não
+  // ficar brigando com a integração.
+  for (const p of itensDetalhados.filter(p => p.tiktokJaFaturado)) {
+    if (tiktokReabertosCorrigidos.has(p.id)) {
+      if (tiktokReabertosCorrigidos.get(p.id) === 1) {
+        tiktokReabertosCorrigidos.set(p.id, 2);
+        addLog(`[tiktok-situacao] #${p.numero}: voltou pra "Em aberto" de novo depois de corrigido — a integração do TikTok no Bling está reabrindo; não mexe mais`, 'warn');
+      }
+      continue;
+    }
+    tiktokReabertosCorrigidos.set(p.id, 1);
+    try {
+      await axios.patch(`https://api.bling.com.br/Api/v3/pedidos/vendas/${p.id}/situacoes/${BLING_SITUACAO_ATENDIDO}`, {},
+        { headers: { Authorization: `Bearer ${token}` }, timeout: 10000 });
+      addLog(`[tiktok-situacao] #${p.numero}: tinha NF mas estava "Em aberto" — voltou pra Atendido`, 'ok');
+    } catch (err) {
+      addLog(`[tiktok-situacao] #${p.numero}: falha ao pôr em Atendido — HTTP ${err.response?.status || '?'} ${JSON.stringify(err.response?.data || err.message).slice(0, 200)}`, 'warn');
+    }
   }
 
   return itensDetalhados.filter(p => !canceladosComSucesso.has(p.id) && !p.tiktokJaFaturado).map(p => {
