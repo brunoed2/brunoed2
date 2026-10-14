@@ -4338,6 +4338,7 @@ app.post('/api/vendas/historico/sincronizar', async (req, res) => {
 // conta ML (mesmo número de conta, estrutura errada) e a rota que lê vendas Shopee
 // nunca lia esse dado de volta, então o flag nunca "colava" pro operador.
 function contaParaAtendidos(data, num, canal) {
+  if (canal === 'tiktok') return tiktokConta(data, num);
   return canal === 'shopee' ? shopeeConta(data, num) : data.contas[num];
 }
 
@@ -9879,6 +9880,224 @@ app.get('/api/lucro/vendas-tiktok', async (req, res) => {
     addLog(`[lucro-tiktok] conta ${conta}: ${detail}`, 'warn');
     res.json({ error: `Erro ao buscar vendas TikTok: ${detail}` });
   }
+});
+
+// ── TikTok Shop na aba Vendas / scanner (via Bling) ──
+// Depois que a NF sai (Super), o Bling põe o pedido em "Atendido" (9) e a etiqueta do
+// TikTok fica disponível em /logisticas/etiquetas. Quando o pacote anda, a integração
+// muda a situação (visto: 909484, pedido em trânsito) — então "pra despachar" = TikTok
+// em Atendido. O rastreio fica no objeto de postagem (/logisticas/objetos/{volume}),
+// não no pedido. Atendido/etiqueta impressa ficam em data.tiktok_contas (igual Shopee).
+const BLING_SITUACAO_ATENDIDO_ID = 9;
+const TIKTOK_VENDAS_DIAS = 10;
+const TIKTOK_VENDAS_TTL_MS = 60_000;
+const tiktokVendasCache   = {}; // conta → { ts, pedidos }
+const tiktokDetalheCache  = new Map(); // blingId → { comprador, itens, volumeIds, rastreio }
+
+function tiktokConta(data, num) {
+  num = String(num || '1');
+  data.tiktok_contas = data.tiktok_contas || {};
+  data.tiktok_contas[num] = data.tiktok_contas[num] || {};
+  return data.tiktok_contas[num];
+}
+
+// Foto do produto pelo SKU: o Bling não traz imagem, então reaproveita a das vendas
+// do ML/Shopee do mesmo SKU (histórico já salvo, sem chamada externa).
+function fotosPorSku(data) {
+  const mapa = {};
+  const contas = [...Object.values(data.contas || {}), ...Object.values(data.shopee_contas || {})];
+  for (const c of contas) {
+    for (const h of c.historico_vendas || []) {
+      for (const i of h.itensLista || []) {
+        if (i.sku && i.thumbnail && !mapa[i.sku]) mapa[i.sku] = { thumbnail: i.thumbnail, permalink: i.permalink || '' };
+      }
+    }
+  }
+  return mapa;
+}
+
+// Pedidos TikTok com NF e ainda não despachados: [{ blingId, numeroLoja, data, comprador, itens, rastreio }]
+async function tiktokPedidosParaDespachar(conta, forcar) {
+  const lojas = TIKTOK_LOJAS_BLING[conta] || [];
+  if (!lojas.length || !getBlingDataConta(loadData(), conta)?.access_token) return [];
+  const cache = tiktokVendasCache[conta];
+  if (!forcar && cache && Date.now() - cache.ts < TIKTOK_VENDAS_TTL_MS) return cache.pedidos;
+
+  const de = new Date(Date.now() - BR_OFFSET_MS - TIKTOK_VENDAS_DIAS * 86_400_000).toISOString().slice(0, 10);
+  const lista = [];
+  for (const idLoja of lojas) {
+    for (let pagina = 1; pagina <= 5; pagina++) {
+      const r = (await blingGetDevolucao(conta, 'https://api.bling.com.br/Api/v3/pedidos/vendas', { pagina, limite: 100, idLoja, dataInicial: de }))?.data || [];
+      lista.push(...r.filter(p => p.loja?.id === idLoja && p.situacao?.id === BLING_SITUACAO_ATENDIDO_ID));
+      if (r.length < 100) break;
+    }
+  }
+
+  const pedidos = [];
+  for (const p of lista) {
+    let det = tiktokDetalheCache.get(p.id);
+    if (!det) {
+      const d = (await blingGetDevolucao(conta, `https://api.bling.com.br/Api/v3/pedidos/vendas/${p.id}`))?.data;
+      if (!d) continue;
+      det = {
+        comprador: d.contato?.nome || d.transporte?.etiqueta?.nome || '—',
+        temNF:     !!d.notaFiscal?.id,
+        itens:     (d.itens || []).map(i => ({ sku: i.codigo || '', titulo: i.descricao || '', quantidade: Number(i.quantidade) || 1 })),
+        volumeIds: (d.transporte?.volumes || []).map(v => v.id).filter(Boolean),
+        rastreio:  (d.transporte?.volumes || []).map(v => v.codigoRastreamento).find(Boolean) || '',
+      };
+      if (tiktokDetalheCache.size > 2000) tiktokDetalheCache.clear();
+      tiktokDetalheCache.set(p.id, det);
+    }
+    if (!det.temNF) continue;
+    // Rastreio só aparece no objeto de postagem, e às vezes um pouco depois da NF
+    if (!det.rastreio) {
+      for (const vid of det.volumeIds) {
+        const obj = (await blingGetDevolucao(conta, `https://api.bling.com.br/Api/v3/logisticas/objetos/${vid}`).catch(() => null))?.data;
+        if (obj?.rastreamento?.codigo) { det.rastreio = obj.rastreamento.codigo; break; }
+      }
+    }
+    pedidos.push({ blingId: p.id, numeroLoja: String(p.numeroLoja || p.numero), data: p.data, comprador: det.comprador, itens: det.itens, rastreio: det.rastreio });
+  }
+  tiktokVendasCache[conta] = { ts: Date.now(), pedidos };
+  return pedidos;
+}
+
+function tiktokItensLista(itens, fotos) {
+  return anexarInstrucoesDespacho(itens.map(i => ({
+    sku: i.sku, titulo: i.titulo, variacao: '', quantidade: i.quantidade,
+    thumbnail: fotos[i.sku]?.thumbnail || '', permalink: fotos[i.sku]?.permalink || '',
+  })), 'tiktok');
+}
+
+app.get('/api/tiktok/vendas-etiquetas', async (req, res) => {
+  const num = String(req.query.conta || '1');
+  const usuarioAtual = String(req.query.usuario || '');
+  try {
+    const pedidos = await tiktokPedidosParaDespachar(num);
+    const data = loadData();
+    const tt   = tiktokConta(data, num);
+    const atendidasMap = new Map((tt.atendidas_dados || []).map(v => [String(v.shipmentId), v]));
+    const impressasMap = tt.etiquetas_impressas || {};
+    const fotos = fotosPorSku(data);
+    const vendas = pedidos.map(p => {
+      const sid = p.numeroLoja;
+      const atendidaEntry = atendidasMap.get(sid);
+      const jaImpressa = (impressasMap[sid] || []).includes(usuarioAtual);
+      return {
+        shipmentId:  sid,
+        orderId:     sid,
+        blingId:     p.blingId,
+        comprador:   p.comprador,
+        conta:       num,
+        canal:       'tiktok',
+        status:      'ready_to_ship',
+        statusLabel: 'Pronto p/ envio',
+        acaoLabel:   jaImpressa ? 'Baixar novamente' : 'Baixar',
+        jaImpressa,
+        atendida:    !!atendidaEntry,
+        atendidaEm:  atendidaEntry?.atendidaEm || null,
+        rastreio:    p.rastreio,
+        itensLista:  tiktokItensLista(p.itens, fotos),
+      };
+    });
+    res.json({ vendas });
+  } catch (err) {
+    const detail = err.response ? `HTTP ${err.response.status}: ${JSON.stringify(err.response.data).slice(0, 200)}` : err.message;
+    addLog(`[tiktok] vendas-etiquetas conta ${num}: ${detail}`, 'warn');
+    res.json({ vendas: [], error: `Erro ao buscar pedidos TikTok: ${detail}` });
+  }
+});
+
+// PDF da etiqueta de um pedido TikTok (numeroLoja = nº do pedido no TikTok). O link do
+// Bling expira em 1h — pede um novo a cada download.
+async function tiktokEtiquetaPdf(conta, numeroLoja, usuarioSenha) {
+  let blingId = (tiktokVendasCache[conta]?.pedidos || []).find(p => p.numeroLoja === String(numeroLoja))?.blingId;
+  if (!blingId) {
+    const lista = (await blingGetDevolucao(conta, 'https://api.bling.com.br/Api/v3/pedidos/vendas', { 'numerosLojas[]': String(numeroLoja), limite: 5 }))?.data || [];
+    blingId = lista.find(p => String(p.numeroLoja) === String(numeroLoja))?.id;
+  }
+  if (!blingId) throw new Error(`Pedido TikTok ${numeroLoja} não encontrado no Bling`);
+  const r = await blingGetDevolucao(conta, 'https://api.bling.com.br/Api/v3/logisticas/etiquetas', { formato: 'PDF', 'idsVendas[]': blingId });
+  const link = (r?.data || []).find(e => e.link)?.link;
+  if (!link) throw new Error('O Bling ainda não liberou a etiqueta desse pedido (a NF já foi emitida?)');
+  const pdf = await axios.get(link, { responseType: 'arraybuffer', timeout: 20000 });
+  if (usuarioSenha) marcarEtiquetaImpressa(tiktokConta, conta, numeroLoja, usuarioSenha).catch(() => {});
+  return Buffer.from(pdf.data);
+}
+
+function blingErroTexto(err) {
+  return err.response ? `HTTP ${err.response.status}: ${JSON.stringify(err.response.data?.error?.message || err.response.data).slice(0, 200)}` : err.message;
+}
+
+app.get('/api/tiktok/etiqueta/:numeroLoja', async (req, res) => {
+  const conta = String(req.query.conta || '1');
+  try {
+    const pdf = await tiktokEtiquetaPdf(conta, req.params.numeroLoja, String(req.query.usuario || ''));
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'inline');
+    res.send(pdf);
+  } catch (err) {
+    addLog(`[tiktok] etiqueta ${req.params.numeroLoja}: ${blingErroTexto(err)}`, 'warn');
+    res.status(500).json({ error: blingErroTexto(err) });
+  }
+});
+
+// Várias etiquetas TikTok num PDF só (mesmo padrão do lote da Shopee)
+app.get('/api/tiktok/etiquetas', async (req, res) => {
+  const conta = String(req.query.conta || '1');
+  const usuarioAtual = String(req.query.usuario || '');
+  const ids = String(req.query.ids || '').split(',').map(s => s.trim()).filter(Boolean);
+  if (!ids.length) return res.status(400).json({ error: 'Nenhum ID informado' });
+  try {
+    const { PDFDocument } = require('pdf-lib');
+    const merged = await PDFDocument.create();
+    const falhas = [];
+    for (const id of ids) {
+      try {
+        const doc = await PDFDocument.load(await tiktokEtiquetaPdf(conta, id, usuarioAtual));
+        (await merged.copyPages(doc, doc.getPageIndices())).forEach(p => merged.addPage(p));
+      } catch (err) {
+        falhas.push(id);
+        addLog(`[tiktok] etiquetas em lote — ${id} falhou: ${blingErroTexto(err)}`, 'warn');
+      }
+    }
+    if (!merged.getPageCount()) return res.status(500).json({ error: 'Nenhuma etiqueta TikTok pôde ser baixada', falhas });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'inline; filename="etiquetas-tiktok.pdf"');
+    if (falhas.length) res.setHeader('X-Etiquetas-Falhas', falhas.join(','));
+    res.send(Buffer.from(await merged.save()));
+  } catch (err) {
+    addLog(`[tiktok] etiquetas em lote: ${err.message}`, 'warn');
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Scanner: acha o pedido TikTok pelo que o leitor leu na etiqueta — rastreio ou nº do
+// pedido TikTok, em qualquer parte do texto lido (o formato do QR ainda não foi confirmado).
+app.get('/api/tiktok/pedido-por-codigo/:codigo', async (req, res) => {
+  const codigo = String(req.params.codigo).trim().toUpperCase();
+  const data = loadData();
+  for (const num of Object.keys(TIKTOK_LOJAS_BLING)) {
+    try {
+      let pedidos = await tiktokPedidosParaDespachar(num);
+      const achar = lista => lista.find(p => (p.rastreio && codigo.includes(p.rastreio.toUpperCase())) || codigo.includes(p.numeroLoja));
+      let p = achar(pedidos);
+      if (!p) { pedidos = await tiktokPedidosParaDespachar(num, true); p = achar(pedidos); }
+      if (!p) continue;
+      const atendidaEntry = (tiktokConta(data, num).atendidas_dados || []).find(v => String(v.shipmentId) === p.numeroLoja);
+      return res.json({
+        encontrado: true, fonte: 'tiktok', conta: num,
+        shipmentId: p.numeroLoja, orderId: p.numeroLoja, comprador: p.comprador,
+        status: 'ready_to_ship', statusLabel: 'Pronto p/ envio',
+        atendida: !!atendidaEntry,
+        itensLista: tiktokItensLista(p.itens, fotosPorSku(data)),
+      });
+    } catch (err) {
+      addLog(`[tiktok] pedido-por-codigo ${codigo} conta ${num}: ${blingErroTexto(err)}`, 'warn');
+    }
+  }
+  res.status(404).json({ encontrado: false });
 });
 
 app.get('/api/lucro/vendas-shopee', async (req, res) => {

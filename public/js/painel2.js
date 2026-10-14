@@ -644,13 +644,24 @@ function atualizarBotaoSelecionadas() {
   const btnBaixarShopee = document.getElementById('btn-baixar-shopee');
   const btnCompartilharMl     = document.getElementById('btn-compartilhar-ml');
   const btnCompartilharShopee = document.getElementById('btn-compartilhar-shopee');
+  const btnBaixarTiktok       = document.getElementById('btn-baixar-tiktok');
+  const btnCompartilharTiktok = document.getElementById('btn-compartilhar-tiktok');
   const btnAtendido = document.getElementById('btn-marcar-atendido');
 
   // ML e Shopee baixam etiqueta por endpoints diferentes — separa os botões pra não
   // misturar as duas no mesmo PDF (limitação física de impressão/separação do usuário).
   if (btnBaixarMl || btnBaixarShopee) {
-    const qtdMl     = checks.filter(cb => cb.dataset.canal !== 'shopee').length;
+    const qtdMl     = checks.filter(cb => canalDoCheck(cb) === 'ml').length;
     const qtdShopee = checks.filter(cb => cb.dataset.canal === 'shopee').length;
+    const qtdTiktok = checks.filter(cb => cb.dataset.canal === 'tiktok').length;
+    if (btnBaixarTiktok) {
+      btnBaixarTiktok.style.display = qtdTiktok > 0 ? '' : 'none';
+      btnBaixarTiktok.textContent   = `⬇ Baixar ${qtdTiktok} TikTok`;
+    }
+    if (btnCompartilharTiktok) {
+      btnCompartilharTiktok.style.display = qtdTiktok > 0 ? '' : 'none';
+      btnCompartilharTiktok.textContent   = `🔗 Compartilhar ${qtdTiktok} TikTok`;
+    }
     if (btnBaixarMl) {
       btnBaixarMl.style.display = qtdMl > 0 ? '' : 'none';
       btnBaixarMl.textContent   = `⬇ Baixar ${qtdMl} ML`;
@@ -757,10 +768,12 @@ async function marcarAtendidoSelecionadas() {
   }
 }
 
+function canalDoCheck(cb) {
+  return ['shopee', 'tiktok'].includes(cb.dataset.canal) ? cb.dataset.canal : 'ml';
+}
+
 function baixarSelecionadas(canal) {
-  const checks = [...document.querySelectorAll('.check-venda:checked')].filter(cb =>
-    canal === 'shopee' ? cb.dataset.canal === 'shopee' : cb.dataset.canal !== 'shopee'
-  );
+  const checks = [...document.querySelectorAll('.check-venda:checked')].filter(cb => canalDoCheck(cb) === canal);
   if (!checks.length) return;
 
   // Agrupa por conta para montar as URLs corretas
@@ -774,16 +787,14 @@ function baixarSelecionadas(canal) {
   });
 
   const usuarioParam = encodeURIComponent(localStorage.getItem('usuarioSenha') || '');
-  const base = canal === 'shopee' ? '/api/shopee/etiquetas' : '/api/ml/etiquetas';
+  const base = canal === 'tiktok' ? '/api/tiktok/etiquetas' : canal === 'shopee' ? '/api/shopee/etiquetas' : '/api/ml/etiquetas';
   for (const [conta, ids] of Object.entries(porConta)) {
     window.open(`${base}?ids=${ids.join(',')}&conta=${conta}&usuario=${usuarioParam}`, '_blank');
   }
 }
 
 function compartilharSelecionadas(canal) {
-  const checks = [...document.querySelectorAll('.check-venda:checked')].filter(cb =>
-    canal === 'shopee' ? cb.dataset.canal === 'shopee' : cb.dataset.canal !== 'shopee'
-  );
+  const checks = [...document.querySelectorAll('.check-venda:checked')].filter(cb => canalDoCheck(cb) === canal);
   if (!checks.length) return;
   const porConta = {};
   checks.forEach(cb => {
@@ -791,7 +802,7 @@ function compartilharSelecionadas(canal) {
     if (!porConta[conta]) porConta[conta] = [];
     porConta[conta].push(cb.dataset.shipmentId);
   });
-  const base = canal === 'shopee' ? '/api/shopee/etiquetas' : '/api/ml/etiquetas';
+  const base = canal === 'tiktok' ? '/api/tiktok/etiquetas' : canal === 'shopee' ? '/api/shopee/etiquetas' : '/api/ml/etiquetas';
   for (const [conta, ids] of Object.entries(porConta)) {
     compartilharPdf(`${base}?ids=${ids.join(',')}&conta=${conta}`, 'etiquetas.pdf');
   }
@@ -968,10 +979,13 @@ function atualizarResumoCanal(vendas) {
   const tag = document.getElementById('vendas-resumo-canal');
   if (!tag) return;
   if (!vendas.length) { tag.style.display = 'none'; return; }
-  const ml     = vendas.filter(v => v.canal !== 'shopee').length;
+  const ml     = vendas.filter(v => v.canal !== 'shopee' && v.canal !== 'tiktok').length;
   const shopee = vendas.filter(v => v.canal === 'shopee').length;
+  const tiktok = vendas.filter(v => v.canal === 'tiktok').length;
   document.getElementById('resumo-canal-ml').textContent     = ml;
   document.getElementById('resumo-canal-shopee').textContent = shopee;
+  const tagTiktok = document.getElementById('resumo-canal-tiktok');
+  if (tagTiktok) { tagTiktok.textContent = tiktok; tagTiktok.parentElement.style.display = tiktok ? '' : 'none'; }
   tag.style.display = 'flex';
 }
 
@@ -1091,11 +1105,12 @@ async function carregarVendas() {
     // Junta as duas contas na mesma lista — cada resposta já vem com o campo
     // "conta" em cada venda, então dá pra misturar sem perder de onde veio.
     const usuarioParam = encodeURIComponent(localStorage.getItem('usuarioSenha') || '');
-    const [ml1, shopee1, ml2, shopee2] = await Promise.all(['1', '2'].flatMap(num => [
+    const [ml1, shopee1, tiktok1, ml2, shopee2, tiktok2] = await Promise.all(['1', '2'].flatMap(num => [
       apiFetch(`/api/ml/vendas-etiquetas?conta=${num}&usuario=${usuarioParam}`).catch(err => ({ vendas: [], erroDebug: String(err) })),
       apiFetch(`/api/shopee/vendas-etiquetas?conta=${num}&usuario=${usuarioParam}`).catch(err => ({ vendas: [], erroDebug: String(err) })),
+      apiFetch(`/api/tiktok/vendas-etiquetas?conta=${num}&usuario=${usuarioParam}`).catch(err => ({ vendas: [], erroDebug: String(err) })),
     ]));
-    const resultados = [ml1, shopee1, ml2, shopee2];
+    const resultados = [ml1, shopee1, ml2, shopee2, tiktok1, tiktok2];
     console.log('[debug vendas] ML C1:', ml1, 'ML C2:', ml2);
     console.log('[debug vendas] Shopee C1:', shopee1, 'Shopee C2:', shopee2);
     const debugEl = document.getElementById('vendas-debug-canal');
@@ -1140,7 +1155,7 @@ async function carregarVendas() {
 
       const tr = document.createElement('tr');
       tr.dataset.skus  = [...new Set(itens.map(i => i.sku).filter(Boolean))].join(' ');
-      tr.dataset.canal = v.canal === 'shopee' ? 'shopee' : 'ml';
+      tr.dataset.canal = ['shopee', 'tiktok'].includes(v.canal) ? v.canal : 'ml';
       if (multi)      tr.classList.add('venda-multi-header');
       if (v.atendida) tr.classList.add('venda-atendida');
 
@@ -1151,7 +1166,9 @@ async function carregarVendas() {
       const flagClass = v.atendida ? 'btn-flag btn-flag-ativo' : 'btn-flag';
       const flagTitle = v.atendida ? 'Remover flag' : 'Marcar como atendido';
       const usuarioParam  = encodeURIComponent(localStorage.getItem('usuarioSenha') || '');
-      const hrefEtiquetaBase = v.canal === 'shopee'
+      const hrefEtiquetaBase = v.canal === 'tiktok'
+        ? `/api/tiktok/etiqueta/${v.shipmentId}?conta=${v.conta}`
+        : v.canal === 'shopee'
         ? `/api/shopee/etiqueta/${v.shipmentId}?conta=${v.conta}`
         : `/api/ml/etiqueta/${v.shipmentId}?conta=${v.conta}`;
       const hrefEtiqueta = `${hrefEtiquetaBase}&usuario=${usuarioParam}`;
@@ -1159,6 +1176,8 @@ async function carregarVendas() {
       const badgeConta = `<span style="background:${contaCor};color:#fff;padding:1px 6px;border-radius:4px;font-size:10px;margin-left:5px;white-space:nowrap;vertical-align:middle">C${v.conta}</span>`;
       const badgeShopee = v.canal === 'shopee'
         ? `<span style="background:#f97316;color:#fff;padding:1px 6px;border-radius:4px;font-size:10px;margin-left:5px;white-space:nowrap;vertical-align:middle">Shopee</span>`
+        : v.canal === 'tiktok'
+        ? `<span style="background:#111827;color:#fff;padding:1px 6px;border-radius:4px;font-size:10px;margin-left:5px;white-space:nowrap;vertical-align:middle">TikTok</span>`
         : '';
       const classeEtiqueta = v.jaImpressa ? 'btn-etiqueta' : 'btn-etiqueta btn-etiqueta-pendente';
       const btnEtiquetaHtml = `<a class="${classeEtiqueta}" href="${hrefEtiqueta}" target="_blank" onclick="this.classList.remove('btn-etiqueta-pendente'); this.textContent='Baixar novamente'">${v.acaoLabel}</a>` +

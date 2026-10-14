@@ -119,6 +119,16 @@ async function scannerBuscarPedido(qrData) {
       return;
     }
 
+    // Não achou no ML — tenta TikTok (rastreio ou nº do pedido, via Bling)
+    status.textContent = 'Buscando pedido TikTok...';
+    const respTiktok = await fetch(`/api/tiktok/pedido-por-codigo/${encodeURIComponent(qrData.trim())}`);
+    const pedidoTiktok = await respTiktok.json().catch(() => ({}));
+    if (respTiktok.ok && pedidoTiktok.encontrado) {
+      status.textContent = '';
+      scannerMostrarResultado(pedidoTiktok, pedidoTiktok.shipmentId);
+      return;
+    }
+
     // Não achou no ML — tenta como tracking Shopee (QR das etiquetas Shopee traz o código
     // dos Correios, ex: BR267135109340H, não um shipment ID numérico do ML)
     const trackingBruto = qrData.trim();
@@ -194,7 +204,7 @@ async function scannerToggleAtendido() {
   const pedido = scannerPedidoAtual;
   const sid    = scannerSidAtual;
   if (!pedido) return;
-  const canal = pedido.fonte === 'shopee' ? 'shopee' : 'ml';
+  const canal = ['shopee', 'tiktok'].includes(pedido.fonte) ? pedido.fonte : 'ml';
   const btn   = document.getElementById('btn-scanner-atendido');
   if (btn) { btn.disabled = true; btn.textContent = 'Salvando...'; }
 
