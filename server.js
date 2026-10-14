@@ -7484,6 +7484,9 @@ app.get('/api/bling/debug-tiktok-etiqueta', async (req, res) => {
   const dias   = Math.min(Number(req.query.dias) || 5, 30);
   const tentar = Math.min(Number(req.query.tentar) || 5, 15);
   const out = { conta, lojas: TIKTOK_LOJAS_BLING[conta] || [], pedidos: [] };
+  const erroBling = e => ({ erro: e.response ? `HTTP ${e.response.status}: ${JSON.stringify(e.response.data).slice(0, 400)}` : e.message });
+  // Logísticas cadastradas na conta — a integração do TikTok pode ter criado uma
+  out.logisticas = await blingGetDevolucao(conta, 'https://api.bling.com.br/Api/v3/logisticas', { limite: 100 }).catch(erroBling);
   try {
     const de = new Date(Date.now() - dias * 86_400_000).toISOString().slice(0, 10);
     for (const idLoja of out.lojas) {
@@ -7495,7 +7498,12 @@ app.get('/api/bling/debug-tiktok-etiqueta', async (req, res) => {
           item.detalhe = { notaFiscal: det.notaFiscal, transporte: det.transporte, itens: (det.itens || []).map(i => ({ codigo: i.codigo, descricao: i.descricao, quantidade: i.quantidade })) };
           for (const formato of ['PDF', 'ZPL']) {
             item[`etiqueta_${formato}`] = await blingGetDevolucao(conta, 'https://api.bling.com.br/Api/v3/logisticas/etiquetas', { formato, 'idsVendas[]': p.id })
-              .catch(e => ({ erro: e.response ? `HTTP ${e.response.status}: ${JSON.stringify(e.response.data).slice(0, 400)}` : e.message }));
+              .catch(erroBling);
+          }
+          // O volume do pedido pode ser o "objeto de postagem" da logística
+          item.objetos = {};
+          for (const v of det.transporte?.volumes || []) {
+            item.objetos[v.id] = await blingGetDevolucao(conta, `https://api.bling.com.br/Api/v3/logisticas/objetos/${v.id}`).catch(erroBling);
           }
         }
         out.pedidos.push(item);
