@@ -10006,7 +10006,12 @@ async function tiktokRastreamento(conta, volumeIds) {
     if (!r) continue;
     out.objetos.push(r);
     if (r.codigo && !out.codigo) out.codigo = r.codigo;
-    if (r.descricao || (r.ultimaAlteracao && !r.ultimaAlteracao.startsWith('0000'))) out.emMovimento = true;
+    // situacao 8 = ainda não saiu: sem descrição antes de imprimir, e "Aguardando coleta
+    // da transportadora" depois de imprimir a etiqueta (visto no 60986 — o v975 tratava
+    // qualquer descrição como despachado e o pedido sumiu da aba). 1 = em trânsito,
+    // 3 = entregue. Sem descrição nenhuma também conta como não saiu.
+    const parado = r.situacao === 8 || (!r.descricao && (!r.ultimaAlteracao || r.ultimaAlteracao.startsWith('0000')));
+    if (!parado) out.emMovimento = true;
   }
   return out;
 }
@@ -10134,11 +10139,13 @@ async function tiktokAtualizarHistorico(num, pedidos) {
       const sid = p.numeroLoja;
       const existente = histMap.get(sid);
       const atendidaEntry = atendidasMap.get(sid);
+      // Está na lista agora = ainda não saiu: se tinha sumido e voltou (ex.: regra de
+      // despacho corrigida), a data de despacho volta a andar.
       histMap.set(sid, {
         orderId:      sid,
         data:         existente?.data || `${p.data}T12:00:00-03:00`,
-        dataDespacho: existente?.dataDespachoFinalizado ? existente.dataDespacho : agora,
-        dataDespachoFinalizado: !!existente?.dataDespachoFinalizado,
+        dataDespacho: agora,
+        dataDespachoFinalizado: false,
         comprador:    p.comprador,
         shipmentId:   sid,
         conta:        num,
