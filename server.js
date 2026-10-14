@@ -2043,7 +2043,7 @@ async function fetchBlingPedidosPendentes(conta) {
       canal:            p.canal || null,
       isShopee:         !!p.isShopee,
       // TikTok: sem API própria — o Super só emite a NF e o Bling manda pro TikTok (igual ML).
-      // temEtiqueta fica false de propósito: o auto-super não emite TikTok sozinho.
+      // temEtiqueta fica false: o auto-super trata TikTok à parte (janela 7h-13h).
       isTiktok:         !!p.isTiktok,
       lojaId:           p.lojaId || null,
       temEtiqueta:      (p.isShopee || p.isTiktok) ? false : (mlTokens.length > 0 ? idsComEtiqueta.has(p.id) : true),
@@ -3077,15 +3077,17 @@ async function autoSuperJobCiclo() {
     for (const p of pedidos) {
       const chave = `${p.id}_${conta}`;
       if (emitidos[chave]) continue;
-      if (p.isTiktok) continue; // TikTok só pelo Super manual, por enquanto
-
       // Gate de "pronto pra NF" por canal: ML usa temEtiqueta (shipment já em
       // ready_to_ship/invoice_pending), Shopee usa shopeeLiberado (mesmo campo
       // que já desabilita o botão Super manual enquanto a Shopee não libera).
-      const prontoPraNF = p.isShopee ? (p.shopeeLiberado !== false) : p.temEtiqueta;
+      // TikTok: sem API pra checar — todo pedido em aberto sem NF está pronto.
+      const prontoPraNF = p.isTiktok ? true : p.isShopee ? (p.shopeeLiberado !== false) : p.temEtiqueta;
       if (!prontoPraNF) continue;
 
-      const dentroDaJanela = !p.isShopee ? janelaMLAgora
+      // TikTok: mesma janela fixa da Shopee (dia útil 7h-13h, sábado 7h-8h), pedida pelo
+      // usuário. Pelo relógio, não pela hora do pedido — o Bling só dá a data.
+      const dentroDaJanela = p.isTiktok ? janelaShopeeAgora
+        : !p.isShopee ? janelaMLAgora
         : p.shopeeCriadoEm ? shopeeProntoPraEmitirAgora(p.shopeeCriadoEm)
         : janelaShopeeAgora; // sem create_time (falha na API da Shopee): cai na janela do relógio
       if (!dentroDaJanela) continue;
@@ -3095,7 +3097,7 @@ async function autoSuperJobCiclo() {
           pendenciaNotificada[chave] = Date.now(); // evita renotificar no mesmo ciclo desta conta
           await marcarAutoSuperFlag('auto_super_pendencia_notificada', chave);
           const valor = (p.valor_total || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-          notificar(`⚠️ Pedido #${p.numero} com pendência — NF não emitida automaticamente\n\n${p.comprador} — ${valor}\nConta ${conta}${p.isShopee ? ' · Shopee' : ''}\n\n${p.pendencias.join('\n')}`, 'bling_pendencia').catch(() => {});
+          notificar(`⚠️ Pedido #${p.numero} com pendência — NF não emitida automaticamente\n\n${p.comprador} — ${valor}\nConta ${conta}${p.isShopee ? ' · Shopee' : p.isTiktok ? ' · TikTok' : ''}\n\n${p.pendencias.join('\n')}`, 'bling_pendencia').catch(() => {});
           addLog(`[auto-super] pedido ${p.numero} conta ${conta}: pendência — ${p.pendencias.join(' | ')}`, 'warn');
         }
         continue;
@@ -3127,7 +3129,7 @@ async function autoSuperJobCiclo() {
         await marcarAutoSuperFlag('auto_super_emitidos', chave);
         if (nfGerada[chave]) { delete nfGerada[chave]; await removerAutoSuperFlag('auto_super_nf_gerada', chave); }
         const valorFmt = (p.valor_total || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-        notificar(`✅ NF emitida automaticamente\n\n#${p.numero} — ${p.comprador} — ${valorFmt}\nConta ${conta}${p.isShopee ? ' · Shopee' : ''}`, 'nf_emitida').catch(() => {});
+        notificar(`✅ NF emitida automaticamente\n\n#${p.numero} — ${p.comprador} — ${valorFmt}\nConta ${conta}${p.isShopee ? ' · Shopee' : p.isTiktok ? ' · TikTok' : ''}`, 'nf_emitida').catch(() => {});
         addLog(`[auto-super] NF emitida automaticamente: pedido ${p.numero} conta ${conta}`, 'ok');
       } catch (err) {
         if (!pendenciaNotificada[chave]) {
@@ -3137,7 +3139,7 @@ async function autoSuperJobCiclo() {
           const nfJaExiste = p.isShopee && (err.etapa === 'enviar-shopee' || err.etapa === 'aguardar-autorizacao');
           const titulo = nfJaExiste ? '⚠️ NF emitida, mas o XML não chegou na Shopee' : '❌ Falha ao emitir NF automaticamente';
           const rodape = nfJaExiste ? '\n\nO sistema vai reenviar o XML sozinho a cada 5 min — avisa quando resolver, ou se em 30 min continuar travado.' : '';
-          notificar(`${titulo}\n\n#${p.numero} — ${p.comprador}\nConta ${conta}${p.isShopee ? ' · Shopee' : ''}\n\n${detail}${rodape}`, 'bling_pendencia').catch(() => {});
+          notificar(`${titulo}\n\n#${p.numero} — ${p.comprador}\nConta ${conta}${p.isShopee ? ' · Shopee' : p.isTiktok ? ' · TikTok' : ''}\n\n${detail}${rodape}`, 'bling_pendencia').catch(() => {});
         }
         addLog(`[auto-super] erro ao emitir pedido ${p.numero} conta ${conta}: ${err.message}`, 'warn');
       }
@@ -4310,12 +4312,14 @@ app.get('/api/vendas/historico', (req, res) => {
   const num  = req.query.conta || data.conta_ativa;
   const c    = data.contas[num];
   const sp   = data.shopee_contas?.[num];
+  const tt   = data.tiktok_contas?.[num];
   const { de, ate } = req.query;
-  // Uma conta (ex: "1" = F Comércio) tem tanto um vendedor ML quanto uma loja
-  // Shopee — histórico precisa juntar os dois, senão pedidos Shopee somem da tela.
+  // Uma conta (ex: "1" = F Comércio) tem vendedor ML, loja Shopee e loja TikTok —
+  // histórico precisa juntar todos, senão os pedidos de um canal somem da tela.
   let historico = [
     ...(c?.historico_vendas  || []).map(h => ({ ...h, canal: h.canal || 'ml' })),
     ...(sp?.historico_vendas || []).map(h => ({ ...h, canal: 'shopee' })),
+    ...(tt?.historico_vendas || []).map(h => ({ ...h, canal: 'tiktok' })),
   ];
   const dataOrdenar = h => (h.dataDespacho || h.data || '').slice(0, 10);
   if (de)  historico = historico.filter(h => dataOrdenar(h) >= de);
@@ -10007,6 +10011,42 @@ async function tiktokRastreamento(conta, volumeIds) {
   return out;
 }
 
+// Debug pra levar o TikTok pra aba Devoluções: como uma devolução aparece no Bling?
+// Varre os pedidos TikTok dos últimos N dias (em segundo plano — são centenas de
+// chamadas) e conta situações e status de rastreio; lista os fora do padrão
+// (não entregue / não em trânsito). Abrir de novo mostra o andamento/resultado.
+// ?conta=1&dias=90 (&refazer=1 pra rodar de novo)
+const tiktokDebugDevolucoes = {};
+app.get('/api/tiktok/debug-devolucoes', (req, res) => {
+  const conta = String(req.query.conta || '1');
+  const dias  = Math.min(Number(req.query.dias) || 90, 180);
+  const atual = tiktokDebugDevolucoes[conta];
+  if (atual && (atual.rodando || !req.query.refazer)) return res.json(atual);
+  const st = tiktokDebugDevolucoes[conta] = { rodando: true, dias, lidos: 0, por_situacao: {}, por_rastreio: {}, fora_do_padrao: [] };
+  (async () => {
+    const de = new Date(Date.now() - BR_OFFSET_MS - dias * 86_400_000).toISOString().slice(0, 10);
+    for (const idLoja of TIKTOK_LOJAS_BLING[conta] || []) {
+      for (let pagina = 1; pagina <= 20; pagina++) {
+        const lista = (await blingGetDevolucao(conta, 'https://api.bling.com.br/Api/v3/pedidos/vendas', { pagina, limite: 100, idLoja, dataInicial: de }))?.data || [];
+        for (const p of lista.filter(p => p.loja?.id === idLoja)) {
+          const d = (await blingGetDevolucao(conta, `https://api.bling.com.br/Api/v3/pedidos/vendas/${p.id}`).catch(() => null))?.data || {};
+          const rast = await tiktokRastreamento(conta, (d.transporte?.volumes || []).map(v => v.id).filter(Boolean));
+          const sit = String(p.situacao?.id);
+          const desc = rast.objetos.map(o => `${o.descricao || '(vazio)'} [${o.situacao}]`).join(' | ') || '(sem objeto)';
+          st.por_situacao[sit] = (st.por_situacao[sit] || 0) + 1;
+          st.por_rastreio[desc] = (st.por_rastreio[desc] || 0) + 1;
+          if (!/entregue|em trânsito/i.test(desc) || ![6, 9, 909484, 909485].includes(p.situacao?.id)) {
+            st.fora_do_padrao.push({ numero: p.numero, numeroLoja: p.numeroLoja, data: p.data, situacao: p.situacao?.id, nf: d.notaFiscal?.id || 0, rastreio: rast.objetos, observacoes: d.observacoes || '', observacoesInternas: d.observacoesInternas || '' });
+          }
+          st.lidos++;
+        }
+        if (lista.length < 100) break;
+      }
+    }
+  })().catch(err => { st.erro = blingErroTexto(err); }).finally(() => { st.rodando = false; st.fim = new Date().toISOString(); });
+  res.json(st);
+});
+
 // Debug: todos os pedidos TikTok dos últimos dias com situação, NF, rastreio e se a
 // etiqueta sai — pra conferir a regra de "pra despachar" da aba Vendas. ?conta=1&dias=10
 app.get('/api/tiktok/debug-vendas', async (req, res) => {
@@ -10071,12 +10111,114 @@ app.get('/api/tiktok/vendas-etiquetas', async (req, res) => {
       };
     });
     res.json({ vendas });
+    tiktokAtualizarHistorico(num, pedidos).catch(e => addLog(`[tiktok] histórico conta ${num}: ${e.message}`, 'warn'));
   } catch (err) {
     const detail = err.response ? `HTTP ${err.response.status}: ${JSON.stringify(err.response.data).slice(0, 200)}` : err.message;
     addLog(`[tiktok] vendas-etiquetas conta ${num}: ${detail}`, 'warn');
     res.json({ vendas: [], error: `Erro ao buscar pedidos TikTok: ${detail}` });
   }
 });
+
+// Histórico (aba Histórico): mesmo esquema da Shopee — todo pedido visto pra despachar
+// entra; quando sai da lista (rastreio andou), congela a data de despacho no último
+// momento em que foi visto. Relê data.json dentro do lock (a lista do Bling demora).
+async function tiktokAtualizarHistorico(num, pedidos) {
+  await withDataLock(() => {
+    const data  = loadData();
+    const tt    = tiktokConta(data, num);
+    const agora = new Date().toISOString();
+    const fotos = fotosPorSku(data);
+    const atendidasMap = new Map((tt.atendidas_dados || []).map(v => [String(v.shipmentId), v]));
+    const histMap = new Map((tt.historico_vendas || []).map(h => [String(h.shipmentId), h]));
+    for (const p of pedidos) {
+      const sid = p.numeroLoja;
+      const existente = histMap.get(sid);
+      const atendidaEntry = atendidasMap.get(sid);
+      histMap.set(sid, {
+        orderId:      sid,
+        data:         existente?.data || `${p.data}T12:00:00-03:00`,
+        dataDespacho: existente?.dataDespachoFinalizado ? existente.dataDespacho : agora,
+        dataDespachoFinalizado: !!existente?.dataDespachoFinalizado,
+        comprador:    p.comprador,
+        shipmentId:   sid,
+        conta:        num,
+        canal:        'tiktok',
+        status:       'ready_to_ship',
+        statusLabel:  'Pronto p/ envio',
+        itensLista:   tiktokItensLista(p.itens, fotos),
+        atendida:     !!atendidaEntry,
+        atendidaEm:   atendidaEntry?.atendidaEm || null,
+        primeiroVisto: existente?.primeiroVisto || agora,
+        ultimoVisto:  agora,
+      });
+    }
+    const vistosAgora = new Set(pedidos.map(p => p.numeroLoja));
+    for (const h of histMap.values()) {
+      if (!vistosAgora.has(String(h.shipmentId)) && !h.dataDespachoFinalizado) {
+        h.dataDespacho = h.ultimoVisto || agora;
+        h.dataDespachoFinalizado = true;
+      }
+    }
+    const historico = [...histMap.values()]
+      .sort((a, b) => b.primeiroVisto.localeCompare(a.primeiroVisto))
+      .slice(0, 500);
+    if (JSON.stringify(tt.historico_vendas) !== JSON.stringify(historico)) {
+      tt.historico_vendas = historico;
+      saveData(data);
+    }
+  });
+}
+
+// "Novos pedidos" do TikTok — mesmo critério do ML/Shopee: avisa quando o pedido fica
+// pronto pra embalar (NF emitida e etiqueta saindo de verdade no Bling). Na 1ª rodada
+// só marca o que já existe, sem avisar (não dispara aviso de pedido antigo).
+async function verificarNovosShipmentsTiktok() {
+  // Mesmo gate do ML/Shopee pro aviso; o histórico atualiza de qualquer jeito.
+  const temWhatsApp = CALLMEBOT_PHONE_PEDIDOS && CALLMEBOT_APIKEY_PEDIDOS;
+  for (const num of Object.keys(TIKTOK_LOJAS_BLING)) {
+    try {
+      const pedidos = await tiktokPedidosParaDespachar(num);
+      tiktokAtualizarHistorico(num, pedidos).catch(e => addLog(`[tiktok] histórico conta ${num}: ${e.message}`, 'warn'));
+      if (!temWhatsApp) continue;
+      const data = loadData();
+      const jaNotificados = new Set(data.tiktokOrdersNotificados || []);
+      const semear = !Array.isArray(data.tiktokOrdersNotificados);
+      const novos = pedidos.filter(p => !jaNotificados.has(p.numeroLoja));
+      if (!novos.length && !semear) continue;
+
+      const notificar = [];
+      for (const p of novos) {
+        if (semear) { jaNotificados.add(p.numeroLoja); continue; }
+        const etq = await blingGetDevolucao(num, 'https://api.bling.com.br/Api/v3/logisticas/etiquetas', { formato: 'PDF', 'idsVendas[]': p.blingId }).catch(() => null);
+        if (!(etq?.data || []).some(e => e.link)) {
+          addLog(`[pedido-tiktok] ${p.numeroLoja}: NF ok mas etiqueta ainda não liberada no Bling — aguarda próximo ciclo`, 'info');
+          continue;
+        }
+        jaNotificados.add(p.numeroLoja);
+        notificar.push(p);
+      }
+      await withDataLock(() => {
+        const d = loadData();
+        d.tiktokOrdersNotificados = [...new Set([...(d.tiktokOrdersNotificados || []), ...jaNotificados])].slice(-500);
+        saveData(d);
+      });
+      if (semear) addLog(`[pedido-tiktok] conta ${num}: ${novos.length} pedidos já existentes marcados como vistos (sem avisar)`, 'info');
+
+      for (const p of notificar) {
+        const itens = p.itens.map(i => `• ${i.titulo} (x${i.quantidade})`).join('\n');
+        const texto = `🛍 <b>Novo pedido — TikTok Shop</b>\n` +
+          `Pedido: #${p.numeroLoja}\n` +
+          `Comprador: ${p.comprador}\n\n${itens}`;
+        await notificarPedido(texto);
+        if (_notificarTodosTimeout) { clearTimeout(_notificarTodosTimeout); _notificarTodosTimeout = null; }
+        addLog(`[pedido-tiktok] Notificação enviada — #${p.numeroLoja}`, 'ok');
+        await new Promise(r => setTimeout(r, 4000));
+      }
+    } catch (err) {
+      addLog(`Monitor pedidos TikTok conta ${num}: ${blingErroTexto(err)}`, 'warn');
+    }
+  }
+}
 
 // PDF da etiqueta de um pedido TikTok (numeroLoja = nº do pedido no TikTok). O link do
 // Bling expira em 1h — pede um novo a cada download.
@@ -13537,6 +13679,8 @@ app.listen(PORT, () => {
       setInterval(() => verificarNovosShipments().catch(() => {}), 60_000);
       verificarNovosShipmentsShopee().catch(() => {});
       setInterval(() => verificarNovosShipmentsShopee().catch(() => {}), 60_000);
+      verificarNovosShipmentsTiktok().catch(() => {});
+      setInterval(() => verificarNovosShipmentsTiktok().catch(() => {}), 60_000);
     }, 10_000);
   }
   // Prazo de despacho: avisa 30min antes do horário-limite de envio (só push do site).

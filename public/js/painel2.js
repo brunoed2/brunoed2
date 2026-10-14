@@ -1510,6 +1510,8 @@ function renderizarHistorico() {
       : '<span style="color:#94a3b8;font-size:11px">—</span>';
     const badgeShopee = h.canal === 'shopee'
       ? '<span style="background:#f97316;color:#fff;padding:1px 6px;border-radius:4px;font-size:10px;margin-left:5px;white-space:nowrap;vertical-align:middle">Shopee</span>'
+      : h.canal === 'tiktok'
+      ? '<span style="background:#111827;color:#fff;padding:1px 6px;border-radius:4px;font-size:10px;margin-left:5px;white-space:nowrap;vertical-align:middle">TikTok</span>'
       : '';
     const tr = document.createElement('tr');
     tr.innerHTML = `
