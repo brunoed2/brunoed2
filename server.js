@@ -1881,7 +1881,10 @@ async function fetchBlingPedidosPendentes(conta) {
     const isML     = !isTiktok && /^\d{10,}$/.test(numeroLojaVal);
     const isShopee = !!numeroLojaVal && !isML && !isTiktok;
     const canalNome = isTiktok ? 'TikTok' : isShopee ? 'Shopee' : (isML ? 'Mercado Livre' : '');
-    return { ...p, numeroLoja: detalhe?.numeroLoja || p.numeroLoja, produtos, pendencias, canal: canalNome, isShopee, isTiktok, lojaId: detalhe?.loja?.id || null };
+    // TikTok com NF continua "Em aberto" no Bling (a integração não muda a situação) —
+    // sem isso ele voltava pra lista com o Super, arriscando uma 2ª NF.
+    const tiktokJaFaturado = isTiktok && !!detalhe?.notaFiscal?.id;
+    return { ...p, numeroLoja: detalhe?.numeroLoja || p.numeroLoja, produtos, pendencias, canal: canalNome, isShopee, isTiktok, tiktokJaFaturado, lojaId: detalhe?.loja?.id || null };
   }));
 
   // Verifica no ML quais têm shipment ready_to_ship (etiqueta disponível ao emitir NF)
@@ -2000,7 +2003,7 @@ async function fetchBlingPedidosPendentes(conta) {
     }));
   }
 
-  return itensDetalhados.filter(p => !canceladosComSucesso.has(p.id)).map(p => {
+  return itensDetalhados.filter(p => !canceladosComSucesso.has(p.id) && !p.tiktokJaFaturado).map(p => {
     const shopeeStatus = p.isShopee ? (shopeeStatusPorOrderSn[p.numeroLoja] || null) : null;
     return {
       id:               p.id,
@@ -9883,16 +9886,18 @@ app.get('/api/lucro/vendas-tiktok', async (req, res) => {
 });
 
 // ── TikTok Shop na aba Vendas / scanner (via Bling) ──
-// Depois que a NF sai (Super), o Bling põe o pedido em "Atendido" (9) e a etiqueta do
-// TikTok fica disponível em /logisticas/etiquetas. Quando o pacote anda, a integração
-// muda a situação (visto: 909484, pedido em trânsito) — então "pra despachar" = TikTok
-// em Atendido. O rastreio fica no objeto de postagem (/logisticas/objetos/{volume}),
-// não no pedido. Atendido/etiqueta impressa ficam em data.tiktok_contas (igual Shopee).
-const BLING_SITUACAO_ATENDIDO_ID = 9;
+// Depois que a NF sai (Super), a etiqueta do TikTok fica disponível em
+// /logisticas/etiquetas. A situação do Bling NÃO serve pra saber se falta despachar:
+// com NF o pedido pode continuar "Em aberto" (6), ir pra "Atendido" (9) e ficar lá
+// mesmo depois de entregue, ou ir pra personalizadas (909484/909485). Quem diz é o
+// rastreio do objeto de postagem (/logisticas/objetos/{volume}): sem movimentação =
+// ainda não saiu. "Pra despachar" = TikTok com NF, não cancelado, rastreio parado.
+// Atendido/etiqueta impressa ficam em data.tiktok_contas (igual Shopee).
 const TIKTOK_VENDAS_DIAS = 10;
 const TIKTOK_VENDAS_TTL_MS = 60_000;
 const tiktokVendasCache   = {}; // conta → { ts, pedidos }
 const tiktokDetalheCache  = new Map(); // blingId → { comprador, itens, volumeIds, rastreio }
+const tiktokJaDespachados = new Set(); // blingId com rastreio andando — não volta, não reconsulta
 
 function tiktokConta(data, num) {
   num = String(num || '1');
@@ -9928,7 +9933,7 @@ async function tiktokPedidosParaDespachar(conta, forcar) {
   for (const idLoja of lojas) {
     for (let pagina = 1; pagina <= 5; pagina++) {
       const r = (await blingGetDevolucao(conta, 'https://api.bling.com.br/Api/v3/pedidos/vendas', { pagina, limite: 100, idLoja, dataInicial: de }))?.data || [];
-      lista.push(...r.filter(p => p.loja?.id === idLoja && p.situacao?.id === BLING_SITUACAO_ATENDIDO_ID));
+      lista.push(...r.filter(p => p.loja?.id === idLoja && p.situacao?.id !== BLING_SITUACAO_CANCELADO_ID && !tiktokJaDespachados.has(p.id)));
       if (r.length < 100) break;
     }
   }
@@ -9955,7 +9960,7 @@ async function tiktokPedidosParaDespachar(conta, forcar) {
     // movimentação (descrição vazia, data 0000-00-00) = ainda não saiu.
     const rast = await tiktokRastreamento(conta, det.volumeIds);
     if (rast.codigo) det.rastreio = rast.codigo;
-    if (rast.emMovimento) continue;
+    if (rast.emMovimento) { tiktokJaDespachados.add(p.id); continue; }
     pedidos.push({ blingId: p.id, numeroLoja: String(p.numeroLoja || p.numero), data: p.data, comprador: det.comprador, itens: det.itens, rastreio: det.rastreio });
   }
   tiktokVendasCache[conta] = { ts: Date.now(), pedidos };
