@@ -7493,6 +7493,14 @@ app.get('/api/bling/debug-tiktok-etiqueta', async (req, res) => {
   const erroBling = e => ({ erro: e.response ? `HTTP ${e.response.status}: ${JSON.stringify(e.response.data).slice(0, 400)}` : e.message });
   // Logísticas cadastradas na conta — a integração do TikTok pode ter criado uma
   out.logisticas = await blingGetDevolucao(conta, 'https://api.bling.com.br/Api/v3/logisticas', { limite: 100 }).catch(erroBling);
+  // Nome das situações de pedido (inclui as personalizadas, ex.: 909484)
+  try {
+    const modulos = (await blingGetDevolucao(conta, 'https://api.bling.com.br/Api/v3/situacoes/modulos'))?.data || [];
+    const vendas  = modulos.find(m => /venda/i.test(`${m.nome} ${m.descricao}`));
+    out.situacoes = vendas
+      ? ((await blingGetDevolucao(conta, `https://api.bling.com.br/Api/v3/situacoes/modulos/${vendas.id}`))?.data || []).map(s => ({ id: s.id, nome: s.nome, idHerdado: s.idHerdado }))
+      : { modulos };
+  } catch (e) { out.situacoes = erroBling(e); }
   try {
     const de = new Date(Date.now() - dias * 86_400_000).toISOString().slice(0, 10);
     for (const idLoja of out.lojas) {
