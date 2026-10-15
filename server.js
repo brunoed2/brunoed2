@@ -10867,6 +10867,37 @@ async function verificarNovosShipmentsShopee() {
 // dia inteiro, então só precisa buscar 1x e ficar comparando com o relógio.
 // Só notifica pelo push do site (categoria prazo_despacho, os dois avisos).
 const AVISO_DESPACHO_DIA_HORA = 8; // 08:00 BRT
+function textoAvisoDespachoDia(conta, prazo, cutoffISO) {
+  const cutoffTxt = cutoffISO ? `Pedidos vendidos até ${horaSP(new Date(cutoffISO))}` : 'Pedidos com etiqueta pronta';
+  return `📦 Despacho de hoje — ${conta}\n${cutoffTxt} têm que ser despachados na agência até ${horaSP(prazo)}.`;
+}
+
+// Teste do aviso das 8h: busca a grade de novo (ignora cache e o "já avisou hoje"),
+// manda o push agora com [TESTE] no texto e devolve o dia de hoje cru da grade —
+// serve pra conferir se o ML manda o cutoff ("vendido até").
+app.get('/api/ml/teste-aviso-despacho', async (req, res) => {
+  const num = String(req.query.conta || '1');
+  const c = loadData().contas?.[num];
+  if (!c?.access_token) return res.json({ error: `Conta ${num} não conectada` });
+  const diaSemana = DIAS_SEMANA[new Date(Date.now() - BR_OFFSET_MS).getUTCDay()];
+  const grades = {};
+  for (const lt of LOGISTIC_TYPES_GRADE) {
+    try {
+      const r = await axios.get(`https://api.mercadolibre.com/users/${c.user_id}/shipping/schedule/${lt}`, {
+        headers: { Authorization: `Bearer ${c.access_token}` }, timeout: 10000,
+      });
+      grades[lt] = r.data?.schedule?.[diaSemana] ?? null;
+    } catch (e) { grades[lt] = { erro: e.response?.status || e.message }; }
+  }
+  const achado = await buscarPrazoDespachoHoje(c.access_token, c.user_id);
+  if (!achado) return res.json({ ok: false, motivo: 'Sem grade de despacho hoje', diaSemana, grades });
+  const conta = c.nickname || c.nome || `Conta ${num}`;
+  const texto = `[TESTE] ${textoAvisoDespachoDia(conta, achado.prazo, achado.cutoff?.toISOString())}`;
+  registrarNotificacaoHistorico(texto, 'prazo_despacho');
+  const enviados = await enviarPush(texto, 'prazo_despacho');
+  res.json({ ok: true, texto, pushEnviados: enviados, logisticType: achado.logisticType, diaSemana, grades });
+});
+
 async function verificarPrazoDespachoPush() {
   if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) return;
   if (ehFeriado(hojeSP())) return; // feriado cadastrado: não tem despacho, mesmo que a grade do ML diga que sim
@@ -10912,8 +10943,7 @@ async function verificarPrazoDespachoPush() {
     // deixa só o aviso de "faltam X min" abaixo, pra não chegar dois juntos.
     const horaBR = new Date(agora - BR_OFFSET_MS).getUTCHours();
     if (!entry.avisoDiaNotificado && horaBR >= AVISO_DESPACHO_DIA_HORA && prazo.getTime() - agora > 30 * 60_000) {
-      const cutoffTxt = entry.cutoffISO ? `Pedidos vendidos até ${horaSP(new Date(entry.cutoffISO))}` : 'Pedidos com etiqueta pronta';
-      const textoDia = `📦 Despacho de hoje — ${conta}\n${cutoffTxt} têm que ser despachados na agência até ${hora}.`;
+      const textoDia = textoAvisoDespachoDia(conta, prazo, entry.cutoffISO);
       registrarNotificacaoHistorico(textoDia, 'prazo_despacho');
       const enviadosDia = await enviarPush(textoDia, 'prazo_despacho');
       // Marca mesmo se o push não saiu: já ficou no histórico (sino), e repetir a
