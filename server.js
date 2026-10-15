@@ -10366,7 +10366,7 @@ const NOTIF_CATEGORIAS = {
   bling_pendencia:  '⚠️ Pendência bloqueando emissão automática',
   contas_pagar:     '📅 Contas a pagar vencendo',
   shopee_boost:     '🚀 Impulso automático Shopee',
-  prazo_despacho:   '⏰ Faltam 30min pro despacho',
+  prazo_despacho:   '⏰ Horário de despacho (8h e 30min antes)',
   codigo_recebimento: '📝 Lembrete: código de recebimento',
   devolucao_chegando: '↩️ Devolução chega hoje no galpão',
   nf_compra:        '🧾 Nova NF de compra (SEFAZ)',
@@ -10563,7 +10563,12 @@ function prazoDeHojeNaGrade(schedule) {
   const diaSemana = DIAS_SEMANA[agoraBR.getUTCDay()];
   const dia = schedule?.[diaSemana];
   if (!dia || !dia.work || !Array.isArray(dia.detail) || !dia.detail.length) return null;
-  return horaHojeParaData(dia.detail[0].from);
+  const prazo = horaHojeParaData(dia.detail[0].from);
+  if (!prazo) return null;
+  // cutoff = "Envie o que tiver vendido até HH:MM" da tela do ML. Não confirmado se
+  // vem dentro do detail ou no dia — aceita os dois; sem ele o aviso das 8h sai só com o prazo.
+  const cutoff = horaHojeParaData(dia.detail[0].cutoff || dia.cutoff);
+  return { prazo, cutoff };
 }
 
 // Busca a grade de despacho de hoje pra uma conta, testando os logistic_types
@@ -10574,8 +10579,8 @@ async function buscarPrazoDespachoHoje(token, userId) {
       const r = await axios.get(`https://api.mercadolibre.com/users/${userId}/shipping/schedule/${lt}`, {
         headers: { Authorization: `Bearer ${token}` }, timeout: 10000,
       });
-      const prazo = prazoDeHojeNaGrade(r.data?.schedule);
-      if (prazo) return { prazo, logisticType: lt };
+      const hoje = prazoDeHojeNaGrade(r.data?.schedule);
+      if (hoje) return { ...hoje, logisticType: lt };
     } catch {}
   }
   return null;
@@ -10856,10 +10861,12 @@ async function verificarNovosShipmentsShopee() {
   }
 }
 
-// ── Polling em background: avisa 30min antes do horário-limite de despacho ──
+// ── Polling em background: às 8h avisa o horário de despacho do dia e avisa de
+// novo 30min antes do horário-limite ──
 // O prazo do dia vem da grade oficial (buscarPrazoDespachoHoje) — é fixo pro
 // dia inteiro, então só precisa buscar 1x e ficar comparando com o relógio.
-// Só notifica pelo push do site (categoria prazo_despacho).
+// Só notifica pelo push do site (categoria prazo_despacho, os dois avisos).
+const AVISO_DESPACHO_DIA_HORA = 8; // 08:00 BRT
 async function verificarPrazoDespachoPush() {
   if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) return;
   if (ehFeriado(hojeSP())) return; // feriado cadastrado: não tem despacho, mesmo que a grade do ML diga que sim
@@ -10886,7 +10893,8 @@ async function verificarPrazoDespachoPush() {
       const achado = await buscarPrazoDespachoHoje(c.access_token, c.user_id);
       if (achado) {
         entry.prazoISO = achado.prazo.toISOString();
-        addLog(`[prazo-despacho] Prazo do dia (grade ${achado.logisticType}) — conta ${num}: ${horaSP(achado.prazo)}`, 'info');
+        entry.cutoffISO = achado.cutoff ? achado.cutoff.toISOString() : null;
+        addLog(`[prazo-despacho] Prazo do dia (grade ${achado.logisticType}) — conta ${num}: ${horaSP(achado.prazo)}${achado.cutoff ? ` (vendido até ${horaSP(achado.cutoff)})` : ' (sem cutoff na resposta)'}`, 'info');
       } else {
         addLog(`[prazo-despacho] Conta ${num}: sem grade de despacho hoje (sem expediente ou nenhum logistic_type respondeu)`, 'info');
       }
@@ -10895,14 +10903,32 @@ async function verificarPrazoDespachoPush() {
       if (!entry.prazoISO) continue;
     }
 
+    const prazo = new Date(entry.prazoISO);
+    const conta = c.nickname || c.nome || `Conta ${num}`;
+    const hora  = horaSP(prazo);
+
+    // Aviso do dia às 8h. Se o servidor reiniciar depois das 8h, ainda manda enquanto
+    // o prazo não passou; depois do prazo não faz sentido. Faltando 30min ou menos,
+    // deixa só o aviso de "faltam X min" abaixo, pra não chegar dois juntos.
+    const horaBR = new Date(agora - BR_OFFSET_MS).getUTCHours();
+    if (!entry.avisoDiaNotificado && horaBR >= AVISO_DESPACHO_DIA_HORA && prazo.getTime() - agora > 30 * 60_000) {
+      const cutoffTxt = entry.cutoffISO ? `Pedidos vendidos até ${horaSP(new Date(entry.cutoffISO))}` : 'Pedidos com etiqueta pronta';
+      const textoDia = `📦 Despacho de hoje — ${conta}\n${cutoffTxt} têm que ser despachados na agência até ${hora}.`;
+      registrarNotificacaoHistorico(textoDia, 'prazo_despacho');
+      const enviadosDia = await enviarPush(textoDia, 'prazo_despacho');
+      // Marca mesmo se o push não saiu: já ficou no histórico (sino), e repetir a
+      // cada minuto encheria o histórico.
+      entry.avisoDiaNotificado = true;
+      cache[num] = entry;
+      salvarPrazoDespachoCache(cache);
+      addLog(`[prazo-despacho] Aviso do dia — conta ${num}, prazo ${hora}${enviadosDia > 0 ? '' : ' (push não saiu, só no histórico)'}`, enviadosDia > 0 ? 'ok' : 'warn');
+    }
+
     if (entry.notificado) continue;
 
-    const prazo     = new Date(entry.prazoISO);
     const faltamMin = (prazo.getTime() - agora) / 60000;
     if (faltamMin <= 0 || faltamMin > 30) continue;
 
-    const conta = c.nickname || c.nome || `Conta ${num}`;
-    const hora  = horaSP(prazo);
     const texto = `⏰ Faltam ${Math.round(faltamMin)} min para o horário de despacho (${hora}) — ${conta}\n` +
       'Separe os pedidos com etiqueta pronta e leve na agência.';
     // Registra no histórico (sino do app) mesmo que o push falhe — dá pra ver que a
