@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Painel</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📦</text></svg>">
-  <link rel="stylesheet" href="/css/style.css?v=31">
+  <link rel="stylesheet" href="/css/style.css?v=32">
   <link rel="manifest" href="/manifest.json">
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
   <meta name="theme-color" content="#2563eb">
@@ -1841,6 +1841,7 @@
   <div id="ce-modal" class="modal-overlay" style="display:none" onclick="if(event.target===this)ceFecharHistorico()">
     <div class="modal-card ce-modal-card">
       <div class="ce-modal-topo">
+        <div id="ce-modal-foto" class="ce-modal-foto" title="Clique pra buscar a foto de novo" onclick="ceBuscarFoto(ceProdutoAberto, true)"></div>
         <div>
           <div class="ce-modal-nome"><span id="ce-modal-nome"></span> <button class="ce-btn-link" title="Renomear" onclick="ceRenomear()">✏️</button></div>
           <div class="ce-modal-sub">SKU <span id="ce-modal-sku" class="ce-sku"></span></div>
@@ -1858,7 +1859,7 @@
       <div class="ce-modal-rodape"><button id="ce-modal-excluir" class="btn-sm btn-danger-sm" onclick="ceExcluir()">Excluir produto</button></div>
     </div>
   </div>
-  <script src="/js/controle-estoque.js?v=1"></script>
+  <script src="/js/controle-estoque.js?v=2"></script>
   <script src="/js/codigo-recebimento.js?v=1"></script>
   <script src="/js/devolucoes.js?v=12"></script>
   <script>
@@ -2186,6 +2187,6 @@
   </div>
 
   <script src="/js/busca-pagina.js?v=1"></script>
-  <div id="version-badge">v981</div>
+  <div id="version-badge">v982</div>
 </body>
 </html>

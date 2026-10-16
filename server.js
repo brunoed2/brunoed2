@@ -14603,6 +14603,128 @@ app.delete('/api/controle-estoque/:id', async (req, res) => {
   res.json({ ok: true });
 });
 
+// Foto do produto: procura o SKU nos anúncios da Shopee (foto da variação, se o SKU
+// for de uma variação) e, se não achar, no ML. A Shopee não busca anúncio por SKU,
+// então monta um índice SKU -> foto de todos os anúncios das contas (cache de 6h).
+const CE_FOTOS_SHOPEE_FILE = path.join(DATA_DIR, 'shopee-sku-fotos.json');
+let _ceIndiceShopee = null;
+let _ceIndiceShopeePromise = null;
+
+async function ceShopeeGet(sp, accessToken, rota, extra) {
+  const params = Object.assign(shopeeParams(`/api/v2/product/${rota}`, sp.partner_key, sp.partner_id, accessToken, sp.shop_id), extra);
+  const r = await axios.get(`${SHOPEE_BASE}/product/${rota}`, { params, timeout: 15000 });
+  if (r.data.error) throw new Error(`${rota}: ${r.data.message || r.data.error}`);
+  return r.data.response || {};
+}
+
+async function ceMontarIndiceShopee() {
+  const data = loadData();
+  const mapa = {};
+  for (const num of Object.keys(data.shopee_contas || {})) {
+    const sp = shopeeConta(data, num);
+    if (!sp.access_token) continue;
+    try {
+      const accessToken = await getShopeeToken(data, num);
+      const ids = [];
+      for (let offset = 0; offset < 5000;) {
+        const r = await ceShopeeGet(sp, accessToken, 'get_item_list', { offset, page_size: 100, item_status: 'NORMAL' });
+        ids.push(...(r.item || []).map(i => i.item_id));
+        if (!r.has_next_page) break;
+        offset = r.next_offset;
+      }
+      const comVariacao = [];
+      for (let i = 0; i < ids.length; i += 50) {
+        const r = await ceShopeeGet(sp, accessToken, 'get_item_base_info', { item_id_list: ids.slice(i, i + 50).join(',') });
+        for (const it of (r.item_list || [])) {
+          const foto = it.image?.image_url_list?.[0];
+          if (!foto) continue;
+          if (it.item_sku && !mapa[ceNormSku(it.item_sku)]) mapa[ceNormSku(it.item_sku)] = { foto, origem: 'shopee' };
+          if (it.has_model) comVariacao.push({ id: it.item_id, foto });
+        }
+      }
+      for (let i = 0; i < comVariacao.length; i += 5) {
+        await Promise.all(comVariacao.slice(i, i + 5).map(async it => {
+          try {
+            const r = await ceShopeeGet(sp, accessToken, 'get_model_list', { item_id: it.id });
+            const opcoes = r.tier_variation?.[0]?.option_list || [];
+            for (const m of (r.model || [])) {
+              const sku = ceNormSku(m.model_sku);
+              if (!sku || mapa[sku]) continue;
+              mapa[sku] = { foto: opcoes[m.tier_index?.[0]]?.image?.image_url || it.foto, origem: 'shopee' };
+            }
+          } catch {}
+        }));
+      }
+    } catch (err) {
+      addLog(`[controle-estoque] erro montando fotos Shopee conta ${num}: ${err.message}`, 'warn');
+    }
+  }
+  _ceIndiceShopee = { ts: Date.now(), mapa };
+  fs.writeFileSync(CE_FOTOS_SHOPEE_FILE, JSON.stringify(_ceIndiceShopee));
+  return _ceIndiceShopee;
+}
+
+async function ceIndiceShopee(forcar) {
+  if (!_ceIndiceShopee) {
+    try { _ceIndiceShopee = JSON.parse(fs.readFileSync(CE_FOTOS_SHOPEE_FILE, 'utf8')); } catch {}
+  }
+  const idade = Date.now() - (_ceIndiceShopee?.ts || 0);
+  // "Forçar" ainda respeita 2 min, pra clique repetido não refazer a varredura toda
+  if (_ceIndiceShopee && idade < (forcar ? 2 * 60_000 : 6 * 3600_000)) return _ceIndiceShopee;
+  _ceIndiceShopeePromise = _ceIndiceShopeePromise || ceMontarIndiceShopee().finally(() => { _ceIndiceShopeePromise = null; });
+  return _ceIndiceShopeePromise;
+}
+
+async function ceFotoMl(sku) {
+  const data = loadData();
+  for (const [num, c] of Object.entries(data.contas || {})) {
+    if (!c?.access_token || !c?.user_id) continue;
+    try {
+      const headers = { Authorization: `Bearer ${await getToken(data, num)}` };
+      const busca = await axios.get(`https://api.mercadolibre.com/users/${c.user_id}/items/search`, { params: { seller_sku: sku }, headers, timeout: 10000 });
+      const mlb = (busca.data.results || [])[0];
+      if (!mlb) continue;
+      const item = (await axios.get(`https://api.mercadolibre.com/items/${mlb}`, { params: { attributes: 'pictures,variations' }, headers, timeout: 10000 })).data;
+      const skuDe = v => ceNormSku(v.seller_custom_field || (v.attributes || []).find(a => a.id === 'SELLER_SKU')?.value_name);
+      const variacao = (item.variations || []).find(v => skuDe(v) === ceNormSku(sku));
+      const picId = variacao?.picture_ids?.[0];
+      const pic = (item.pictures || []).find(p => p.id === picId) || (item.pictures || [])[0];
+      if (pic) return { foto: pic.secure_url || pic.url, origem: 'ml' };
+    } catch {}
+  }
+  return null;
+}
+
+async function ceBuscarFoto(sku, forcar) {
+  const indice = await ceIndiceShopee(forcar);
+  return indice.mapa[ceNormSku(sku)] || await ceFotoMl(sku);
+}
+
+async function ceAtualizarFoto(id, forcar) {
+  const sku = loadControleEstoque().produtos.find(p => p.id === id)?.sku;
+  if (!sku) throw new Error('Produto não encontrado');
+  const achou = await ceBuscarFoto(sku, forcar);
+  return withControleEstoqueLock(() => {
+    const ce = loadControleEstoque();
+    const p = ce.produtos.find(x => x.id === id);
+    if (!p) return null;
+    p.fotoBuscadaEm = Date.now();
+    if (achou) { p.foto = achou.foto; p.fotoOrigem = achou.origem; }
+    saveControleEstoque(ce);
+    return p;
+  });
+}
+
+app.post('/api/controle-estoque/:id/foto', async (req, res) => {
+  if (!ceNomeUsuario((req.body || {}).senha)) return res.status(403).json({ error: 'Usuário inválido' });
+  try {
+    const p = await ceAtualizarFoto(req.params.id, !!req.body.forcar);
+    res.json({ ok: true, foto: p?.foto || null, origem: p?.fotoOrigem || null });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 // Polling: busca as vendas recentes de todos os canais e baixa o saldo dos produtos
 // cadastrados. Só conta venda feita depois do cadastro do produto. Full (ML) não
 // baixa — sai do estoque do ML, não do galpão. Pedido cancelado depois de baixado
@@ -14614,6 +14736,11 @@ async function verificarVendasControleEstoque() {
   if (!ce0.produtos.length) return;
   _ceRodando = true;
   try {
+    for (const p of ce0.produtos) {
+      if (!p.foto && Date.now() - (p.fotoBuscadaEm || 0) > 6 * 3600_000) {
+        await ceAtualizarFoto(p.id).catch(err => addLog(`[controle-estoque] foto ${p.sku}: ${err.message}`, 'warn'));
+      }
+    }
     const data = loadData();
     const skusAlvo = new Set(ce0.produtos.map(p => ceNormSku(p.sku)));
     const maisAntigo = Math.min(...ce0.produtos.map(p => p.criadoEm));

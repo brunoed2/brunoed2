@@ -11,6 +11,13 @@ function ceEsc(str) {
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+function ceFotoHtml(p, cls) {
+  const clique = cls === 'ce-foto' ? ` onclick="ceAbrirHistorico('${p.id}')"` : '';
+  return p.foto
+    ? `<img class="${cls}" src="${ceEsc(p.foto)}" alt="" loading="lazy"${clique}>`
+    : `<div class="${cls} ce-foto-vazia" title="Sem foto — nenhum anúncio da Shopee ou do ML com esse SKU"${clique}>📦</div>`;
+}
+
 function ceSenha() { return localStorage.getItem('usuarioSenha') || ''; }
 
 function ceDataHora(ts) {
@@ -57,7 +64,7 @@ function ceRenderizar() {
   }
   lista.innerHTML = `
     <table class="ce-tabela">
-      <thead><tr><th>Produto</th><th>SKU</th><th class="ce-num">Estoque</th><th>Última movimentação</th><th></th></tr></thead>
+      <thead><tr><th></th><th>Produto</th><th>SKU</th><th class="ce-num">Estoque</th><th>Última movimentação</th><th></th></tr></thead>
       <tbody>
         ${itens.map(p => {
           const u = p.ultimoMov;
@@ -66,6 +73,7 @@ function ceRenderizar() {
             : '<span style="color:#94a3b8">Sem movimentação — lance a entrada inicial</span>';
           return `
             <tr>
+              <td class="ce-foto-td">${ceFotoHtml(p, 'ce-foto')}</td>
               <td class="ce-nome">${ceEsc(p.nome)}</td>
               <td><span class="ce-sku">${ceEsc(p.sku)}</span></td>
               <td class="ce-num ce-saldo${p.saldo < 0 ? ' ce-negativo' : ''}">${p.saldo}</td>
@@ -93,6 +101,7 @@ async function ceCadastrar(event) {
     nomeEl.value = ''; skuEl.value = '';
     await controleEstoqueInit();
     ceAbrirHistorico(out.produto.id);
+    ceBuscarFoto(out.produto.id, false);
   } catch (err) {
     alert(err.message);
   } finally {
@@ -123,6 +132,7 @@ async function ceCarregarHistorico() {
     if (id !== ceProdutoAberto) return;
     const p = r.produto;
     document.getElementById('ce-modal-nome').textContent = p.nome;
+    if (!ceFotoBuscando) document.getElementById('ce-modal-foto').innerHTML = ceFotoHtml(p, 'ce-foto-grande');
     document.getElementById('ce-modal-sku').textContent = p.sku;
     const saldoEl = document.getElementById('ce-modal-saldo');
     saldoEl.textContent = p.saldo;
@@ -175,6 +185,27 @@ async function ceLancarMovimento(tipo) {
   } finally {
     btns.forEach(b => b.disabled = false);
   }
+}
+
+// Busca a foto pelo SKU (Shopee primeiro, depois ML). A 1ª busca do dia varre todos
+// os anúncios da Shopee, então pode levar alguns segundos.
+let ceFotoBuscando = false;
+async function ceBuscarFoto(id, forcar) {
+  const box = document.getElementById('ce-modal-foto');
+  ceFotoBuscando = true;
+  if (box && ceProdutoAberto === id) box.innerHTML = '<div class="ce-foto-grande ce-foto-vazia" title="Buscando foto...">⏳</div>';
+  try {
+    const resp = await fetch(`/api/controle-estoque/${id}/foto`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ senha: ceSenha(), forcar }),
+    });
+    const out = await resp.json().catch(() => ({}));
+    if (forcar && resp.ok && !out.foto) alert('Nenhum anúncio da Shopee ou do ML com esse SKU foi encontrado.');
+  } finally {
+    ceFotoBuscando = false;
+  }
+  await controleEstoqueInit();
+  if (ceProdutoAberto === id) await ceCarregarHistorico();
 }
 
 async function ceRenomear() {

@@ -2466,11 +2466,18 @@ tr.lucro-sub-item td {
 .ce-tag-saida   { background: #fee2e2; color: #991b1b; }
 .ce-tag-venda   { background: #e0e7ff; color: #3730a3; }
 .ce-tag-estorno { background: #fef3c7; color: #92400e; }
+.ce-foto-td { width: 1%; padding-right: 0 !important; }
+.ce-foto, .ce-foto-grande { display: block; object-fit: cover; border-radius: 8px; border: 1px solid #e2e8f0; background: #f8fafc; cursor: pointer; }
+.ce-foto { width: 56px; height: 56px; }
+.ce-foto-grande { width: 84px; height: 84px; }
+.ce-foto-vazia { display: flex; align-items: center; justify-content: center; font-size: 22px; color: #cbd5e1; }
+.ce-foto-grande.ce-foto-vazia { font-size: 30px; }
+.ce-modal-foto { flex: 0 0 auto; }
 .ce-modal-rodape { display: flex; justify-content: flex-end; margin-top: 12px; }
 @media (max-width: 700px) {
   .ce-novo { flex-wrap: wrap; }
   .ce-novo .ce-novo-sku { flex: 1 1 120px; }
-  .ce-tabela th:nth-child(4), .ce-tabela td.ce-ultimo { display: none; }
+  .ce-tabela th:nth-child(5), .ce-tabela td.ce-ultimo { display: none; }
   .ce-tabela-hist th:nth-child(5), .ce-tabela-hist td:nth-child(5) { display: none; }
   .ce-modal-card { padding: 16px; }
 }
