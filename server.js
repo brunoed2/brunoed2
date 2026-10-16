@@ -14598,6 +14598,7 @@ app.delete('/api/controle-estoque/:id', async (req, res) => {
     const ce = loadControleEstoque();
     ce.produtos = ce.produtos.filter(p => p.id !== req.params.id);
     for (const k of Object.keys(ce.vistos)) if (k.endsWith(':' + req.params.id)) delete ce.vistos[k];
+    if (/^[a-z0-9]+$/.test(req.params.id)) fs.rmSync(path.join(CE_FOTOS_DIR, req.params.id + '.jpg'), { force: true });
     saveControleEstoque(ce);
   });
   res.json({ ok: true });
@@ -14714,6 +14715,39 @@ async function ceAtualizarFoto(id, forcar) {
     return p;
   });
 }
+
+// Foto escolhida à mão (o front já manda reduzida em JPEG). Fica em arquivo no volume;
+// a busca automática nunca sobrescreve, porque só roda pra produto sem foto — só o
+// botão "Anúncio" troca de volta.
+const CE_FOTOS_DIR = path.join(DATA_DIR, 'controle-estoque-fotos');
+app.post('/api/controle-estoque/:id/foto-manual', async (req, res) => {
+  const { senha, imagem } = req.body || {};
+  if (!ceNomeUsuario(senha)) return res.status(403).json({ error: 'Usuário inválido' });
+  const m = /^data:image\/jpeg;base64,(.+)$/.exec(String(imagem || ''));
+  if (!m) return res.status(400).json({ error: 'Imagem inválida' });
+  if (!/^[a-z0-9]+$/.test(req.params.id)) return res.status(400).json({ error: 'id inválido' });
+  try {
+    const foto = await withControleEstoqueLock(() => {
+      const ce = loadControleEstoque();
+      const p = ce.produtos.find(x => x.id === req.params.id);
+      if (!p) throw new Error('Produto não encontrado');
+      fs.mkdirSync(CE_FOTOS_DIR, { recursive: true });
+      fs.writeFileSync(path.join(CE_FOTOS_DIR, p.id + '.jpg'), Buffer.from(m[1], 'base64'));
+      p.foto = `/api/controle-estoque/foto/${p.id}.jpg?t=${Date.now()}`;
+      p.fotoOrigem = 'manual';
+      saveControleEstoque(ce);
+      return p.foto;
+    });
+    res.json({ ok: true, foto });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.get('/api/controle-estoque/foto/:arquivo', (req, res) => {
+  if (!/^[a-z0-9]+\.jpg$/.test(req.params.arquivo)) return res.status(404).end();
+  res.sendFile(path.resolve(CE_FOTOS_DIR, req.params.arquivo), err => { if (err && !res.headersSent) res.status(404).end(); });
+});
 
 app.post('/api/controle-estoque/:id/foto', async (req, res) => {
   if (!ceNomeUsuario((req.body || {}).senha)) return res.status(403).json({ error: 'Usuário inválido' });

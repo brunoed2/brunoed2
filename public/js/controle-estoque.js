@@ -208,6 +208,42 @@ async function ceBuscarFoto(id, forcar) {
   if (ceProdutoAberto === id) await ceCarregarHistorico();
 }
 
+// Foto escolhida à mão: reduz no navegador (máx. 600px, JPEG) antes de mandar
+async function ceEnviarFoto(input) {
+  const arquivo = input.files?.[0];
+  input.value = '';
+  if (!arquivo) return;
+  const id = ceProdutoAberto;
+  try {
+    const img = await new Promise((ok, erro) => {
+      const i = new Image();
+      i.onload = () => ok(i);
+      i.onerror = () => erro(new Error('Não consegui abrir essa imagem'));
+      i.src = URL.createObjectURL(arquivo);
+    });
+    const escala = Math.min(1, 600 / Math.max(img.width, img.height));
+    const canvas = document.createElement('canvas');
+    canvas.width  = Math.round(img.width * escala);
+    canvas.height = Math.round(img.height * escala);
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#fff'; // PNG transparente não vira fundo preto no JPEG
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    URL.revokeObjectURL(img.src);
+    document.getElementById('ce-modal-foto').innerHTML = '<div class="ce-foto-grande ce-foto-vazia" title="Enviando...">⏳</div>';
+    const resp = await fetch(`/api/controle-estoque/${id}/foto-manual`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ senha: ceSenha(), imagem: canvas.toDataURL('image/jpeg', 0.85) }),
+    });
+    const out = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(out.error || 'Erro ao salvar a foto');
+  } catch (err) {
+    alert(err.message);
+  }
+  await controleEstoqueInit();
+  if (ceProdutoAberto === id) await ceCarregarHistorico();
+}
+
 async function ceRenomear() {
   const atual = document.getElementById('ce-modal-nome').textContent;
   const nome = prompt('Novo nome do produto:', atual);
