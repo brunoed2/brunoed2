@@ -227,7 +227,7 @@ function loadData() {
     raw.usuarios['1234'] = { nome: 'Proposta ML (cliente)', abas: [], painel: 'simulador-ml' };
   }
   // 199412 é sempre admin no painel app — forçado mesmo se já existir com dados errados
-  const adminAbas = ['estoque','vendas','historico','ads','lucro','promocoes','contas-pagar','contas-receber','bling','fiscal','compras','calculadora','etiquetas','log-anuncio','configuracoes','scanner','codigo','devolucoes'];
+  const adminAbas = ['estoque','controle-estoque','vendas','historico','ads','lucro','promocoes','contas-pagar','contas-receber','bling','fiscal','compras','calculadora','etiquetas','log-anuncio','configuracoes','scanner','codigo','devolucoes'];
   raw.usuarios['199412'] = {
     nome:         (raw.usuarios['199412'] || {}).nome || 'Admin',
     abas:         adminAbas,
@@ -13764,6 +13764,11 @@ app.listen(PORT, () => {
       setInterval(() => verificarVendasFornecedoresPorSku().catch(() => {}), 3 * 60_000);
     }, 50_000);
   }
+  // Controle de estoque (aba manual): baixa o saldo dos produtos cadastrados a cada venda
+  setTimeout(() => {
+    verificarVendasControleEstoque().catch(err => addLog(`[controle-estoque] ${err.message}`, 'warn'));
+    setInterval(() => verificarVendasControleEstoque().catch(err => addLog(`[controle-estoque] ${err.message}`, 'warn')), 3 * 60_000);
+  }, 55_000);
   // Anúncios pausados: roda se tiver WhatsApp principal
   if (CALLMEBOT_PHONE && CALLMEBOT_APIKEY) {
     setTimeout(() => {
@@ -14077,6 +14082,7 @@ async function buscarItensShopeePeriodoLeve(data, conta, de, ate) {
           if (correcaoSku && sku === correcaoSku.de) sku = correcaoSku.para;
           return {
             sku,
+            skuModelo:  i.model_sku || '',
             titulo:     i.item_name || '',
             quantidade: i.model_quantity_purchased || 1,
           };
@@ -14467,6 +14473,274 @@ async function verificarVendasFornecedoresPorSku() {
     data.fornecedor_vendas_notificadas = Array.from(fornecedorVendasNotificadas).slice(-2000);
     data.fornecedor_dashboard_cache = {}; // estoque local pode ter mudado (dedução Shopee) — invalida cache
     saveData(data);
+  }
+}
+
+// ── Controle de estoque (aba manual) ───────────────────────────
+// Produto cadastrado à mão (nome e SKU livres), saldo começa em 0 e só muda por
+// movimento: entrada/saída lançada no histórico, ou venda fora do Full de qualquer
+// canal (ML, Shopee, TikTok) com o SKU. O saldo nunca é editado direto.
+// Arquivo próprio (não data.json) pra não ser sobrescrito por saveData() concorrente.
+const CONTROLE_ESTOQUE_FILE = path.join(DATA_DIR, 'controle-estoque.json');
+function loadControleEstoque() {
+  let d;
+  try { d = JSON.parse(fs.readFileSync(CONTROLE_ESTOQUE_FILE, 'utf8')); } catch { d = {}; }
+  d.produtos = d.produtos || [];
+  d.vistos   = d.vistos   || {}; // `${canal}:${pedido}:${produtoId}` -> { ts, qtd, estornado? }
+  return d;
+}
+function saveControleEstoque(d) {
+  fs.writeFileSync(CONTROLE_ESTOQUE_FILE, JSON.stringify(d, null, 2));
+}
+let _controleEstoqueChain = Promise.resolve();
+function withControleEstoqueLock(fn) {
+  const run = _controleEstoqueChain.then(fn, fn);
+  _controleEstoqueChain = run.catch(() => {});
+  return run;
+}
+const ceNormSku = s => String(s || '').trim().toUpperCase();
+
+function ceLancar(prod, mov) {
+  prod.saldo = (prod.saldo || 0) + mov.qtd;
+  prod.movs  = prod.movs || [];
+  prod.movs.push({ ts: Date.now(), ...mov, saldo: prod.saldo });
+}
+
+function ceResumo(prod) {
+  const { movs, ...resto } = prod;
+  return { ...resto, ultimoMov: (movs || [])[movs.length - 1] || null, totalMovs: (movs || []).length };
+}
+
+function ceNomeUsuario(senha) {
+  return loadData().usuarios?.[String(senha || '')]?.nome || null;
+}
+
+app.get('/api/controle-estoque', (req, res) => {
+  const ce = loadControleEstoque();
+  res.json({ produtos: ce.produtos.map(ceResumo), ultimaVerificacao: ce.ultimaVerificacao || null });
+});
+
+app.get('/api/controle-estoque/:id/historico', (req, res) => {
+  const prod = loadControleEstoque().produtos.find(p => p.id === req.params.id);
+  if (!prod) return res.status(404).json({ error: 'Produto não encontrado' });
+  res.json({ produto: ceResumo(prod), movs: (prod.movs || []).slice().reverse() });
+});
+
+app.post('/api/controle-estoque', async (req, res) => {
+  const { nome, sku, senha } = req.body || {};
+  const usuario = ceNomeUsuario(senha);
+  if (!usuario) return res.status(403).json({ error: 'Usuário inválido' });
+  if (!String(nome || '').trim() || !String(sku || '').trim()) return res.status(400).json({ error: 'Nome e SKU são obrigatórios' });
+  try {
+    const prod = await withControleEstoqueLock(() => {
+      const ce = loadControleEstoque();
+      if (ce.produtos.some(p => ceNormSku(p.sku) === ceNormSku(sku))) throw new Error('Já existe um produto com esse SKU');
+      const novo = {
+        id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+        nome: String(nome).trim(), sku: String(sku).trim(),
+        criadoEm: Date.now(), criadoPor: usuario, saldo: 0, movs: [],
+      };
+      ce.produtos.push(novo);
+      saveControleEstoque(ce);
+      return novo;
+    });
+    res.json({ ok: true, produto: ceResumo(prod) });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Entrada ou saída manual — único jeito de mexer no saldo fora das vendas
+app.post('/api/controle-estoque/:id/movimento', async (req, res) => {
+  const { tipo, quantidade, obs, senha } = req.body || {};
+  const usuario = ceNomeUsuario(senha);
+  if (!usuario) return res.status(403).json({ error: 'Usuário inválido' });
+  if (!['entrada', 'saida'].includes(tipo)) return res.status(400).json({ error: 'Tipo inválido' });
+  const qtd = parseInt(quantidade, 10);
+  if (!Number.isInteger(qtd) || qtd <= 0) return res.status(400).json({ error: 'Quantidade deve ser um número inteiro maior que zero' });
+  try {
+    const prod = await withControleEstoqueLock(() => {
+      const ce = loadControleEstoque();
+      const p = ce.produtos.find(x => x.id === req.params.id);
+      if (!p) throw new Error('Produto não encontrado');
+      ceLancar(p, { tipo, qtd: tipo === 'entrada' ? qtd : -qtd, obs: String(obs || '').trim().slice(0, 200), usuario });
+      saveControleEstoque(ce);
+      return p;
+    });
+    res.json({ ok: true, produto: ceResumo(prod) });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Só o nome pode mudar — o SKU é a chave que liga às vendas
+app.put('/api/controle-estoque/:id', async (req, res) => {
+  const { nome, senha } = req.body || {};
+  if (!ceNomeUsuario(senha)) return res.status(403).json({ error: 'Usuário inválido' });
+  if (!String(nome || '').trim()) return res.status(400).json({ error: 'Nome obrigatório' });
+  try {
+    await withControleEstoqueLock(() => {
+      const ce = loadControleEstoque();
+      const p = ce.produtos.find(x => x.id === req.params.id);
+      if (!p) throw new Error('Produto não encontrado');
+      p.nome = String(nome).trim();
+      saveControleEstoque(ce);
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.delete('/api/controle-estoque/:id', async (req, res) => {
+  if ((req.body || {}).senha !== '199412') return res.status(403).json({ error: 'Apenas o administrador pode excluir' });
+  await withControleEstoqueLock(() => {
+    const ce = loadControleEstoque();
+    ce.produtos = ce.produtos.filter(p => p.id !== req.params.id);
+    for (const k of Object.keys(ce.vistos)) if (k.endsWith(':' + req.params.id)) delete ce.vistos[k];
+    saveControleEstoque(ce);
+  });
+  res.json({ ok: true });
+});
+
+// Polling: busca as vendas recentes de todos os canais e baixa o saldo dos produtos
+// cadastrados. Só conta venda feita depois do cadastro do produto. Full (ML) não
+// baixa — sai do estoque do ML, não do galpão. Pedido cancelado depois de baixado
+// volta pro saldo (movimento "estorno").
+let _ceRodando = false;
+async function verificarVendasControleEstoque() {
+  if (_ceRodando) return;
+  const ce0 = loadControleEstoque();
+  if (!ce0.produtos.length) return;
+  _ceRodando = true;
+  try {
+    const data = loadData();
+    const skusAlvo = new Set(ce0.produtos.map(p => ceNormSku(p.sku)));
+    const maisAntigo = Math.min(...ce0.produtos.map(p => p.criadoEm));
+    // vendas: { canal, conta, pedido, ts (ms) | dia (YYYY-MM-DD, TikTok), itens: [{ sku, qtd }] }
+    const vendas = [];
+    const cancelados = new Set(); // `${canal}:${pedido}`
+    const tiktokOk = {};          // conta -> leitura deu certo (pra semear produto novo)
+    const inicioRodada = Date.now();
+    let mlOk = true;              // se alguma conta ML falhar, a próxima rodada volta a olhar a janela inteira
+
+    for (const [num, c] of Object.entries(data.contas || {})) {
+      if (!c?.access_token || !c?.user_id) continue;
+      try {
+        const token   = await getToken(data, num);
+        const headers = { Authorization: `Bearer ${token}` };
+        // Janela curta: desde a última rodada (com folga de 1h), nunca antes do cadastro
+        const desde   = new Date(Math.max(maisAntigo, (ce0.mlVerificadoAte || 0) - 3600_000, Date.now() - 2 * 86400_000)).toISOString();
+        let orders = [];
+        for (let offset = 0; offset < 1000; offset += 50) {
+          const r = await axios.get('https://api.mercadolibre.com/orders/search', {
+            params: { seller: c.user_id, 'order.status': 'paid', 'order.date_created.from': desde, sort: 'date_desc', limit: 50, offset },
+            headers, timeout: 15000,
+          });
+          const lote = r.data.results || [];
+          orders = orders.concat(lote);
+          if (lote.length < 50) break;
+        }
+        for (const o of orders) {
+          const itens = (o.order_items || [])
+            .filter(oi => skusAlvo.has(ceNormSku(oi.item?.seller_sku)))
+            .map(oi => ({ sku: ceNormSku(oi.item.seller_sku), qtd: oi.quantity || 1 }));
+          if (!itens.length) continue;
+          if (ce0.produtos.every(p => ce0.vistos[`ml:${o.id}:${p.id}`] || !itens.some(i => i.sku === ceNormSku(p.sku)))) continue;
+          // logistic_type nem sempre vem no orders/search — na dúvida, confere no envio
+          let tipoLog = o.shipping?.logistic_type;
+          if (!tipoLog && o.shipping?.id) {
+            const sh = (await axios.get(`https://api.mercadolibre.com/shipments/${o.shipping.id}`, { headers, timeout: 10000 })).data;
+            tipoLog = sh.logistic?.type || sh.logistic_type || '';
+          }
+          if (String(tipoLog || '').includes('fulfillment')) continue;
+          vendas.push({ canal: 'ml', conta: num, pedido: String(o.id), ts: Date.parse(o.date_created), itens });
+        }
+        const rc = await axios.get('https://api.mercadolibre.com/orders/search', {
+          params: { seller: c.user_id, 'order.status': 'cancelled', 'order.date_created.from': new Date(Date.now() - 10 * 86400_000).toISOString(), sort: 'date_desc', limit: 50 },
+          headers, timeout: 15000,
+        });
+        for (const o of (rc.data.results || [])) cancelados.add(`ml:${o.id}`);
+      } catch (err) {
+        mlOk = false;
+        addLog(`[controle-estoque] erro ML conta ${num}: ${err.message}`, 'warn');
+      }
+    }
+
+    const hoje  = hojeSP();
+    const ontem = new Date(Date.parse(hoje + 'T12:00:00Z') - 86400_000).toISOString().slice(0, 10);
+    for (const num of Object.keys(data.shopee_contas || {})) {
+      const sp = shopeeConta(data, num);
+      if (!sp.access_token) continue;
+      try {
+        for (const p of await buscarItensShopeePeriodoLeve(data, num, ontem, hoje)) {
+          const itens = p.itens
+            .map(i => ({ sku: [i.sku, i.skuModelo].map(ceNormSku).find(s => skusAlvo.has(s)), qtd: i.quantidade || 1 }))
+            .filter(i => i.sku);
+          if (itens.length) vendas.push({ canal: 'shopee', conta: num, pedido: p.orderSn, ts: p.data, itens });
+        }
+        const accessToken = await getShopeeToken(data, num);
+        const path_  = '/api/v2/order/get_order_list';
+        const params = shopeeParams(path_, sp.partner_key, sp.partner_id, accessToken, sp.shop_id);
+        Object.assign(params, { order_status: 'CANCELLED', page_size: 100, time_range_field: 'update_time',
+          time_from: Math.floor(Date.now() / 1000) - 10 * 86400, time_to: Math.floor(Date.now() / 1000) });
+        const r = await axios.get(`${SHOPEE_BASE}/order/get_order_list`, { params, timeout: 15000 });
+        for (const o of (r.data.response?.order_list || [])) cancelados.add(`shopee:${o.order_sn}`);
+      } catch (err) {
+        addLog(`[controle-estoque] erro Shopee conta ${num}: ${err.message}`, 'warn');
+      }
+    }
+
+    const seteDias = new Date(Date.parse(hoje + 'T12:00:00Z') - 7 * 86400_000).toISOString().slice(0, 10);
+    for (const num of Object.keys(TIKTOK_LOJAS_BLING)) {
+      try {
+        for (const p of await buscarPedidosTiktokBling(num, seteDias, hoje)) {
+          if (p.cancelado) { cancelados.add(`tiktok:${p.orderId}`); continue; }
+          const itens = p.itens.filter(i => skusAlvo.has(ceNormSku(i.sku))).map(i => ({ sku: ceNormSku(i.sku), qtd: i.quantidade || 1 }));
+          if (itens.length) vendas.push({ canal: 'tiktok', conta: num, pedido: String(p.orderId), dia: p.data, itens });
+        }
+        tiktokOk[num] = true;
+      } catch (err) {
+        addLog(`[controle-estoque] erro TikTok conta ${num}: ${err.message}`, 'warn');
+      }
+    }
+
+    const ROTULO = { ml: 'ML', shopee: 'Shopee', tiktok: 'TikTok' };
+    await withControleEstoqueLock(() => {
+      const ce = loadControleEstoque(); // relê: pode ter tido lançamento manual durante a busca
+      for (const prod of ce.produtos) {
+        const skuProd = ceNormSku(prod.sku);
+        const diaCriado = dataBRDeTimestamp(prod.criadoEm);
+        // TikTok só tem a data (sem hora) — na 1ª rodada do produto, o que já existe
+        // no dia do cadastro é marcado como visto sem baixar
+        const semearTiktok = !prod.tiktokSemeado;
+        for (const v of vendas) {
+          const qtd = v.itens.filter(i => i.sku === skuProd).reduce((s, i) => s + i.qtd, 0);
+          if (!qtd) continue;
+          const chave = `${v.canal}:${v.pedido}:${prod.id}`;
+          if (ce.vistos[chave]) continue;
+          const antigo = v.canal === 'tiktok' ? (v.dia < diaCriado || (semearTiktok && v.dia === diaCriado)) : v.ts < prod.criadoEm;
+          if (antigo) { ce.vistos[chave] = { ts: Date.now(), qtd: 0 }; continue; }
+          ceLancar(prod, { tipo: 'venda', qtd: -qtd, canal: v.canal, conta: v.conta, pedido: v.pedido, usuario: `Venda ${ROTULO[v.canal]}` });
+          ce.vistos[chave] = { ts: Date.now(), qtd };
+        }
+        if (semearTiktok && Object.keys(TIKTOK_LOJAS_BLING).every(n => tiktokOk[n])) prod.tiktokSemeado = true;
+      }
+      for (const [chave, reg] of Object.entries(ce.vistos)) {
+        const [canal, pedido, prodId] = chave.split(':');
+        if (reg.qtd > 0 && !reg.estornado && cancelados.has(`${canal}:${pedido}`)) {
+          const prod = ce.produtos.find(p => p.id === prodId);
+          if (prod) ceLancar(prod, { tipo: 'estorno', qtd: reg.qtd, canal, pedido, usuario: `Cancelamento ${ROTULO[canal]}` });
+          reg.estornado = true;
+        }
+        if (Date.now() - reg.ts > 30 * 86400_000) delete ce.vistos[chave];
+      }
+      ce.ultimaVerificacao = Date.now();
+      if (mlOk) ce.mlVerificadoAte = inicioRodada;
+      saveControleEstoque(ce);
+    });
+  } finally {
+    _ceRodando = false;
   }
 }
 

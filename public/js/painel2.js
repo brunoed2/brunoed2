@@ -20,6 +20,7 @@ function abrirAba(nome) {
   if (nome === 'historico')    { histIniciarDatas(); carregarHistorico(); }
   if (nome === 'etiquetas')    etiquetasInit();
   if (nome === 'codigo')       codigoInit();
+  if (nome === 'controle-estoque') controleEstoqueInit();
 }
 
 navBtns.forEach(btn => {

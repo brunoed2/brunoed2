@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Painel 2</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📦</text></svg>">
-  <link rel="stylesheet" href="/css/style.css?v=21">
+  <link rel="stylesheet" href="/css/style.css?v=22">
   <link rel="manifest" href="/manifest.json">
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
   <meta name="theme-color" content="#2563eb">
@@ -51,6 +51,7 @@
         <a class="nav-btn" href="?tab=historico" data-tab="historico">📋 Histórico</a>
         <a class="nav-btn" href="?tab=etiquetas" data-tab="etiquetas">🖨️ Etiquetas FULL</a>
         <a class="nav-btn" href="?tab=codigo" data-tab="codigo">🔑 Código</a>
+        <a class="nav-btn" href="?tab=controle-estoque" data-tab="controle-estoque">🗃️ Controle de Estoque</a>
       </nav>
       <div class="sidebar-footer">
         <button class="btn-sair" onclick="sair()">Sair</button>
@@ -305,6 +306,19 @@
         </div>
       </section>
 
+      <!-- ── Aba: Controle de estoque (manual) ── -->
+      <section id="tab-controle-estoque" class="tab">
+        <h1>Controle de Estoque</h1>
+        <p class="subtitle">Produtos cadastrados à mão. O estoque só muda por entrada/saída lançada no histórico (📜) ou por venda fora do Full com o SKU (ML, Shopee e TikTok — verificado a cada 3 min). <span id="ce-ultima-verif"></span></p>
+        <form class="ce-novo" onsubmit="ceCadastrar(event)">
+          <input type="text" id="ce-novo-nome" class="input-padrao" placeholder="Nome do produto" required>
+          <input type="text" id="ce-novo-sku" class="input-padrao ce-novo-sku" placeholder="SKU" required>
+          <button type="submit" id="ce-novo-btn" class="btn-primary">+ Cadastrar</button>
+        </form>
+        <input type="text" id="ce-filtro" class="input-padrao ce-filtro" placeholder="🔎 Buscar por nome ou SKU" oninput="ceRenderizar()">
+        <div id="ce-lista"></div>
+      </section>
+
       <!-- ── Aba: Código de recebimento ── -->
       <section id="tab-codigo" class="tab">
         <h1>Código</h1>
@@ -316,8 +330,30 @@
   </div>
 
   <script src="/js/compartilhar.js?v=1"></script>
+  <!-- Modal histórico do Controle de estoque -->
+  <div id="ce-modal" class="modal-overlay" style="display:none" onclick="if(event.target===this)ceFecharHistorico()">
+    <div class="modal-card ce-modal-card">
+      <div class="ce-modal-topo">
+        <div>
+          <div class="ce-modal-nome"><span id="ce-modal-nome"></span> <button class="ce-btn-link" title="Renomear" onclick="ceRenomear()">✏️</button></div>
+          <div class="ce-modal-sub">SKU <span id="ce-modal-sku" class="ce-sku"></span></div>
+        </div>
+        <div class="ce-modal-saldo-box">Estoque<div id="ce-modal-saldo" class="ce-modal-saldo"></div></div>
+        <button class="ce-btn-fechar" onclick="ceFecharHistorico()">✕</button>
+      </div>
+      <div class="ce-mov">
+        <input type="number" id="ce-mov-qtd" class="input-padrao ce-mov-qtd" min="1" step="1" placeholder="Qtd">
+        <input type="text" id="ce-mov-obs" class="input-padrao" placeholder="Observação (opcional) — ex: ajuste inicial, compra NF 123">
+        <button class="btn-primary ce-mov-btn ce-mov-entrada" onclick="ceLancarMovimento('entrada')">+ Entrada</button>
+        <button class="btn-primary ce-mov-btn ce-mov-saida" onclick="ceLancarMovimento('saida')">− Saída</button>
+      </div>
+      <div id="ce-hist-lista" class="ce-hist-lista"></div>
+      <div class="ce-modal-rodape"><button id="ce-modal-excluir" class="btn-sm btn-danger-sm" onclick="ceExcluir()">Excluir produto</button></div>
+    </div>
+  </div>
+  <script src="/js/controle-estoque.js?v=1"></script>
   <script src="/js/codigo-recebimento.js?v=1"></script>
-  <script src="/js/painel2.js?v=197"></script>
+  <script src="/js/painel2.js?v=198"></script>
   <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
   <script src="/js/etiquetas.js"></script>
   <!-- Modal histórico de estoque -->
@@ -345,6 +381,6 @@
   </div>
 
   <script src="/js/busca-pagina.js?v=1"></script>
-  <div id="version-badge">v980</div>
+  <div id="version-badge">v981</div>
 </body>
 </html>
